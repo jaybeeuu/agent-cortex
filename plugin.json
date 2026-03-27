@@ -1,0 +1,12 @@
+{
+  "name": "agent-nexus",
+  "description": "Personal Copilot CLI plugin with custom agents and skills",
+  "version": "0.1.0",
+  "author": {
+    "name": "jaybeeuu"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/jaybeeuu/agent-nexus",
+  "agents": "agents/",
+  "skills": "skills/"
+}

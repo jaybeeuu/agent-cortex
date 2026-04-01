@@ -1,7 +1,7 @@
 ---
 description: "Use when running all pending beads end-to-end: finds the next available beads (dependencies met), runs the full implement → review → fix cycle for each, then repeats until all beads are complete. Use for: running the full task backlog, batch execution, working through all pending work."
 name: "Task Orchestrator"
-tools: ["bash", "view", "edit", "grep", "glob"]
+tools: ["bash", "view", "agent", "grep", "glob"]
 argument-hint: "Run all pending beads"
 ---
 
@@ -20,7 +20,7 @@ A bead is available if it appears in the output of `bd ready` — meaning its st
 ## Loop
 
 Repeat the following until `bd ready` returns no results:
-
+/to
 ### Step 1 — Find the next bead
 Run `bd ready`. Pick the first available bead. If none exist and some beads are still pending, they are blocked — stop and report which beads are blocked and why.
 
@@ -34,7 +34,7 @@ bd update <id> --claim
 ```
 
 ### Step 4 — Delegate to coder
-Spawn a `nexus` agent (`agent-nexus:nexus`) to implement the bead. The prompt must include:
+Spawn a `general-purpose` agent to implement the bead. The prompt must include:
 - The full output of `bd prime` (copy verbatim — do not summarise)
 - The full bead description from `bd show <id>` (copy verbatim)
 - What any dependencies already implemented (context from prior completed beads)
@@ -43,7 +43,7 @@ Spawn a `nexus` agent (`agent-nexus:nexus`) to implement the bead. The prompt mu
 - Explicit instruction: implement the bead, editing source files as needed.
 
 ### Step 5 — Request review
-Spawn a `nexus` agent (`agent-nexus:nexus`) to review the implementation. The prompt must include:
+Spawn a `general-purpose` agent to review the implementation. The prompt must include:
 - The full output of `bd prime` (copy verbatim)
 - A summary of what the coder implemented
 - The original bead description
@@ -51,7 +51,7 @@ Spawn a `nexus` agent (`agent-nexus:nexus`) to review the implementation. The pr
 - Explicit instruction: review the changes for correctness and quality, then respond with either `APPROVED` or `CHANGES REQUESTED` followed by a numbered list of required changes.
 
 ### Step 6 — Apply feedback (if needed)
-- If the reviewer returns `CHANGES REQUESTED`, spawn a `nexus` agent (`agent-nexus:nexus`) to apply the fixes. The prompt must include:
+- If the reviewer returns `CHANGES REQUESTED`, spawn a `general-purpose` agent to apply the fixes. The prompt must include:
   - The reviewer's numbered list of changes
   - The files that need to be updated
   - Explicit instruction: apply only the requested changes, nothing else.

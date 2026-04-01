@@ -11,7 +11,10 @@
   "skills": "skills/",
   "mcpServers": {
     "beads": {
-      "command": "beads-mcp"
+      "type": "stdio",
+      "command": "beads-mcp",
+      "args": [],
+      "tools": ["*"]
     }
   }
 }

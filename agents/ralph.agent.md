@@ -1,7 +1,7 @@
 ---
 description: "Use when running all pending beads end-to-end: finds the next available beads (dependencies met), runs the full implement → review → fix cycle for each, then repeats until all beads are complete. Use for: running the full task backlog, batch execution, working through all pending work."
-name: "Task Orchestrator"
-tools: ["bash", "view", "agent", "grep", "glob"]
+name: "agent-nexus:ralph"
+tools: ["bash", "view", "edit", "grep", "glob"]
 argument-hint: "Run all pending beads"
 ---
 
@@ -20,18 +20,18 @@ A bead is available if it appears in the output of `bd ready` — meaning its st
 ## Loop
 
 Repeat the following until `bd ready` returns no results:
-/to
+
 ### Step 1 — Find the next bead
 Run `bd ready`. Pick the first available bead. If none exist and some beads are still pending, they are blocked — stop and report which beads are blocked and why.
 
-### Step 2 — Read context
-- Run `bd show <id>` to get the bead's full description.
-- Read enough relevant source files to write a complete, accurate prompt for the coding subagent.
-
-### Step 3 — Claim the bead
+### Step 2 — Claim the bead
 ```bash
 bd update <id> --claim
 ```
+
+### Step 3 — Read context
+- Run `bd show <id>` to get the bead's full description.
+- Read enough relevant source files to write a complete, accurate prompt for the coding subagent.
 
 ### Step 4 — Delegate to coder
 Spawn a `general-purpose` agent to implement the bead. The prompt must include:

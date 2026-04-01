@@ -140,7 +140,17 @@ All prompts must include the `bd prime` output verbatim. Tailor the rest per sta
 <list source files you read during context gathering>
 
 ## Instructions
-Implement the task described above. Edit source files as needed.
+Implement the task described above using a test-driven approach:
+
+1. **Plan**: identify the discrete behaviors this task requires. List them before writing any code.
+2. **Vertical slices only** — do not write all tests first. Work one behavior at a time:
+   - Write one failing test (RED)
+   - Write the minimal code to make it pass (GREEN)
+   - Refactor if needed, keeping tests green
+   - Repeat for the next behavior
+3. **Tests must verify behavior through public interfaces** — not implementation details. A test should survive an internal refactor unchanged.
+4. **Do not add speculative code** — only what is needed to pass the current test.
+
 Make only the changes required to complete this task — do not refactor unrelated code.
 
 End your response with a ---REPORT--- block:

@@ -35,6 +35,12 @@ Maintain `.ralph-progress.md` throughout the session. **Re-read it before acting
 | abc-123 | Add auth | coding | agent-abc-123 | 1 |
 | def-456 | Fix cache | reviewing | agent-def-456 | 1 |
 
+## Waiting
+
+| Bead ID | Title |
+|---------|-------|
+| jkl-345 | Add metrics |
+
 ## Completed
 
 | Bead ID | Title | Summary |
@@ -77,7 +83,10 @@ This is the core of how Ralph works. After initialization, Ralph waits for backg
 3. **Parse** the agent's `---REPORT---` block (see format below).
 4. **Dispatch** the next stage for that bead (see per-stage dispatch rules).
 5. **Update** `.ralph-progress.md` — move the bead to its new stage (or to Completed).
-6. **Check for newly ready beads**: run `bd ready`, compare against the state document. For any bead that is now available and not yet in-flight, claim it and start its coding stage (up to 5 tasks in-flight at once).
+6. **Check for newly ready beads**: run `bd ready`, compare against the state document. For any bead that is now available and not yet tracked:
+   - If in-flight count is below 5: claim it, start its coding stage, add to In-flight.
+   - Otherwise: add it to the **Waiting** table — do not claim it yet.
+   When a bead moves out of In-flight (completed or failed), immediately promote the first bead from Waiting: claim it, start its coding stage, move it to In-flight.
 7. **If no tasks remain in-flight** and `bd ready` is empty, proceed to shutdown.
 
 ---

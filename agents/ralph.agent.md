@@ -58,12 +58,26 @@ Spawn a `general-purpose` agent to review the implementation. The prompt must in
 - If the reviewer returns `APPROVED`, skip this step.
 - DO NOT spawn a coder agent more than 4 times per bead (initial implementation + three revision rounds).
 
-### Step 7 — Close the bead
+### Step 7 — Document decisions
+Spawn a `general-purpose` agent to review the implementation and update the shared project documentation. The prompt must include:
+- The full output of `bd prime` (copy verbatim)
+- The full bead description from `bd show <id>` (copy verbatim)
+- A summary of what was implemented (decisions made, trade-offs, constraints, notable patterns used)
+- The list of files that were changed or created
+- Explicit instruction:
+  1. Locate the project's `docs/` directory (or equivalent shared documentation space).
+  2. Read any existing docs that are relevant to the changes made (architecture, design decisions, ADRs, conventions, etc.).
+  3. Identify any conflicts between the existing documentation and the implementation — e.g. a decision that was changed, a pattern that was deviated from, or new constraints introduced.
+  4. If conflicts are found, update the relevant docs to reflect the current reality.
+  5. Document any new decisions, trade-offs, or important implementation notes that are not yet captured. Add them to the most appropriate existing doc, or create a new one (e.g. `docs/decisions/<topic>.md`) if nothing suitable exists.
+  6. Do not make changes to source code — documentation only.
+
+### Step 8 — Close the bead
 ```bash
 bd close <id>
 ```
 
-### Step 8 — Loop
+### Step 9 — Loop
 Go back to Step 1.
 
 ## When done

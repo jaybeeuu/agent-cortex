@@ -17,7 +17,7 @@ Do NOT ask follow-up questions yet. Start investigating immediately.
 
 ### 2. Explore and diagnose
 
-Use the Agent tool with subagent_type=Explore to deeply investigate the codebase. Your goal is to find:
+Spawn a `nexus` agent (`agent-nexus:nexus`) with an explicit prompt to deeply investigate the codebase. The prompt must instruct the agent to find:
 
 - **Where** the bug manifests (entry points, UI, API responses)
 - **What** code path is involved (trace the flow)

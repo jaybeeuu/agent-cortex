@@ -1,6 +1,6 @@
 ---
-name: plan-to-issues
-description: Convert a plan file (from ./plans/) into independently-grabbable beads. Use when user wants to create beads from a plan, turn a plan into issues, or file tickets from an existing implementation plan.
+name: plan-to-beads
+description: Convert a plan file (from ./plans/) into independently-grabbable beads. Use when user wants to create beads from a plan, turn a plan into beads, or file beads from an existing implementation plan.
 ---
 
 # Plan to Beads
@@ -35,7 +35,7 @@ Group the phases into **workstreams** — coherent bodies of work with a shared 
 
 - One workstream = one epic
 - If all phases belong to one theme, one epic (or no epic) is fine
-- Aim for <5 epics; more usually means the plan should have been split
+- Aim for <5 epics; more usually means the plan should have been split - flag it for user review and stop.
 
 ### 5. Quiz the user
 

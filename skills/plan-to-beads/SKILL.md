@@ -24,10 +24,13 @@ Load the plan file. Note:
 
 For each phase, determine:
 
-- **AFK** — can be implemented and merged without human interaction
-- **HITL** — requires a human checkpoint (design review, architectural decision, external dependency)
+- **AFK** — the agent can implement, verify, and merge the phase autonomously. All acceptance criteria are machine-checkable.
+- **HITL** — the phase requires a human because at least one of the following is true:
+  - The outcome cannot be verified by the agent (e.g. visual review, stakeholder sign-off, UX judgement)
+  - The work requires manual action only a human can perform (e.g. credential setup, secrets management, external service configuration, infrastructure provisioning outside the codebase)
+  - A decision must be made that the agent cannot make unilaterally (e.g. architectural choice between valid options, regulatory or legal sign-off)
 
-Prefer AFK. Flag HITL only when the phase genuinely cannot proceed autonomously.
+Prefer AFK. Do not mark a phase HITL just because it is complex — only when the agent genuinely cannot complete or verify it.
 
 ### 4. Identify workstreams and draft epics
 

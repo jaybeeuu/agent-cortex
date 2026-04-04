@@ -33,7 +33,15 @@ Present the proposed epics to the user and confirm before proceeding. You will c
 
 Break the PRD into **tracer bullet** beads. Each bead is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
 
-Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
+Slices may be 'HITL' or 'AFK':
+
+- **AFK** — the agent can implement, verify, and merge the slice autonomously. All acceptance criteria are machine-checkable.
+- **HITL** — the slice requires a human because at least one of the following is true:
+  - The outcome cannot be verified by the agent (e.g. visual review, stakeholder sign-off, UX judgement)
+  - The work requires manual action only a human can perform (e.g. credential setup, secrets management, external service configuration, infrastructure provisioning outside the codebase)
+  - A decision must be made that the agent cannot make unilaterally (e.g. architectural choice between valid options, regulatory or legal sign-off)
+
+Prefer AFK. Do not mark a slice HITL just because it is complex — only when the agent genuinely cannot complete or verify it.
 
 <vertical-slice-rules>
 - Each slice delivers a narrow but COMPLETE path through every layer (schema, API, UI, tests)

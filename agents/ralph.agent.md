@@ -16,13 +16,14 @@ The per-bead pipeline, dispatch rules, report format, bead classification proced
 Run once at startup:
 
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
-2. Run `bd ready` to get the initial list of available beads.
-3. For each available bead, **classify it** (see _Classifying a bead_ in the `run-beads` skill):
+2. Ensure `.ralph-progress.md` is in the project's `.gitignore` (append it if not already present).
+3. Run `bd ready` to get the initial list of available beads.
+4. For each available bead, **classify it** (see _Classifying a bead_ in the `run-beads` skill):
    - **AFK** — eligible for agent work.
    - **HITL** — skip entirely; record in the state document under **Pending Human Action**.
-4. Create the **state document** at `.ralph-progress.md` in the project root (see format below).
-5. For each AFK bead (up to 5), start its pipeline: claim it, read context, spawn a coder agent in **background** mode.
-6. Record each launched agent in the state document.
+5. Create the **state document** at `.ralph-progress.md` in the project root (see format below).
+6. For each AFK bead (up to 5), start its pipeline: claim it, read context, spawn a coder agent in **background** mode.
+7. Record each launched agent in the state document.
 
 ---
 
@@ -91,7 +92,7 @@ This is the core of how Ralph works. After initialization, Ralph waits for backg
 
 When `bd ready -l implementation-type:afk` returns no results and the in-flight table in `.ralph-progress.md` is empty:
 
-1. Delete `.ralph-progress.md`.
+1. Update `.ralph-progress.md` to reflect the final completed state — do not delete it.
 2. Run:
 ```bash
 bd dolt push

@@ -125,3 +125,4 @@ All beads complete.
 - **Max 5** tasks in-flight at once.
 - **Max 4** total coder/fixer rounds per bead before marking it failed.
 - **Always** pause and present all changes to the user for review and explicit approval before committing or pushing anything.
+- **Always** bump the patch version in `plugin.json` as part of any commit that changes agent or skill files.

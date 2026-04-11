@@ -18,10 +18,22 @@ Execute beads through the full pipeline sequentially. For parallel batch executi
 Always resolve to AFK or HITL before acting on a bead:
 
 1. Run `bd label list <id>`.
-2. `implementation-type:afk` → **AFK**. `implementation-type:hitl` → **HITL**.
+2. `implementation-type:afk` → **AFK**. `implementation-type:hitl` → **HITL**. Stop here.
 3. If neither label: run `bd show <id>`, find `## Type`.
-   - Apply `bd tag <id> implementation-type:afk|hitl` to record the result.
-   - If `## Type` is absent: invoke the `classify-bead` skill.
+   - `HITL` (case-insensitive) → **HITL**. Apply `bd tag <id> implementation-type:hitl`. Stop here.
+   - `AFK` (case-insensitive) → **AFK**. Apply `bd tag <id> implementation-type:afk`. Stop here.
+4. If `## Type` is also absent, classify from first principles using the full bead body:
+
+   **HITL** — requires human action if any of the following are true:
+   - The outcome cannot be verified by an agent (visual review, stakeholder sign-off, UX judgement).
+   - The work requires a manual action only a human can perform (credential setup, secrets management, infrastructure provisioning outside the codebase).
+   - A decision must be made that the agent cannot make unilaterally (architectural choice between equally valid options, regulatory or legal sign-off).
+
+   **AFK** — the agent can implement, verify, and complete the task autonomously, and all acceptance criteria are machine-checkable.
+
+   Prefer AFK. Do not classify as HITL just because the task is complex — only when the agent genuinely cannot complete or verify it without human involvement.
+
+   Apply `bd tag <id> implementation-type:afk` or `bd tag <id> implementation-type:hitl` to record the result.
 
 Do not work a HITL bead — inform the user it requires human action and why.
 

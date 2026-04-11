@@ -99,4 +99,4 @@ A numbered list of RED-GREEN cycles:
 
 </bead-template>
 
-After creating the bead, print the bead URL and a one-line summary of the root cause.
+After creating the bead, invoke the `classify-bead` skill on the new bead ID to apply the `implementation-type` label. Then print the bead URL, its classification, and a one-line summary of the root cause.

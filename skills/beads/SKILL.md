@@ -51,8 +51,9 @@ Tasks that do not clearly belong to any workstream can be created without a pare
 
 1. Run `bd prime` — hold the output as context for the session
 2. Run `bd ready` — see what's available
-3. Pick a task, claim it with `bd update <id> --claim`
-4. Implement it using the context from `bd prime` and `bd show <id>`
-5. Close it with `bd close <id>`
-6. Repeat from step 2
-7. Sync at the end: `bd dolt push`
+3. Pick a task. Before claiming it, invoke the `classify-bead` skill to ensure it has an `implementation-type` label. If the bead is **HITL**, do not claim it — inform the user that it requires human action.
+4. Claim the task with `bd update <id> --claim`
+5. Implement it using the context from `bd prime` and `bd show <id>`
+6. Close it with `bd close <id>`
+7. Repeat from step 2
+8. Sync at the end: `bd dolt push`

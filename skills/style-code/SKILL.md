@@ -124,6 +124,14 @@ Write documentation that is concise, practical, and immediately useful.
 - Tests that depend on fragile DOM structure when semantic selectors or stable hooks are available.
 - Hand-editing generated output, compiled directories, coverage reports, or other artifacts.
 
+## Security
+
+Check every change for secrets and credentials before finishing.
+
+- Never commit API keys, tokens, passwords, private keys, or connection strings with credentials.
+- Use placeholder values in documentation and examples (e.g. `<your-api-key>`, `YOUR_TOKEN_HERE`).
+- If in doubt, invoke the `review-security` skill to scan staged changes before committing.
+
 ## Checklist Before Finishing
 
 - Is the change focused and proportionate to the task?

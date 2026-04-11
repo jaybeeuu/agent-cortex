@@ -15,9 +15,12 @@ Run once at startup:
 
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
 2. Run `bd ready` to get the initial list of available beads.
-3. Create the **state document** at `.ralph-progress.md` in the project root (see format below).
-4. For each available bead (up to 5), start its pipeline: claim it, read context, spawn a coder agent in **background** mode.
-5. Record each launched agent in the state document.
+3. For each available bead, **classify it** (see _Classifying a bead_ below):
+   - **AFK** — eligible for agent work.
+   - **HITL** — skip entirely; record in the state document under **Pending Human Action**.
+4. Create the **state document** at `.ralph-progress.md` in the project root (see format below).
+5. For each AFK bead (up to 5), start its pipeline: claim it, read context, spawn a coder agent in **background** mode.
+6. Record each launched agent in the state document.
 
 ---
 
@@ -52,6 +55,12 @@ Maintain `.ralph-progress.md` throughout the session. **Re-read it before acting
 | Bead ID | Title | Waiting on |
 |---------|-------|------------|
 | ghi-012 | Deploy | abc-123, def-456 |
+
+## Pending Human Action
+
+| Bead ID | Title | Reason |
+|---------|-------|--------|
+| mno-678 | Configure secrets | Requires manual credential setup |
 ```
 
 Update the state document after **every** agent completion or dispatch.
@@ -74,6 +83,22 @@ The fixing stage may repeat up to 3 times (revision #2, #3, #4). If still not ap
 
 ---
 
+## Classifying a bead
+
+Use this procedure every time you need to determine whether a bead is AFK or HITL:
+
+1. Run `bd label list <id>`.
+2. If the output contains **`implementation-type:afk`** → **AFK**.
+3. If the output contains **`implementation-type:hitl`** → **HITL**.
+4. If neither label is present (older bead, pre-dates tagging): run `bd show <id>` and locate the `## Type` section in the body.
+   - If the value is `HITL` (case-insensitive) → **HITL**. Apply `bd tag <id> implementation-type:hitl`.
+   - If the value is `AFK` (case-insensitive) → **AFK**. Apply `bd tag <id> implementation-type:afk`.
+   - If the `## Type` section is absent: invoke the `classify-bead` skill to classify from first principles and apply the label.
+
+Never skip this check. Always resolve to one of the two outcomes before acting on a bead.
+
+---
+
 ## Event loop
 
 This is the core of how Ralph works. After initialization, Ralph waits for background agents to complete. On each completion notification:
@@ -83,11 +108,12 @@ This is the core of how Ralph works. After initialization, Ralph waits for backg
 3. **Parse** the agent's `---REPORT---` block (see format below).
 4. **Dispatch** the next stage for that bead (see per-stage dispatch rules).
 5. **Update** `.ralph-progress.md` — move the bead to its new stage (or to Completed).
-6. **Check for newly ready beads**: run `bd ready`, compare against the state document. For any bead that is now available and not yet tracked:
-   - If in-flight count is below 5: claim it, start its coding stage, add to In-flight.
-   - Otherwise: add it to the **Waiting** table — do not claim it yet.
-   When a bead moves out of In-flight (completed or failed), immediately promote the first bead from Waiting: claim it, start its coding stage, move it to In-flight.
-7. **If no tasks remain in-flight** and `bd ready` is empty, proceed to shutdown.
+6. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ below), then:
+   - If **HITL**: add to the **Pending Human Action** table — do not claim or schedule it.
+   - If **AFK** and in-flight count is below 5: claim it, start its coding stage, add to In-flight.
+   - If **AFK** and in-flight count is at 5: add it to the **Waiting** table — do not claim it yet.
+   When a bead moves out of In-flight (completed or failed), immediately promote the first AFK bead from Waiting: claim it, start its coding stage, move it to In-flight.
+7. **If no tasks remain in-flight** and `bd ready -l implementation-type:afk` returns no results, proceed to shutdown.
 
 ---
 
@@ -186,7 +212,9 @@ FILES_CHANGED: <comma-separated list, or "none">
 <FILES_CHANGED from the coder/fixer's REPORT block>
 
 ## Instructions
-Review the implementation for correctness, quality, and alignment with the task description and project conventions.
+**First**, invoke the `review-security` skill and run the scan script against the changes. If the verdict is FAIL, set `REVIEW_OUTCOME: CHANGES_REQUESTED` immediately and list each finding as a required change — do not proceed with the quality review.
+
+**Then**, review the implementation for correctness, quality, and alignment with the task description and project conventions.
 Only flag genuine correctness issues or clear deviations from stated requirements — not stylistic preferences.
 
 End your response with a ---REPORT--- block:
@@ -271,14 +299,25 @@ FILES_CHANGED: <comma-separated list of docs touched, or "none">
 
 ## Shutdown
 
-When `bd ready` returns no results and the in-flight table in `.ralph-progress.md` is empty:
+When `bd ready -l implementation-type:afk` returns no results and the in-flight table in `.ralph-progress.md` is empty:
 
 1. Delete `.ralph-progress.md`.
 2. Run:
 ```bash
 bd dolt push
 ```
-3. Output:
+3. If the **Pending Human Action** table has any entries, output:
+```
+All agent work is complete. The following steps require human action before work can continue:
+
+| Bead ID | Title | Why human action is needed |
+|---------|-------|---------------------------|
+| <id>    | <title> | <HITL reason from bead body> |
+...
+
+Run `bd show <id>` for full details on each step.
+```
+4. If the **Pending Human Action** table is empty, output:
 ```
 All beads complete.
 ```

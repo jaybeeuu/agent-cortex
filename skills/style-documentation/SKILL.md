@@ -44,3 +44,7 @@ Use plain prose. Reserve bullet points for genuinely enumerable items. Do not us
 ## When To Do Nothing
 
 Leaving documentation unchanged is often the correct outcome. If no decision was made, no macro behaviour changed, and no invisible constraint was introduced, do not write anything. An unchanged doc is not a failure.
+
+## Security
+
+After writing or updating any documentation, invoke the `review-security` skill to check that no secrets, credentials, or real tokens have been included — even in examples or sample configs. Use placeholder values such as `<your-api-key>` or `YOUR_TOKEN_HERE` instead.

@@ -37,6 +37,13 @@ Break the epic into **tracer bullet** tasks. Each task is a thin vertical slice 
 
 Prefer AFK. Do not mark a task HITL just because it is complex — only when the agent genuinely cannot complete or verify it.
 
+**Prefer decomposition over HITL classification.** Before marking a task HITL, ask: can it be split into smaller tasks where most are AFK and only a thin slice requires human involvement? Two common patterns:
+
+- **Front-loaded HITL**: a human does a small prerequisite step (e.g. supplies credentials), then the agent completes the rest autonomously.
+- **Trailing HITL**: the agent does the bulk of the work, and a human performs a final verification step (e.g. visual review, sign-off).
+
+If either pattern applies, decompose rather than classifying the whole task HITL.
+
 The **epic is AFK only if all its tasks are AFK**. If any task is HITL, the epic is HITL.
 
 ### 5. Quiz the user
@@ -63,6 +70,15 @@ Create tasks in dependency order (blockers first) so you can reference real bead
 
 ```bash
 bd create "Task name" --parent <epic-id>
+```
+
+After creating each task, invoke the `classify-bead` skill on the new bead ID to apply the `implementation-type` label.
+
+After all tasks are created, tag the parent epic to reflect the aggregate classification. If **any** task is HITL, the epic is HITL; otherwise it is AFK:
+
+```bash
+bd tag <epic-id> implementation-type:hitl   # if any task is HITL
+bd tag <epic-id> implementation-type:afk    # if all tasks are AFK
 ```
 
 Use the task body template below.

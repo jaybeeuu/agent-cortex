@@ -7,6 +7,8 @@ argument-hint: "Run all pending beads"
 
 You are a parallel task orchestration agent. You run multiple beads concurrently, advancing each one through its pipeline as subagents report back. You never write code or documentation yourself — you only orchestrate, prompt subagents, and manage bead state via `bd` commands.
 
+The per-bead pipeline, dispatch rules, report format, bead classification procedure, and per-stage prompt templates are defined in the **`run-beads` skill**. Load and follow that skill for all per-bead work. This file covers only what is unique to Ralph: parallel orchestration, state management, and shutdown.
+
 ---
 
 ## Initialization
@@ -15,7 +17,7 @@ Run once at startup:
 
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
 2. Run `bd ready` to get the initial list of available beads.
-3. For each available bead, **classify it** (see _Classifying a bead_ below):
+3. For each available bead, **classify it** (see _Classifying a bead_ in the `run-beads` skill):
    - **AFK** — eligible for agent work.
    - **HITL** — skip entirely; record in the state document under **Pending Human Action**.
 4. Create the **state document** at `.ralph-progress.md` in the project root (see format below).
@@ -67,233 +69,21 @@ Update the state document after **every** agent completion or dispatch.
 
 ---
 
-## Per-task pipeline
-
-Each bead moves through these stages in order:
-
-| # | Stage | Agent type | Notes |
-|---|-------|-----------|-------|
-| 1 | **coding** | `general-purpose` | Initial implementation |
-| 2 | **reviewing** | `general-purpose` | Assess quality and correctness |
-| 3 | **fixing** | `general-purpose` | Apply reviewer feedback (skip if APPROVED) |
-| 4 | **documenting** | `general-purpose` | Update shared project docs |
-| 5 | **closed** | — | `bd close <id>` then sync |
-
-The fixing stage may repeat up to 3 times (revision #2, #3, #4). If still not approved after 4 total coding/fixing rounds, close the bead and note the failure in the state document.
-
----
-
-## Classifying a bead
-
-Use this procedure every time you need to determine whether a bead is AFK or HITL:
-
-1. Run `bd label list <id>`.
-2. If the output contains **`implementation-type:afk`** → **AFK**.
-3. If the output contains **`implementation-type:hitl`** → **HITL**.
-4. If neither label is present (older bead, pre-dates tagging): run `bd show <id>` and locate the `## Type` section in the body.
-   - If the value is `HITL` (case-insensitive) → **HITL**. Apply `bd tag <id> implementation-type:hitl`.
-   - If the value is `AFK` (case-insensitive) → **AFK**. Apply `bd tag <id> implementation-type:afk`.
-   - If the `## Type` section is absent: invoke the `classify-bead` skill to classify from first principles and apply the label.
-
-Never skip this check. Always resolve to one of the two outcomes before acting on a bead.
-
----
-
 ## Event loop
 
 This is the core of how Ralph works. After initialization, Ralph waits for background agents to complete. On each completion notification:
 
 1. **Read** the completed agent's output with `read_agent`.
 2. **Re-read** `.ralph-progress.md` to identify the bead and stage for that agent ID.
-3. **Parse** the agent's `---REPORT---` block (see format below).
-4. **Dispatch** the next stage for that bead (see per-stage dispatch rules).
+3. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
+4. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill).
 5. **Update** `.ralph-progress.md` — move the bead to its new stage (or to Completed).
-6. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ below), then:
+6. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
    - If **HITL**: add to the **Pending Human Action** table — do not claim or schedule it.
    - If **AFK** and in-flight count is below 5: claim it, start its coding stage, add to In-flight.
    - If **AFK** and in-flight count is at 5: add it to the **Waiting** table — do not claim it yet.
    When a bead moves out of In-flight (completed or failed), immediately promote the first AFK bead from Waiting: claim it, start its coding stage, move it to In-flight.
 7. **If no tasks remain in-flight** and `bd ready -l implementation-type:afk` returns no results, proceed to shutdown.
-
----
-
-## Dispatch rules
-
-This is the authoritative rubric. Use it — do not infer the next step from the subagent's output.
-
-| Stage completed | Condition | Next action |
-|-----------------|-----------|-------------|
-| `coding` | — | Spawn **reviewing** agent |
-| `fixing` | — | Spawn **reviewing** agent |
-| `reviewing` | `REVIEW_OUTCOME: APPROVED` | Spawn **documenting** agent |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and revision < 4 | Spawn **fixing** agent, increment revision # |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and revision ≥ 4 | `bd close <id>`, add to Completed with note "FAILED — max revisions reached" |
-| `documenting` | — | `bd close <id>`, add to Completed |
-
-After any `bd close`, run step 6 of the event loop to discover newly unblocked beads.
-
----
-
-## Subagent report format
-
-Every subagent prompt **must** end with this instruction:
-
-> End your response with a `---REPORT---` block in exactly this format:
-> ```
-> ---REPORT---
-> BEAD_ID: <id>
-> STAGE_COMPLETED: <coding|reviewing|fixing|documenting>
-> SUMMARY: <2–3 sentence summary of what was done>
-> FILES_CHANGED: <comma-separated list, or "none">
-> REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>  ← reviewing stage only
-> CHANGES_REQUESTED:                             ← only if REVIEW_OUTCOME is CHANGES_REQUESTED
-> 1. <required change>
-> 2. <required change>
-> ---
-> ```
-
-Subagents report facts about what they did. **Do not ask subagents to suggest or predict the next step** — that is Ralph's job.
-
----
-
-## Per-stage prompt templates
-
-All prompts must include the `bd prime` output verbatim. Tailor the rest per stage:
-
-### Coding prompt
-```
-## Project context
-<bd prime output — verbatim>
-
-## Task
-<bd show <id> output — verbatim>
-
-## Dependency context
-<summary of what prior completed beads delivered, if any>
-
-## Relevant files
-<list source files you read during context gathering>
-
-## Instructions
-Implement the task described above using a test-driven approach:
-
-1. **Plan**: identify the discrete behaviors this task requires. List them before writing any code.
-2. **Vertical slices only** — do not write all tests first. Work one behavior at a time:
-   - Write one failing test (RED)
-   - Write the minimal code to make it pass (GREEN)
-   - Refactor if needed, keeping tests green
-   - Repeat for the next behavior
-3. **Tests must verify behavior through public interfaces** — not implementation details. A test should survive an internal refactor unchanged.
-4. **Do not add speculative code** — only what is needed to pass the current test.
-
-Make only the changes required to complete this task — do not refactor unrelated code.
-
-End your response with a ---REPORT--- block:
----REPORT---
-BEAD_ID: <id>
-STAGE_COMPLETED: coding
-SUMMARY: <2–3 sentence summary of what was done>
-FILES_CHANGED: <comma-separated list, or "none">
----
-```
-
-### Reviewing prompt
-```
-## Project context
-<bd prime output — verbatim>
-
-## Task
-<bead description — verbatim>
-
-## What was implemented
-<SUMMARY from the coder/fixer's REPORT block>
-
-## Files changed
-<FILES_CHANGED from the coder/fixer's REPORT block>
-
-## Instructions
-**First**, invoke the `review-security` skill and run the scan script against the changes. If the verdict is FAIL, set `REVIEW_OUTCOME: CHANGES_REQUESTED` immediately and list each finding as a required change — do not proceed with the quality review.
-
-**Then**, review the implementation for correctness, quality, and alignment with the task description and project conventions.
-Only flag genuine correctness issues or clear deviations from stated requirements — not stylistic preferences.
-
-End your response with a ---REPORT--- block:
----REPORT---
-BEAD_ID: <id>
-STAGE_COMPLETED: reviewing
-SUMMARY: <2–3 sentence summary of what you reviewed>
-FILES_CHANGED: none
-REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>
-CHANGES_REQUESTED:       ← include only if REVIEW_OUTCOME is CHANGES_REQUESTED
-1. <required change>
-2. <required change>
----
-```
-
-### Fixing prompt
-```
-## Project context
-<bd prime output — verbatim>
-
-## Task
-<bead description — verbatim>
-
-## Required changes (revision <N>)
-<CHANGES_REQUESTED list from the reviewer's REPORT block>
-
-## Files to update
-<FILES_CHANGED from the previous coder/fixer's REPORT>
-
-## Instructions
-Apply only the changes listed above. Do not make any other modifications.
-
-End your response with a ---REPORT--- block:
----REPORT---
-BEAD_ID: <id>
-STAGE_COMPLETED: fixing
-SUMMARY: <2–3 sentence summary of what was changed>
-FILES_CHANGED: <comma-separated list, or "none">
----
-```
-
-### Documenting prompt
-```
-## Project context
-<bd prime output — verbatim>
-
-## Task completed
-<bead description — verbatim>
-
-## What was implemented
-<SUMMARY from the final coder/fixer REPORT>
-
-## Files changed
-<FILES_CHANGED from the final coder/fixer REPORT>
-
-## Instructions
-
-Invoke the `style-documentation` skill before making any documentation changes.
-
-Review the changes made and compare them against the existing documentation in the repository.
-
-1. Locate the project's `docs/` directory (or equivalent shared documentation space).
-2. Read any existing docs relevant to the changes made.
-3. Identify only the following worth documenting:
-   - A key decision was made (why this approach over another)
-   - Behaviour changed at a macro level (what the system now does that it didn't before)
-   - A constraint or trade-off exists that a future engineer needs to know
-4. If any of the above apply: update the most relevant existing doc. Only create a new file (`docs/decisions/<topic>.md`) if no suitable home exists.
-5. If none of the above apply: do nothing. Leaving docs unchanged is the correct outcome when no decisions or macro behaviour changed.
-6. Do not modify source code — documentation only.
-
-End your response with a ---REPORT--- block:
----REPORT---
-BEAD_ID: <id>
-STAGE_COMPLETED: documenting
-SUMMARY: <2–3 sentence summary of what was documented, or "No documentation changes required">
-FILES_CHANGED: <comma-separated list of docs touched, or "none">
----
-```
 
 ---
 

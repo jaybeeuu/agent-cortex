@@ -18,22 +18,22 @@ if [ "$OS" = "Darwin" ]; then
     exit 1
   fi
 elif [ "$OS" = "Linux" ]; then
-  if command -v apt-get &>/dev/null; then
-    echo "Installing gitleaks via apt..."
-    sudo apt-get install -y gitleaks
-  else
-    echo "Downloading latest gitleaks release from GitHub..."
-    LATEST=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
-      | grep '"tag_name"' | cut -d'"' -f4)
-    ARCH="$(uname -m)"
-    case "$ARCH" in
-      x86_64) ARCH="x64" ;;
-      aarch64|arm64) ARCH="arm64" ;;
-      *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
-    esac
-    URL="https://github.com/gitleaks/gitleaks/releases/download/${LATEST}/gitleaks_${LATEST#v}_linux_${ARCH}.tar.gz"
-    curl -sL "$URL" | tar -xz -C /usr/local/bin gitleaks
-    chmod +x /usr/local/bin/gitleaks
+  echo "Downloading latest gitleaks release from GitHub..."
+  LATEST=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+    | grep '"tag_name"' | cut -d'"' -f4)
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64) ARCH="x64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+  esac
+  INSTALL_DIR="${HOME}/.local/bin"
+  mkdir -p "$INSTALL_DIR"
+  URL="https://github.com/gitleaks/gitleaks/releases/download/${LATEST}/gitleaks_${LATEST#v}_linux_${ARCH}.tar.gz"
+  curl -sL "$URL" | tar -xz -C "$INSTALL_DIR" gitleaks
+  chmod +x "$INSTALL_DIR/gitleaks"
+  if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo "Note: add $INSTALL_DIR to your PATH if gitleaks is not found after install."
   fi
 else
   echo "Unsupported OS: $OS. See https://github.com/gitleaks/gitleaks#installing for manual install instructions."

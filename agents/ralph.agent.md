@@ -22,7 +22,7 @@ Run once at startup:
    - **AFK** — eligible for agent work.
    - **HITL** — skip entirely; record in the state document under **Pending Human Action**.
 5. Create the **state document** at `.ralph-progress.md` in the project root (see format below).
-6. For each AFK bead (up to 5), start its pipeline: claim it, read context, spawn a coder agent in **sync** mode (so progress is visible in the current chat).
+6. For each AFK bead (up to 5), start its pipeline: claim it, read context, spawn a coder agent in **background** mode.
 7. Record each launched agent in the state document.
 
 ---
@@ -36,9 +36,16 @@ Maintain `.ralph-progress.md` throughout the session. **Re-read it before acting
 
 ## In-flight
 
-| Bead ID | Title | Stage | Revision # |
-|---------|-------|-------|------------|
-| abc-123 | Add auth | coding | 1 |
+| Bead ID | Title | Stage | Agent ID | Revision # |
+|---------|-------|-------|----------|------------|
+| abc-123 | Add auth | coding | agent-abc-123 | 1 |
+| def-456 | Fix cache | reviewing | agent-def-456 | 1 |
+
+## Waiting
+
+| Bead ID | Title |
+|---------|-------|
+| jkl-345 | Add metrics |
 
 ## Completed
 
@@ -50,7 +57,7 @@ Maintain `.ralph-progress.md` throughout the session. **Re-read it before acting
 
 | Bead ID | Title | Waiting on |
 |---------|-------|------------|
-| ghi-012 | Deploy | abc-123 |
+| ghi-012 | Deploy | abc-123, def-456 |
 
 ## Pending Human Action
 
@@ -65,16 +72,19 @@ Update the state document after **every** agent completion or dispatch.
 
 ## Event loop
 
-This is the core of how Ralph works. After initialization, Ralph processes beads sequentially in sync mode so progress is visible in the current chat. For each bead in the In-flight table:
+This is the core of how Ralph works. After initialization, Ralph waits for background agents to complete. On each completion notification:
 
-1. **Run** the agent for the current stage in **sync** mode and wait for it to complete.
-2. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
-3. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill).
-4. **Update** `.ralph-progress.md` — move the bead to its new stage (or to Completed).
-5. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
+1. **Read** the completed agent's output with `read_agent`.
+2. **Re-read** `.ralph-progress.md` to identify the bead and stage for that agent ID.
+3. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
+4. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill).
+5. **Update** `.ralph-progress.md` — move the bead to its new stage (or to Completed).
+6. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
    - If **HITL**: add to the **Pending Human Action** table — do not claim or schedule it.
-   - If **AFK**: claim it and add it to the In-flight table.
-6. **Repeat** from step 1 for the next in-flight bead, continuing until the In-flight table is empty and `bd ready -l implementation-type:afk` returns no results, then proceed to shutdown.
+   - If **AFK** and in-flight count is below 5: claim it, start its coding stage, add to In-flight.
+   - If **AFK** and in-flight count is at 5: add it to the **Waiting** table — do not claim it yet.
+   When a bead moves out of In-flight (completed or failed), immediately promote the first AFK bead from Waiting: claim it, start its coding stage, move it to In-flight.
+7. **If no tasks remain in-flight** and `bd ready -l implementation-type:afk` returns no results, proceed to shutdown.
 
 ---
 
@@ -109,8 +119,8 @@ All beads complete.
 
 - **Never** write, edit, or create source code or documentation yourself.
 - **Never** edit bead task files directly — only use `bd` commands.
-- **Always** spawn subagents in **sync** mode so progress is visible in the current chat.
-- **Always** re-read `.ralph-progress.md` before starting the next bead — do not rely on memory alone.
+- **Always** spawn subagents in **background** mode so multiple tasks run concurrently.
+- **Always** re-read `.ralph-progress.md` before acting on a completion — do not rely on memory alone.
 - **Always** include the full `bd prime` output verbatim in every subagent prompt.
 - **Max 5** tasks in-flight at once.
 - **Max 4** total coder/fixer rounds per bead before marking it failed.

@@ -13,7 +13,34 @@ Execute beads through the full pipeline sequentially. For parallel batch executi
 2. If no bead is specified, run `bd ready` and ask the user which to work on.
 3. For each bead, run it through the pipeline (see below).
 
-## Classifying a Bead
+## Progress Logging
+
+When running inside the ralph orchestrator, subagents must write structured progress lines to `.ralph-{bead-id}.log` (appending) so ralph can surface live updates. The bead ID and log file path are provided in each prompt.
+
+**Format** — one entry per line:
+```
+[ISO-timestamp] [bead-id] [stage] message
+```
+
+**When to log:**
+- Stage start: `[...] [abc-123] [coding] Stage started`
+- Stage transitions: `[...] [abc-123] [coding→reviewing] Stage complete`
+- Key events only:
+  - Test results: `Tests: 12 passed, 0 failed`
+  - Build errors: `Build failed: <brief reason>`
+  - Security scan result: `Security scan: PASS` or `Security scan: FAIL — <finding>`
+  - Any significant blocker or decision
+
+**How to write a log line:**
+```bash
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [bead-id] [stage] message" >> .ralph-bead-id.log
+```
+
+Do not log every file read or minor action — only transitions and key events.
+
+---
+
+
 
 Always resolve to AFK or HITL before acting on a bead:
 

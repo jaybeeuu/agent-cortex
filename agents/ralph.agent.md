@@ -16,7 +16,7 @@ The per-bead pipeline, dispatch rules, report format, bead classification proced
 Run once at startup:
 
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
-2. Ensure `.ralph-progress.md` is in the project's `.gitignore` (append it if not already present).
+2. Ensure `.ralph-progress.md` and `.ralph-*.log` are in the project's `.gitignore` (append any that are missing).
 3. Run `bd ready` to get the initial list of available beads.
 4. For each available bead, **classify it** (see _Classifying a bead_ in the `run-beads` skill):
    - **AFK** — eligible for agent work.
@@ -24,6 +24,7 @@ Run once at startup:
 5. Create the **state document** at `.ralph-progress.md` in the project root (see format below).
 6. For each AFK bead (up to 5), start its pipeline: claim it, read context, spawn a coder agent in **background** mode.
 7. Record each launched agent in the state document.
+8. Start the **poll timer**: run `sleep 120` as a background bash process and record its shellId as the timer handle.
 
 ---
 
@@ -34,12 +35,16 @@ Maintain `.ralph-progress.md` throughout the session. **Re-read it before acting
 ```markdown
 # Ralph Orchestration State
 
+## Timer
+
+Poll timer shell ID: `shell-abc`
+
 ## In-flight
 
-| Bead ID | Title | Stage | Agent ID | Revision # |
-|---------|-------|-------|----------|------------|
-| abc-123 | Add auth | coding | agent-abc-123 | 1 |
-| def-456 | Fix cache | reviewing | agent-def-456 | 1 |
+| Bead ID | Title | Stage | Agent ID | Revision # | Log Line |
+|---------|-------|-------|----------|------------|----------|
+| abc-123 | Add auth | coding | agent-abc-123 | 1 | 4 |
+| def-456 | Fix cache | reviewing | agent-def-456 | 1 | 7 |
 
 ## Waiting
 
@@ -66,25 +71,58 @@ Maintain `.ralph-progress.md` throughout the session. **Re-read it before acting
 | mno-678 | Configure secrets | Requires manual credential setup |
 ```
 
+- **Log Line**: the next line number to read from `.ralph-{bead-id}.log` (1-based; start at 1). Updated after every poll.
+- **Timer shell ID**: the shellId of the active `sleep 120` bash process used for polling.
+
 Update the state document after **every** agent completion or dispatch.
 
 ---
 
 ## Event loop
 
-This is the core of how Ralph works. After initialization, Ralph waits for background agents to complete. On each completion notification:
+This is the core of how Ralph works. After initialization, Ralph waits for background agents or the poll timer to complete. On each completion notification, first identify what completed:
 
-1. **Read** the completed agent's output with `read_agent`.
-2. **Re-read** `.ralph-progress.md` to identify the bead and stage for that agent ID.
-3. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
-4. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill).
-5. **Update** `.ralph-progress.md` — move the bead to its new stage (or to Completed).
-6. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
+### If the poll timer completed
+
+1. **Poll all in-flight bead logs** (see _Log polling_ below).
+2. **Restart the timer**: run `sleep 120` as a new background bash process, update the Timer shell ID in `.ralph-progress.md`.
+
+### If a background agent completed
+
+1. **Poll that bead's log** (see _Log polling_ below) to flush any final lines before processing the report.
+2. **Read** the completed agent's full output with `read_agent`.
+3. **Re-read** `.ralph-progress.md` to identify the bead and stage for that agent ID.
+4. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
+5. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill).
+6. **Update** `.ralph-progress.md` — move the bead to its new stage (or to Completed), clear its Log Line when it moves out of In-flight.
+7. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
    - If **HITL**: add to the **Pending Human Action** table — do not claim or schedule it.
    - If **AFK** and in-flight count is below 5: claim it, start its coding stage, add to In-flight.
    - If **AFK** and in-flight count is at 5: add it to the **Waiting** table — do not claim it yet.
    When a bead moves out of In-flight (completed or failed), immediately promote the first AFK bead from Waiting: claim it, start its coding stage, move it to In-flight.
-7. **If no tasks remain in-flight** and `bd ready -l implementation-type:afk` returns no results, proceed to shutdown.
+8. **If no tasks remain in-flight** and `bd ready -l implementation-type:afk` returns no results, proceed to shutdown.
+
+---
+
+## Log polling
+
+Run this procedure whenever polling is triggered (timer or agent completion):
+
+1. **Re-read** `.ralph-progress.md` to get the current In-flight table and each bead's `Log Line` offset.
+2. For each in-flight bead, read new lines from its log file starting at its stored `Log Line`:
+   ```bash
+   tail -n +<Log Line> .ralph-<bead-id>.log 2>/dev/null
+   ```
+3. For each bead that has new lines:
+   - **Update Stage** in the In-flight table if any line contains a stage transition (e.g. `[coding→reviewing]`).
+   - **Post a chat summary** of new key events (stage transitions and notable events — not every line verbatim). Format:
+     ```
+     📋 [bead-id] <title>
+        coding → reviewing  (or whatever stage)
+        Tests: 12 passed, 0 failed
+     ```
+   - **Update Log Line** in `.ralph-progress.md` to the next unread line number.
+4. If no bead had new lines, post nothing — do not spam the chat with empty polls.
 
 ---
 
@@ -122,6 +160,8 @@ All beads complete.
 - **Always** spawn subagents in **background** mode so multiple tasks run concurrently.
 - **Always** re-read `.ralph-progress.md` before acting on a completion — do not rely on memory alone.
 - **Always** include the full `bd prime` output verbatim in every subagent prompt.
+- **Always** keep the poll timer running — restart it immediately after it fires.
+- **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once.
 - **Max 4** total coder/fixer rounds per bead before marking it failed.
 - **Always** pause and present all changes to the user for review and explicit approval before committing or pushing anything.

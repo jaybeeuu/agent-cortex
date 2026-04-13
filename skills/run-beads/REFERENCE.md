@@ -17,6 +17,10 @@ All prompts must include the `bd prime` output verbatim. Tailor the rest per sta
 ## Relevant files
 <list source files you read during context gathering>
 
+## Progress log
+Write progress to: `.ralph-<bead-id>.log`
+Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
+
 ## Instructions
 Implement the task described above using a test-driven approach:
 
@@ -55,6 +59,10 @@ FILES_CHANGED: <comma-separated list, or "none">
 ## Files changed
 <FILES_CHANGED from the coder/fixer's REPORT block>
 
+## Progress log
+Write progress to: `.ralph-<bead-id>.log`
+Log stage start, security scan result, review outcome, and stage complete (see Progress Logging in run-beads skill).
+
 ## Instructions
 **First**, invoke the `review-security` skill and run the scan against the changes. If the
 verdict is FAIL, set `REVIEW_OUTCOME: CHANGES_REQUESTED` immediately and list each finding
@@ -92,6 +100,10 @@ CHANGES_REQUESTED:       ← include only if REVIEW_OUTCOME is CHANGES_REQUESTED
 ## Files to update
 <FILES_CHANGED from the previous coder/fixer's REPORT>
 
+## Progress log
+Write progress to: `.ralph-<bead-id>.log`
+Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
+
 ## Instructions
 Apply only the changes listed above. Do not make any other modifications.
 
@@ -118,6 +130,10 @@ FILES_CHANGED: <comma-separated list, or "none">
 
 ## Files changed
 <FILES_CHANGED from the final coder/fixer REPORT>
+
+## Progress log
+Write progress to: `.ralph-<bead-id>.log`
+Log stage start and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
 Invoke the `style-documentation` skill before making any documentation changes.

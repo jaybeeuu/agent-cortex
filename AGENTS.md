@@ -53,3 +53,16 @@ follow-up commit.
 - Agent files are named `<name>.agent.md` and live in `agents/`.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-bead workflow to `run-beads`).
+
+## Task tracking
+
+This project uses **bd (beads)** for task tracking.
+
+Run `bd prime` at the start of each session for context.
+
+Quick reference:
+- `bd ready` — list unblocked work
+- `bd create "Title" -p <0-3>` — create a task (P0 = critical)
+- `bd update <id> --claim` — claim a task
+- `bd close <id>` — complete a task
+- `bd dolt push` — sync to remote at session end

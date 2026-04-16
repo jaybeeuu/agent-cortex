@@ -7,8 +7,7 @@ import {
   buildStatusBadge,
   detectOrphanedBlocked,
   renderMermaidGraph,
-  renderActiveWorkTable,
-  renderCompletedSection,
+  renderTaskTable,
   renderOrphanedBlockedCallout,
   renderMarkdown,
   fetchBeads,
@@ -336,6 +335,17 @@ describe('renderMermaidGraph', () => {
     const output = renderMermaidGraph(beads);
     assert.ok(output.includes('subgraph sg_proj_epic'));
     assert.ok(output.includes('proj_child'));
+    // Epic with visible children is represented by its subgraph — no standalone node
+    assert.ok(!output.includes('\n  proj_epic['));
+  });
+
+  it('renders epic as standalone node when it has no visible children', () => {
+    const beads: Bead[] = [
+      makeBead({ id: 'proj-epic', title: '[epic] The Epic', status: 'open' }),
+    ];
+    const output = renderMermaidGraph(beads);
+    assert.ok(output.includes('proj_epic'));
+    assert.ok(!output.includes('subgraph'));
   });
 
   it('collapses nodes beyond 5 at the same depth into a summary node', () => {
@@ -380,27 +390,33 @@ describe('renderMermaidGraph', () => {
   });
 });
 
-// ─── Behavior 7: render active work table ────────────────────────────────────
+// ─── Behavior 7: render task table ───────────────────────────────────────────
 
-describe('renderActiveWorkTable', () => {
-  it('returns placeholder when no active work', () => {
-    const beads = [makeBead({ status: 'closed' })];
-    const output = renderActiveWorkTable(beads);
-    assert.equal(output, '_No active work._');
+describe('renderTaskTable', () => {
+  it('returns placeholder when no beads', () => {
+    const output = renderTaskTable([]);
+    assert.equal(output, '_No tasks._');
   });
 
-  it('includes table headers', () => {
+  it('includes table headers with Summary column', () => {
     const beads = [makeBead({ status: 'open' })];
-    const output = renderActiveWorkTable(beads);
-    assert.ok(output.includes('| Code | Title | Status | Blocked by |'));
+    const output = renderTaskTable(beads);
+    assert.ok(output.includes('| Code | Title | Status | Blocked by | Summary |'));
   });
 
-  it('includes bead id, title, and badge in row', () => {
-    const bead = makeBead({ id: 'proj-abc', title: 'My task', status: 'open', classification: 'afk' });
-    const output = renderActiveWorkTable([bead]);
+  it('includes bead id, title, badge, and summary in row', () => {
+    const bead = makeBead({
+      id: 'proj-abc',
+      title: 'My task',
+      status: 'open',
+      classification: 'afk',
+      descriptionSummary: 'Does something useful',
+    });
+    const output = renderTaskTable([bead]);
     assert.ok(output.includes('proj-abc'));
     assert.ok(output.includes('My task'));
     assert.ok(output.includes('⏳🤖'));
+    assert.ok(output.includes('Does something useful'));
   });
 
   it('shows blocker id and badge in blocked-by column', () => {
@@ -408,57 +424,35 @@ describe('renderActiveWorkTable', () => {
       makeBead({ id: 'proj-a', status: 'open', classification: 'afk' }),
       makeBead({ id: 'proj-b', status: 'blocked', classification: 'hitl', blockedBy: ['proj-a'] }),
     ];
-    const output = renderActiveWorkTable(beads);
+    const output = renderTaskTable(beads);
     assert.ok(output.includes('proj-a ⏳🤖'));
   });
 
-  it('excludes closed beads from active table', () => {
-    const beads = [
+  it('shows closed beads after active beads', () => {
+    const beads: Bead[] = [
+      makeBead({ id: 'proj-active', status: 'open', descriptionSummary: 'active work' }),
+      makeBead({ id: 'proj-done', status: 'closed', descriptionSummary: 'done work' }),
+    ];
+    const output = renderTaskTable(beads);
+    const activePos = output.indexOf('proj-active');
+    const donePos = output.indexOf('proj-done');
+    assert.ok(activePos < donePos, 'active bead should appear before closed bead');
+  });
+
+  it('includes both active and closed beads in the same table', () => {
+    const beads: Bead[] = [
       makeBead({ id: 'proj-active', status: 'open' }),
       makeBead({ id: 'proj-done', status: 'closed' }),
     ];
-    const output = renderActiveWorkTable(beads);
+    const output = renderTaskTable(beads);
     assert.ok(output.includes('proj-active'));
-    assert.ok(!output.includes('proj-done'));
-  });
-});
-
-// ─── Behavior 8: render completed section ────────────────────────────────────
-
-describe('renderCompletedSection', () => {
-  it('returns placeholder when nothing completed', () => {
-    const beads = [makeBead({ status: 'open' })];
-    const output = renderCompletedSection(beads);
-    assert.equal(output, '_Nothing completed yet._');
-  });
-
-  it('includes table headers', () => {
-    const beads = [makeBead({ status: 'closed' })];
-    const output = renderCompletedSection(beads);
-    assert.ok(output.includes('| Code | Title | Summary |'));
-  });
-
-  it('includes id, title, and description summary', () => {
-    const bead = makeBead({
-      id: 'proj-done',
-      title: 'Done task',
-      status: 'closed',
-      descriptionSummary: 'It was done',
-    });
-    const output = renderCompletedSection([bead]);
     assert.ok(output.includes('proj-done'));
-    assert.ok(output.includes('Done task'));
-    assert.ok(output.includes('It was done'));
   });
 
-  it('excludes non-closed beads', () => {
-    const beads = [
-      makeBead({ id: 'proj-active', status: 'open' }),
-      makeBead({ id: 'proj-done', status: 'closed' }),
-    ];
-    const output = renderCompletedSection(beads);
-    assert.ok(!output.includes('proj-active'));
-    assert.ok(output.includes('proj-done'));
+  it('uses no summary placeholder when descriptionSummary is empty', () => {
+    const bead = makeBead({ status: 'closed', descriptionSummary: '' });
+    const output = renderTaskTable([bead]);
+    assert.ok(output.includes('_no summary_'));
   });
 });
 
@@ -484,12 +478,13 @@ describe('renderOrphanedBlockedCallout', () => {
 // ─── Behavior 10: full markdown render ───────────────────────────────────────
 
 describe('renderMarkdown', () => {
-  it('contains all three section headings', () => {
+  it('contains section headings for graph and tasks', () => {
     const beads = [makeBead()];
     const output = renderMarkdown(beads);
     assert.ok(output.includes('## Dependency Graph'));
-    assert.ok(output.includes('## Active Work'));
-    assert.ok(output.includes('## Completed'));
+    assert.ok(output.includes('## Tasks'));
+    assert.ok(!output.includes('## Active Work'));
+    assert.ok(!output.includes('## Completed'));
   });
 
   it('includes mermaid code block', () => {
@@ -523,6 +518,7 @@ describe('fetchBeads', () => {
     if (cmd === 'bd show proj-ccc') return BD_SHOW_NO_LABELS;
     if (cmd === 'bd show proj-ddd') return '✓ proj-ddd · Completed task\nLABELS: implementation-type:afk\n';
     if (cmd === 'bd show proj-eee') return '❄ proj-eee · Deferred task\nLABELS: implementation-type:afk\n';
+    // No epics in BD_LIST_OUTPUT so no bd children calls expected
     return '';
   };
 
@@ -546,5 +542,45 @@ describe('fetchBeads', () => {
     const bbb = beads.find((b) => b.id === 'proj-bbb');
     assert.deepEqual(bbb?.blockedBy, ['proj-aaa']);
     assert.deepEqual(bbb?.blocks, ['proj-ccc']);
+  });
+
+  it('fetches child beads for epics via bd children', () => {
+    const epicListOutput = '○ proj-epic ● P1 [epic] Auth\n';
+    const childrenOutput = '○ proj-child1 ● P2 Sign in\n○ proj-child2 ● P2 Sign out\n';
+    const mockExecWithEpic = (cmd: string, _cwd: string): string => {
+      if (cmd === 'bd list') return epicListOutput;
+      if (cmd === 'bd list --status=closed') return '';
+      if (cmd === 'bd children proj-epic') return childrenOutput;
+      if (cmd === 'bd show proj-epic') return '○ proj-epic · [epic] Auth\nLABELS: implementation-type:hitl\n';
+      if (cmd === 'bd show proj-child1') return '○ proj-child1 · Sign in\nLABELS: implementation-type:afk, epic:proj-epic\n';
+      if (cmd === 'bd show proj-child2') return '○ proj-child2 · Sign out\nLABELS: implementation-type:afk, epic:proj-epic\n';
+      return '';
+    };
+
+    const beads = fetchBeads('/workspace', mockExecWithEpic);
+    const ids = beads.map((b) => b.id);
+    assert.ok(ids.includes('proj-epic'));
+    assert.ok(ids.includes('proj-child1'));
+    assert.ok(ids.includes('proj-child2'));
+    assert.equal(beads.length, 3);
+
+    const child1 = beads.find((b) => b.id === 'proj-child1');
+    assert.equal(child1?.epicId, 'proj-epic');
+  });
+
+  it('deduplicates children that also appear in bd list', () => {
+    const epicListOutput = '○ proj-epic ● P1 [epic] Auth\n○ proj-child1 ● P2 Sign in\n';
+    const childrenOutput = '○ proj-child1 ● P2 Sign in\n';
+    const mockExecDedup = (cmd: string, _cwd: string): string => {
+      if (cmd === 'bd list') return epicListOutput;
+      if (cmd === 'bd list --status=closed') return '';
+      if (cmd === 'bd children proj-epic') return childrenOutput;
+      if (cmd === 'bd show proj-epic') return '○ proj-epic · [epic] Auth\nLABELS: implementation-type:hitl\n';
+      if (cmd === 'bd show proj-child1') return '○ proj-child1 · Sign in\nLABELS: implementation-type:afk, epic:proj-epic\n';
+      return '';
+    };
+
+    const beads = fetchBeads('/workspace', mockExecDedup);
+    assert.equal(beads.filter((b) => b.id === 'proj-child1').length, 1);
   });
 });

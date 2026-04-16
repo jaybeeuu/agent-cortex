@@ -142,13 +142,23 @@ export function fetchBeads(workspace: string, exec: ExecFn = defaultExec): Bead[
   const closedOutput = exec('bd list --status=closed', workspace);
 
   const seen = new Set<string>();
-  const uniqueItems = [...parseBdList(allOutput), ...parseBdList(closedOutput)].filter((item) => {
+  const listItems = [...parseBdList(allOutput), ...parseBdList(closedOutput)].filter((item) => {
     if (seen.has(item.id)) return false;
     seen.add(item.id);
     return true;
   });
 
-  return uniqueItems.map((item) => {
+  // Fetch child tasks for epics — bd list may omit children by default
+  for (const item of listItems.filter((i) => i.title.includes('[epic]'))) {
+    for (const child of parseBdList(exec(`bd children ${item.id}`, workspace))) {
+      if (!seen.has(child.id)) {
+        seen.add(child.id);
+        listItems.push(child);
+      }
+    }
+  }
+
+  return listItems.map((item) => {
     const showOutput = exec(`bd show ${item.id}`, workspace);
     const details = parseBdShow(showOutput);
     return { id: item.id, title: item.title, status: item.status, ...details };
@@ -321,7 +331,7 @@ export function renderMermaidGraph(beads: Bead[]): string {
 
   // Group visible beads by epic
   const epicGroups = new Map<string, Bead[]>();
-  const noEpic: Bead[] = [];
+  const potentialNoEpic: Bead[] = [];
   for (const bead of incomplete) {
     if (!visibleIds.has(bead.id)) continue;
     if (bead.epicId) {
@@ -329,9 +339,12 @@ export function renderMermaidGraph(beads: Bead[]): string {
       group.push(bead);
       epicGroups.set(bead.epicId, group);
     } else {
-      noEpic.push(bead);
+      potentialNoEpic.push(bead);
     }
   }
+
+  // Epics with visible children are represented by their subgraph — skip them as standalone nodes
+  const noEpic = potentialNoEpic.filter((bead) => !epicGroups.has(bead.id));
 
   const lines: string[] = ['```mermaid', 'graph TD'];
 
@@ -371,9 +384,10 @@ export function renderMermaidGraph(beads: Bead[]): string {
     return null;
   };
 
-  // Edges from visible beads
+  // Edges from visible beads (skip epics represented only as subgraphs — they have no node)
   for (const bead of incomplete) {
     if (!visibleIds.has(bead.id)) continue;
+    if (epicGroups.has(bead.id)) continue;
     for (const blockId of bead.blocks) {
       const target = resolveTargetMid(blockId);
       if (target) lines.push(`  ${mermaidId(bead.id)} --> ${target}`);
@@ -396,13 +410,15 @@ export function renderMermaidGraph(beads: Bead[]): string {
   return lines.join('\n');
 }
 
-export function renderActiveWorkTable(beads: Bead[]): string {
+export function renderTaskTable(beads: Bead[]): string {
   const beadMap = new Map(beads.map((b) => [b.id, b]));
   const active = beads.filter((b) => b.status !== 'closed');
+  const completed = beads.filter((b) => b.status === 'closed');
+  const ordered = [...active, ...completed];
 
-  if (active.length === 0) return '_No active work._';
+  if (ordered.length === 0) return '_No tasks._';
 
-  const rows = active.map((bead) => {
+  const rows = ordered.map((bead) => {
     const badge = buildStatusBadge(bead);
     const blockedByStr =
       bead.blockedBy.length > 0
@@ -413,29 +429,12 @@ export function renderActiveWorkTable(beads: Bead[]): string {
             })
             .join(', ')
         : '';
-    return `| ${bead.id} | ${bead.title} | ${badge} | ${blockedByStr} |`;
+    return `| ${bead.id} | ${bead.title} | ${badge} | ${blockedByStr} | ${bead.descriptionSummary || '_no summary_'} |`;
   });
 
   return [
-    '| Code | Title | Status | Blocked by |',
-    '|------|-------|--------|------------|',
-    ...rows,
-  ].join('\n');
-}
-
-export function renderCompletedSection(beads: Bead[]): string {
-  const completed = beads.filter((b) => b.status === 'closed');
-
-  if (completed.length === 0) return '_Nothing completed yet._';
-
-  const rows = completed.map(
-    (bead) =>
-      `| ${bead.id} | ${bead.title} | ${bead.descriptionSummary || '_no summary_'} |`,
-  );
-
-  return [
-    '| Code | Title | Summary |',
-    '|------|-------|---------|',
+    '| Code | Title | Status | Blocked by | Summary |',
+    '|------|-------|--------|------------|---------|',
     ...rows,
   ].join('\n');
 }
@@ -463,12 +462,8 @@ export function renderMarkdown(beads: Bead[]): string {
     parts.push('');
   }
 
-  parts.push('## Active Work\n');
-  parts.push(renderActiveWorkTable(beads));
-  parts.push('');
-
-  parts.push('## Completed\n');
-  parts.push(renderCompletedSection(beads));
+  parts.push('## Tasks\n');
+  parts.push(renderTaskTable(beads));
   parts.push('');
 
   return parts.join('\n');

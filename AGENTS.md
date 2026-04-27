@@ -17,7 +17,7 @@ agent-nexus/
 └── skills/               # Skills (one directory per skill, each with a SKILL.md)
     ├── run-beads/
     │   ├── SKILL.md
-    │   └── REFERENCE.md  # Overflow content when SKILL.md would exceed ~100 lines
+    │   └── scripts/      # Utility scripts bundled with the skill
     └── review-security/
         ├── SKILL.md
         └── scripts/      # Utility scripts bundled with the skill

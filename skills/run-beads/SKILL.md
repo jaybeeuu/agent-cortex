@@ -1,17 +1,20 @@
 ---
 name: run-beads
-description: Run one or more beads through the implement → review → fix → document pipeline. Use when you want to work through a small number of beads inline, pick up a specific bead, or work without the full ralph parallel orchestrator.
+description: Execute a single pipeline stage chore bead. Use when you want to work through a small number of beads inline, pick up a specific bead, or work without the full ralph parallel orchestrator.
 ---
 
 # Run Beads
 
-Execute beads through the full pipeline sequentially. For parallel batch execution across many beads, use the `agent-nexus:ralph` agent instead.
+Execute a single pipeline stage chore bead. Each stage bead (code, verify, review, fix, document) is created by the `create-task` skill; this skill handles executing one at a time.
 
 ## Quick Start
 
 1. Run `bd prime` and hold the output — it goes verbatim into every subagent prompt.
 2. If no bead is specified, run `bd ready` and ask the user which to work on.
-3. For each bead, run it through the pipeline (see below).
+3. Claim the bead with `bd update <id> --claim`.
+4. Read the bead's `stage:*` label to determine which stage to execute.
+5. Load the matching prompt template from `skills/create-task/templates/<stage>.md`.
+6. Populate the template placeholders and spawn a subagent.
 
 ## Progress Report
 
@@ -142,7 +145,3 @@ Every subagent prompt **must** end with this instruction:
 > ```
 
 Subagents report facts. **Do not ask subagents to suggest or predict the next step.**
-
-## Prompt Templates
-
-See [REFERENCE.md](REFERENCE.md) for the per-stage prompt templates to use when spawning subagents.

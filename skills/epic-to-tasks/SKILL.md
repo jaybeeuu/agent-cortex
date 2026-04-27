@@ -66,13 +66,16 @@ Iterate until the user approves.
 
 ### 6. Create the tasks
 
-Create tasks in dependency order (blockers first) so you can reference real bead numbers. Pass `--parent <epic-id>` for each task.
+Create tasks in dependency order (blockers first) so you can reference real bead numbers.
 
-```bash
-bd create "Task name" --parent <epic-id>
-```
+For each task, invoke the `create-task` skill passing:
 
-After creating each task, invoke the `classify-bead` skill on the new bead ID to apply the `implementation-type` label.
+- **title**: the task name
+- **description**: the task body (use the task template below)
+- **priority**: inherited from the epic or adjusted per task
+- **parent**: the epic bead ID
+
+`create-task` handles classification and pipeline expansion internally — do not invoke `classify-bead` separately.
 
 After all tasks are created, tag the parent epic to reflect the aggregate classification. If **any** task is HITL, the epic is HITL; otherwise it is AFK:
 

@@ -56,7 +56,7 @@ Rules:
 
 ### 5. Create the bead
 
-Create a bead with the template below. Do NOT ask the user to review before creating - just create it and share the URL.
+Build the bead description using the template below, then invoke the `create-task` skill, passing the title, description, and priority. Do NOT ask the user to review before creating - just create it and share the URL.
 
 <bead-template>
 
@@ -99,4 +99,4 @@ A numbered list of RED-GREEN cycles:
 
 </bead-template>
 
-After creating the bead, invoke the `classify-bead` skill on the new bead ID to apply the `implementation-type` label. Then print the bead URL, its classification, and a one-line summary of the root cause.
+After `create-task` completes, print the bead URL, its classification, and a one-line summary of the root cause.

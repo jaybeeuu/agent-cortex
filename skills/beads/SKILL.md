@@ -5,9 +5,21 @@ description: Load project context and task state using the beads (bd) task track
 
 # Beads
 
-## Prime first
+## Set workspace context
 
-At the start of every session, run `bd prime` and hold its full output in memory as your project context:
+Before any other beads command, set the MCP workspace context so the beads server knows which
+project to operate on. Detect the git repository root and pass it as `workspace_root`:
+
+```bash
+git rev-parse --show-toplevel
+```
+
+Then call the `context` MCP tool with that path as `workspace_root`. Do this once per session —
+all subsequent beads MCP calls will use it.
+
+## Prime
+
+Run `bd prime` and hold its full output in memory as your project context:
 
 ```bash
 bd prime

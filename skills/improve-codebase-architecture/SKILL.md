@@ -73,4 +73,9 @@ After comparing, give your own recommendation: which design you think is stronge
 
 ### 7. Create refactor bead
 
-Create a bead for the refactor RFC using `bd create` (type: `task`, priority: P2). Use the template in [REFERENCE.md](REFERENCE.md) as the bead description body. Do NOT ask the user to review before creating — just create it and share the bead ID.
+Invoke the `create-task` skill, passing:
+- **title**: a concise name for the refactor
+- **description**: the bead body using the template in [REFERENCE.md](REFERENCE.md)
+- **priority**: P2
+
+**Always use `create-task`** — never call `bd create` directly for tasks. `create-task` classifies the bead and expands AFK tasks into pipeline stage children that ralph can execute. Do NOT ask the user to review before creating — just create it and share the bead ID.

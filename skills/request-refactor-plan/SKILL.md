@@ -19,7 +19,12 @@ This skill will be invoked when the user wants to create a refactor request. You
 
 7. Break the implementation into a plan of tiny commits. Remember Martin Fowler's advice to "make each refactoring step as small as possible, so that you can always see the program working."
 
-8. Create a bead with the refactor plan. Use `bd create` with type `task` and priority P2, passing the refactor plan (formatted using the template below) as the description:
+8. Create a bead with the refactor plan. Invoke the `create-task` skill, passing:
+   - **title**: a concise name for the refactor
+   - **description**: the refactor plan formatted using the template below
+   - **priority**: P2
+
+   **Always use `create-task`** — never call `bd create` directly for tasks. `create-task` classifies the bead and expands AFK tasks into pipeline stage children that ralph can execute.
 
 <refactor-plan-template>
 

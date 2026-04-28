@@ -1,6 +1,6 @@
 ---
-name: fleet
-description: "Run all pending beads end-to-end using parallel subagents: initialise, dispatch up to 5 concurrent pipeline-stage chores, process completions, and loop until the backlog is empty. Use when running the full task backlog, batch execution, working through all pending work, or when ralph invokes parallel orchestration."
+name: ralph
+description: "Run all pending beads end-to-end using parallel subagents: initialise, dispatch up to 5 concurrent pipeline-stage chores, process completions, and loop until the backlog is empty. Use when running the full task backlog, batch execution, working through all pending work, or when the ralph agent invokes parallel orchestration."
 ---
 
 # Fleet

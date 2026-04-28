@@ -29,6 +29,8 @@ bd prime
 
 ## Key commands
 
+> There should be an MCP tool for any of the following commands, but if not, you can shell out to the CLI directly. Always prefer MCP tools if they exist.
+
 ```bash
 bd ready                          # list unblocked tasks
 bd show <id>                      # full description of a task

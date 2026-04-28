@@ -78,6 +78,9 @@ Use this template:
 
 Invoke `create-task` for each sub-bead in dependency order (blockers first) so you can reference real bead IDs. After each `create-task` invocation returns a bead ID, record any blocking relationships explicitly:
 
+> **`bd dep add` arg order**: `bd dep add A B` means **"A depends on B"** (B blocks A).
+> First arg waits, second arg is waited-for.
+
 ```bash
 bd dep add <new-id> <blocker-id> --type blocks
 ```

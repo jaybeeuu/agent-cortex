@@ -44,6 +44,9 @@ Invoke the `classify-bead` skill on the new bead (as a subagent per that skill's
 
 ### 4. Expand into pipeline stage beads
 
+> **`bd dep add` arg order**: `bd dep add A B` means **"A depends on B"** (B blocks A).
+> First arg waits, second arg is waited-for.
+
 Read `pipeline.json` from this skill's directory (`skills/create-task/pipeline.json`).
 
 For each stage in the `stages` array, create a child chore bead:

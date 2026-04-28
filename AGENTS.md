@@ -65,4 +65,6 @@ Quick reference:
 - `bd create "Title" -p <0-3>` — create a task (P0 = critical)
 - `bd update <id> --claim` — claim a task
 - `bd close <id>` — complete a task
+- `bd dep add <A> <B>` — **"A depends on B"** (B blocks A). First arg waits, second arg
+  is waited-for. To express "X blocks Y", write `bd dep add Y X`.
 - `bd dolt push` — sync to remote at session end

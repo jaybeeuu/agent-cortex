@@ -12,8 +12,11 @@
   "mcpServers": {
     "beads": {
       "type": "stdio",
-      "command": "beads-mcp",
+      "command": "/Users/joshbickley-wallace/.local/bin/beads-mcp",
       "args": [],
+      "env": {
+        "BEADS_PATH": "/opt/homebrew/bin/bd"
+      },
       "tools": [
         "*"
       ]

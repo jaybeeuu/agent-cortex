@@ -10,6 +10,11 @@
   "agents": "agents/",
   "skills": "skills/",
   "mcpServers": {
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
     "beads": {
       "type": "stdio",
       "command": "/Users/joshbickley-wallace/.local/bin/beads-mcp",

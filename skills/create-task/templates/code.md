@@ -25,6 +25,7 @@ Implement the task described above using a test-driven approach:
    - Repeat for the next behavior
 3. **Tests must verify behavior through public interfaces** — not implementation details. A test should survive an internal refactor unchanged.
 4. **Do not add speculative code** — only what is needed to pass the current test.
+5. **Use context7** when working with any third-party library — fetch live docs to ensure you use the correct, up-to-date API for the version in this project.
 
 Make only the changes required to complete this task — do not refactor unrelated code.
 

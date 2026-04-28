@@ -17,6 +17,8 @@ Log stage start, test results, build errors, and stage complete (see Progress Lo
 ## Instructions
 Apply only the changes listed above. Do not make any other modifications.
 
+**Use context7** when working with any third-party library — fetch live docs to ensure you use the correct, up-to-date API for the version in this project.
+
 End your response with a ---REPORT--- block:
 ---REPORT---
 BEAD_ID: <id>

@@ -71,14 +71,16 @@ Each bead moves through these stages in order:
 
 | # | Stage | Notes |
 |---|-------|-------|
-| 1 | **coding** | Initial implementation |
-| 2 | **verifying** | Run tests and linters; PASS → reviewing, FAIL → fixing |
-| 3 | **reviewing** | Assess quality, correctness, and security |
-| 4 | **fixing** | Apply reviewer or verifier feedback |
-| 5 | **documenting** | Update shared project docs |
-| 6 | **closed** | `bd close <id>` |
+| 1 | **test-writing** | Write a minimal set of failing tests for the next requirement slice |
+| 2 | **coding** | Make the tests pass with minimal implementation |
+| 3 | **test-reviewing** | Compare tests against acceptance criteria; DONE → verifying, NEEDS_MORE → test-writing |
+| 4 | **verifying** | Run tests and linters; PASS → reviewing, FAIL → coding |
+| 5 | **reviewing** | Assess quality, correctness, and security |
+| 6 | **fixing** | Apply reviewer feedback |
+| 7 | **documenting** | Update shared project docs |
+| 8 | **closed** | `bd close <id>` |
 
-The fixing stage may repeat up to 3 times (revisions #2–#4). If still not approved after 4 total coding/fixing rounds, close the bead as failed.
+The test-writing → coding → test-reviewing loop repeats until all requirements are covered (max 5 TDD loops). The fixing stage is driven by reviewer feedback only.
 
 ### Stage Transitions
 
@@ -95,13 +97,17 @@ This tags the bead with its current stage (beads are the source of truth for sta
 
 | Stage completed | Condition | Next action |
 |-----------------|-----------|-------------|
-| `coding` | — | Run **verifying** stage |
-| `fixing` | — | Run **verifying** stage |
+| `test-writing` | — | Run **coding** stage |
+| `coding` | — | Run **test-reviewing** stage |
+| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops < 5 | Run **test-writing** stage, increment tddLoops |
+| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops ≥ 5 | `bd close <id>` — failed, max TDD loops reached |
+| `test-reviewing` | `TEST_REVIEW_OUTCOME: DONE` | Run **verifying** stage |
 | `verifying` | `VERIFY_OUTCOME: PASS` | Run **reviewing** stage |
-| `verifying` | `VERIFY_OUTCOME: FAIL` | Run **fixing** stage, increment revision # |
+| `verifying` | `VERIFY_OUTCOME: FAIL` | Run **coding** stage |
 | `reviewing` | `REVIEW_OUTCOME: APPROVED` | Run **documenting** stage |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and revision < 4 | Run **fixing** stage, increment revision # |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and revision ≥ 4 | `bd close <id>` — failed, max revisions reached |
+| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds < 2 | Run **fixing** stage, increment reviewRounds |
+| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds ≥ 2 | `bd close <id>` — failed, max review rounds reached |
+| `fixing` | — | Run **test-reviewing** stage |
 | `documenting` | — | `bd close <id>` — done |
 
 ## Report Format
@@ -112,7 +118,7 @@ Every subagent prompt **must** end with this instruction:
 > ```
 > ---REPORT---
 > BEAD_ID: <id>
-> STAGE_COMPLETED: <coding|verifying|reviewing|fixing|documenting>
+> STAGE_COMPLETED: <test-writing|coding|test-reviewing|verifying|reviewing|fixing|documenting>
 > SUMMARY: <2–3 sentence summary of what was done>
 > FILES_CHANGED: <comma-separated list, or "none">
 > REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>  ← reviewing stage only
@@ -122,6 +128,9 @@ Every subagent prompt **must** end with this instruction:
 > VERIFY_OUTCOME: <PASS|FAIL>                    ← verifying stage only
 > VERIFY_FAILURES:                               ← only if VERIFY_OUTCOME is FAIL
 > - <test/lint failure summary>
+> TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>         ← test-reviewing stage only
+> GAPS:                                          ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
+> - <uncovered requirement>
 > ---
 > ```
 

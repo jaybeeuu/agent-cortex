@@ -2,6 +2,75 @@
 
 All prompts must include the `bd prime` output verbatim. Tailor the rest per stage.
 
+## Test-Writing Prompt
+
+```
+## Project context
+<bd prime output — verbatim>
+
+## Task
+<bd show <id> output — verbatim>
+
+## Existing tests (loop iteration 2+)
+<list of existing test files and their content — omit on first iteration>
+
+## Dependency context
+<summary of what prior completed beads delivered, if any>
+
+## Progress log
+Write progress to: `.ralph-<bead-id>.log`
+Log stage start and stage complete (see Progress Logging in run-beads skill).
+
+## Instructions
+Write a minimal set of fully failing tests for the NEXT uncovered requirement slice.
+
+Do not write all tests at once — cover one slice of requirements per loop iteration.
+Tests must be runnable: imports may reference paths that do not yet exist.
+Do not write any implementation code.
+
+End your response with a ---REPORT--- block:
+---REPORT---
+BEAD_ID: <id>
+STAGE_COMPLETED: test-writing
+SUMMARY: <2–3 sentence summary of what tests were written and which requirement slice they cover>
+FILES_CHANGED: <comma-separated list of test files written>
+---
+```
+
+## Test-Reviewing Prompt
+
+```
+## Project context
+<bd prime output — verbatim>
+
+## Task
+<bd show <id> output — verbatim>
+
+## Test files
+<list of test files with their full content>
+
+## Progress log
+Write progress to: `.ralph-<bead-id>.log`
+Log stage start and stage complete (see Progress Logging in run-beads skill).
+
+## Instructions
+Compare the tests against the bead's acceptance criteria and requirements.
+Determine whether all requirements are adequately covered by at least one test.
+
+Do NOT look at the implementation — evaluate tests against requirements only.
+
+End your response with a ---REPORT--- block:
+---REPORT---
+BEAD_ID: <id>
+STAGE_COMPLETED: test-reviewing
+SUMMARY: <2–3 sentence summary of coverage assessment>
+FILES_CHANGED: none
+TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>
+GAPS:              ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
+- <uncovered requirement>
+---
+```
+
 ## Coding Prompt
 
 ```
@@ -10,6 +79,9 @@ All prompts must include the `bd prime` output verbatim. Tailor the rest per sta
 
 ## Task
 <bd show <id> output — verbatim>
+
+## Test files
+<list of test files written during test-writing stage, with full content>
 
 ## Dependency context
 <summary of what prior completed beads delivered, if any>
@@ -22,17 +94,9 @@ Write progress to: `.ralph-<bead-id>.log`
 Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
-Implement the task described above using a test-driven approach:
+Make the provided tests pass with a minimal implementation.
 
-1. **Plan**: identify the discrete behaviors this task requires. List them before writing any code.
-2. **Vertical slices only** — do not write all tests first. Work one behavior at a time:
-   - Write one failing test (RED)
-   - Write the minimal code to make it pass (GREEN)
-   - Refactor if needed, keeping tests green
-   - Repeat for the next behavior
-3. **Tests must verify behavior through public interfaces** — not implementation details. A test should survive an internal refactor unchanged.
-4. **Do not add speculative code** — only what is needed to pass the current test.
-
+Do not modify the test files. Do not add speculative code — only what is needed to pass the tests.
 Make only the changes required to complete this task — do not refactor unrelated code.
 
 End your response with a ---REPORT--- block:
@@ -154,6 +218,8 @@ Log stage start, test results, build errors, and stage complete (see Progress Lo
 
 ## Instructions
 Apply only the changes listed above. Do not make any other modifications.
+
+After applying all fixes, hand off to the **test-reviewing** stage.
 
 End your response with a ---REPORT--- block:
 ---REPORT---

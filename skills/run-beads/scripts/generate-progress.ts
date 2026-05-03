@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 
 export type BeadStatus = 'open' | 'in_progress' | 'blocked' | 'closed' | 'deferred';
 export type Classification = 'afk' | 'hitl' | 'unknown';
-export type Stage = 'coding' | 'reviewing' | 'fixing' | 'documenting' | null;
+export type Stage = 'test-writing' | 'coding' | 'test-reviewing' | 'verifying' | 'reviewing' | 'fixing' | 'documenting' | null;
 
 export interface Bead {
   id: string;
@@ -119,7 +119,7 @@ export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status
     else if (label === 'implementation-type:hitl') classification = 'hitl';
     else if (label.startsWith('stage:')) {
       const stagePart = label.replace('stage:', '');
-      if (['coding', 'reviewing', 'fixing', 'documenting'].includes(stagePart)) {
+      if (['test-writing', 'coding', 'test-reviewing', 'verifying', 'reviewing', 'fixing', 'documenting'].includes(stagePart)) {
         stage = stagePart as NonNullable<Stage>;
       }
     } else if (label.startsWith('epic:')) {

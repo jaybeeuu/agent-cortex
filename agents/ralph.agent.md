@@ -27,7 +27,7 @@ Run once at startup:
    { "timerShellId": null, "inflight": [] }
    ```
    Then generate the progress file: `npx tsx skills/run-beads/scripts/generate-progress.ts > .ralph-progress.md`
-6. For each AFK bead (up to 5), start its pipeline: claim it, tag it (`bd tag <id> stage:coding`), read context, spawn a coder agent in **background** mode.
+6. For each AFK bead (up to 5), start its pipeline: claim it, tag it (`bd tag <id> stage:test-writing`), read context, spawn a test-writing agent in **background** mode.
 7. Record each launched agent in `.ralph-state.json` (see format below).
 8. Start the **poll timer**: run `sleep 120` as a background bash process and record its shellId as `timerShellId` in `.ralph-state.json`.
 
@@ -49,16 +49,17 @@ Ralph uses two files:
 {
   "timerShellId": "shell-abc",
   "inflight": [
-    { "beadId": "abc-123", "title": "Add auth", "agentId": "agent-abc-123", "revision": 1, "logLine": 4 },
-    { "beadId": "def-456", "title": "Fix cache", "agentId": "agent-def-456", "revision": 1, "logLine": 7 }
+    { "beadId": "abc-123", "title": "Add auth", "agentId": "agent-abc-123", "tddLoops": 1, "reviewRounds": 0, "logLine": 4 },
+    { "beadId": "def-456", "title": "Fix cache", "agentId": "agent-def-456", "tddLoops": 1, "reviewRounds": 0, "logLine": 7 }
   ]
 }
 ```
 
 - **timerShellId**: the shellId of the active `sleep 120` bash process used for polling.
 - **inflight[].logLine**: the next line number to read from `.ralph-{bead-id}.log` (1-based; start at 1). Updated after every poll.
-- **inflight[].revision**: how many coder/fixer rounds have been dispatched for this bead (max 4).
-- Stage is **not** stored here — read it from the bead's `stage:<stage>` tag via `bd show <id>`. Possible stages: `coding`, `verifying`, `reviewing`, `fixing`, `documenting`.
+- **inflight[].tddLoops**: how many times the test-writing stage has been dispatched for this bead (max 5). Increment each time test-writing is dispatched.
+- **inflight[].reviewRounds**: how many times coding has been dispatched in response to a reviewer CHANGES_REQUESTED (max 2). Increment each time reviewing returns CHANGES_REQUESTED.
+- Stage is **not** stored here — read it from the bead's `stage:<stage>` tag via `bd show <id>`. Possible stages: `test-writing`, `coding`, `test-reviewing`, `verifying`, `reviewing`, `fixing`, `documenting`.
 
 Update `.ralph-state.json` after **every** agent completion or dispatch, then regenerate `.ralph-progress.md`.
 
@@ -80,13 +81,13 @@ This is the core of how Ralph works. After initialization, Ralph waits for backg
 3. **Re-read** `.ralph-state.json` to identify the bead for that agent ID.
 4. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
 5. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill). Before launching the next subagent, tag the bead: `bd tag <id> stage:<next-stage>`.
-6. **Update** `.ralph-state.json` — move the bead to its new stage (update `agentId`, `revision`, reset `logLine` to 1), or remove it from `inflight` when it reaches Completed. Then regenerate `.ralph-progress.md`.
+6. **Update** `.ralph-state.json` — move the bead to its new stage (update `agentId`, `tddLoops`/`reviewRounds` as appropriate, reset `logLine` to 1), or remove it from `inflight` when it reaches Completed. Then regenerate `.ralph-progress.md`.
 7. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
    - If **NEEDS-REFINEMENT**: note it for the **Needs Refinement** shutdown summary — do not claim or schedule it.
    - If **HITL**: note it for the **Pending Human Action** shutdown summary — do not claim or schedule it.
-   - If **AFK** and in-flight count is below 5: claim it, tag it (`bd tag <id> stage:coding`), start its coding stage, add to `inflight` in `.ralph-state.json`.
+   - If **AFK** and in-flight count is below 5: claim it, tag it (`bd tag <id> stage:test-writing`), start its test-writing stage, add to `inflight` in `.ralph-state.json`.
    - If **AFK** and in-flight count is at 5: hold it in memory as Waiting — do not claim it yet.
-   When a bead is removed from `inflight` (completed or failed), immediately promote the first AFK waiting bead: claim it, tag it (`bd tag <id> stage:coding`), start its coding stage, add it to `inflight`.
+   When a bead is removed from `inflight` (completed or failed), immediately promote the first AFK waiting bead: claim it, tag it (`bd tag <id> stage:test-writing`), start its test-writing stage, add it to `inflight`.
 8. **If no tasks remain in-flight** and `bd ready -l implementation-type:afk` returns no results, proceed to shutdown.
 
 ---
@@ -143,7 +144,19 @@ The following beads need refinement before they can be implemented:
 
 Remove the `needs-refinement` label once a bead is ready to implement.
 ```
-5. If no HITL or needs-refinement beads remain, output:
+5. If any beads were blocked due to cap exhaustion (tddLoops ≥ 5 or reviewRounds ≥ 2), output:
+```
+The following beads were blocked after reaching their retry cap and need human intervention:
+
+| Bead ID | Title | Reason |
+|---------|-------|--------|
+| <id>    | <title> | Max TDD loops reached (5) — requirements not fully covered |
+| <id>    | <title> | Max review rounds reached (2) — reviewer changes not resolved |
+...
+
+Run `bd show <id>` for full details on each.
+```
+6. If no HITL, needs-refinement, or cap-blocked beads remain, output:
 ```
 All beads complete.
 ```
@@ -160,6 +173,8 @@ All beads complete.
 - **Always** keep the poll timer running — restart it immediately after it fires.
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once.
-- **Max 4** total coder/fixer rounds per bead before marking it failed.
+- **Max 5** TDD loops per bead (tddLoops); block the bead if exceeded.
+- **Max 2** reviewer round-trips per bead (reviewRounds); block the bead if exceeded.
+- When a cap is hit: `bd update <id> --status blocked --notes "<cap> cap reached"` and record it for the **Needs Human Intervention** shutdown summary.
 - **Always** pause and present all changes to the user for review and explicit approval before committing or pushing anything.
 - **Always** bump the patch version in `plugin.json` as part of any commit that changes agent or skill files.

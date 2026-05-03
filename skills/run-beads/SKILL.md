@@ -18,7 +18,14 @@ Execute beads through the full pipeline sequentially. For parallel batch executi
 To generate a Markdown snapshot of all bead status (Mermaid dependency graph, active work table, completed list), run:
 
 ```bash
-npx tsx skills/run-beads/scripts/generate-progress.ts [--workspace <path>]
+pnpm --prefix skills/run-beads/scripts exec tsx generate-progress.ts [--workspace <path>]
+```
+
+To typecheck or test the scripts package:
+
+```bash
+pnpm --prefix skills/run-beads/scripts typecheck
+pnpm --prefix skills/run-beads/scripts test
 ```
 
 The data-fetch layer (`parseBdList` / `parseBdShow`) is kept separate from the renderer so the output format can be swapped without re-fetching.
@@ -88,7 +95,7 @@ Before dispatching a subagent for any stage, run these two commands (replacing `
 
 ```bash
 bd tag <id> stage:<stage>
-npx tsx skills/run-beads/scripts/generate-progress.ts > .ralph-progress.md
+pnpm --prefix skills/run-beads/scripts exec tsx generate-progress.ts > .ralph-progress.md
 ```
 
 This tags the bead with its current stage (beads are the source of truth for stage progress) and regenerates the progress doc so any inline pairing session stays current.

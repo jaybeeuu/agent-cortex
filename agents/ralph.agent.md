@@ -21,6 +21,7 @@ Run once at startup:
 4. For each available bead, **classify it** (see _Classifying a bead_ in the `run-beads` skill):
    - **AFK** — eligible for agent work.
    - **HITL** — skip entirely; record the bead ID for the **Pending Human Action** summary at shutdown.
+   - **NEEDS-REFINEMENT** — skip entirely; record the bead ID for the **Needs Refinement** summary at shutdown.
 5. Create `.ralph-state.json` in the project root with initial content:
    ```json
    { "timerShellId": null, "inflight": [] }
@@ -81,6 +82,7 @@ This is the core of how Ralph works. After initialization, Ralph waits for backg
 5. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill). Before launching the next subagent, tag the bead: `bd tag <id> stage:<next-stage>`.
 6. **Update** `.ralph-state.json` — move the bead to its new stage (update `agentId`, `revision`, reset `logLine` to 1), or remove it from `inflight` when it reaches Completed. Then regenerate `.ralph-progress.md`.
 7. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
+   - If **NEEDS-REFINEMENT**: note it for the **Needs Refinement** shutdown summary — do not claim or schedule it.
    - If **HITL**: note it for the **Pending Human Action** shutdown summary — do not claim or schedule it.
    - If **AFK** and in-flight count is below 5: claim it, tag it (`bd tag <id> stage:coding`), start its coding stage, add to `inflight` in `.ralph-state.json`.
    - If **AFK** and in-flight count is at 5: hold it in memory as Waiting — do not claim it yet.
@@ -130,7 +132,18 @@ All agent work is complete. The following steps require human action before work
 
 Run `bd show <id>` for full details on each step.
 ```
-4. If no HITL beads remain, output:
+4. If any needs-refinement beads were noted during the session, output:
+```
+The following beads need refinement before they can be implemented:
+
+| Bead ID | Title |
+|---------|-------|
+| <id>    | <title> |
+...
+
+Remove the `needs-refinement` label once a bead is ready to implement.
+```
+5. If no HITL or needs-refinement beads remain, output:
 ```
 All beads complete.
 ```

@@ -53,15 +53,17 @@ Do not log every file read or minor action — only transitions and key events.
 
 
 
-Always resolve to AFK or HITL before acting on a bead:
+Always resolve to AFK, HITL, or NEEDS-REFINEMENT before acting on a bead:
 
 1. Run `bd label list <id>`.
-2. `implementation-type:afk` → **AFK**. `implementation-type:hitl` → **HITL**.
-3. If neither label: run `bd show <id>`, find `## Type`.
+2. If `needs-refinement` label is present → **NEEDS-REFINEMENT**: skip entirely; do not claim or implement.
+3. `implementation-type:afk` → **AFK**. `implementation-type:hitl` → **HITL**.
+4. If neither AFK nor HITL label: run `bd show <id>`, find `## Type`.
    - Apply `bd tag <id> implementation-type:afk|hitl` to record the result.
    - If `## Type` is absent: invoke the `classify-bead` skill.
 
 Do not work a HITL bead — inform the user it requires human action and why.
+Do not work a NEEDS-REFINEMENT bead — it must be refined before it can be implemented.
 
 ## Pipeline
 

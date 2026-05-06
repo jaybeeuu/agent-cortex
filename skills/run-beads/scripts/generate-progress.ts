@@ -112,11 +112,11 @@ export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status
     }
 
     if (inBlocks && trimmed.startsWith('←')) {
-      // ← ○ agent-nexus-6d4: Title ● P1
+      // ← ○ agent-cortex-6d4: Title ● P1
       const match = trimmed.match(/←\s+[○◐●✓❄]\s+(\S+):/);
       if (match) blocks.push(match[1]);
     } else if (inDependsOn && trimmed.startsWith('→')) {
-      // → ◐ agent-nexus-wuo: Title ● P1
+      // → ◐ agent-cortex-wuo: Title ● P1
       const match = trimmed.match(/→\s+[○◐●✓❄]\s+(\S+):/);
       if (match) blockedBy.push(match[1]);
     } else if (inDescription && trimmed !== '' && descriptionLines.length < 3) {

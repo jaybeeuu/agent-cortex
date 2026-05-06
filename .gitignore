@@ -1,4 +1,7 @@
 
+# Planning scratchpad — never committed
+.working-docs/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

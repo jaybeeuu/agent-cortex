@@ -17,7 +17,7 @@ agent-nexus/
 └── skills/               # Skills (one directory per skill, each with a SKILL.md)
     ├── run-beads/
     │   ├── SKILL.md
-    │   └── REFERENCE.md  # Overflow content when SKILL.md would exceed ~100 lines
+    │   └── scripts/      # Utility scripts bundled with the skill
     └── review-security/
         ├── SKILL.md
         └── scripts/      # Utility scripts bundled with the skill
@@ -65,4 +65,6 @@ Quick reference:
 - `bd create "Title" -p <0-3>` — create a task (P0 = critical)
 - `bd update <id> --claim` — claim a task
 - `bd close <id>` — complete a task
+- `bd dep add <A> <B>` — **"A depends on B"** (B blocks A). First arg waits, second arg
+  is waited-for. To express "X blocks Y", write `bd dep add Y X`.
 - `bd dolt push` — sync to remote at session end

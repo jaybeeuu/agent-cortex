@@ -5,17 +5,31 @@ description: Load project context and task state using the beads (bd) task track
 
 # Beads
 
-## Prime first
+## Set workspace context
 
-At the start of every session, run `bd prime` and hold its full output in memory as your project context:
+Before any other beads command, set the MCP workspace context so the beads server knows which
+project to operate on. Detect the git repository root and pass it as `workspace_root`:
+
+```bash
+git rev-parse --show-toplevel
+```
+
+Then call the `context` MCP tool with that path as `workspace_root`. Do this once per session —
+all subsequent beads MCP calls will use it.
+
+## Prime
+
+Run `bd prime` and hold its full output in memory as your project context:
 
 ```bash
 bd prime
 ```
 
-`bd prime` outputs the project's tech stack, conventions, current goals, and open task list. Forward it verbatim to any subagents you spawn — never summarise it.
+`bd prime` outputs the project's tech stack, conventions, current goals, and open task list. This is **project-level context** — complementary to the beads MCP tools, which handle task CRUD. Even with the MCP server configured, always run `bd prime` at the start of each session to load conventions and goals. Forward the output verbatim to any subagents you spawn — never summarise it.
 
 ## Key commands
+
+> There should be an MCP tool for any of the following commands, but if not, you can shell out to the CLI directly. Always prefer MCP tools if they exist.
 
 ```bash
 bd ready                          # list unblocked tasks

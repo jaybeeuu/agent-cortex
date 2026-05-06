@@ -13,6 +13,8 @@ export interface Bead {
   status: BeadStatus;
   classification: Classification;
   stage: Stage;
+  beadType: BeadType;
+  parentId: string | null;
   epicId: string | null;
   blockedBy: string[];
   blocks: string[];
@@ -52,12 +54,19 @@ export function parseBdList(
     .filter((r): r is NonNullable<typeof r> => r !== null);
 }
 
+const VALID_STAGES: ReadonlySet<string> = new Set([
+  'coding', 'reviewing', 'fixing', 'documenting',
+  'code', 'verify', 'review', 'document', 'fix',
+]);
+
 export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status'> {
   const labels: string[] = [];
   const blockedBy: string[] = [];
   const blocks: string[] = [];
   const descriptionLines: string[] = [];
   let epicId: string | null = null;
+  let parentId: string | null = null;
+  let beadType: BeadType = 'task';
   let inDescription = false;
   let inBlocks = false;
   let inDependsOn = false;
@@ -91,11 +100,15 @@ export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status
       labels.push(...labelPart.split(',').map((l) => l.trim()).filter(Boolean));
       continue;
     }
-    // Other known section headers reset context
+    // Header line with Owner/Type/Parent fields (delimited by ·)
     if (/^(Owner:|Created:|Assignee:|Type:)/.test(trimmed)) {
       inDescription = false;
       inBlocks = false;
       inDependsOn = false;
+      const typeMatch = trimmed.match(/Type:\s*(\S+)/);
+      if (typeMatch) beadType = typeMatch[1];
+      const parentMatch = trimmed.match(/Parent:\s*(\S+)/);
+      if (parentMatch) parentId = parentMatch[1];
     }
 
     if (inBlocks && trimmed.startsWith('←')) {
@@ -130,6 +143,8 @@ export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status
   return {
     classification,
     stage,
+    beadType,
+    parentId,
     epicId,
     blockedBy,
     blocks,
@@ -198,16 +213,23 @@ export function buildStatusBadge(bead: Pick<Bead, 'status' | 'classification' | 
   if (bead.status === 'in_progress' && bead.stage) {
     switch (bead.stage) {
       case 'coding':
+      case 'code':
         subStatus = '🔨';
         break;
       case 'reviewing':
+      case 'review':
         subStatus = '👁';
         break;
       case 'fixing':
+      case 'fix':
         subStatus = '🔧';
         break;
       case 'documenting':
+      case 'document':
         subStatus = '📝';
+        break;
+      case 'verify':
+        subStatus = '🧪';
         break;
     }
   }
@@ -289,6 +311,18 @@ export function renderMermaidGraph(beads: Bead[]): string {
   const incompleteIds = new Set(incomplete.map((b) => b.id));
   const depths = computeBfsDepths(incomplete, incompleteIds);
 
+  // Build parent→children map for incomplete beads
+  const parentChildMap = new Map<string, Bead[]>();
+  const childIds = new Set<string>();
+  for (const bead of incomplete) {
+    if (bead.parentId && incompleteIds.has(bead.parentId)) {
+      const children = parentChildMap.get(bead.parentId) ?? [];
+      children.push(bead);
+      parentChildMap.set(bead.parentId, children);
+      childIds.add(bead.id);
+    }
+  }
+
   // Group by BFS depth
   const maxDepth = incomplete.length > 0 ? Math.max(...depths.values()) : -1;
   const byDepth: Bead[][] = Array.from({ length: maxDepth + 1 }, () => []);
@@ -320,20 +354,21 @@ export function renderMermaidGraph(beads: Bead[]): string {
       collapsed.forEach((b) => collapsedIds.add(b.id));
       const afkCount = collapsed.filter((b) => b.classification === 'afk').length;
       const hitlCount = collapsed.filter((b) => b.classification === 'hitl').length;
-      const childIds = [
+      const snChildIds = [
         ...new Set(
           collapsed.flatMap((b) => b.blocks.filter((id) => incompleteIds.has(id))),
         ),
       ];
-      summaryNodes.push({ mid: `summary_d${d}`, depth: d, count: collapsed.length, afkCount, hitlCount, childIds });
+      summaryNodes.push({ mid: `summary_d${d}`, depth: d, count: collapsed.length, afkCount, hitlCount, childIds: snChildIds });
     }
   }
 
-  // Group visible beads by epic
+  // Group visible beads by epic (excluding children rendered in parent subgraphs)
   const epicGroups = new Map<string, Bead[]>();
   const potentialNoEpic: Bead[] = [];
   for (const bead of incomplete) {
     if (!visibleIds.has(bead.id)) continue;
+    if (childIds.has(bead.id)) continue; // rendered inside parent subgraph
     if (bead.epicId) {
       const group = epicGroups.get(bead.epicId) ?? [];
       group.push(bead);
@@ -354,17 +389,41 @@ export function renderMermaidGraph(beads: Bead[]): string {
     lines.push(`${indent}${mermaidId(bead.id)}["${badge} ${bead.id}<br/>${label}"]`);
   };
 
+  // Render a parent bead as a subgraph with its children inside
+  const renderParentSubgraph = (bead: Bead, indent: string): void => {
+    const children = parentChildMap.get(bead.id) ?? [];
+    const visibleChildren = children.filter((c) => visibleIds.has(c.id));
+    if (visibleChildren.length === 0) {
+      renderNode(bead, indent);
+      return;
+    }
+    const badge = buildStatusBadge(bead);
+    lines.push(`${indent}subgraph sg_${mermaidId(bead.id)}["${badge} ${bead.id}: ${truncate(bead.title, 40)}"]`);
+    for (const child of visibleChildren) {
+      renderNode(child, indent + '  ');
+    }
+    lines.push(`${indent}end`);
+  };
+
   for (const [epicId, members] of epicGroups) {
     const epic = beadMap.get(epicId);
     lines.push(`  subgraph sg_${mermaidId(epicId)}["📦 ${epic?.title ?? epicId}"]`);
     for (const bead of members) {
-      renderNode(bead, '    ');
+      if (parentChildMap.has(bead.id)) {
+        renderParentSubgraph(bead, '    ');
+      } else {
+        renderNode(bead, '    ');
+      }
     }
     lines.push('  end');
   }
 
   for (const bead of noEpic) {
-    renderNode(bead, '  ');
+    if (parentChildMap.has(bead.id)) {
+      renderParentSubgraph(bead, '  ');
+    } else {
+      renderNode(bead, '  ');
+    }
   }
 
   // Render summary nodes
@@ -397,8 +456,8 @@ export function renderMermaidGraph(beads: Bead[]): string {
   // Edges from summary nodes to their children
   for (const sn of summaryNodes) {
     const emitted = new Set<string>();
-    for (const childId of sn.childIds) {
-      const target = resolveTargetMid(childId);
+    for (const snChildId of sn.childIds) {
+      const target = resolveTargetMid(snChildId);
       if (target && !emitted.has(target)) {
         emitted.add(target);
         lines.push(`  ${sn.mid} --> ${target}`);

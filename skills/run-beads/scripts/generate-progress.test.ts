@@ -23,6 +23,8 @@ function makeBead(overrides: Partial<Bead> = {}): Bead {
     status: 'open',
     classification: 'afk',
     stage: null,
+    beadType: 'task',
+    parentId: null,
     epicId: null,
     blockedBy: [],
     blocks: [],
@@ -78,6 +80,40 @@ Blocked task.
 
 DEPENDS ON
   → ◐ proj-bbb: Second task ● P2`;
+
+const BD_SHOW_CHORE_WITH_PARENT = `◐ proj-bbb-code · Code stage   [● P2 · IN_PROGRESS]
+Owner: Jane · Assignee: Jane · Type: chore · Parent: proj-bbb
+Created: 2026-01-01 · Updated: 2026-01-02
+
+DESCRIPTION
+Coding stage for second task.
+
+LABELS: implementation-type:afk, stage:code
+`;
+
+const BD_SHOW_CHORE_VERIFY = `○ proj-bbb-verify · Verify stage   [● P2 · OPEN]
+Owner: Jane · Type: chore · Parent: proj-bbb
+Created: 2026-01-01 · Updated: 2026-01-02
+
+DESCRIPTION
+Verify stage for second task.
+
+LABELS: implementation-type:afk, stage:verify
+
+DEPENDS ON
+  → ◐ proj-bbb-code: Code stage ● P2`;
+
+const BD_SHOW_CHORE_REVIEW = `○ proj-bbb-review · Review stage   [● P2 · OPEN]
+Owner: Jane · Type: chore · Parent: proj-bbb
+Created: 2026-01-01 · Updated: 2026-01-02
+
+DESCRIPTION
+Review stage for second task.
+
+LABELS: implementation-type:afk, stage:review
+
+DEPENDS ON
+  → ○ proj-bbb-verify: Verify stage ● P2`;
 
 // ─── Behavior 1: parse bd list line ──────────────────────────────────────────
 
@@ -205,6 +241,30 @@ LABELS: implementation-type:afk, epic:proj-epic`;
     const result = parseBdShow(BD_SHOW_HITL);
     assert.equal(result.epicId, null);
   });
+
+  it('extracts parentId from header line', () => {
+    const result = parseBdShow(BD_SHOW_CHORE_WITH_PARENT);
+    assert.equal(result.parentId, 'proj-bbb');
+  });
+
+  it('extracts beadType from header line', () => {
+    const result = parseBdShow(BD_SHOW_CHORE_WITH_PARENT);
+    assert.equal(result.beadType, 'chore');
+  });
+
+  it('defaults beadType to task and parentId to null', () => {
+    const result = parseBdShow(BD_SHOW_AFK_CODING);
+    assert.equal(result.beadType, 'task');
+    assert.equal(result.parentId, null);
+  });
+
+  it('handles new stage values (code, verify, review, document, fix)', () => {
+    for (const stage of ['code', 'verify', 'review', 'document', 'fix'] as const) {
+      const output = `LABELS: implementation-type:afk, stage:${stage}`;
+      const result = parseBdShow(output);
+      assert.equal(result.stage, stage);
+    }
+  });
 });
 
 // ─── Behavior 4: build status badge ──────────────────────────────────────────
@@ -244,6 +304,31 @@ describe('buildStatusBadge', () => {
     // Even if stage is set, sub-status only shows for in_progress
     const bead = makeBead({ status: 'open', classification: 'afk', stage: 'coding' });
     assert.equal(buildStatusBadge(bead), '⏳🤖');
+  });
+
+  it('in_progress with new stage code → ▶️🤖🔨', () => {
+    const bead = makeBead({ status: 'in_progress', classification: 'afk', stage: 'code' });
+    assert.equal(buildStatusBadge(bead), '▶️🤖🔨');
+  });
+
+  it('in_progress with new stage verify → ▶️🤖🧪', () => {
+    const bead = makeBead({ status: 'in_progress', classification: 'afk', stage: 'verify' });
+    assert.equal(buildStatusBadge(bead), '▶️🤖🧪');
+  });
+
+  it('in_progress with new stage review → ▶️🤖👁', () => {
+    const bead = makeBead({ status: 'in_progress', classification: 'afk', stage: 'review' });
+    assert.equal(buildStatusBadge(bead), '▶️🤖👁');
+  });
+
+  it('in_progress with new stage document → ▶️🤖📝', () => {
+    const bead = makeBead({ status: 'in_progress', classification: 'afk', stage: 'document' });
+    assert.equal(buildStatusBadge(bead), '▶️🤖📝');
+  });
+
+  it('in_progress with new stage fix → ▶️🤖🔧', () => {
+    const bead = makeBead({ status: 'in_progress', classification: 'afk', stage: 'fix' });
+    assert.equal(buildStatusBadge(bead), '▶️🤖🔧');
   });
 });
 
@@ -387,6 +472,44 @@ describe('renderMermaidGraph', () => {
     assert.ok(output.includes('proj_child'));
     // Summary node should edge to proj-child
     assert.ok(output.includes('summary_d0 --> proj_child'));
+  });
+
+  it('renders parent task as subgraph containing stage children', () => {
+    const beads: Bead[] = [
+      makeBead({ id: 'proj-parent', title: 'Parent task', status: 'in_progress', beadType: 'task' }),
+      makeBead({ id: 'proj-child1', title: 'Code', status: 'closed', beadType: 'chore', parentId: 'proj-parent', stage: 'code' }),
+      makeBead({ id: 'proj-child2', title: 'Review', status: 'in_progress', beadType: 'chore', parentId: 'proj-parent', stage: 'review' }),
+    ];
+    const output = renderMermaidGraph(beads);
+    // Parent rendered as subgraph (children are incomplete, so proj-child2 is visible)
+    assert.ok(output.includes('subgraph sg_proj_parent'));
+    // Child2 (in_progress) appears inside subgraph
+    assert.ok(output.includes('proj_child2'));
+    // Closed child1 excluded from graph entirely
+    assert.ok(!output.includes('proj_child1'));
+    assert.ok(output.includes('end'));
+  });
+
+  it('renders parent as normal node when all children are closed', () => {
+    const beads: Bead[] = [
+      makeBead({ id: 'proj-parent', title: 'Parent', status: 'in_progress', beadType: 'task' }),
+      makeBead({ id: 'proj-child1', title: 'Code', status: 'closed', beadType: 'chore', parentId: 'proj-parent' }),
+    ];
+    const output = renderMermaidGraph(beads);
+    // No subgraph since only child is closed (incomplete children = 0)
+    assert.ok(!output.includes('subgraph sg_proj_parent'));
+    // Parent rendered as a normal node
+    assert.ok(output.includes('proj_parent'));
+  });
+
+  it('renders edges between stage children inside parent subgraph', () => {
+    const beads: Bead[] = [
+      makeBead({ id: 'proj-parent', title: 'Parent', status: 'in_progress', beadType: 'task' }),
+      makeBead({ id: 'proj-code', title: 'Code', status: 'in_progress', beadType: 'chore', parentId: 'proj-parent', stage: 'code', blocks: ['proj-review'] }),
+      makeBead({ id: 'proj-review', title: 'Review', status: 'open', beadType: 'chore', parentId: 'proj-parent', stage: 'review', blockedBy: ['proj-code'] }),
+    ];
+    const output = renderMermaidGraph(beads);
+    assert.ok(output.includes('proj_code --> proj_review'));
   });
 });
 

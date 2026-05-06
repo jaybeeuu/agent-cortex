@@ -46,7 +46,7 @@ Keep as a single bead when:
 
 ### 4. File the bead(s)
 
-Create beads using the bead tracker. Do NOT ask the user to review first — just file and share URLs.
+Invoke the `create-task` skill for each bead, passing the title, description (using the appropriate template below), and priority. Do NOT ask the user to review first — just file and share URLs.
 
 Beads must be **durable** — they should still make sense after major refactors. Write from the user's perspective.
 
@@ -76,9 +76,16 @@ Use this template:
 
 #### For a breakdown (multiple beads)
 
-Create beads in dependency order (blockers first) so you can reference real bead numbers.
+Invoke `create-task` for each sub-bead in dependency order (blockers first) so you can reference real bead IDs. After each `create-task` invocation returns a bead ID, record any blocking relationships explicitly:
 
-Use this template for each sub-bead:
+> **`bd dep add` arg order**: `bd dep add A B` means **"A depends on B"** (B blocks A).
+> First arg waits, second arg is waited-for.
+
+```bash
+bd dep add <new-id> <blocker-id> --type blocks
+```
+
+Use this template for each sub-bead's description:
 
 ```
 ## Parent bead
@@ -112,7 +119,7 @@ When creating a breakdown:
 
 - **Prefer many thin beads over few thick ones** — each should be independently fixable and verifiable
 - **Mark blocking relationships honestly** — if bead B genuinely can't be tested until bead A is fixed, say so. If they're independent, mark both as "None — can start immediately"
-- **Create beads in dependency order** so you can reference real bead numbers in "Blocked by"
+- **Create beads in dependency order** via `create-task`, then record each blocking relationship with `bd dep add <new-id> <blocker-id> --type blocks`
 - **Maximize parallelism** — the goal is that multiple people (or agents) can grab different beads simultaneously
 
 #### Rules for all bead bodies

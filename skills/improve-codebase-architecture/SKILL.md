@@ -5,7 +5,7 @@ description: Explore a codebase to find opportunities for architectural improvem
 
 # Improve Codebase Architecture
 
-Explore a codebase like an AI would, surface architectural friction, discover opportunities for improving testability, and propose module-deepening refactors as GitHub issue RFCs.
+Explore a codebase like an AI would, surface architectural friction, discover opportunities for improving testability, and propose module-deepening refactors as beads.
 
 A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a small interface hiding a large implementation. Deep modules are more testable, more AI-navigable, and let you test at the boundary instead of inside.
 
@@ -71,6 +71,11 @@ After comparing, give your own recommendation: which design you think is stronge
 
 ### 6. User picks an interface (or accepts recommendation)
 
-### 7. Create GitHub issue
+### 7. Create refactor bead
 
-Create a refactor RFC as a GitHub issue using `gh issue create`. Use the template in [REFERENCE.md](REFERENCE.md). Do NOT ask the user to review before creating — just create it and share the URL.
+Invoke the `create-task` skill, passing:
+- **title**: a concise name for the refactor
+- **description**: the bead body using the template in [REFERENCE.md](REFERENCE.md)
+- **priority**: P2
+
+**Always use `create-task`** — never call `bd create` directly for tasks. `create-task` classifies the bead and expands AFK tasks into pipeline stage children that ralph can execute. Do NOT ask the user to review before creating — just create it and share the bead ID.

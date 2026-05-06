@@ -25,7 +25,7 @@ Run `bd prime` and hold its full output in memory as your project context:
 bd prime
 ```
 
-`bd prime` outputs the project's tech stack, conventions, current goals, and open task list. Forward it verbatim to any subagents you spawn — never summarise it.
+`bd prime` outputs the project's tech stack, conventions, current goals, and open task list. This is **project-level context** — complementary to the beads MCP tools, which handle task CRUD. Even with the MCP server configured, always run `bd prime` at the start of each session to load conventions and goals. Forward the output verbatim to any subagents you spawn — never summarise it.
 
 ## Key commands
 

@@ -1,6 +1,6 @@
 ---
 description: "Plans changes by exploring codebases and creating beads to track the work. Use when you want to scope a feature, bug fix, or refactor — the agent reads, reasons, grills the user, writes a high-level plan into the top-level bead, then files child beads ready for ralph."
-name: "agent-nexus:ralph-plan"
+name: "agent-cortex:ralph-plan"
 tools: ["bash", "view", "edit", "create", "grep", "glob", "ask_user", "task", "read_agent"]
 argument-hint: "Plan <feature or change description>"
 ---

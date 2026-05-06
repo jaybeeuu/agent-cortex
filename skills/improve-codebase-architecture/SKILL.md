@@ -13,7 +13,7 @@ A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a sma
 
 ### 1. Explore the codebase
 
-Spawn a `nexus` agent (`agent-nexus:nexus`) with an explicit prompt to navigate the codebase and report architectural friction. The prompt must instruct the agent to explore organically and note where it experiences friction:
+Spawn a `nexus` agent (`agent-cortex:nexus`) with an explicit prompt to navigate the codebase and report architectural friction. The prompt must instruct the agent to explore organically and note where it experiences friction:
 
 - Where does understanding one concept require bouncing between many small files?
 - Where are modules so shallow that the interface is nearly as complex as the implementation?
@@ -48,7 +48,7 @@ Show this to the user, then immediately proceed to Step 5. The user reads and th
 
 ### 5. Design multiple interfaces
 
-Spawn 3+ `nexus` agents (`agent-nexus:nexus`) in parallel using the Task tool. Each must produce a **radically different** interface for the deepened module.
+Spawn 3+ `nexus` agents (`agent-cortex:nexus`) in parallel using the Task tool. Each must produce a **radically different** interface for the deepened module.
 
 Prompt each sub-agent with a separate technical brief (file paths, coupling details, dependency category, what's being hidden). This brief is independent of the user-facing explanation in Step 4. Give each agent a different design constraint:
 

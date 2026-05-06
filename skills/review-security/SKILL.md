@@ -26,7 +26,7 @@ bash <path-to-plugin>/skills/review-security/scripts/install-gitleaks.sh
 Find the script with:
 
 ```bash
-find ~ -path "*/agent-nexus/skills/review-security/scripts/install-gitleaks.sh" 2>/dev/null | head -1
+find ~ -path "*/agent-cortex/skills/review-security/scripts/install-gitleaks.sh" 2>/dev/null | head -1
 ```
 
 ## Running the Scan

@@ -17,7 +17,7 @@ Do NOT ask follow-up questions yet. Start investigating immediately.
 
 ### 2. Explore and diagnose
 
-Spawn a `nexus` agent (`agent-nexus:nexus`) with an explicit prompt to deeply investigate the codebase. The prompt must instruct the agent to find:
+Spawn a `nexus` agent (`agent-cortex:nexus`) with an explicit prompt to deeply investigate the codebase. The prompt must instruct the agent to find:
 
 - **Where** the bug manifests (entry points, UI, API responses)
 - **What** code path is involved (trace the flow)

@@ -1,6 +1,6 @@
 ---
 description: "Use when running all pending beads end-to-end: finds the next available beads (dependencies met), runs the full implement → review → fix cycle for each, then repeats until all beads are complete. Use for: running the full task backlog, batch execution, working through all pending work."
-name: "agent-nexus:ralph"
+name: "agent-cortex:ralph"
 tools: ["bash", "view", "edit", "grep", "glob", "task", "read_agent"]
 argument-hint: "Run all pending beads"
 ---

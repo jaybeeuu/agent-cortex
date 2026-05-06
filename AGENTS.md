@@ -10,7 +10,7 @@ behaviour of every agent and skill available in the author's Copilot CLI session
 ## Structure
 
 ```
-agent-nexus/
+agent-cortex/
 ├── plugin.json           # Plugin manifest — name, version, skill/agent paths, MCP servers
 ├── agents/               # Custom agents (*.agent.md)
 │   └── ralph.agent.md

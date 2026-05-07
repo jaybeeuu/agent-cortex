@@ -31,7 +31,7 @@ Do **not** write anywhere else. No plan.md, no source files, no READMEs, no trac
 ### 1. Load context
 Invoke the **beads** skill (set workspace root, run `bd prime`). Hold the output in memory.
 
-If the input looks like a PRD (product requirements document), invoke the **prd-to-epics** skill to break it into epics, then use those epics as the workstreams for step 6. Do **not** use `prd-to-plan` — that skill outputs a plan.md file which is not the deliverable here.
+If the input looks like a PRD (product requirements document), invoke the **prd-to-plan** skill to break it into a plan bead, then continue from step 2 using that plan as the request.
 
 ### 2. Understand the request
 If the request is ambiguous or incomplete, use `ask_user` to resolve blockers before exploring. One question at a time.

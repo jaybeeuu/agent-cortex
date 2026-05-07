@@ -1,21 +1,21 @@
 ---
 name: plan-to-epics
-description: Convert a plan file (from ./plans/) into epics (one per phase). Use when user wants to create epics from a plan, structure a plan into workstreams, or create the top-level bead breakdown from an implementation plan before tasking.
+description: Convert a plan bead (from prd-to-plan) into epics (one per phase). Use when user wants to create epics from a plan, structure a plan into workstreams, or create the top-level bead breakdown from an implementation plan before tasking.
 ---
 
 # Plan to Epics
 
-Take an approved implementation plan from `./plans/` and create one epic per phase. Epics are the top-level grouping; individual tasks are created separately via the `epic-to-tasks` skill.
+Take an approved implementation plan bead (created by `prd-to-plan`) and create one epic per phase. Epics are the top-level grouping; individual tasks are created separately via the `epic-to-tasks` skill.
 
 ## Process
 
-### 1. Locate the plan
+### 1. Locate the plan bead
 
-Ask the user which plan file to use, or list the files in `./plans/` if they haven't specified one.
+Ask the user for the plan bead ID, or search `bd list` for beads with "Plan:" in the title if they haven't specified one.
 
 ### 2. Read the plan
 
-Load the plan file. Note:
+Load the plan bead's `design` field. Note:
 
 - The **architectural decisions** section (applies across all epics)
 - Each **phase**: title, user stories covered, what to build, acceptance criteria
@@ -41,32 +41,36 @@ Iterate until the user approves.
 
 ### 5. Create the epics
 
-Create epics in dependency order (blockers first) so you can reference real bead numbers.
+Create epics in dependency order (blockers first) so you can reference real bead IDs.
 
 ```bash
 bd create "Phase name" --type epic
 ```
 
-Use the epic body template below.
+Use the epic body template below for each epic's description, then wire up deps:
+
+```bash
+bd dep add <epic-id> <plan-bead-id>       # epic depends on plan
+bd dep add <epic-id> <blocking-epic-id>   # sequential dependency if needed
+```
 
 <epic-template>
-## Source plan
+## Parent plan
 
-`./plans/<plan-filename>.md` — Phase <N>
+#<plan-bead-id> — Phase <N>
 
 ## Summary
 
-A concise description of this phase. Describe the scope and goal, not implementation details. Reference the plan file rather than duplicating content.
+Concise scope and goal. Reference the plan bead rather than duplicating content.
+
+## User stories covered
+
+- User story N
 
 ## Blocked by
 
-- Blocked by #<epic-bead-number> (if any)
-
-Or "None - can start immediately" if no blockers.
-
+- #<epic-bead-id> (if any), or "None — can start immediately"
 </epic-template>
-
-Do NOT modify the source plan file.
 
 Once epics are created, use the `epic-to-tasks` skill to break each epic into tasks.
 

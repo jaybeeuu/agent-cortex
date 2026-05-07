@@ -66,7 +66,10 @@ After creating each bead, invoke **classify-bead** to ensure it has an `implemen
 Present the bead list (IDs, titles, one-line rationale each). Ask the user to confirm or request changes before finishing. Iterate until approved.
 
 ### 8. Hand off to ralph
-Once approved, report: "Plan complete — `bd ready` will show the first tasks for ralph."
+Once approved, ask the user: **"Shall I start ralph now to implement these beads?"**
+
+- **Yes** — spawn `agent-nexus:ralph` as a **foreground** task agent (mode: sync). Pass a brief prompt: `"Run all pending beads."` Ralph will run `bd prime` itself and pick up the work.
+- **No** — report: "Plan complete — run ralph when ready."
 
 ## Exploration sub-agent instructions
 

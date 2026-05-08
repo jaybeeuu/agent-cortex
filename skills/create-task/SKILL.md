@@ -42,39 +42,34 @@ Invoke the `classify-bead` skill on the new bead (as a subagent per that skill's
 
 **If AFK**: continue to step 4.
 
-### 4. Expand into pipeline stage beads
+### 4. Expand into pipeline stage wisps
 
-> **`bd dep add` arg order**: `bd dep add A B` means **"A depends on B"** (B blocks A).
-> First arg waits, second arg is waited-for.
-
-Read `pipeline.json` from this skill's directory (`skills/create-task/pipeline.json`).
-
-For each stage in the `stages` array, create a child chore bead:
+Run the `create-chores` script, which reads `pipeline.json` and deterministically creates all
+stage chore wisps (ephemeral beads) in one shot:
 
 ```bash
-bd create "[<parent-id>] <stage.title>" \
-  --type chore \
-  --description "<stage.description>" \
-  --priority <same as parent>
-bd tag <child-id> stage:<stage.id>
-bd dep add <child-id> <parent-id> --type parent-child
+pnpm --prefix skills/create-task/scripts exec tsx create-chores.ts \
+  --parent <parent-id> \
+  --priority <priority>
 ```
 
-**Dependency chaining**: each stage lists a `dependsOn` array of stage IDs. For each entry, add a `blocks` dependency from the referenced stage's child bead to the current stage's child bead:
+The script outputs a JSON object mapping stage IDs to wisp bead IDs, e.g.:
 
-```bash
-bd dep add <current-child-id> <depended-on-child-id> --type blocks
+```json
+{
+  "code": "bd-wisp-abc123",
+  "verify": "bd-wisp-def456",
+  "review": "bd-wisp-ghi789",
+  "document": "bd-wisp-jkl012"
+}
 ```
 
-This ensures stages execute in the order defined by the pipeline.
-
-### Child bead conventions
-
-- **issue_type**: `chore`
+Each wisp is created with:
+- **type**: `chore`
 - **Title pattern**: `[<parent-id>] <stage title>` (e.g. `[abc-123] Code`)
 - **Labels**: `stage:<id>` (e.g. `stage:code`, `stage:verify`)
 - **Dependencies**: `parent-child` to parent bead; `blocks` between stages per `dependsOn`
 
 ### 5. Report
 
-Return the parent bead ID, classification (`AFK`), and the list of child bead IDs with their stage labels.
+Return the parent bead ID, classification (`AFK`), and the list of wisp bead IDs with their stage labels.

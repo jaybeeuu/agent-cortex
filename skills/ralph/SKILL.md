@@ -1,13 +1,21 @@
 ---
 name: ralph
-description: "Run all pending beads end-to-end using parallel subagents: initialise, dispatch up to 5 concurrent pipeline-stage chores, process completions, and loop until the backlog is empty. Use when running the full task backlog, batch execution, working through all pending work, or when the ralph agent invokes parallel orchestration."
+description: "Run all pending beads end-to-end using parallel subagents with review gates: initialise, dispatch up to 5 concurrent pipeline-stage chores, open feature PRs into epic branches, and wait for merges before continuing. Use when running the full task backlog with human approval points."
 ---
 
 # Fleet
 
-Parallel task orchestration: find ready beads, dispatch them as background subagents, process each outcome through the pipeline (code → verify → review → document, with fix loops on failure), and repeat until no chore beads remain.
+Parallel task orchestration: find ready beads, dispatch them as background subagents, process each outcome through the pipeline (code → verify → review → document, with fix loops on failure), then open review-gated PRs before considering feature work complete.
 
 Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration and prompt templates live in `skills/create-task/`.
+
+## Branching and Review Model
+
+1. **Epic integration branch**: each epic runs on `epic/<epic-id>` (base: `main`).
+2. **Feature branch per parent bead**: each AFK parent task runs on `feature/<parent-task-id>`, based from its epic branch.
+3. **Dedicated worktree per parent bead**: each feature branch uses `.worktrees/<parent-task-id>`.
+4. **Feature PR gate**: when a parent task reaches `document`, open/update a PR `feature/<parent-task-id> -> epic/<epic-id>`, then pause progression for that parent until the PR is merged.
+5. **Epic PR gate**: when an epic's feature beads are complete, open/update a PR `epic/<epic-id> -> main` and pause until merged.
 
 See [REFERENCE.md](./REFERENCE.md) for detailed procedures: dispatching, fix loop, log polling, and shutdown.
 
@@ -18,14 +26,14 @@ See [REFERENCE.md](./REFERENCE.md) for detailed procedures: dispatching, fix loo
 Run once at startup:
 
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
-2. Ensure `.ralph-progress.md` and `.ralph-*.log` are in the project's `.gitignore` (append any that are missing).
+2. Ensure `.ralph-progress.md`, `.ralph-*.log`, and `.worktrees/` are in the project's `.gitignore` (append any that are missing).
 3. Read `skills/create-task/pipeline.json` and hold it in memory — you need `maxFixRounds` for the fix loop.
 4. Run `bd ready` to get the initial list of available beads.
 5. For each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
    - **Task or other type without an `implementation-type:*` label**: invoke the `classify-bead` skill. AFK tasks may need expansion via `create-task`; HITL tasks are noted for the shutdown summary.
    - **Task labelled `implementation-type:hitl`**: skip — record the bead ID for the **Pending Human Action** summary at shutdown.
-6. For each ready chore bead (up to 5), **dispatch** it (see _Dispatching a chore bead_ in REFERENCE.md).
+6. For each ready chore bead (up to 5), **dispatch** it (see _Dispatching a chore bead_ in REFERENCE.md). Chores for a parent bead must run from that parent's worktree.
 7. Start the **poll timer**: run `sleep 120` as a background bash process and hold its shellId in memory.
 8. Regenerate `.ralph-progress.md`:
    ```bash
@@ -60,11 +68,12 @@ After initialization, wait for background agents or the poll timer to complete. 
    | `verify` | `VERIFY_OUTCOME: FAIL` | Run the **fix loop** (see REFERENCE.md). |
    | `review` | `REVIEW_OUTCOME: APPROVED` | Closing the review chore unblocks the document chore. |
    | `review` | `REVIEW_OUTCOME: CHANGES_REQUESTED` | Run the **fix loop** (see REFERENCE.md). |
-   | `document` | — | Close the **parent task** bead: `bd close <parent-id>`. |
+   | `document` | — | Open/update feature PR `feature/<parent-id> -> epic/<epic-id>`, tag parent `awaiting-feature-pr-merge`, and wait for merge. After merge: remove tag and close parent task bead. |
 
 6. **Check for newly ready beads**: run `bd ready` and inspect results:
-   - **Chore beads with `stage:*` label**: dispatch if in-flight count (from `bd list --status=in_progress --type=chore`) is < 5.
-   - **Task beads without `implementation-type:*` label**: invoke `classify-bead`. Note HITL tasks for shutdown; expand AFK tasks via `create-task` if needed.
+    - **Chore beads with `stage:*` label**: dispatch if in-flight count (from `bd list --status=in_progress --type=chore`) is < 5.
+    - **Task beads without `implementation-type:*` label**: invoke `classify-bead`. Note HITL tasks for shutdown; expand AFK tasks via `create-task` if needed.
+   - If any parent task is tagged `awaiting-feature-pr-merge`, do **not** schedule new parent features. Keep working only already in-flight chores.
 7. **Check shutdown condition**: if `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels, proceed to **Shutdown** (see REFERENCE.md).
 8. Regenerate `.ralph-progress.md`.
 
@@ -81,5 +90,9 @@ After initialization, wait for background agents or the poll timer to complete. 
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once.
 - **Max fix rounds** per task as defined by `maxFixRounds` in `skills/create-task/pipeline.json`.
+- **Always** execute chore subagents from the parent feature worktree (`.worktrees/<parent-id>`), never from repo root.
+- **Never** auto-merge PRs. Merges are human-controlled.
+- **Only continue past a feature review gate after the feature PR is merged into the epic branch.**
+- **Only continue past an epic review gate after the epic PR is merged into `main`.**
 - **Always** pause and present all changes to the user for review and explicit approval before committing or pushing anything.
 - **Always** bump the patch version in `plugin.json` as part of any commit that changes agent or skill files.

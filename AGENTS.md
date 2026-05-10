@@ -38,6 +38,17 @@ semantic versioning:
 The version bump must be included in the same commit as the change — do not leave it for a
 follow-up commit.
 
+## Changelog
+
+- Keep a root `CHANGELOG.md` for repository changes.
+- When making any repo change (agents, skills, docs, scripts, or workflow rules), update
+  `CHANGELOG.md` in the same commit.
+- Add concise entries under `## Unreleased` using:
+  - `### Added`
+  - `### Changed`
+  - `### Fixed`
+- Keep entries user-facing and outcome-focused (what changed and why it matters).
+
 ## Skill Conventions
 
 - `SKILL.md` must include a YAML front-matter block with `name` and `description`.

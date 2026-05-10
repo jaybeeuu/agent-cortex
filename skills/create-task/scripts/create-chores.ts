@@ -81,5 +81,33 @@ for (const stage of pipeline.stages) {
   }
 }
 
-const result: Record<string, string> = Object.fromEntries(stageToBeadId);
+const finalStageId = pipeline.stages.at(-1)?.id;
+if (!finalStageId) {
+  console.error('No pipeline stages found in pipeline.json.');
+  process.exit(1);
+}
+
+const documentStageBeadId = stageToBeadId.get('document') ?? stageToBeadId.get(finalStageId);
+if (!documentStageBeadId) {
+  console.error('Could not resolve the final stage bead needed for PR gate dependency.');
+  process.exit(1);
+}
+
+const prGateBeadId = run([
+  'bd', 'create', JSON.stringify(`[${parentId}] PR Review and Merge`),
+  '--type', 'task',
+  '--description', JSON.stringify(
+    'Human review gate: review and merge the feature PR into the epic branch before closing this feature.',
+  ),
+  '--priority', priority,
+  '--labels', 'implementation-type:hitl,lifecycle:feature-pr',
+  '--parent', parentId,
+  '--silent',
+]);
+run(['bd', 'dep', 'add', prGateBeadId, documentStageBeadId, '--type', 'blocks']);
+
+const result: Record<string, string> = {
+  ...Object.fromEntries(stageToBeadId),
+  featurePrReview: prGateBeadId,
+};
 process.stdout.write(JSON.stringify(result, null, 2) + '\n');

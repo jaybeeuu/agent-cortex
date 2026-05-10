@@ -1,17 +1,17 @@
 ---
 name: plan-to-epics
-description: Convert a plan file (from ./plans/) into epics (one per phase). Use when user wants to create epics from a plan, structure a plan into workstreams, or create the top-level bead breakdown from an implementation plan before tasking.
+description: Convert a plan file (from .working-docs/plans/) into epics (one per phase). Use when user wants to create epics from a plan, structure a plan into workstreams, or create the top-level bead breakdown from an implementation plan before tasking.
 ---
 
 # Plan to Epics
 
-Take an approved implementation plan from `./plans/` and create one epic per phase. Epics are the top-level grouping; individual tasks are created separately via the `epic-to-tasks` skill.
+Take an approved implementation plan from `.working-docs/plans/` and create one epic per phase. Epics are the top-level grouping; individual tasks are created separately via the `epic-to-tasks` skill.
 
 ## Process
 
 ### 1. Locate the plan
 
-Ask the user which plan file to use, or list the files in `./plans/` if they haven't specified one.
+Ask the user which plan file to use, or list the files in `.working-docs/plans/` if they haven't specified one.
 
 ### 2. Read the plan
 
@@ -52,7 +52,7 @@ Use the epic body template below.
 <epic-template>
 ## Source plan
 
-`./plans/<plan-filename>.md` — Phase <N>
+`.working-docs/plans/<plan-filename>.md` — Phase <N>
 
 ## Summary
 
@@ -69,4 +69,3 @@ Or "None - can start immediately" if no blockers.
 Do NOT modify the source plan file.
 
 Once epics are created, use the `epic-to-tasks` skill to break each epic into tasks.
-

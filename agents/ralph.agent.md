@@ -12,7 +12,8 @@ Orchestration state is derived entirely from beads — there is no separate stat
 Branching model:
 - Each epic runs on `epic/<epic-id>` (base: `main`).
 - Each parent feature task runs on `feature/<parent-id>` in `.worktrees/<parent-id>`, based from its epic branch.
-- Completed features must be reviewed by PR merge into their epic branch before Ralph continues feature scheduling.
+- Each feature includes a child HITL task bead (`lifecycle:feature-pr`) for PR review/merge.
+- Completed features must be reviewed by PR merge into their epic branch, then the HITL PR task bead must be closed by a human before Ralph continues feature scheduling.
 - Completed epics must be reviewed by PR merge into `main`.
 
 ---
@@ -92,9 +93,9 @@ After initialization, Ralph waits for background agents or the poll timer to com
 7. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
    - If **NEEDS-REFINEMENT**: note it for the **Needs Refinement** shutdown summary — do not claim or schedule it.
    - If **HITL**: note it for the **Pending Human Action** shutdown summary — do not claim or schedule it.
-   - If **AFK** and in-flight count is below 5 **and no feature is waiting for PR merge**: claim it, tag it (`bd tag <id> stage:test-writing`), start its test-writing stage, add to `inflight` in `.ralph-state.json`.
+   - If **AFK** and in-flight count is below 5 **and no feature PR HITL gate is open**: claim it, tag it (`bd tag <id> stage:test-writing`), start its test-writing stage, add to `inflight` in `.ralph-state.json`.
    - If **AFK** and in-flight count is at 5: hold it in memory as Waiting — do not claim it yet.
-   - If any parent bead is tagged `awaiting-feature-pr-merge`, hold AFK parents in Waiting until that PR is merged.
+   - If any child HITL PR gate bead (`lifecycle:feature-pr`) is open, hold AFK parents in Waiting until that gate bead is closed by a human.
    When a bead is removed from `inflight` (completed or failed), immediately promote the first AFK waiting bead: claim it, tag it (`bd tag <id> stage:test-writing`), start its test-writing stage, add it to `inflight`.
 8. **If no tasks remain in-flight** and `bd ready -l implementation-type:afk` returns no results, proceed to shutdown.
 
@@ -187,7 +188,7 @@ All beads complete.
 - **Max 2** reviewer round-trips per bead (reviewRounds); block the bead if exceeded.
 - **Always** run feature chores in the feature worktree (`.worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge feature or epic PRs — merge decisions are human-controlled.
-- **Never** continue past feature completion until PR `feature/<parent-id> -> epic/<epic-id>` is merged.
+- **Never** continue past feature completion until PR `feature/<parent-id> -> epic/<epic-id>` is merged and the child HITL PR gate bead is closed by a human.
 - **Never** continue past epic completion until PR `epic/<epic-id> -> main` is merged.
 - When a cap is hit: `bd update <id> --status blocked --notes "<cap> cap reached"` and record it for the **Needs Human Intervention** shutdown summary.
 - **Always** pause and present all changes to the user for review and explicit approval before committing or pushing anything.

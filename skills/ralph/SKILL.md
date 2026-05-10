@@ -14,7 +14,7 @@ Orchestration state is derived entirely from beads — there is no separate stat
 1. **Epic integration branch**: each epic runs on `epic/<epic-id>` (base: `main`).
 2. **Feature branch per parent bead**: each AFK parent task runs on `feature/<parent-task-id>`, based from its epic branch.
 3. **Dedicated worktree per parent bead**: each feature branch uses `.worktrees/<parent-task-id>`.
-4. **Feature PR gate**: when a parent task reaches `document`, open/update a PR `feature/<parent-task-id> -> epic/<epic-id>`, then pause progression for that parent until the PR is merged.
+4. **Feature PR gate**: each feature has a child HITL task bead (`lifecycle:feature-pr`) created by `create-task`. When `document` completes, open/update PR `feature/<parent-task-id> -> epic/<epic-id>`, then wait for the HITL PR gate bead to be closed by a human.
 5. **Epic PR gate**: when an epic's feature beads are complete, open/update a PR `epic/<epic-id> -> main` and pause until merged.
 
 See [REFERENCE.md](./REFERENCE.md) for detailed procedures: dispatching, fix loop, log polling, and shutdown.
@@ -68,12 +68,12 @@ After initialization, wait for background agents or the poll timer to complete. 
    | `verify` | `VERIFY_OUTCOME: FAIL` | Run the **fix loop** (see REFERENCE.md). |
    | `review` | `REVIEW_OUTCOME: APPROVED` | Closing the review chore unblocks the document chore. |
    | `review` | `REVIEW_OUTCOME: CHANGES_REQUESTED` | Run the **fix loop** (see REFERENCE.md). |
-   | `document` | — | Open/update feature PR `feature/<parent-id> -> epic/<epic-id>`, tag parent `awaiting-feature-pr-merge`, and wait for merge. After merge: remove tag and close parent task bead. |
+   | `document` | — | Open/update feature PR `feature/<parent-id> -> epic/<epic-id>`, then update the child HITL PR gate bead (`lifecycle:feature-pr`) with the PR URL/status. Wait for human to close that HITL bead after merge, then close the parent task bead. |
 
 6. **Check for newly ready beads**: run `bd ready` and inspect results:
     - **Chore beads with `stage:*` label**: dispatch if in-flight count (from `bd list --status=in_progress --type=chore`) is < 5.
     - **Task beads without `implementation-type:*` label**: invoke `classify-bead`. Note HITL tasks for shutdown; expand AFK tasks via `create-task` if needed.
-   - If any parent task is tagged `awaiting-feature-pr-merge`, do **not** schedule new parent features. Keep working only already in-flight chores.
+   - If any feature PR gate bead (`lifecycle:feature-pr`, `implementation-type:hitl`) is open, do **not** schedule new parent features. Keep working only already in-flight chores.
 7. **Check shutdown condition**: if `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels, proceed to **Shutdown** (see REFERENCE.md).
 8. Regenerate `.ralph-progress.md`.
 
@@ -92,7 +92,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 - **Max fix rounds** per task as defined by `maxFixRounds` in `skills/create-task/pipeline.json`.
 - **Always** execute chore subagents from the parent feature worktree (`.worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge PRs. Merges are human-controlled.
-- **Only continue past a feature review gate after the feature PR is merged into the epic branch.**
+- **Only continue past a feature review gate after the feature PR HITL task bead is closed by a human (after merge into the epic branch).**
 - **Only continue past an epic review gate after the epic PR is merged into `main`.**
 - **Always** pause and present all changes to the user for review and explicit approval before committing or pushing anything.
 - **Always** bump the patch version in `plugin.json` as part of any commit that changes agent or skill files.

@@ -34,7 +34,7 @@ If the input looks like a PRD (product requirements document), invoke the **prd-
 ### 2. Understand the request
 If the request is ambiguous or incomplete, use `ask_user` to resolve blockers before exploring. One question at a time.
 
-If the domain language is unclear or inconsistent, invoke the **ubiquitous-language** skill to extract canonical terms. Write the glossary to `.working-docs/ubiquitous-language.md` and use those terms throughout.
+If the domain language is unclear or inconsistent, invoke the **ubiquitous-language** skill to extract canonical terms. Write the glossary to `docs/ubiquitous-language.md` and use those terms throughout.
 
 ### 3. Explore the codebase
 Dispatch parallel **explore** sub-agents — one per independent research area. Tell each sub-agent to write its findings to a named file in `.working-docs/` and **not** to modify any beads or source files. Provide each sub-agent with the full `bd prime` output.

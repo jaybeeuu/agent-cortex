@@ -1,11 +1,11 @@
 ---
 name: create-task
-description: Create a bead, classify it, and if AFK expand it into pipeline stage child beads. Use when creating a new task that should be tracked and potentially broken into implementation stages.
+description: Create a bead, classify it, and if AFK expand it into pipeline stage child beads plus a HITL PR gate task. Use when creating a new task that should be tracked and moved through implementation and human review gates.
 ---
 
 # Create Task
 
-Create a bead, classify it via `classify-bead`, and — if AFK — expand it into child chore beads for each pipeline stage.
+Create a bead, classify it via `classify-bead`, and — if AFK — expand it into child chore beads for each pipeline stage plus a child HITL PR gate task bead.
 
 ## Inputs
 
@@ -53,14 +53,15 @@ pnpm --prefix skills/create-task/scripts exec tsx create-chores.ts \
   --priority <priority>
 ```
 
-The script outputs a JSON object mapping stage IDs to wisp bead IDs, e.g.:
+The script outputs a JSON object mapping stage IDs to wisp bead IDs, plus a HITL PR gate task bead ID, e.g.:
 
 ```json
 {
   "code": "bd-wisp-abc123",
   "verify": "bd-wisp-def456",
   "review": "bd-wisp-ghi789",
-  "document": "bd-wisp-jkl012"
+  "document": "bd-wisp-jkl012",
+  "featurePrReview": "bd-mno345"
 }
 ```
 
@@ -70,6 +71,12 @@ Each wisp is created with:
 - **Labels**: `stage:<id>` (e.g. `stage:code`, `stage:verify`)
 - **Dependencies**: `parent-child` to parent bead; `blocks` between stages per `dependsOn`
 
+The PR gate bead is created with:
+- **type**: `task`
+- **Title**: `[<parent-id>] PR Review and Merge`
+- **Labels**: `implementation-type:hitl`, `lifecycle:feature-pr`
+- **Dependencies**: `parent-child` to parent bead; `blocks` on the final document stage chore
+
 ### 5. Report
 
-Return the parent bead ID, classification (`AFK`), and the list of wisp bead IDs with their stage labels.
+Return the parent bead ID, classification (`AFK`), and the list of created child bead IDs (including `featurePrReview`).

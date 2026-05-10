@@ -51,14 +51,11 @@ When the `document` chore for a parent task completes:
    gh pr create --base epic/<epic-id> --head feature/<parent-id> --title "[<parent-id>] <task-title>" --body "<summary>"
    ```
    If an open PR already exists, update it instead of creating a duplicate.
-3. Tag the parent bead:
+3. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` (created by `create-task`).
+4. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
+5. Do not schedule new parent features while this HITL PR gate bead remains open.
+6. Once the PR is merged, a human closes the HITL PR gate bead. After that, close the parent feature bead:
    ```bash
-   bd tag <parent-id> awaiting-feature-pr-merge
-   ```
-4. Do not schedule new parent features while any `awaiting-feature-pr-merge` parent exists.
-5. Poll merge state. Once merged:
-   ```bash
-   bd label remove <parent-id> awaiting-feature-pr-merge
    bd close <parent-id>
    ```
    Only then continue with next parent features.
@@ -161,5 +158,5 @@ All orchestration state is derived from beads:
 | What is ready? | `bd ready` — filter for chores with `stage:*` labels |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
 | How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task |
-| Which features are review-gated? | `bd list -l awaiting-feature-pr-merge` |
+| Which features are review-gated? | Find open child task beads labelled `lifecycle:feature-pr` and `implementation-type:hitl` |
 | Which epics are review-gated? | `bd list -l awaiting-epic-pr-merge` |

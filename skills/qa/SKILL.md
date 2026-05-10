@@ -23,7 +23,7 @@ Do NOT over-interview. If the description is clear enough to file, move on.
 
 While talking to the user, spawn a `nexus` agent (`agent-cortex:nexus`) in the background with an explicit prompt to understand the relevant area. The goal is NOT to find a fix — it's to:
 
-- Learn the domain language used in that area (check UBIQUITOUS_LANGUAGE.md)
+- Learn the domain language used in that area (check `docs/ubiquitous-language.md`)
 - Understand what the feature is supposed to do
 - Identify the user-facing behavior boundary
 
@@ -125,7 +125,7 @@ When creating a breakdown:
 #### Rules for all bead bodies
 
 - **No file paths or line numbers** — these go stale
-- **Use the project's domain language** (check UBIQUITOUS_LANGUAGE.md if it exists)
+- **Use the project's domain language** (check `docs/ubiquitous-language.md` if it exists)
 - **Describe behaviors, not code** — "the sync service fails to apply the patch" not "applyPatch() throws on line 42"
 - **Reproduction steps are mandatory** — if you can't determine them, ask the user
 - **Keep it concise** — a developer should be able to read the bead in 30 seconds

@@ -37,7 +37,7 @@ if [[ -z "$slug" ]]; then
   exit 1
 fi
 
-base_dir=".working-docs/ideas"
+base_dir=".agent-cortex/ralph/ideas"
 if [[ "$complex" == "true" ]]; then
   file_path="${base_dir}/${slug}/${slug}.md"
 else

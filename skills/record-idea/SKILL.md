@@ -10,10 +10,12 @@ Capture a not-ready idea into `.agent-cortex/ralph/ideas` after a short, high-le
 ## Workflow
 
 1. **Interview at high level (one question at a time)**
-   - Clarify: problem, target user, expected value, key constraints, and why now.
-   - Clarify: assumptions, key risks, and what would prove/disprove the idea.
-2. **Pressure-test validity**
-   - Challenge weak points (scope, feasibility, dependency, opportunity cost).
+   - Why might it be useful? Who benefits and what improves?
+   - How might we do it? Sketch the rough approach — no implementation detail.
+   - When should we think about it? Are there triggers, dependencies, or timing signals?
+   - What priority does this feel like relative to current work?
+2. **Pressure-test briefly**
+   - Challenge weak points (scope, feasibility, opportunity cost).
    - Keep discussion strategic; do not drift into implementation detail.
 3. **Choose record shape**
    - **Simple idea**: `.agent-cortex/ralph/ideas/<idea-name>.md`
@@ -35,25 +37,17 @@ Capture a not-ready idea into `.agent-cortex/ralph/ideas` after a short, high-le
 ## Status
 Backlog idea (not implementation-ready)
 
-## Problem
-<What problem exists today?>
+## Why it might be useful
+<Who benefits and what improves?>
 
-## Who benefits
-<Primary user/persona and context>
+## How we might do it
+<Rough approach — no implementation detail>
 
-## Proposed outcome
-<What improvement should exist if this works?>
+## When to think about it
+<Triggers, dependencies, or timing signals that would make this timely>
 
-## Validity check
-- Evidence we already have:
-- Riskiest assumption:
-- What would invalidate this idea:
-
-## Constraints
-<Hard constraints, dependencies, and limits>
-
-## Next validation step
-<Smallest test or research step to learn quickly>
+## Priority
+<Relative priority and reasoning>
 
 ## Notes
 <Anything worth keeping for future prioritisation/review>
@@ -65,4 +59,4 @@ Return:
 
 1. The file path created.
 2. A 2–3 sentence summary of the recorded idea.
-3. The single riskiest assumption to revisit during prioritisation.
+3. The suggested priority and when it might become timely.

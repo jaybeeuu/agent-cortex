@@ -12,11 +12,12 @@ All notable changes to this repository are documented in this file.
 
 ### Added
 
-- New `style-tests` skill: test writing style and conventions covering behaviour-over-implementation, sociable/integration-first testing (testing trophy), inline setup rules, factory patterns, no-hooks discipline, targeted assertions, mocking boundaries, and maintenance principles.
+- New `style-tests` skill
 
 ### Changed
 
-- Skills updated to use `.agent-cortex/ralph/` as the working directory prefix instead of `.working-docs/` — affects `plan-to-epics`, `prd-to-plan`, `qa`, `record-idea`, and `ubiquitous-language`.
+- `record-idea` skill: replaced validity-check interview questions with why/how/when/priority framing; updated template to match.
+- Skills updated to use `.agent-cortex/ralph/`
 
 - `ralph` agent (agents/ralph.agent.md) now uses a chore-bead-per-stage model consistent with `skills/ralph/`. Each pipeline stage creates its own chore bead on-demand; `stage:*` tags live on chore beads, not on the parent feature bead. `state.json` inflight entries now track `choreId`+`parentId` instead of a single `beadId`. Loop counts (TDD loops, fix rounds) are derived from `bd children` queries rather than counters in state.
 

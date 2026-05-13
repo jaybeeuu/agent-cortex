@@ -12,6 +12,10 @@ All notable changes to this repository are documented in this file.
 
 ### Changed
 
+- `ralph-plan` now tags every bead it creates with `workflow:ralph` so orchestration engines can identify which beads belong to the ralph workflow.
+
+
+
 - Ralph now stores incidental orchestrator artifacts under `.agent-cortex/ralph/` (logs, progress snapshots, and state) instead of the repository root.
 - Ralph, run-beads, and stage prompt templates now consistently point progress logging to `.agent-cortex/ralph/ralph-<bead-id>.log`.
 - Git ignore guidance now standardizes on ignoring `.agent-cortex/` so incidental runtime files stay out of source control.

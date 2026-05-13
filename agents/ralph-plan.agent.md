@@ -58,6 +58,12 @@ For large workstreams (multiple distinct areas) invoke the **epic-to-tasks** ski
 
 After creating each bead, invoke **classify-bead** to ensure it has an `implementation-type` label before handing off.
 
+Tag every bead created in this step with `workflow:ralph`:
+
+```bash
+bd tag <id> workflow:ralph
+```
+
 ### 7. Agree with the user
 Present the bead list (IDs, titles, one-line rationale each). Ask the user to confirm or request changes before finishing. Iterate until approved.
 

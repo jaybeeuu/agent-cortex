@@ -10,6 +10,10 @@ All notable changes to this repository are documented in this file.
 - New `technical-direction` skill for collaborative technical design: challenges assumptions, derives constraints from codebase context, evaluates alternatives (including autonomous web research when needed), and writes decision memos to `docs/technical-direction/`.
 - New `agent-cortex:strategy` agent that creates top-level design documents across vision brief (`docs/strategy/`), PRD (`docs/prd/`), and technical direction, with evidence-backed tradeoffs before `ralph-plan`.
 
+### Added
+
+- New `style-tests` skill: test writing style and conventions covering behaviour-over-implementation, sociable/integration-first testing (testing trophy), inline setup rules, factory patterns, no-hooks discipline, targeted assertions, mocking boundaries, and maintenance principles.
+
 ### Changed
 
 - Skills updated to use `.agent-cortex/ralph/` as the working directory prefix instead of `.working-docs/` — affects `plan-to-epics`, `prd-to-plan`, `qa`, `record-idea`, and `ubiquitous-language`.

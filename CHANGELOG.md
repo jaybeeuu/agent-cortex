@@ -12,7 +12,7 @@ All notable changes to this repository are documented in this file.
 
 ### Changed
 
-- `ralph-plan` now tags every bead it creates with `workflow:ralph` so orchestration engines can identify which beads belong to the ralph workflow.
+- Feedback from failed review/verify/test-review stages is now written into a new chore bead's description rather than passed inline to the next agent prompt. Both the `run-beads` pipeline (ralph agent) and the `ralph` skill pipeline now create feedback beads on failure; the orchestrator sees them as ordinary ready beads and only needs to enforce loop caps before dispatching. The `fix` prompt templates (`run-beads/prompts/fixing.md` and `create-task/templates/fix.md`) now read required changes from `bd show <id>` rather than from injected REPORT content.
 
 
 

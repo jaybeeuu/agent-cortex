@@ -14,7 +14,7 @@ Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL
 6. **Fill in the template** — replace placeholders with:
    - `bd prime` output (held in memory from initialization)
    - Parent task description from `bd show <parent-id>`
-   - For `fix` stage: the `CHANGES_REQUESTED` or `VERIFY_FAILURES` from the triggering report, and `FILES_CHANGED`
+   - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
    - Bead ID and log file path (`.agent-cortex/ralph/ralph-<bead-id>.log`)
 7. **Spawn** a subagent in **background** mode with the filled template as the prompt.
@@ -70,16 +70,18 @@ When a verify or review stage fails:
 2. **Count existing fix rounds**: list all chore beads that are children of the parent task with label `stage:fix`. The count of these (including closed ones) is the number of fix rounds already attempted.
 3. **Read `maxFixRounds`** from `skills/create-task/pipeline.json` (held in memory since initialization).
 4. **If fix rounds ≥ maxFixRounds**: close the parent task bead as failed (`bd close <parent-id> --reason "Max fix rounds reached"`). Do not create another fix chore.
-5. **Otherwise, create a fix chore** (`bd dep add A B` = "A depends on B"):
+5. **Otherwise, create a fix chore** with the feedback in its description so the fixer agent can read it directly from `bd show`:
    ```bash
-   bd create "[<parent-id>] Fix (round <N>)" --type chore --priority <same as parent>
-   bd tag <fix-id> stage:fix
-   bd dep add <fix-id> <parent-id> --type parent-child   # fix-chore is child of parent
+   fix_id=$(bd create "[<parent-id>] Fix (round <N>)" --type chore \
+     --priority <same as parent> \
+     --description "<CHANGES_REQUESTED list or VERIFY_FAILURES list from the triggering REPORT>" -q)
+   bd tag $fix_id stage:fix
+   bd dep add $fix_id <parent-id> --type parent-child   # fix-chore is child of parent
    ```
 6. **Find the verify chore** for this parent task (the chore with label `stage:verify` and a `parent-child` dep to the parent).
 7. **Block the verify chore** on the new fix chore:
    ```bash
-   bd dep add <verify-id> <fix-id> --type blocks          # verify waits for fix
+   bd dep add <verify-id> $fix_id --type blocks          # verify waits for fix
    ```
 8. **Reopen the verify chore**:
    ```bash

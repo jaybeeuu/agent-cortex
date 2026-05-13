@@ -109,16 +109,38 @@ This tags the bead with its current stage (beads are the source of truth for sta
 |-----------------|-----------|-------------|
 | `test-writing` | — | Run **coding** stage |
 | `coding` | — | Run **test-reviewing** stage |
-| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops < 5 | Run **test-writing** stage, increment tddLoops |
-| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops ≥ 5 | `bd close <id>` — failed, max TDD loops reached |
+| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops < 5 | Create **test-writing** feedback bead (see _Feedback Beads_); increment tddLoops |
+| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops ≥ 5 | `bd update <id> --status blocked --notes "max TDD loops"` — record for shutdown |
 | `test-reviewing` | `TEST_REVIEW_OUTCOME: DONE` | Run **verifying** stage |
 | `verifying` | `VERIFY_OUTCOME: PASS` | Run **reviewing** stage |
-| `verifying` | `VERIFY_OUTCOME: FAIL` | Run **coding** stage |
+| `verifying` | `VERIFY_OUTCOME: FAIL` | Create **coding** feedback bead (see _Feedback Beads_) |
 | `reviewing` | `REVIEW_OUTCOME: APPROVED` | Run **documenting** stage |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds < 2 | Run **fixing** stage, increment reviewRounds |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds ≥ 2 | `bd close <id>` — failed, max review rounds reached |
+| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds < 2 | Create **fixing** feedback bead (see _Feedback Beads_); increment reviewRounds |
+| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds ≥ 2 | `bd update <id> --status blocked --notes "max review rounds"` — record for shutdown |
 | `fixing` | — | Run **test-reviewing** stage |
 | `documenting` | — | `bd close <id>` — done |
+
+## Feedback Beads
+
+When a stage reports a failure or rejection, the orchestrator creates a new chore bead whose description contains the feedback. This keeps feedback durable and visible, and makes the orchestrator's dispatch path uniform — it just picks up whatever `bd ready` returns.
+
+**Create the bead:**
+
+```bash
+new_id=$(bd create "[<parent-id>] <title>" --type chore \
+  --description "<feedback content from REPORT>" --priority <parent-priority> -q)
+bd tag $new_id stage:<next-stage>
+bd tag $new_id workflow:ralph
+bd dep add $new_id <parent-id> --type parent-child
+```
+
+| Triggering outcome | Suggested title | Next stage tag | Feedback content to put in description |
+|---|---|---|---|
+| `REVIEW_OUTCOME: CHANGES_REQUESTED` | `Fix: reviewer feedback` | `stage:fixing` | Full CHANGES_REQUESTED list |
+| `VERIFY_OUTCOME: FAIL` | `Fix: verify failures` | `stage:coding` | Full VERIFY_FAILURES list |
+| `TEST_REVIEW_OUTCOME: NEEDS_MORE` | `Test: uncovered requirements` | `stage:test-writing` | Full GAPS list |
+
+After creating the feedback bead, do **not** dispatch a new agent immediately — the bead will appear in `bd ready` on the next cycle and be dispatched through the normal scheduling path. The stage that consumed the feedback from the REPORT is now finished; its agent result has been processed.
 
 ## Report Format
 

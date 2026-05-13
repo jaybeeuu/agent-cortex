@@ -66,7 +66,7 @@ All orchestration state is derived from beads:
 - **timerShellId**: the shellId of the active `sleep 120` bash process used for polling.
 - **inflight[].logLine**: the next line number to read from `.agent-cortex/ralph/ralph-{bead-id}.log` (1-based; start at 1). Updated after every poll.
 - **inflight[].tddLoops**: how many times the test-writing stage has been dispatched for this bead (max 5). Increment each time test-writing is dispatched.
-- **inflight[].reviewRounds**: how many times coding has been dispatched in response to a reviewer CHANGES_REQUESTED (max 2). Increment each time reviewing returns CHANGES_REQUESTED.
+- **inflight[].reviewRounds**: how many fixing feedback beads have been created for this bead in response to a reviewer CHANGES_REQUESTED (max 2). Increment each time a fixing feedback bead is created.
 - Stage is **not** stored here — read it from the bead's `stage:<stage>` tag via `bd show <id>`. Possible stages: `test-writing`, `coding`, `test-reviewing`, `verifying`, `reviewing`, `fixing`, `documenting`.
 
 Update `.agent-cortex/ralph/state.json` after **every** agent completion or dispatch, then regenerate `.agent-cortex/ralph/progress.md`.
@@ -89,7 +89,9 @@ After initialization, Ralph waits for background agents or the poll timer to com
 2. **Read** the completed agent's full output with `read_agent`.
 3. **Re-read** `.agent-cortex/ralph/state.json` to identify the bead for that agent ID.
 4. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
-5. **Dispatch** the next stage for that bead (see dispatch rules in the `run-beads` skill). Before launching the next subagent, tag the bead: `bd tag <id> stage:<next-stage>`. Run each stage agent from the parent feature worktree.
+5. **Advance** the bead using the dispatch rules in the `run-beads` skill:
+   - **Success paths** (test-writing → coding, coding → test-reviewing, test-reviewing DONE → verifying, verifying PASS → reviewing, reviewing APPROVED → documenting, fixing → test-reviewing, documenting → done): tag the bead `bd tag <id> stage:<next-stage>`, then spawn the next stage subagent from the feature worktree.
+   - **Failure paths** (CHANGES_REQUESTED, VERIFY_FAIL, NEEDS_MORE): create a feedback bead per the _Feedback Beads_ section in `run-beads`. Do **not** dispatch a new agent immediately — the feedback bead will appear in `bd ready` and be dispatched through the normal scheduling path (step 7 below).
 6. **Update** `.agent-cortex/ralph/state.json` — move the bead to its new stage (update `agentId`, `tddLoops`/`reviewRounds` as appropriate, reset `logLine` to 1), or remove it from `inflight` when it reaches Completed. Then regenerate `.agent-cortex/ralph/progress.md`.
 7. **Check for newly ready beads**: run `bd ready -l implementation-type:afk` for AFK work and `bd ready -l implementation-type:hitl` for HITL work, then run `bd ready` without a label filter and cross-reference to catch any unlabelled beads. For each bead that is now available and not yet tracked, **classify it** (see _Classifying a bead_ in the `run-beads` skill), then:
    - If **NEEDS-REFINEMENT**: note it for the **Needs Refinement** shutdown summary — do not claim or schedule it.

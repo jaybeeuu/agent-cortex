@@ -8,7 +8,7 @@
 <list of test files with their full content>
 
 ## Progress log
-Write progress to: `.ralph-<bead-id>.log`
+Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 Log stage start and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions

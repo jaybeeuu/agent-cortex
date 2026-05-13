@@ -6,7 +6,7 @@
 .dolt/
 *.db
 .beads-credential-key
-.ralph-progress.md
+.agent-cortex/
 
 # Node
 node_modules/

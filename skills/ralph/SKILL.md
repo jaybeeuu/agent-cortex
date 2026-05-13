@@ -26,18 +26,19 @@ See [REFERENCE.md](./REFERENCE.md) for detailed procedures: dispatching, fix loo
 Run once at startup:
 
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
-2. Ensure `.ralph-progress.md`, `.ralph-*.log`, and `.worktrees/` are in the project's `.gitignore` (append any that are missing).
-3. Read `skills/create-task/pipeline.json` and hold it in memory — you need `maxFixRounds` for the fix loop.
-4. Run `bd ready` to get the initial list of available beads.
-5. For each available bead:
+2. Ensure `.agent-cortex/` and `.worktrees/` are in the project's `.gitignore` (append any that are missing).
+3. Ensure Ralph's workspace directory exists: `mkdir -p .agent-cortex/ralph`.
+4. Read `skills/create-task/pipeline.json` and hold it in memory — you need `maxFixRounds` for the fix loop.
+5. Run `bd ready` to get the initial list of available beads.
+6. For each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
    - **Task or other type without an `implementation-type:*` label**: invoke the `classify-bead` skill. AFK tasks may need expansion via `create-task`; HITL tasks are noted for the shutdown summary.
    - **Task labelled `implementation-type:hitl`**: skip — record the bead ID for the **Pending Human Action** summary at shutdown.
-6. For each ready chore bead (up to 5), **dispatch** it (see _Dispatching a chore bead_ in REFERENCE.md). Chores for a parent bead must run from that parent's worktree.
-7. Start the **poll timer**: run `sleep 120` as a background bash process and hold its shellId in memory.
-8. Regenerate `.ralph-progress.md`:
+7. For each ready chore bead (up to 5), **dispatch** it (see _Dispatching a chore bead_ in REFERENCE.md). Chores for a parent bead must run from that parent's worktree.
+8. Start the **poll timer**: run `sleep 120` as a background bash process and hold its shellId in memory.
+9. Regenerate `.agent-cortex/ralph/progress.md`:
    ```bash
-   npx tsx skills/run-beads/scripts/generate-progress.ts > .ralph-progress.md
+   npx tsx skills/run-beads/scripts/generate-progress.ts > .agent-cortex/ralph/progress.md
    ```
 
 ---
@@ -50,7 +51,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 
 1. **Poll all in-flight bead logs** (see _Log polling_ in REFERENCE.md).
 2. **Restart the timer**: run `sleep 120` as a new background bash process, hold its shellId in memory.
-3. Regenerate `.ralph-progress.md`.
+3. Regenerate `.agent-cortex/ralph/progress.md`.
 
 ### Background agent completed
 
@@ -75,7 +76,7 @@ After initialization, wait for background agents or the poll timer to complete. 
     - **Task beads without `implementation-type:*` label**: invoke `classify-bead`. Note HITL tasks for shutdown; expand AFK tasks via `create-task` if needed.
    - If any feature PR gate bead (`lifecycle:feature-pr`, `implementation-type:hitl`) is open, do **not** schedule new parent features. Keep working only already in-flight chores.
 7. **Check shutdown condition**: if `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels, proceed to **Shutdown** (see REFERENCE.md).
-8. Regenerate `.ralph-progress.md`.
+8. Regenerate `.agent-cortex/ralph/progress.md`.
 
 ---
 

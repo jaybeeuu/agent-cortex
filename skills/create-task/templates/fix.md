@@ -11,7 +11,7 @@
 <FILES_CHANGED from the previous coder/fixer's REPORT>
 
 ## Progress log
-Write progress to: `.ralph-<bead-id>.log`
+Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions

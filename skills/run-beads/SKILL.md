@@ -35,7 +35,7 @@ The data-fetch layer (`parseBdList` / `parseBdShow`) is kept separate from the r
 
 ## Progress Logging
 
-When running inside the ralph orchestrator, subagents must write structured progress lines to `.ralph-{bead-id}.log` (appending) so ralph can surface live updates. The bead ID and log file path are provided in each prompt.
+When running inside the ralph orchestrator, subagents must write structured progress lines to `.agent-cortex/ralph/ralph-{bead-id}.log` (appending) so ralph can surface live updates. The bead ID and log file path are provided in each prompt.
 
 **Format** — one entry per line:
 ```
@@ -54,7 +54,7 @@ When running inside the ralph orchestrator, subagents must write structured prog
 
 **How to write a log line:**
 ```bash
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [bead-id] [stage] message" >> .ralph-bead-id.log
+mkdir -p .agent-cortex/ralph && echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [bead-id] [stage] message" >> .agent-cortex/ralph/ralph-bead-id.log
 ```
 
 Do not log every file read or minor action — only transitions and key events.
@@ -98,7 +98,7 @@ Before dispatching a subagent for any stage, run these two commands (replacing `
 
 ```bash
 bd tag <id> stage:<stage>
-pnpm --prefix skills/run-beads/scripts exec tsx generate-progress.ts > .ralph-progress.md
+mkdir -p .agent-cortex/ralph && pnpm --prefix skills/run-beads/scripts exec tsx generate-progress.ts > .agent-cortex/ralph/progress.md
 ```
 
 This tags the bead with its current stage (beads are the source of truth for stage progress) and regenerates the progress doc so any inline pairing session stays current.

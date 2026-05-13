@@ -11,7 +11,7 @@
 <FILES_CHANGED from the coder/fixer's REPORT block>
 
 ## Progress log
-Write progress to: `.ralph-<bead-id>.log`
+Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 Log stage start, security scan result, review outcome, and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions

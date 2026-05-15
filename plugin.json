@@ -1,7 +1,7 @@
 {
   "name": "agent-cortex",
   "description": "Personal Copilot CLI plugin with custom agents and skills",
-  "version": "0.35.4",
+  "version": "0.35.5",
   "author": {
     "name": "jaybeeuu"
   },

@@ -2,8 +2,8 @@
 <bd prime output — verbatim>
 
 ## Stage metadata
-- Stage: `test-writing`
-- Playbook: `skills/run-beads/playbooks/test-writing.md`
+- Stage: `<stage>`
+- Playbook: `skills/run-beads/playbooks/<stage>.md`
 
 ## Bead specification
 <bd show <id> output — verbatim>
@@ -22,7 +22,7 @@ Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 End your response with a `---REPORT---` block:
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: test-writing
+STAGE_COMPLETED: <stage>
 SUMMARY: <2–3 sentence summary>
 FILES_CHANGED: <comma-separated list, or "none">
 TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>         ← test-reviewing stage only

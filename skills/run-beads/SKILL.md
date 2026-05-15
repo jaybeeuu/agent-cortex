@@ -13,8 +13,8 @@ Execute a single pipeline stage chore bead. Each stage bead (code, verify, revie
 2. If no bead is specified, run `bd ready` and ask the user which to work on.
 3. Claim the bead with `bd update <id> --claim`.
 4. Read the bead's `stage:*` label to determine which stage to execute.
-5. Load the matching stable stage prompt from `skills/run-beads/prompts/<stage>.md`.
-6. The prompt itself points to `skills/run-beads/playbooks/<stage>.md`; follow that playbook for stage-specific behavior, then spawn a subagent.
+5. Load the universal stage runner prompt from `skills/run-beads/prompts/stage-runner.md`.
+6. Populate `<stage>` (from the bead's `stage:*` label), and follow `skills/run-beads/playbooks/<stage>.md` for stage-specific behavior before spawning a subagent.
 
 ## Progress Report
 

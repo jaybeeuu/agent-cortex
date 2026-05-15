@@ -8,10 +8,11 @@ Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL
 
 1. **Claim** the bead: `bd update <id> --claim`.
 2. **Read its `stage:*` label** from `bd show <id>`.
-3. **Load the stage prompt** from `skills/run-beads/prompts/<stage>.md`.
+3. **Load the universal stage runner prompt** from `skills/run-beads/prompts/stage-runner.md`.
 4. **Read the parent task context**: follow the `parent-child` dependency to the parent task bead, run `bd show <parent-id>` to get the full task description.
 5. **Ensure branch + worktree exist for this parent task** (see _Feature branches and worktrees_ below), then run the subagent from that worktree path instead of repo root.
 6. **Fill in the prompt** — replace placeholders with:
+   - Stage from bead label (`stage:<stage>`) for `<stage>`
    - `bd prime` output (held in memory from initialization)
    - Parent task description from `bd show <parent-id>`
    - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)

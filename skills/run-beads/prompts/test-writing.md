@@ -15,6 +15,8 @@ Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 Log stage start and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
+Invoke the `style-code` skill before making any test changes.
+
 Write a minimal set of fully failing tests for the NEXT uncovered requirement slice.
 
 Do not write all tests at once — cover one slice of requirements per loop iteration.

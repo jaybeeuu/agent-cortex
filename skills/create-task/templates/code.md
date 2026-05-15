@@ -15,6 +15,8 @@ Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
+Invoke the `style-code` skill before making any code changes.
+
 Implement the task described above using a test-driven approach:
 
 1. **Plan**: identify the discrete behaviors this task requires. List them before writing any code.

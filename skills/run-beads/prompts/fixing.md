@@ -12,6 +12,8 @@ Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
+Invoke the `style-code` skill before making any code changes.
+
 Apply only the changes described in the Task section above. Do not make any other modifications.
 
 After applying all fixes, hand off to the **test-reviewing** stage.

@@ -13,8 +13,8 @@ Execute a single pipeline stage chore bead. Each stage bead (code, verify, revie
 2. If no bead is specified, run `bd ready` and ask the user which to work on.
 3. Claim the bead with `bd update <id> --claim`.
 4. Read the bead's `stage:*` label to determine which stage to execute.
-5. Load the matching prompt template from `skills/create-task/templates/<stage>.md`.
-6. Populate the template placeholders and spawn a subagent.
+5. Load the matching stable stage prompt from `skills/run-beads/prompts/<stage>.md`.
+6. The prompt itself points to `skills/run-beads/playbooks/<stage>.md`; follow that playbook for stage-specific behavior, then spawn a subagent.
 
 ## Progress Report
 

@@ -1,29 +1,37 @@
 ## Project context
 <bd prime output — verbatim>
 
-## Task
+## Stage metadata
+- Stage: `test-reviewing`
+- Playbook: `skills/run-beads/playbooks/test-reviewing.md`
+
+## Bead specification
 <bd show <id> output — verbatim>
 
-## Test files
-<list of test files with their full content>
+## Prior stage context (if any)
+<prior REPORT fields, dependency context, and relevant files>
 
 ## Progress log
 Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
-Compare the tests against the bead's acceptance criteria and requirements.
-Determine whether all requirements are adequately covered by at least one test.
+1. Read and follow the playbook file listed above.
+2. Treat the bead as the source-of-truth specification (not a prompt script).
+3. Keep output factual and stage-scoped.
 
-Do NOT look at the implementation — evaluate tests against requirements only.
-
-End your response with a ---REPORT--- block:
+End your response with a `---REPORT---` block:
 ---REPORT---
 BEAD_ID: <id>
 STAGE_COMPLETED: test-reviewing
-SUMMARY: <2–3 sentence summary of coverage assessment>
-FILES_CHANGED: none
-TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>
-GAPS:              ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
+SUMMARY: <2–3 sentence summary>
+FILES_CHANGED: <comma-separated list, or "none">
+TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>         ← test-reviewing stage only
+GAPS:                                          ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
 - <uncovered requirement>
+VERIFY_OUTCOME: <PASS|FAIL>                    ← verifying stage only
+VERIFY_FAILURES:                               ← only if VERIFY_OUTCOME is FAIL
+- <test/lint failure summary>
+REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>   ← reviewing stage only
+CHANGES_REQUESTED:                             ← only if REVIEW_OUTCOME is CHANGES_REQUESTED
+1. <required change>
 ---

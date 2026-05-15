@@ -1,27 +1,37 @@
 ## Project context
 <bd prime output — verbatim>
 
-## Task
+## Stage metadata
+- Stage: `fixing`
+- Playbook: `skills/run-beads/playbooks/fixing.md`
+
+## Bead specification
 <bd show <id> output — verbatim>
 
-## Files to update
-<FILES_CHANGED from the reviewing stage's REPORT block>
+## Prior stage context (if any)
+<prior REPORT fields, dependency context, and relevant files>
 
 ## Progress log
 Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
-Invoke the `style-code` skill before making any code changes.
+1. Read and follow the playbook file listed above.
+2. Treat the bead as the source-of-truth specification (not a prompt script).
+3. Keep output factual and stage-scoped.
 
-Apply only the changes described in the Task section above. Do not make any other modifications.
-
-After applying all fixes, hand off to the **test-reviewing** stage.
-
-End your response with a ---REPORT--- block:
+End your response with a `---REPORT---` block:
 ---REPORT---
 BEAD_ID: <id>
 STAGE_COMPLETED: fixing
-SUMMARY: <2–3 sentence summary of what was changed>
+SUMMARY: <2–3 sentence summary>
 FILES_CHANGED: <comma-separated list, or "none">
+TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>         ← test-reviewing stage only
+GAPS:                                          ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
+- <uncovered requirement>
+VERIFY_OUTCOME: <PASS|FAIL>                    ← verifying stage only
+VERIFY_FAILURES:                               ← only if VERIFY_OUTCOME is FAIL
+- <test/lint failure summary>
+REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>   ← reviewing stage only
+CHANGES_REQUESTED:                             ← only if REVIEW_OUTCOME is CHANGES_REQUESTED
+1. <required change>
 ---

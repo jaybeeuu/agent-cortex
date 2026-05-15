@@ -57,7 +57,7 @@ bd dep add $chore_id <parent-id> --type parent-child
 bd update $chore_id --claim
 ```
 
-Then load the matching prompt template from `skills/run-beads/prompts/<stage>.md`, fill in all placeholders (bd prime output, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode from the feature worktree.
+Then load the matching stage prompt from `skills/run-beads/prompts/<stage>.md`, fill in all placeholders (bd prime output, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode from the feature worktree. The stage prompt points to a playbook at `skills/run-beads/playbooks/<stage>.md`; that playbook is the stage-specific policy source.
 
 Add the entry to `inflight` in `state.json`:
 ```json

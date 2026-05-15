@@ -1,32 +1,37 @@
 ## Project context
 <bd prime output — verbatim>
 
-## Task
+## Stage metadata
+- Stage: `test-writing`
+- Playbook: `skills/run-beads/playbooks/test-writing.md`
+
+## Bead specification
 <bd show <id> output — verbatim>
 
-## Existing tests (loop iteration 2+)
-<list of existing test files and their content — omit on first iteration>
-
-## Dependency context
-<summary of what prior completed beads delivered, if any>
+## Prior stage context (if any)
+<prior REPORT fields, dependency context, and relevant files>
 
 ## Progress log
 Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start and stage complete (see Progress Logging in run-beads skill).
 
 ## Instructions
-Invoke the `style-code` skill before making any test changes.
+1. Read and follow the playbook file listed above.
+2. Treat the bead as the source-of-truth specification (not a prompt script).
+3. Keep output factual and stage-scoped.
 
-Write a minimal set of fully failing tests for the NEXT uncovered requirement slice.
-
-Do not write all tests at once — cover one slice of requirements per loop iteration.
-Tests must be runnable: imports may reference paths that do not yet exist.
-Do not write any implementation code.
-
-End your response with a ---REPORT--- block:
+End your response with a `---REPORT---` block:
 ---REPORT---
 BEAD_ID: <id>
 STAGE_COMPLETED: test-writing
-SUMMARY: <2–3 sentence summary of what tests were written and which requirement slice they cover>
-FILES_CHANGED: <comma-separated list of test files written>
+SUMMARY: <2–3 sentence summary>
+FILES_CHANGED: <comma-separated list, or "none">
+TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>         ← test-reviewing stage only
+GAPS:                                          ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
+- <uncovered requirement>
+VERIFY_OUTCOME: <PASS|FAIL>                    ← verifying stage only
+VERIFY_FAILURES:                               ← only if VERIFY_OUTCOME is FAIL
+- <test/lint failure summary>
+REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>   ← reviewing stage only
+CHANGES_REQUESTED:                             ← only if REVIEW_OUTCOME is CHANGES_REQUESTED
+1. <required change>
 ---

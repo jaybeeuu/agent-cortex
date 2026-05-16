@@ -41,13 +41,31 @@ follow-up commit.
 ## Changelog
 
 - Keep a root `CHANGELOG.md` for repository changes.
+- **Every commit to `main` is a release.** Record it in the changelog with its version number.
 - When making any repo change (agents, skills, docs, scripts, or workflow rules), update
   `CHANGELOG.md` in the same commit.
-- Add concise entries under `## Unreleased` using:
+- Add entries under the current version header using:
   - `### Added`
   - `### Changed`
   - `### Fixed`
 - Keep entries user-facing and outcome-focused (what changed and why it matters).
+- Format:
+
+```markdown
+## [0.35.6] - 2026-05-16
+
+### Changed
+- Consolidate stage outcome format to unified SUCCESS|BLOCKED pattern
+
+## [0.35.5] - 2026-05-15
+
+### Changed
+- Move stage policy from scattered prompts to reusable playbooks
+```
+
+The version in the changelog **must match** `plugin.json` version and the commit that ships it
+to `main`. Agents: verify `plugin.json` version before committing, and add a corresponding
+entry to `CHANGELOG.md` in the same commit.
 
 ## Skill Conventions
 

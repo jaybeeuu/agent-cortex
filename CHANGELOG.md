@@ -2,12 +2,25 @@
 
 All notable changes to this repository are documented in this file.
 
+**Note:** Every commit to `main` is a release. Add entries to the appropriate version section in
+the same commit as the change. When bumping `plugin.json` version, create a new section header
+with that version and today's date.
+
+## [0.35.6] - 2026-05-16
+
+### Changed
+- Consolidate stage outcome format to unified `OUTCOME: SUCCESS|BLOCKED` pattern with `BLOCKING_ISSUES` list. Simplifies orchestrator logic — all stages now report identical outcome field.
+
+## [0.35.5] - 2026-05-15
+
+### Changed
+- Move stage policy from scattered prompt files to reusable playbooks (`skills/run-beads/playbooks/<stage>.md`). Beads now treated as pure specifications; orchestration policy lives in playbooks.
+- Consolidate seven stage-specific prompts into single universal runner (`stage-runner.md`).
+- Simplify Ralph scheduling to rely purely on `bd ready --assignee Agent` output; remove extra PR-gate pause logic.
+
 ## Unreleased
 
-### Added
-
-- Agent rule: maintain `CHANGELOG.md` and update it in the same commit as any repository change.
-- New `technical-direction` skill for collaborative technical design: challenges assumptions, derives constraints from codebase context, evaluates alternatives (including autonomous web research when needed), and writes decision memos to `docs/technical-direction/`.
+(No unreleased changes. Update this section when starting new work.)
 - New `agent-cortex:strategy` agent that creates top-level design documents across vision brief (`docs/strategy/`), PRD (`docs/prd/`), and technical direction, with evidence-backed tradeoffs before `ralph-plan`.
 
 ### Added

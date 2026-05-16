@@ -13,8 +13,8 @@ Execute a single pipeline stage chore bead. Each stage bead (code, verify, revie
 2. If no bead is specified, run `bd ready` and ask the user which to work on.
 3. Claim the bead with `bd update <id> --claim`.
 4. Read the bead's `stage:*` label to determine which stage to execute.
-5. Load the matching prompt template from `skills/create-task/templates/<stage>.md`.
-6. Populate the template placeholders and spawn a subagent.
+5. Load the universal stage runner prompt from `skills/run-beads/prompts/stage-runner.md`.
+6. Populate `<stage>` (from the bead's `stage:*` label), and follow `skills/run-beads/playbooks/<stage>.md` for stage-specific behavior before spawning a subagent.
 
 ## Progress Report
 
@@ -107,16 +107,18 @@ This tags the bead with its current stage (beads are the source of truth for sta
 
 | Stage completed | Condition | Next action |
 |-----------------|-----------|-------------|
+| Stage | Condition | Next action |
+|---|---|---|
 | `test-writing` | — | Run **coding** stage |
 | `coding` | — | Run **test-reviewing** stage |
-| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops < 5 | Create **test-writing** feedback bead (see _Feedback Beads_); increment tddLoops |
-| `test-reviewing` | `TEST_REVIEW_OUTCOME: NEEDS_MORE` and tddLoops ≥ 5 | `bd update <id> --status blocked --notes "max TDD loops"` — record for shutdown |
-| `test-reviewing` | `TEST_REVIEW_OUTCOME: DONE` | Run **verifying** stage |
-| `verifying` | `VERIFY_OUTCOME: PASS` | Run **reviewing** stage |
-| `verifying` | `VERIFY_OUTCOME: FAIL` | Create **coding** feedback bead (see _Feedback Beads_) |
-| `reviewing` | `REVIEW_OUTCOME: APPROVED` | Run **documenting** stage |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds < 2 | Create **fixing** feedback bead (see _Feedback Beads_); increment reviewRounds |
-| `reviewing` | `REVIEW_OUTCOME: CHANGES_REQUESTED` and reviewRounds ≥ 2 | `bd update <id> --status blocked --notes "max review rounds"` — record for shutdown |
+| `test-reviewing` | `OUTCOME: BLOCKED` and tddLoops < 5 | Create **test-writing** feedback bead (see _Feedback Beads_); increment tddLoops |
+| `test-reviewing` | `OUTCOME: BLOCKED` and tddLoops ≥ 5 | `bd update <id> --status blocked --notes "max TDD loops"` — record for shutdown |
+| `test-reviewing` | `OUTCOME: SUCCESS` | Run **verifying** stage |
+| `verifying` | `OUTCOME: SUCCESS` | Run **reviewing** stage |
+| `verifying` | `OUTCOME: BLOCKED` | Create **coding** feedback bead (see _Feedback Beads_) |
+| `reviewing` | `OUTCOME: SUCCESS` | Run **documenting** stage |
+| `reviewing` | `OUTCOME: BLOCKED` and reviewRounds < 2 | Create **fixing** feedback bead (see _Feedback Beads_); increment reviewRounds |
+| `reviewing` | `OUTCOME: BLOCKED` and reviewRounds ≥ 2 | `bd update <id> --status blocked --notes "max review rounds"` — record for shutdown |
 | `fixing` | — | Run **test-reviewing** stage |
 | `documenting` | — | `bd close <id>` — done |
 
@@ -136,9 +138,9 @@ bd dep add $new_id <parent-id> --type parent-child
 
 | Triggering outcome | Suggested title | Next stage tag | Feedback content to put in description |
 |---|---|---|---|
-| `REVIEW_OUTCOME: CHANGES_REQUESTED` | `Fix: reviewer feedback` | `stage:fixing` | Full CHANGES_REQUESTED list |
-| `VERIFY_OUTCOME: FAIL` | `Fix: verify failures` | `stage:coding` | Full VERIFY_FAILURES list |
-| `TEST_REVIEW_OUTCOME: NEEDS_MORE` | `Test: uncovered requirements` | `stage:test-writing` | Full GAPS list |
+| `OUTCOME: BLOCKED` from reviewing | `Fix: reviewer feedback` | `stage:fixing` | Full BLOCKING_ISSUES list |
+| `OUTCOME: BLOCKED` from verifying | `Fix: verify failures` | `stage:coding` | Full BLOCKING_ISSUES list |
+| `OUTCOME: BLOCKED` from test-reviewing | `Test: uncovered requirements` | `stage:test-writing` | Full BLOCKING_ISSUES list |
 
 After creating the feedback bead, do **not** dispatch a new agent immediately — the bead will appear in `bd ready` on the next cycle and be dispatched through the normal scheduling path. The stage that consumed the feedback from the REPORT is now finished; its agent result has been processed.
 
@@ -153,16 +155,9 @@ Every subagent prompt **must** end with this instruction:
 > STAGE_COMPLETED: <test-writing|coding|test-reviewing|verifying|reviewing|fixing|documenting>
 > SUMMARY: <2–3 sentence summary of what was done>
 > FILES_CHANGED: <comma-separated list, or "none">
-> REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>  ← reviewing stage only
-> CHANGES_REQUESTED:                             ← only if REVIEW_OUTCOME is CHANGES_REQUESTED
-> 1. <required change>
-> 2. <required change>
-> VERIFY_OUTCOME: <PASS|FAIL>                    ← verifying stage only
-> VERIFY_FAILURES:                               ← only if VERIFY_OUTCOME is FAIL
-> - <test/lint failure summary>
-> TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>         ← test-reviewing stage only
-> GAPS:                                          ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
-> - <uncovered requirement>
+> OUTCOME: <SUCCESS|BLOCKED>
+> BLOCKING_ISSUES:                              ← only if OUTCOME is BLOCKED
+> - <specific blocking issue>
 > ---
 > ```
 

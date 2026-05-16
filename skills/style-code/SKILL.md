@@ -23,6 +23,7 @@ Optimize for clarity, explicit boundaries, and changes that stay proportionate t
 - Validate unknown data at system boundaries instead of assuming it is already correct.
 - Keep behavior changes, tests, docs, and types aligned.
 - Favor practical engineering choices over abstraction for its own sake.
+- Prefer deep modules: tight, explicit public APIs with complexity hidden behind them.
 
 ## Architectural Preferences
 
@@ -34,10 +35,12 @@ Keep ownership, boundaries, and validation responsibilities explicit.
 - Keep domain types as close as possible to the service or package that owns them.
 - Public contracts should be published by the owning package and consumed from there rather than copied into a separate catch-all contract package.
 - Keep ingress, processing, API, CLI, and infrastructure concerns in separate modules or packages; do not blur domain boundaries for convenience.
+- Split modules when it sharpens bounded-context ownership (DDD); avoid splits that only reshuffle code without clarifying boundaries.
 - Use a shared kernel only for small, stable primitives that are truly generic and belong to no particular bounded context.
 - Keep parsing and validation close to the edge of the system.
 - Reuse existing local utilities for validation, conversion, errors, or state rather than introducing parallel patterns.
 - Prefer small composable modules over large files with mixed responsibilities.
+- Prefer pure/functional domain logic and isolate side effects (I/O, network, DB, clock, randomness) at module boundaries.
 
 ## TypeScript Style
 
@@ -68,6 +71,7 @@ Validate unknown data at the edge and make failures specific enough to act on.
 Choose names and layouts that make ownership and intent obvious.
 
 - Prefer descriptive names over short ones.
+- Prefer names from the project's ubiquitous language; do not invent synonyms for established domain terms.
 - Use consistent suffixes such as `Props`, `Options`, `Context`, and `State` where they improve recognition.
 - Name hooks with a `use` prefix.
 - Name factories and builders with explicit verbs such as `create`, `make`, `build`, `resolve`, `parse`, `compile`, `fetch`, `read`, or `write`.
@@ -98,6 +102,8 @@ Make state transitions visible, predictable, and local to clear APIs.
 ## Test Style
 
 Test behavior and public contracts with the narrowest reliable validation first.
+
+Source of truth for test philosophy: `skills/tdd/tests.md`.
 
 - Test behavior and contracts, not implementation trivia.
 - Use simple `describe` and `it` structure with direct assertions.
@@ -137,7 +143,9 @@ Check every change for secrets and credentials before finishing.
 - Is the change focused and proportionate to the task?
 - Are external inputs validated before use?
 - Are exported APIs and return shapes clearly typed?
+- For each new/changed module, are public API, inputs/outputs, and invariants explicit?
 - Are names explicit and domain-oriented?
+- Are names consistent with the project's ubiquitous language and domain meanings?
 - Are bounded-context ownership and service boundaries still clear after the change?
 - Does the code favor clarity over cleverness?
 - Are tests and docs updated where behavior changed?

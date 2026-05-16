@@ -25,13 +25,7 @@ BEAD_ID: <id>
 STAGE_COMPLETED: <stage>
 SUMMARY: <2–3 sentence summary>
 FILES_CHANGED: <comma-separated list, or "none">
-TEST_REVIEW_OUTCOME: <DONE|NEEDS_MORE>         ← test-reviewing stage only
-GAPS:                                          ← only if TEST_REVIEW_OUTCOME is NEEDS_MORE
-- <uncovered requirement>
-VERIFY_OUTCOME: <PASS|FAIL>                    ← verifying stage only
-VERIFY_FAILURES:                               ← only if VERIFY_OUTCOME is FAIL
-- <test/lint failure summary>
-REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>   ← reviewing stage only
-CHANGES_REQUESTED:                             ← only if REVIEW_OUTCOME is CHANGES_REQUESTED
-1. <required change>
+OUTCOME: <SUCCESS|BLOCKED>
+BLOCKING_ISSUES:                               ← only if OUTCOME is BLOCKED
+- <specific blocking issue>
 ---

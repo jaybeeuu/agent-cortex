@@ -9,4 +9,7 @@
 
 ## Stage Outcome
 
+- Set `OUTCOME: SUCCESS` when requested changes are successfully applied.
+- Set `OUTCOME: BLOCKED` if unable to apply changes or guidance is unclear.
+- If blocked, list issues under `BLOCKING_ISSUES`.
 - `FILES_CHANGED` lists files updated to address requested changes.

@@ -10,5 +10,6 @@
 
 ## Stage Outcome
 
-- `TEST_REVIEW_OUTCOME` is not produced in this stage.
+- `OUTCOME` should be `SUCCESS` if tests are written and failing as expected.
+- Set `OUTCOME: BLOCKED` if requirements are unclear or tests cannot be written.
 - `FILES_CHANGED` must list test files created/updated.

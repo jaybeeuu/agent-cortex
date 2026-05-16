@@ -8,7 +8,7 @@
 
 ## Stage Outcome
 
-- Set `VERIFY_OUTCOME: PASS` when all commands succeed.
-- Set `VERIFY_OUTCOME: FAIL` when any command fails.
-- If fail, summarize failures under `VERIFY_FAILURES`.
+- Set `OUTCOME: SUCCESS` when all commands succeed.
+- Set `OUTCOME: BLOCKED` when any command fails.
+- If blocked, summarize failures under `BLOCKING_ISSUES`.
 - `FILES_CHANGED` should be `none`.

@@ -4,6 +4,10 @@ All notable changes to this repository are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- `ralph` agent: HITL Pause now kills any running poll-timer shell before stopping, so the timer can no longer fire and wake ralph up after it has paused. The action required per bead now explicitly instructs `bd close <id>` so it is clear what the human must do to unblock ralph.
+
 ### Added
 
 - Agent rule: maintain `CHANGELOG.md` and update it in the same commit as any repository change.
@@ -16,6 +20,7 @@ All notable changes to this repository are documented in this file.
 
 ### Changed
 
+- `ralph` agent and skill: when fully blocked on HITL gate beads (feature PR gates or epic PR gates) with no AFK work remaining, ralph now outputs a **Pending Human Action** summary table (bead ID, title, action needed, PR link) and stops — instead of idling the poll timer in a loop.
 - `record-idea` skill: replaced validity-check interview questions with why/how/when/priority framing; updated template to match.
 - Skills updated to use `.agent-cortex/ralph/`
 

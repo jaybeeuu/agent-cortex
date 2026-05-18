@@ -40,7 +40,7 @@ Run once at startup:
    b. Claim the parent bead: `bd update <parent-id> --claim`.
    c. Create the first stage chore bead and dispatch it (see _Creating and dispatching a stage chore_ below).
 8. Record each launched agent in `.agent-cortex/ralph/state.json` (see format below).
-9. Start the **poll timer**: run `sleep 120` as a background bash process and record its shellId as `timerShellId` in `.agent-cortex/ralph/state.json`.
+9. **If** any AFK beads were dispatched in step 7, start the **poll timer**: run `sleep 120` as a background bash process and record its shellId as `timerShellId` in `.agent-cortex/ralph/state.json`. **Otherwise**, if HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`), proceed to **HITL Pause** (see below) immediately.
 
 ---
 
@@ -107,8 +107,9 @@ After initialization, Ralph waits for background agents or the poll timer to com
 ### If the poll timer completed
 
 1. **Poll all in-flight bead logs** (see _Log polling_ below).
-2. **Restart the timer**: run `sleep 120` as a new background bash process, hold its shellId in memory.
-3. Regenerate `.agent-cortex/ralph/progress.md`.
+2. Regenerate `.agent-cortex/ralph/progress.md`.
+3. **HITL pause check**: if no chore beads are in-flight AND `bd ready` has no `stage:*` chore beads AND HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see below) — do **not** restart the timer.
+4. **Otherwise**: restart the timer: run `sleep 120` as a new background bash process, record its shellId as `timerShellId` in `.agent-cortex/ralph/state.json`.
 
 ### If a background agent completed
 
@@ -128,7 +129,9 @@ After initialization, Ralph waits for background agents or the poll timer to com
    - **HITL task bead**: note for **Pending Human Action** shutdown summary.
    - **NEEDS-REFINEMENT bead**: note for **Needs Refinement** shutdown summary.
    When a parent is removed from `inflight` (completed or failed), immediately promote the first Waiting AFK parent.
-8. **If no tasks remain in-flight** and `bd ready` returns no chore beads with `stage:*` labels and no AFK task beads, proceed to shutdown.
+8. **If no tasks remain in-flight** and `bd ready` returns no chore beads with `stage:*` labels and no AFK task beads:
+   - If HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see below).
+   - Otherwise, proceed to **Shutdown** (see below).
 
 ### Loop cap check
 
@@ -166,6 +169,33 @@ Run this procedure whenever polling is triggered (timer or agent completion):
      ```
    - Update `logLine` in `state.json` for that entry.
 4. If no entry had new lines, post nothing — do not spam the chat with empty polls.
+
+---
+
+## HITL Pause
+
+Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
+
+1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
+2. For each epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`.
+3. Run `bd dolt push`.
+4. Collect pending HITL gate beads and their PR URLs:
+   - Run `bd list -l lifecycle:feature-pr -l implementation-type:hitl`
+   - Run `bd list -l awaiting-epic-pr-merge`
+   - For each bead, run `bd show <id>` to retrieve the PR URL from bead notes.
+5. Output the **Pending Human Action** summary:
+   ```
+   ⏸️  Ralph is paused — human action required before work can continue.
+
+   | Bead ID | Title | Action needed | PR |
+   |---------|-------|---------------|----|
+   | <id>    | <title> | Review and merge feature PR, then `bd close <id>` to unblock ralph | <url or "–"> |
+   | <id>    | <title> | Review and merge epic PR into main | <url or "–"> |
+   ...
+
+   When you've completed the above actions, prompt me to continue.
+   ```
+6. **Stop completely.** Kill any running timer: if `timerShellId` is non-null in `state.json`, run `kill <timerShellId>` (suppress errors), then set `timerShellId` to `null` in `state.json`. Do **not** restart or schedule any new timer. Do **not** start any background processes. Do **not** check bead status again. Do **not** continue the event loop. Output **nothing further** after the summary above. Ralph is now fully idle — it must not act again until the user explicitly re-prompts.
 
 ---
 
@@ -228,7 +258,8 @@ All beads complete.
 - **Always** spawn subagents in **background** mode so multiple tasks run concurrently.
 - **Always** derive orchestration state from beads — do not store loop counts in state.json.
 - **Always** include the full `bd prime` output verbatim in every subagent prompt.
-- **Always** keep the poll timer running — restart it immediately after it fires.
+- **Always** restart the poll timer immediately after it fires **if** agent work is still in-flight or AFK task beads are available — never let running agent work stall without a timer.
+- **Never** restart or start a new timer once the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending). Kill any running timer, proceed to **HITL Pause**, and stop completely.
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once (counted by parent features, not individual chore beads).
 - **Max 5** TDD loops per parent (count of `stage:test-writing` chore children); block the parent if exceeded.

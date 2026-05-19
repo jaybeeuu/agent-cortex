@@ -5,7 +5,7 @@ description: Capture early-stage ideas into a structured backlog record, includi
 
 # Record Idea
 
-Capture a not-ready idea into `.agent-cortex/ralph/ideas` after a short, high-level interview that pressure-tests the concept.
+Capture a not-ready idea into `docs/ideas` after a short, high-level interview that pressure-tests the concept.
 
 ## Workflow
 
@@ -18,8 +18,8 @@ Capture a not-ready idea into `.agent-cortex/ralph/ideas` after a short, high-le
    - Challenge weak points (scope, feasibility, opportunity cost).
    - Keep discussion strategic; do not drift into implementation detail.
 3. **Choose record shape**
-   - **Simple idea**: `.agent-cortex/ralph/ideas/<idea-name>.md`
-   - **Complex idea**: `.agent-cortex/ralph/ideas/<idea-name>/<idea-name>.md` with optional supporting docs in the same folder.
+   - **Simple idea**: `docs/ideas/<idea-name>.md`
+   - **Complex idea**: `docs/ideas/<idea-name>/<idea-name>.md` with optional supporting docs in the same folder.
 4. **Create the record file**
    - Run:
      ```bash

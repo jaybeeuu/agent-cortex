@@ -113,6 +113,42 @@ Run whenever polling is triggered (timer or agent completion):
 
 ---
 
+## HITL Pause
+
+Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
+
+1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
+2. For each epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main:
+   ```bash
+   gh pr create --base main --head epic/<epic-id> --title "[<epic-id>] Merge epic into main" --body "<epic summary>"
+   ```
+   Tag each epic bead with `awaiting-epic-pr-merge` until merged.
+3. Run:
+   ```bash
+   bd dolt push
+   ```
+4. Collect pending HITL gate beads and their PR URLs:
+   ```bash
+   bd list -l lifecycle:feature-pr -l implementation-type:hitl
+   bd list -l awaiting-epic-pr-merge
+   ```
+   For each bead, run `bd show <id>` to retrieve the PR URL from bead notes.
+5. Output the **Pending Human Action** summary:
+   ```
+   ⏸️  Ralph is paused — human action required before work can continue.
+
+   | Bead ID | Title | Action needed | PR |
+   |---------|-------|---------------|----|
+   | <id>    | <title> | Review and merge feature PR, then close this bead | <url or "–"> |
+   | <id>    | <title> | Review and merge epic PR into main | <url or "–"> |
+   ...
+
+   When you've completed the above, prompt me to continue.
+   ```
+6. **Stop completely.** Do not restart the poll timer. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
+
+---
+
 ## Shutdown
 
 When `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels:

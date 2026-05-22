@@ -38,7 +38,9 @@ Run once at startup:
 8. **If** any chore beads were dispatched in step 7, start the **poll timer**: run `sleep 120` as a background bash process and hold its shellId in memory. **Otherwise**, if HITL gate beads are pending (check `bd list -l lifecycle:feature-pr -l implementation-type:hitl` and `bd list -l awaiting-epic-pr-merge`), proceed to **HITL Pause** (see REFERENCE.md) immediately.
 9. Regenerate `.agent-cortex/ralph/progress.md`:
    ```bash
-   pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-beads/scripts exec tsx generate-progress.ts --workspace "$(pwd)" > .agent-cortex/ralph/progress.md
+   # workspace must be the absolute path you cd'd into — never . or $(pwd)
+   workspace="/absolute/path/to/worktree"
+   pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-beads/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
    ```
 
 ---

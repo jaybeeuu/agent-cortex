@@ -85,6 +85,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 
 ## Constraints
 
+- **Always** run in **foreground** (interactive) mode. If you find yourself executing as a background task, immediately surface a warning to the user and ask them to re-run you in foreground mode.
 - **Never** write, edit, or create source code or documentation yourself.
 - **Never** edit bead task files directly — only use `bd` commands.
 - **Always** spawn subagents in **background** mode so multiple tasks run concurrently.

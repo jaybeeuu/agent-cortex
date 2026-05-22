@@ -21,7 +21,7 @@ Execute a single pipeline stage chore bead. Each stage bead (code, verify, revie
 To generate a Markdown snapshot of all bead status (Mermaid dependency graph, active work table, completed list), run:
 
 ```bash
-pnpm --prefix skills/run-beads/scripts exec tsx generate-progress.ts [--workspace <path>]
+pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-beads/scripts exec tsx generate-progress.ts --workspace "$(pwd)"
 ```
 
 To typecheck or test the scripts package:
@@ -98,7 +98,7 @@ Before dispatching a subagent for any stage, run these two commands (replacing `
 
 ```bash
 bd tag <id> stage:<stage>
-mkdir -p .agent-cortex/ralph && pnpm --prefix skills/run-beads/scripts exec tsx generate-progress.ts > .agent-cortex/ralph/progress.md
+mkdir -p .agent-cortex/ralph && pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-beads/scripts exec tsx generate-progress.ts --workspace "$(pwd)" > .agent-cortex/ralph/progress.md
 ```
 
 This tags the bead with its current stage (beads are the source of truth for stage progress) and regenerates the progress doc so any inline pairing session stays current.

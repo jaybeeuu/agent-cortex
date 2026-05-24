@@ -4,12 +4,6 @@ All notable changes to this repository are documented in this file.
 
 ## Unreleased
 
-### Changed
-
-- AGENTS now treats merged changes as released and moves them under `## Released (@released@)`.
-
-## Released (@released@)
-
 ### Fixed
 
 - `generate-progress.ts` script path: all `pnpm --prefix … exec tsx generate-progress.ts` references now use the absolute installed-plugin path (`~/.copilot/installed-plugins/_direct/agent-cortex/…`) plus `--workspace "$(pwd)"`. This fixes script execution when ralph runs in a user's project workspace where the relative `skills/run-beads/scripts` path does not exist.
@@ -17,6 +11,7 @@ All notable changes to this repository are documented in this file.
 
 ### Changed
 
+- AGENTS now keeps changelog entries under `## Unreleased` only.
 - `record-idea` skill: idea files are now written to `docs/ideas/` instead of `.agent-cortex/ralph/ideas/` so they are tracked by git.
 
 ### Fixed

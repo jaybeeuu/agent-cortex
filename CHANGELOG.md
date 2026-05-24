@@ -2,7 +2,7 @@
 
 All notable changes to this repository are documented in this file.
 
-## Released (@released@)
+## 0.40.0
 
 ### Fixed
 

@@ -43,7 +43,8 @@ follow-up commit.
 - Keep a root `CHANGELOG.md` for repository changes.
 - When making any repo change (agents, skills, docs, scripts, or workflow rules), update
   `CHANGELOG.md` in the same commit.
-- Use a single `## Released (@released@)` section — do not use `## Unreleased`.
+- Write entries under a version header that matches the bumped `plugin.json` version
+  (e.g. `## 0.40.0`). Add a new version section on every change.
 - Keep entries user-facing and outcome-focused (what changed and why it matters).
 
 ## Skill Conventions

@@ -39,6 +39,10 @@ All notable changes to this repository are documented in this file.
 - Ralph now bases epic branches (and thus worktrees) on the latest `origin/main` rather than local `main`.
 - CI now runs run-beads tests/typechecks and create-task typechecks on pull requests and main.
 
+### Fixed
+
+- CI workflow no longer assumes `pnpm` is preinstalled when setting up Node.
+
 - `ralph` agent (agents/ralph.agent.md) now uses a chore-bead-per-stage model consistent with `skills/ralph/`. Each pipeline stage creates its own chore bead on-demand; `stage:*` tags live on chore beads, not on the parent feature bead. `state.json` inflight entries now track `choreId`+`parentId` instead of a single `beadId`. Loop counts (TDD loops, fix rounds) are derived from `bd children` queries rather than counters in state.
 
  Both the `run-beads` pipeline (ralph agent) and the `ralph` skill pipeline now create feedback beads on failure; the orchestrator sees them as ordinary ready beads and only needs to enforce loop caps before dispatching. The `fix` prompt templates (`run-beads/prompts/fixing.md` and `create-task/templates/fix.md`) now read required changes from `bd show <id>` rather than from injected REPORT content.

@@ -37,6 +37,7 @@ All notable changes to this repository are documented in this file.
 - Ralph now creates feature worktrees under `.agent-cortex/worktrees/` instead of `.worktrees/`.
 - Ralph planning scratchpad notes now live under `.agent-cortex/working-docs/` (no more `.working-docs/`).
 - Ralph now bases epic branches (and thus worktrees) on the latest `origin/main` rather than local `main`.
+- CI now runs run-beads tests/typechecks and create-task typechecks on pull requests and main.
 
 - `ralph` agent (agents/ralph.agent.md) now uses a chore-bead-per-stage model consistent with `skills/ralph/`. Each pipeline stage creates its own chore bead on-demand; `stage:*` tags live on chore beads, not on the parent feature bead. `state.json` inflight entries now track `choreId`+`parentId` instead of a single `beadId`. Loop counts (TDD loops, fix rounds) are derived from `bd children` queries rather than counters in state.
 

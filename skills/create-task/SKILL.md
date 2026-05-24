@@ -76,6 +76,7 @@ The PR gate bead is created with:
 - **Title**: `[<parent-id>] PR Review and Merge`
 - **Labels**: `implementation-type:hitl`, `lifecycle:feature-pr`
 - **Dependencies**: `parent-child` to parent bead; `blocks` on the final document stage chore
+ - **Purpose**: human review of the agent PR (agent-branch → feature branch)
 
 ### 5. Report
 

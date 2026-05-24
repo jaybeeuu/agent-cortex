@@ -28,17 +28,17 @@ Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL
 For each parent task bead (`<parent-id>`):
 
 1. Determine the parent epic (`<epic-id>`) from the task's `epic:<epic-id>` label.
-2. Ensure epic branch exists:
+2. Ensure epic branch exists (always based on the latest `origin/main`, never local `main`):
    ```bash
    git fetch origin
    git rev-parse --verify epic/<epic-id> >/dev/null 2>&1 || git branch epic/<epic-id> origin/main
    ```
 3. Ensure feature worktree exists:
    ```bash
-   git worktree add .worktrees/<parent-id> -b feature/<parent-id> epic/<epic-id>
+   git worktree add .agent-cortex/worktrees/<parent-id> -b feature/<parent-id> epic/<epic-id>
    ```
-   If `.worktrees/<parent-id>` already exists, reuse it.
-4. All chores for this parent run in `.worktrees/<parent-id>`.
+   If `.agent-cortex/worktrees/<parent-id>` already exists, reuse it.
+4. All chores for this parent run in `.agent-cortex/worktrees/<parent-id>`. The `feature/<parent-id>` branch is the agent branch for HITL PRs.
 
 ---
 
@@ -47,15 +47,16 @@ For each parent task bead (`<parent-id>`):
 When the `document` chore for a parent task completes:
 
 1. Close the `document` chore.
-2. Create or update a feature PR from `feature/<parent-id>` into `epic/<epic-id>`:
+2. Create or update a feature PR immediately from the agent branch to the feature branch (`feature/<parent-id>` into `epic/<epic-id>`):
    ```bash
    gh pr create --base epic/<epic-id> --head feature/<parent-id> --title "[<parent-id>] <task-title>" --body "<summary>"
    ```
    If an open PR already exists, update it instead of creating a duplicate.
-3. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` (created by `create-task`).
-4. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
-5. Do not schedule new parent features while this HITL PR gate bead remains open.
-6. Once the PR is merged, a human closes the HITL PR gate bead. After that, close the parent feature bead:
+3. Report the PR URL in chat as soon as it is created.
+4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` (created by `create-task`).
+5. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
+6. Do not schedule new parent features while this HITL PR gate bead remains open.
+7. Once the PR is merged, a human closes the HITL PR gate bead. After that, close the parent feature bead:
    ```bash
    bd close <parent-id>
    ```

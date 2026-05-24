@@ -2,7 +2,7 @@
 
 All notable changes to this repository are documented in this file.
 
-## Unreleased
+## 0.40.0
 
 ### Fixed
 
@@ -10,7 +10,6 @@ All notable changes to this repository are documented in this file.
 - `generate-progress.ts` workspace path: replaced `--workspace "$(pwd)"` with an explicit variable pattern (`workspace="/absolute/path"`) in all instruction files (`ralph.agent.md`, `skills/ralph/SKILL.md`, `skills/run-beads/SKILL.md`, `skills/ralph/REFERENCE.md`). Also fixed the `> .agent-cortex/ralph/progress.md` output redirect to use the same variable (`> "$workspace/.agent-cortex/ralph/progress.md"`). Prevents agents from simplifying `$(pwd)` to `.`, which caused the wrong `.beads` database to be found when running under `pnpm --prefix`.
 
 ### Changed
-
 - `record-idea` skill: idea files are now written to `docs/ideas/` instead of `.agent-cortex/ralph/ideas/` so they are tracked by git.
 
 ### Fixed

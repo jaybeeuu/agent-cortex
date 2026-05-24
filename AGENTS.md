@@ -43,10 +43,9 @@ follow-up commit.
 - Keep a root `CHANGELOG.md` for repository changes.
 - When making any repo change (agents, skills, docs, scripts, or workflow rules), update
   `CHANGELOG.md` in the same commit.
-- Add concise entries under `## Unreleased` using:
-  - `### Added`
-  - `### Changed`
-  - `### Fixed`
+- The plugin is installed from the GitHub repo — treat merged changes as released.
+- Use `## Unreleased` only for unmerged work, and move entries to
+  `## Released (@released@)` once merged.
 - Keep entries user-facing and outcome-focused (what changed and why it matters).
 
 ## Skill Conventions

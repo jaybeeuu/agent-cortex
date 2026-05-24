@@ -43,7 +43,7 @@ follow-up commit.
 - Keep a root `CHANGELOG.md` for repository changes.
 - When making any repo change (agents, skills, docs, scripts, or workflow rules), update
   `CHANGELOG.md` in the same commit.
-- Keep entries under `## Unreleased` (do not maintain a separate released section).
+- Use a single `## Released (@released@)` section — do not use `## Unreleased`.
 - Keep entries user-facing and outcome-focused (what changed and why it matters).
 
 ## Skill Conventions

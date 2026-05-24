@@ -63,7 +63,7 @@ Validate unknown data at the edge and make failures specific enough to act on.
 - Prefer runtime validators and assertions over unchecked casts.
 - Make validation failures specific and actionable.
 - Preserve context in errors so the caller can understand what failed and why.
-- Prefer typed result shapes or typed errors over loose booleans or stringly-typed failure handling.
+- Prefer typed result shapes or typed errors over loose booleans or strongly-typed failure handling.
 - Fail loudly on invalid input rather than letting bad data leak deeper into the system.
 
 ## Naming And File Layout

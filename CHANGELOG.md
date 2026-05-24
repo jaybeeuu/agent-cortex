@@ -33,6 +33,15 @@ All notable changes to this repository are documented in this file.
 - `ralph` agent and skill: when fully blocked on HITL gate beads (feature PR gates or epic PR gates) with no AFK work remaining, ralph now outputs a **Pending Human Action** summary table (bead ID, title, action needed, PR link) and stops — instead of idling the poll timer in a loop.
 - `record-idea` skill: replaced validity-check interview questions with why/how/when/priority framing; updated template to match.
 - Skills updated to use `.agent-cortex/ralph/`
+- Ralph now opens and reports feature PRs immediately at the HITL gate (agent-branch → feature branch) instead of waiting to push.
+- Ralph now creates feature worktrees under `.agent-cortex/worktrees/` instead of `.worktrees/`.
+- Ralph planning scratchpad notes now live under `.agent-cortex/working-docs/` (no more `.working-docs/`).
+- Ralph now bases epic branches (and thus worktrees) on the latest `origin/main` rather than local `main`.
+- CI now runs run-beads tests/typechecks and create-task typechecks on pull requests and main.
+
+### Fixed
+
+- CI workflow no longer assumes `pnpm` is preinstalled when setting up Node.
 
 - `ralph` agent (agents/ralph.agent.md) now uses a chore-bead-per-stage model consistent with `skills/ralph/`. Each pipeline stage creates its own chore bead on-demand; `stage:*` tags live on chore beads, not on the parent feature bead. `state.json` inflight entries now track `choreId`+`parentId` instead of a single `beadId`. Loop counts (TDD loops, fix rounds) are derived from `bd children` queries rather than counters in state.
 

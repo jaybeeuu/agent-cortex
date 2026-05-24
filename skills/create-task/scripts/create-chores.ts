@@ -97,7 +97,7 @@ const prGateBeadId = run([
   'bd', 'create', JSON.stringify(`[${parentId}] PR Review and Merge`),
   '--type', 'task',
   '--description', JSON.stringify(
-    'Human review gate: review and merge the feature PR into the epic branch before closing this feature.',
+    'Human review gate: review and merge the agent PR into the feature branch before closing this feature.',
   ),
   '--priority', priority,
   '--labels', 'implementation-type:hitl,lifecycle:feature-pr',

@@ -5,7 +5,21 @@ import { resolve } from 'node:path';
 
 export type BeadStatus = 'open' | 'in_progress' | 'blocked' | 'closed' | 'deferred';
 export type Classification = 'afk' | 'hitl' | 'unknown';
-export type Stage = 'test-writing' | 'coding' | 'test-reviewing' | 'verifying' | 'reviewing' | 'fixing' | 'documenting' | null;
+export type BeadType = 'task' | 'chore' | 'epic';
+export type Stage =
+  | 'test-writing'
+  | 'coding'
+  | 'test-reviewing'
+  | 'verifying'
+  | 'reviewing'
+  | 'fixing'
+  | 'documenting'
+  | 'code'
+  | 'verify'
+  | 'review'
+  | 'document'
+  | 'fix'
+  | null;
 
 export interface Bead {
   id: string;
@@ -54,9 +68,19 @@ export function parseBdList(
     .filter((r): r is NonNullable<typeof r> => r !== null);
 }
 
-const VALID_STAGES: ReadonlySet<string> = new Set([
-  'coding', 'reviewing', 'fixing', 'documenting',
-  'code', 'verify', 'review', 'document', 'fix',
+const VALID_STAGES: ReadonlySet<Exclude<Stage, null>> = new Set([
+  'test-writing',
+  'coding',
+  'test-reviewing',
+  'verifying',
+  'reviewing',
+  'fixing',
+  'documenting',
+  'code',
+  'verify',
+  'review',
+  'document',
+  'fix',
 ]);
 
 export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status'> {
@@ -106,7 +130,12 @@ export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status
       inBlocks = false;
       inDependsOn = false;
       const typeMatch = trimmed.match(/Type:\s*(\S+)/);
-      if (typeMatch) beadType = typeMatch[1];
+      if (typeMatch) {
+        const typeValue = typeMatch[1];
+        if (typeValue === 'task' || typeValue === 'chore' || typeValue === 'epic') {
+          beadType = typeValue;
+        }
+      }
       const parentMatch = trimmed.match(/Parent:\s*(\S+)/);
       if (parentMatch) parentId = parentMatch[1];
     }
@@ -132,8 +161,8 @@ export function parseBdShow(output: string): Omit<Bead, 'id' | 'title' | 'status
     else if (label === 'implementation-type:hitl') classification = 'hitl';
     else if (label.startsWith('stage:')) {
       const stagePart = label.replace('stage:', '');
-      if (['test-writing', 'coding', 'test-reviewing', 'verifying', 'reviewing', 'fixing', 'documenting'].includes(stagePart)) {
-        stage = stagePart as NonNullable<Stage>;
+      if (VALID_STAGES.has(stagePart as Exclude<Stage, null>)) {
+        stage = stagePart as Exclude<Stage, null>;
       }
     } else if (label.startsWith('epic:')) {
       epicId = label.slice('epic:'.length);
@@ -229,6 +258,7 @@ export function buildStatusBadge(bead: Pick<Bead, 'status' | 'classification' | 
         subStatus = '📝';
         break;
       case 'verify':
+      case 'verifying':
         subStatus = '🧪';
         break;
     }

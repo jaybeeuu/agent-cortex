@@ -1,6 +1,6 @@
 ---
 name: ralph
-description: "Run all pending beads end-to-end using parallel subagents with review gates: initialise, dispatch up to 5 concurrent pipeline-stage chores, open feature PRs into epic branches, and wait for merges before continuing. Use when running the full task backlog with human approval points."
+description: "Run all pending beads end-to-end using parallel subagents with review gates: initialise, dispatch up to 5 concurrent pipeline-stage chores, open and report PRs immediately, then wait for merges before continuing. Use when running the full task backlog with human approval points."
 ---
 
 # Fleet
@@ -11,10 +11,10 @@ Orchestration state is derived entirely from beads — there is no separate stat
 
 ## Branching and Review Model
 
-1. **Epic integration branch**: each epic runs on `epic/<epic-id>` (base: `main`).
-2. **Feature branch per parent bead**: each AFK parent task runs on `feature/<parent-task-id>`, based from its epic branch.
-3. **Dedicated worktree per parent bead**: each feature branch uses `.worktrees/<parent-task-id>`.
-4. **Feature PR gate**: each feature has a child HITL task bead (`lifecycle:feature-pr`) created by `create-task`. When `document` completes, open/update PR `feature/<parent-task-id> -> epic/<epic-id>`, then wait for the HITL PR gate bead to be closed by a human.
+1. **Epic integration branch**: each epic runs on `epic/<epic-id>` (base: `origin/main`, never local `main`).
+2. **Feature branch per parent bead**: each AFK parent task runs on `feature/<parent-task-id>`, based from its epic branch. This branch is treated as the **agent branch** for HITL PRs.
+3. **Dedicated worktree per parent bead**: each feature branch uses `.agent-cortex/worktrees/<parent-task-id>`.
+4. **Feature PR gate**: each feature has a child HITL task bead (`lifecycle:feature-pr`) created by `create-task`. When `document` completes, open/update PR `feature/<parent-task-id> -> epic/<epic-id>` (agent-branch → feature branch), report the PR URL immediately, then wait for the HITL PR gate bead to be closed by a human.
 5. **Epic PR gate**: when an epic's feature beads are complete, open/update a PR `epic/<epic-id> -> main` and pause until merged.
 
 See [REFERENCE.md](./REFERENCE.md) for detailed procedures: dispatching, fix loop, log polling, and shutdown.
@@ -26,7 +26,7 @@ See [REFERENCE.md](./REFERENCE.md) for detailed procedures: dispatching, fix loo
 Run once at startup:
 
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
-2. Ensure `.agent-cortex/` and `.worktrees/` are in the project's `.gitignore` (append any that are missing).
+2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
 3. Ensure Ralph's workspace directory exists: `mkdir -p .agent-cortex/ralph`.
 4. Read `skills/create-task/pipeline.json` and hold it in memory — you need `maxFixRounds` for the fix loop.
 5. Run `bd ready` to get the initial list of available beads.
@@ -72,7 +72,7 @@ After initialization, wait for background agents or the poll timer to complete. 
    | `verify` | `VERIFY_OUTCOME: FAIL` | Run the **fix loop** (see REFERENCE.md). |
    | `review` | `REVIEW_OUTCOME: APPROVED` | Closing the review chore unblocks the document chore. |
    | `review` | `REVIEW_OUTCOME: CHANGES_REQUESTED` | Run the **fix loop** (see REFERENCE.md). |
-   | `document` | — | Open/update feature PR `feature/<parent-id> -> epic/<epic-id>`, then update the child HITL PR gate bead (`lifecycle:feature-pr`) with the PR URL/status. Wait for human to close that HITL bead after merge, then close the parent task bead. |
+   | `document` | — | Open/update feature PR immediately (`feature/<parent-id> -> epic/<epic-id>`), report the PR URL, then update the child HITL PR gate bead (`lifecycle:feature-pr`) with the PR URL/status. Wait for human to close that HITL bead after merge, then close the parent task bead. |
 
 6. **Check for newly ready beads**: run `bd ready` and inspect results:
     - **Chore beads with `stage:*` label**: dispatch if in-flight count (from `bd list --status=in_progress --type=chore`) is < 5.
@@ -97,9 +97,9 @@ After initialization, wait for background agents or the poll timer to complete. 
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once.
 - **Max fix rounds** per task as defined by `maxFixRounds` in `skills/create-task/pipeline.json`.
-- **Always** execute chore subagents from the parent feature worktree (`.worktrees/<parent-id>`), never from repo root.
+- **Always** execute chore subagents from the parent feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge PRs. Merges are human-controlled.
 - **Only continue past a feature review gate after the feature PR HITL task bead is closed by a human (after merge into the epic branch).**
 - **Only continue past an epic review gate after the epic PR is merged into `main`.**
-- **Always** pause and present all changes to the user for review and explicit approval before committing or pushing anything.
+- **When a feature hits the HITL PR gate, push and open the PR immediately and report the URL — do not wait for explicit approval to push or create the PR.**
 - **Always** bump the patch version in `plugin.json` as part of any commit that changes agent or skill files.

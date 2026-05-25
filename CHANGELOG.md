@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented in this file.
 
+## 0.41.0
+
+### Fixed
+
+- `prd-to-plan` now implements explicit SDD cache hooks: a pre-hook that loads `.agent-cortex/ralph/cache/sdd-spec-context.md` before slicing and a post-hook that persists refreshed spec context after writing the plan.
+- Strengthened run-beads script tests to verify pre/post hook behavior, cache-path usage, and workflow ordering in `prd-to-plan`, instead of relying on phrase-presence checks.
+
 ## 0.40.0
 
 ### Fixed

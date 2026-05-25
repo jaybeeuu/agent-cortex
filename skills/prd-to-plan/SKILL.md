@@ -17,7 +17,25 @@ The PRD should already be in the conversation. If it isn't, ask the user to past
 
 If you have not already explored the codebase, do so to understand the current architecture, existing patterns, and integration layers.
 
-### 3. Identify durable architectural decisions
+### 3. Run the SDD pre-hook
+
+Before planning, load cached SDD spec context so the phase breakdown reflects the latest approved architecture and constraints.
+
+```bash
+mkdir -p .agent-cortex/ralph/cache
+sdd_cache_file=".agent-cortex/ralph/cache/sdd-spec-context.md"
+if [ -f "$sdd_cache_file" ]; then
+  cat "$sdd_cache_file"
+fi
+```
+
+If the cache file exists, treat it as required input:
+
+- Reuse the durable decisions and constraints as the baseline for the new plan.
+- Only replace cached decisions when the current PRD explicitly supersedes them.
+- Carry forward unresolved `Open questions` into the new plan or call them out during the quiz step.
+
+### 4. Identify durable architectural decisions
 
 Before slicing, identify high-level decisions that are unlikely to change throughout implementation:
 
@@ -29,7 +47,7 @@ Before slicing, identify high-level decisions that are unlikely to change throug
 
 These go in the plan header so every phase can reference them.
 
-### 4. Draft vertical slices
+### 5. Draft vertical slices
 
 Break the PRD into **tracer bullet** phases. Each phase is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
 
@@ -41,7 +59,7 @@ Break the PRD into **tracer bullet** phases. Each phase is a thin vertical slice
 - DO include durable decisions: route paths, schema shapes, data model names
 </vertical-slice-rules>
 
-### 5. Quiz the user
+### 6. Quiz the user
 
 Present the proposed breakdown as a numbered list. For each phase show:
 
@@ -55,7 +73,7 @@ Ask the user:
 
 Iterate until the user approves the breakdown.
 
-### 6. Write the plan file
+### 7. Write the plan file
 
 Create `.agent-cortex/ralph/plans/` if it doesn't exist. Write the plan as a Markdown file named after the feature (e.g. `.agent-cortex/ralph/plans/user-onboarding.md`). Use the template below.
 
@@ -105,3 +123,29 @@ A concise description of this vertical slice. Describe the end-to-end behavior, 
 
 <!-- Repeat for each phase -->
 </plan-template>
+
+### 8. Run the SDD post-hook
+
+After writing the plan file, persist an updated SDD context snapshot for future sessions:
+
+```bash
+mkdir -p .agent-cortex/ralph/cache
+sdd_cache_file=".agent-cortex/ralph/cache/sdd-spec-context.md"
+cat > "$sdd_cache_file" <<'EOF'
+# SDD Spec Context Cache
+Updated: <UTC ISO timestamp>
+Source PRD: <bead id / link / filename>
+Source plan: <path to generated plan markdown>
+
+## Durable decisions
+- ...
+
+## Constraints
+- ...
+
+## Open questions
+- ...
+EOF
+```
+
+This post-hook is mandatory. Every successful `prd-to-plan` run must overwrite the cache with the latest approved context so the next session starts from the same spec baseline.

@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 0.41.0
+
+### Changed
+
+- `write-a-skill` now follows the upstream skill anatomy with explicit sections for overview, usage boundaries, rationalization traps, red flags, and verification. Verification guidance now requires evidence-based checks tied to test output and local repository conventions.
+
 ## 0.40.0
 
 ### Fixed

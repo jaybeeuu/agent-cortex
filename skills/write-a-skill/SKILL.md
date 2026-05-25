@@ -1,117 +1,56 @@
 ---
 name: write-a-skill
-description: Create new agent skills with proper structure, progressive disclosure, and bundled resources. Use when user wants to create, write, or build a new skill.
+description: Create new agent skills using the upstream anatomy and local repository conventions. Use when a user asks to create, rewrite, or modernize a skill.
 ---
 
 # Writing Skills
 
-## Process
+## Overview
 
-1. **Gather requirements** - ask user about:
-   - What task/domain does the skill cover?
-   - What specific use cases should it handle?
-   - Does it need executable scripts or just instructions?
-   - Any reference materials to include?
+Create production-ready skills that are easy for agents to route and easy for humans to maintain.
+Preserve local conventions from `AGENTS.md` while applying the upstream anatomy sections.
 
-2. **Draft the skill** - create:
-   - SKILL.md with concise instructions
-   - Additional reference files if content exceeds 500 lines
-   - Utility scripts if deterministic operations needed
+## When to use
 
-3. **Review with user** - present draft and ask:
-   - Does this cover your use cases?
-   - Anything missing or unclear?
-   - Should any section be more/less detailed?
+Use this skill when the user needs to:
 
-## Skill Structure
+- create a new skill directory and `SKILL.md`
+- rewrite an existing skill to match current anatomy
+- add support files (`REFERENCE.md`, `scripts/`) for progressive disclosure
 
-```
-skill-name/
-├── SKILL.md           # Main instructions (required)
-├── REFERENCE.md       # Detailed docs (if needed)
-├── EXAMPLES.md        # Usage examples (if needed)
-└── scripts/           # Utility scripts (if needed)
-    └── helper.js
-```
+## When not to use
 
-## SKILL.md Template
+Do not use this skill when:
 
-```md
----
-name: skill-name
-description: Brief description of capability. Use when [specific triggers].
----
+- the request is only to execute an existing skill
+- the task is a bug fix in product code unrelated to skill authoring
+- the user needs only a ticket, PRD, or architectural decision document
 
-# Skill Name
+## Common rationalizations
 
-## Quick start
+Reject these shortcuts:
 
-[Minimal working example]
+- "I'll skip explicit triggers in description; the agent will infer it."
+- "One giant SKILL.md is faster than splitting references."
+- "A script is overkill even if logic is deterministic and repeated."
+- "I can copy old structure; anatomy updates can wait."
 
-## Workflows
+## Red flags
 
-[Step-by-step processes with checklists for complex tasks]
+Stop and correct course if you see:
 
-## Advanced features
+- missing anatomy headings or collapsed sections
+- vague description text that does not include concrete "Use when..." triggers
+- speculative steps not grounded in the user's requested scope
+- instructions that duplicate deterministic logic better stored in `scripts/`
 
-[Link to separate files: See [REFERENCE.md](REFERENCE.md)]
-```
+## Verification
 
-## Description Requirements
+Use evidence-based checks before handing off:
 
-The description is **the only thing your agent sees** when deciding which skill to load. It's surfaced in the system prompt alongside all other installed skills. Your agent reads these descriptions and picks the relevant skill based on the user's request.
-
-**Goal**: Give your agent just enough info to know:
-
-1. What capability this skill provides
-2. When/why to trigger it (specific keywords, contexts, file types)
-
-**Format**:
-
-- Max 1024 chars
-- Write in third person
-- First sentence: what it does
-- Second sentence: "Use when [specific triggers]"
-
-**Good example**:
-
-```
-Extract text and tables from PDF files, fill forms, merge documents. Use when working with PDF files or when user mentions PDFs, forms, or document extraction.
-```
-
-**Bad example**:
-
-```
-Helps with documents.
-```
-
-The bad example gives your agent no way to distinguish this from other document skills.
-
-## When to Add Scripts
-
-Add utility scripts when:
-
-- Operation is deterministic (validation, formatting)
-- Same code would be generated repeatedly
-- Errors need explicit handling
-
-Scripts save tokens and improve reliability vs generated code.
-
-## When to Split Files
-
-Split into separate files when:
-
-- SKILL.md exceeds 100 lines
-- Content has distinct domains (finance vs sales schemas)
-- Advanced features are rarely needed
-
-## Review Checklist
-
-After drafting, verify:
-
-- [ ] Description includes triggers ("Use when...")
-- [ ] SKILL.md under 100 lines
-- [ ] No time-sensitive info
-- [ ] Consistent terminology
-- [ ] Concrete examples included
-- [ ] References one level deep
+1. **Anatomy present**: confirm `SKILL.md` contains all required headings in this order.
+2. **Description quality**: verify first sentence states capability and second sentence starts with "Use when".
+3. **Local conventions**: verify naming, file layout, and version/changelog updates match `AGENTS.md`.
+4. **Deterministic logic placement**: verify repeated deterministic operations are implemented in `scripts/`.
+5. **Proof of correctness**: run relevant repo tests/checks and cite exact command output, including explicit numeric results (for example, 2 passed, 0 failed) and explicit numeric exit code (for example, exit code 0), in your report.
+6. **Description limits**: confirm front-matter description stays under 1024 characters and retains explicit "Use when..." trigger language.

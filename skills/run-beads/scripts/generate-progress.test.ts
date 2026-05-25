@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   parseListLine,
   parseBdList,
@@ -705,5 +707,31 @@ describe('fetchBeads', () => {
 
     const beads = fetchBeads('/workspace', mockExecDedup);
     assert.equal(beads.filter((b) => b.id === 'proj-child1').length, 1);
+  });
+});
+
+// ─── Behavior 12: plugin session-start hook wiring ────────────────────────────
+
+describe('plugin session-start hook wiring', () => {
+  const repoRoot = join(import.meta.dirname, '..', '..', '..');
+
+  it('declares a hooks config path in plugin.json', () => {
+    const pluginJsonRaw = readFileSync(join(repoRoot, 'plugin.json'), 'utf8');
+    const pluginJson = JSON.parse(pluginJsonRaw) as { hooks?: unknown };
+    assert.equal(pluginJson.hooks, 'hooks.json');
+  });
+
+  it('defines a sessionStart prompt hook that injects baseline context', () => {
+    const hooksJsonRaw = readFileSync(join(repoRoot, 'hooks.json'), 'utf8');
+    const hooksJson = JSON.parse(hooksJsonRaw) as {
+      hooks?: { sessionStart?: Array<{ type?: unknown; prompt?: unknown }> };
+    };
+    assert.ok(Array.isArray(hooksJson.hooks?.sessionStart));
+    const sessionStartHooks = hooksJson.hooks?.sessionStart ?? [];
+    assert.ok(
+      sessionStartHooks.some(
+        (entry) => entry.type === 'prompt' && typeof entry.prompt === 'string' && entry.prompt.length > 0,
+      ),
+    );
   });
 });

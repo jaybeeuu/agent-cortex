@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 0.41.0
+
+### Added
+
+- Plugin session-start hook wiring: plugin manifest now declares `hooks.json`, and a new `hooks.json` adds a `sessionStart` prompt hook that instructs agents to run `bd prime` at session start.
+
 ## 0.40.0
 
 ### Fixed

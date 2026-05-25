@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "prompt",
+        "prompt": "Run `bd prime` immediately in the repository root and hold the full output as working context for this session."
+      }
+    ]
+  }
+}

@@ -27,6 +27,8 @@ jobs:
         run: pnpm --prefix skills/create-task/scripts install --frozen-lockfile
       - name: Run run-beads tests
         run: pnpm --prefix skills/run-beads/scripts test
+      - name: Run plugin manifest regression test
+        run: node --test plugin.manifest.test.mjs
       - name: Run run-beads typecheck
         run: pnpm --prefix skills/run-beads/scripts typecheck
       - name: Run create-task typecheck

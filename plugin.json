@@ -1,13 +1,13 @@
 {
   "name": "agent-cortex",
   "description": "Personal Copilot CLI plugin with custom agents and skills",
-  "version": "0.40.0",
+  "version": "0.40.2",
   "author": {
     "name": "jaybeeuu"
   },
   "license": "MIT",
   "repository": "https://github.com/jaybeeuu/agent-cortex",
-  "agents": "agents/",
+  "agents": ["agents/ralph.agent.md"],
   "skills": "skills/",
   "mcpServers": {
     "context7": {

@@ -2,6 +2,18 @@
 
 All notable changes to this repository are documented in this file.
 
+## 0.40.2
+
+### Fixed
+
+- CI now runs `plugin.manifest.test.mjs`, so regressions in `plugin.json` manifest structure are caught automatically on pull requests and main pushes.
+
+## 0.40.1
+
+### Fixed
+
+- Plugin manifest now lists `agents` as an explicit file path array (`["agents/ralph.agent.md"]`) instead of a directory string, matching manifest contract expectations.
+
 ## 0.40.0
 
 ### Fixed

@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   parseListLine,
   parseBdList,
@@ -13,6 +16,8 @@ import {
   fetchBeads,
   type Bead,
 } from './generate-progress.ts';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -705,5 +710,24 @@ describe('fetchBeads', () => {
 
     const beads = fetchBeads('/workspace', mockExecDedup);
     assert.equal(beads.filter((b) => b.id === 'proj-child1').length, 1);
+  });
+});
+
+describe('INSPIRATION requirement slices', () => {
+  it('includes addyosmani/agent-skills with a relevance note', () => {
+    const inspirationPath = resolve(REPO_ROOT, 'INSPIRATION.md');
+    const content = readFileSync(inspirationPath, 'utf8');
+
+    assert.match(content, /addyosmani\/agent-skills/i);
+    assert.match(content, /why|relevant|useful|because/i);
+  });
+
+  it("includes Matt Pocock's skills repo with a relevance note", () => {
+    const inspirationPath = resolve(REPO_ROOT, 'INSPIRATION.md');
+    const content = readFileSync(inspirationPath, 'utf8');
+
+    assert.match(content, /matt\s+pocock/i);
+    assert.match(content, /skills?\s+repo/i);
+    assert.match(content, /why|relevant|useful|because/i);
   });
 });

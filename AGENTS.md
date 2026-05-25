@@ -14,6 +14,7 @@ agent-cortex/
 ├── plugin.json           # Plugin manifest — name, version, skill/agent paths, MCP servers
 ├── agents/               # Custom agents (*.agent.md)
 │   └── ralph.agent.md
+├── references/           # Shared cross-skill guidance and checklists
 └── skills/               # Skills (one directory per skill, each with a SKILL.md)
     ├── run-beads/
     │   ├── SKILL.md

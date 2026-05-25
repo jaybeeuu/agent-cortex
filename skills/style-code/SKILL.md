@@ -103,7 +103,7 @@ Make state transitions visible, predictable, and local to clear APIs.
 
 Test behavior and public contracts with the narrowest reliable validation first.
 
-Source of truth for test philosophy: `skills/tdd/tests.md`.
+Source of truth for test philosophy: `references/testing-patterns.md`.
 
 - Test behavior and contracts, not implementation trivia.
 - Use simple `describe` and `it` structure with direct assertions.

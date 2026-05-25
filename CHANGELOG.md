@@ -2,6 +2,17 @@
 
 All notable changes to this repository are documented in this file.
 
+## 0.40.1
+
+### Changed
+
+- Cross-skill guidance now lives under `references/` (`skill-anatomy`, testing, security, performance, and accessibility checklists), giving skills a single shared source of truth instead of duplicating long guidance blocks.
+- `style-code` now links to `references/testing-patterns.md`, and the legacy `skills/tdd/tests.md` file has been retired.
+
+### Fixed
+
+- Release metadata consistency for this change set: bumped `plugin.json` version and added this changelog section so plugin release governance remains synchronized with staged skill/documentation updates.
+
 ## 0.40.0
 
 ### Fixed

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test --import tsx/esm generate-progress.test.ts"
+    "test": "node --test --import tsx/esm generate-progress.test.ts references-baseline.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

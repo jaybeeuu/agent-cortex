@@ -2,6 +2,18 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.0.0
+
+### Changed
+
+- Removed the `prd-to-epics` skill to eliminate overlap with the `prd-to-plan` → `plan-to-epics` flow and keep one canonical decomposition path.
+
+## 0.40.1
+
+### Changed
+
+- `run-beads` tests no longer assert markdown output string matches in `generate-progress.test.ts`.
+
 ## 0.40.0
 
 ### Fixed

@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.0.1
+
+### Changed
+
+- Refocused `skills/run-beads/scripts/generate-progress.test.ts` on executable, behavior-driven workflows (parent/chore flow, epic-child expansion, orphaned blocked callout) and removed low-value helper-unit assertions.
+- Retained `.agent-cortex/` ignore coverage in `.gitignore` to keep runtime artifacts out of source control.
+
 ## 1.0.0
 
 ### Changed

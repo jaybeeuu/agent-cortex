@@ -1,7 +1,7 @@
 {
   "name": "agent-cortex",
   "description": "Personal Copilot CLI plugin with custom agents and skills",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "author": {
     "name": "jaybeeuu"
   },
@@ -13,7 +13,10 @@
     "context7": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp@latest"]
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ]
     },
     "beads": {
       "type": "stdio",
@@ -26,5 +29,6 @@
         "*"
       ]
     }
-  }
+  },
+  "hooks": "hooks.json"
 }

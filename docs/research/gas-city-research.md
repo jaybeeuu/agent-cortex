@@ -1,5 +1,8 @@
 # Gas City Research Notes
 
+This is a promoted research note.
+
+
 Research conducted 2026-05-03/04. Source: `gastownhall/gascity` and related `gastownhall/*` repos.
 
 ---
@@ -249,3 +252,5 @@ supported. Workaround: a `condition` Order that shell-polls the upstream rig's `
 |---|---|---|
 | #587 | Multi-city rig and bead-state separation (Pack/City v2) | Open, accepted, no design yet |
 | #907 | Hardcoded 'hq' DB name prevents multi-city Dolt sharing | Open, `1.0+` |
+
+[Inspirations](../inspirations.md)

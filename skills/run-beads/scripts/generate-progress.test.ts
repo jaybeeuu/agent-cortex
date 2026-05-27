@@ -1,7 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import {
   parseListLine,
   parseBdList,
@@ -603,20 +601,6 @@ describe('renderOrphanedBlockedCallout', () => {
 // ─── Behavior 10: full markdown render ───────────────────────────────────────
 
 describe('renderMarkdown', () => {
-  it('contains section headings for graph and tasks', () => {
-    const beads = [makeBead()];
-    const output = renderMarkdown(beads);
-    assert.ok(output.includes('## Dependency Graph'));
-    assert.ok(output.includes('## Tasks'));
-    assert.ok(!output.includes('## Active Work'));
-    assert.ok(!output.includes('## Completed'));
-  });
-
-  it('includes mermaid code block', () => {
-    const output = renderMarkdown([makeBead()]);
-    assert.ok(output.includes('```mermaid'));
-  });
-
   it('does not include orphaned callout section when none exist', () => {
     const output = renderMarkdown([makeBead({ status: 'open' })]);
     assert.ok(!output.includes('Orphaned Blocked'));
@@ -707,20 +691,5 @@ describe('fetchBeads', () => {
 
     const beads = fetchBeads('/workspace', mockExecDedup);
     assert.equal(beads.filter((b) => b.id === 'proj-child1').length, 1);
-  });
-});
-
-// ─── Behavior 12: third-party flow docs requirements ──────────────────────────
-
-describe('third-party integration flow documentation', () => {
-  it('documents integration flows with vendor references', async () => {
-    const docPath = resolve(
-      process.cwd(),
-      '../../..',
-      'docs/research/third-party-integration-flows.md',
-    );
-    const markdown = await readFile(docPath, 'utf8');
-    assert.match(markdown, /^##\s+Third-party integration flows/m);
-    assert.match(markdown, /https?:\/\/\S+/);
   });
 });

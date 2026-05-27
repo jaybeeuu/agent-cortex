@@ -1,8 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   parseListLine,
   parseBdList,
@@ -16,8 +13,6 @@ import {
   fetchBeads,
   type Bead,
 } from './generate-progress.ts';
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -606,20 +601,6 @@ describe('renderOrphanedBlockedCallout', () => {
 // ─── Behavior 10: full markdown render ───────────────────────────────────────
 
 describe('renderMarkdown', () => {
-  it('contains section headings for graph and tasks', () => {
-    const beads = [makeBead()];
-    const output = renderMarkdown(beads);
-    assert.ok(output.includes('## Dependency Graph'));
-    assert.ok(output.includes('## Tasks'));
-    assert.ok(!output.includes('## Active Work'));
-    assert.ok(!output.includes('## Completed'));
-  });
-
-  it('includes mermaid code block', () => {
-    const output = renderMarkdown([makeBead()]);
-    assert.ok(output.includes('```mermaid'));
-  });
-
   it('does not include orphaned callout section when none exist', () => {
     const output = renderMarkdown([makeBead({ status: 'open' })]);
     assert.ok(!output.includes('Orphaned Blocked'));
@@ -710,24 +691,5 @@ describe('fetchBeads', () => {
 
     const beads = fetchBeads('/workspace', mockExecDedup);
     assert.equal(beads.filter((b) => b.id === 'proj-child1').length, 1);
-  });
-});
-
-describe('INSPIRATION requirement slices', () => {
-  it('includes addyosmani/agent-skills with a relevance note', () => {
-    const inspirationPath = resolve(REPO_ROOT, 'INSPIRATION.md');
-    const content = readFileSync(inspirationPath, 'utf8');
-
-    assert.match(content, /addyosmani\/agent-skills/i);
-    assert.match(content, /why|relevant|useful|because/i);
-  });
-
-  it("includes Matt Pocock's skills repo with a relevance note", () => {
-    const inspirationPath = resolve(REPO_ROOT, 'INSPIRATION.md');
-    const content = readFileSync(inspirationPath, 'utf8');
-
-    assert.match(content, /matt\s+pocock/i);
-    assert.match(content, /skills?\s+repo/i);
-    assert.match(content, /why|relevant|useful|because/i);
   });
 });

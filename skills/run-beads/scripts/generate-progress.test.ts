@@ -782,16 +782,17 @@ describe('research doc promotion/linking contracts', () => {
   it('does not keep promoted research docs in .agent-cortex/working-docs (true move, not copy)', () => {
     const researchDir = join(repoRoot, 'docs', 'research');
     const researchFiles = readdirSync(researchDir).filter((fileName) => fileName.endsWith('.md'));
-    const workingDocsDir = join(repoRoot, '.agent-cortex', 'working-docs');
+    const repoWorkingDocsDir = join(repoRoot, '.agent-cortex', 'working-docs');
+    const workingDocSearchRoots = [repoWorkingDocsDir, join(repoWorkingDocsDir, 'research')];
 
-    assert.ok(
-      existsSync(workingDocsDir),
-      'Expected .agent-cortex/working-docs to exist so move-vs-copy regressions are detectable.',
-    );
+    for (const workingDocsDir of workingDocSearchRoots) {
+      if (!existsSync(workingDocsDir)) {
+        continue;
+      }
 
-    for (const researchFile of researchFiles) {
-      assert.equal(existsSync(join(workingDocsDir, researchFile)), false);
-      assert.equal(existsSync(join(workingDocsDir, 'research', researchFile)), false);
+      for (const researchFile of researchFiles) {
+        assert.equal(existsSync(join(workingDocsDir, researchFile)), false);
+      }
     }
   });
 });

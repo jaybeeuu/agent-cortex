@@ -1,7 +1,6 @@
 
 # Planning scratchpad — keep directory scaffold, ignore working docs content
 .agent-cortex/working-docs/*
-!.agent-cortex/working-docs/.gitkeep
 
 # Beads / Dolt files (added by bd init)
 .dolt/

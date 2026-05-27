@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.2.1
+
+### Changed
+
+- Removed tracked `.agent-cortex/working-docs/.gitkeep` so planning scratch space stays out of source control.
+- Updated `run-beads` promotion regression tests to verify promoted docs are absent from any local `.agent-cortex/working-docs` paths without requiring that directory to exist in a checkout.
+
 ## 1.2.0
 
 ### Added

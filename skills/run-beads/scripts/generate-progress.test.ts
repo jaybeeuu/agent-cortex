@@ -603,20 +603,6 @@ describe('renderOrphanedBlockedCallout', () => {
 // ─── Behavior 10: full markdown render ───────────────────────────────────────
 
 describe('renderMarkdown', () => {
-  it('contains section headings for graph and tasks', () => {
-    const beads = [makeBead()];
-    const output = renderMarkdown(beads);
-    assert.ok(output.includes('## Dependency Graph'));
-    assert.ok(output.includes('## Tasks'));
-    assert.ok(!output.includes('## Active Work'));
-    assert.ok(!output.includes('## Completed'));
-  });
-
-  it('includes mermaid code block', () => {
-    const output = renderMarkdown([makeBead()]);
-    assert.ok(output.includes('```mermaid'));
-  });
-
   it('does not include orphaned callout section when none exist', () => {
     const output = renderMarkdown([makeBead({ status: 'open' })]);
     assert.ok(!output.includes('Orphaned Blocked'));

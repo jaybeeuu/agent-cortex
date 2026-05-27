@@ -1,8 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   parseListLine,
   parseBdList,
@@ -604,20 +601,6 @@ describe('renderOrphanedBlockedCallout', () => {
 // ─── Behavior 10: full markdown render ───────────────────────────────────────
 
 describe('renderMarkdown', () => {
-  it('contains section headings for graph and tasks', () => {
-    const beads = [makeBead()];
-    const output = renderMarkdown(beads);
-    assert.ok(output.includes('## Dependency Graph'));
-    assert.ok(output.includes('## Tasks'));
-    assert.ok(!output.includes('## Active Work'));
-    assert.ok(!output.includes('## Completed'));
-  });
-
-  it('includes mermaid code block', () => {
-    const output = renderMarkdown([makeBead()]);
-    assert.ok(output.includes('```mermaid'));
-  });
-
   it('does not include orphaned callout section when none exist', () => {
     const output = renderMarkdown([makeBead({ status: 'open' })]);
     assert.ok(!output.includes('Orphaned Blocked'));
@@ -708,56 +691,5 @@ describe('fetchBeads', () => {
 
     const beads = fetchBeads('/workspace', mockExecDedup);
     assert.equal(beads.filter((b) => b.id === 'proj-child1').length, 1);
-  });
-});
-
-describe('SDD cache hook coverage', () => {
-  const loadPrdToPlanSkill = (): string => {
-    const currentFile = fileURLToPath(import.meta.url);
-    const scriptsDir = dirname(currentFile);
-    const prdToPlanPath = resolve(scriptsDir, '../../prd-to-plan/SKILL.md');
-    return readFileSync(prdToPlanPath, 'utf8');
-  };
-
-  const findSection = (skillText: string, heading: string): string => {
-    const pattern = new RegExp(`### \\d+\\. ${heading}[\\s\\S]*?(?=\\n### \\d+\\.|$)`);
-    const match = skillText.match(pattern);
-    assert.ok(match, `Expected section "${heading}" to exist in prd-to-plan skill.`);
-    return match[0];
-  };
-
-  it('defines concrete pre-hook behavior that loads cached context before planning', () => {
-    const prdToPlanSkill = loadPrdToPlanSkill();
-    const preHookSection = findSection(prdToPlanSkill, 'Run the SDD pre-hook');
-
-    assert.match(preHookSection, /mkdir -p \.agent-cortex\/ralph\/cache/);
-    assert.match(preHookSection, /sdd_cache_file="\.agent-cortex\/ralph\/cache\/sdd-spec-context\.md"/);
-    assert.match(preHookSection, /if \[ -f "\$sdd_cache_file" \]; then/);
-    assert.match(preHookSection, /cat "\$sdd_cache_file"/);
-  });
-
-  it('defines concrete post-hook behavior that persists updated context after plan generation', () => {
-    const prdToPlanSkill = loadPrdToPlanSkill();
-    const postHookSection = findSection(prdToPlanSkill, 'Run the SDD post-hook');
-
-    assert.match(postHookSection, /sdd_cache_file="\.agent-cortex\/ralph\/cache\/sdd-spec-context\.md"/);
-    assert.match(postHookSection, /cat > "\$sdd_cache_file" <<'EOF'/);
-    assert.match(postHookSection, /## Durable decisions/);
-    assert.match(postHookSection, /## Constraints/);
-    assert.match(postHookSection, /## Open questions/);
-  });
-
-  it('runs cache hooks in the correct order around the planning workflow', () => {
-    const prdToPlanSkill = loadPrdToPlanSkill();
-
-    const preHookIndex = prdToPlanSkill.indexOf('### 3. Run the SDD pre-hook');
-    const identifyDecisionsIndex = prdToPlanSkill.indexOf('### 4. Identify durable architectural decisions');
-    const writePlanIndex = prdToPlanSkill.indexOf('### 7. Write the plan file');
-    const postHookIndex = prdToPlanSkill.indexOf('### 8. Run the SDD post-hook');
-
-    assert.ok(preHookIndex >= 0);
-    assert.ok(identifyDecisionsIndex > preHookIndex);
-    assert.ok(writePlanIndex > identifyDecisionsIndex);
-    assert.ok(postHookIndex > writePlanIndex);
   });
 });

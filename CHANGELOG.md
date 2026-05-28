@@ -12,6 +12,36 @@ All notable changes to this repository are documented in this file.
 ### Added
 
 - Added `skills/run-beads/scripts/ralph-plan-planning-gate.test.ts` assertions that lock in the Step 6/7 confirmation, cold-start context, and open-gate warning requirements.
+## 1.2.1
+
+### Changed
+
+- Removed tracked `.agent-cortex/working-docs/.gitkeep` so planning scratch space stays out of source control.
+- Updated `run-beads` promotion regression tests to verify promoted docs are absent from any local `.agent-cortex/working-docs` paths without requiring that directory to exist in a checkout.
+
+## 1.2.0
+
+### Added
+
+- Promoted `skill-design-research.md` and `skill-improvements-analysis.md` into `docs/research/` and added Inspirations backlinks from every research doc.
+
+### Changed
+
+- Reworked `docs/skills/skill-anatomy.md` to document optional-section facets, enforce `When NOT to use` adjacency, and end with a full annotated template.
+- Updated `skills/write-a-skill/SKILL.md` with new line-limit guidance, voice/tone rules, front-matter field coverage, and checklist alignment to anatomy requirements.
+- Updated `docs/inspirations.md` to link all promoted research docs.
+
+## 1.1.0
+
+### Added
+
+- Added `docs/skills/skill-anatomy.md` as the canonical anatomy specification, including an annotated template and acceptance checklist.
+- Added `docs/research/skill-patterns-research.md` to centralize research-backed rationale for skill structure patterns.
+
+### Changed
+
+- Updated `skills/write-a-skill/SKILL.md` to align with canonical anatomy guidance, explicit description rules, and line-limit/voice expectations.
+- Updated `docs/inspirations.md` to include required links to internal research docs under `docs/research/`.
 
 ## 1.0.0
 

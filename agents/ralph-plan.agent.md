@@ -56,6 +56,18 @@ Update the top-level bead's `design` field with a high-level implementation plan
 ### 6. Decompose into tasks
 For large workstreams (multiple distinct areas) invoke the **epic-to-tasks** skill. For a single self-contained task invoke **create-task**. Pass the full `bd prime` output and the written plan to each skill.
 
+For each new feature bead and each new task bead, create a HITL planning gate before handoff. The feature/task bead depends on this gate and stays blocked until the user explicitly confirms planning is sufficient **for that specific feature/task**.
+
+Every planning gate description must be cold-start-ready so another person can pick it up without prior chat context. Include all of: (1) what is being built and why, (2) decisions already made, (3) open questions/risks, and (4) references (bead IDs, files, or docs) used during planning.
+
+```bash
+gate_id=$(bd create "Plan: <feature title>" --type task --description "<planning context, decisions, open questions, and references>")
+bd tag <planning-gate-id> implementation-type:hitl
+bd dep add <feature-or-task-id> <planning-gate-id>   # feature/task depends on planning gate (gate blocks implementation)
+```
+
+Do not close planning gates in bulk. Only close a gate after the user explicitly confirms that exact feature/task is ready to implement; leave all unconfirmed gates open and blocking.
+
 After creating each bead, invoke **classify-bead** to ensure it has an `implementation-type` label before handing off.
 
 Tag every bead created in this step with `workflow:ralph`:
@@ -65,7 +77,9 @@ bd tag <id> workflow:ralph
 ```
 
 ### 7. Agree with the user
-Present the bead list (IDs, titles, one-line rationale each). Ask the user to confirm or request changes before finishing. Iterate until approved.
+Present the bead list (IDs, titles, one-line rationale each) plus planning gate status for each item using `✅` (confirmed/closed) or `⏳` (awaiting confirmation/open). Ask the user to confirm or request changes before finishing.
+
+If any planning gates remain open, include an explicit warning that those features/tasks are still blocked and cannot be handed off to ralph yet. Iterate until approved.
 
 ### 8. Hand off to ralph
 Once approved, report: "Plan complete — `bd ready` will show the first tasks for ralph."

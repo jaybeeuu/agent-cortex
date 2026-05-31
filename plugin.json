@@ -1,7 +1,7 @@
 {
   "name": "agent-cortex",
   "description": "Personal Copilot CLI plugin with custom agents and skills",
-  "version": "1.2.1",
+  "version": "1.4.1",
   "author": {
     "name": "jaybeeuu"
   },
@@ -25,6 +25,17 @@
       "env": {
         "BEADS_PATH": "/opt/homebrew/bin/bd"
       },
+      "tools": [
+        "*"
+      ]
+    },
+    "github": {
+      "type": "stdio",
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "@modelcontextprotocol/server-github"
+      ],
       "tools": [
         "*"
       ]

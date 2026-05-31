@@ -2,6 +2,29 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.4.1
+
+### Removed
+
+- Removed `skills/run-beads/scripts/ralph-plan-planning-gate.test.ts` — the test was invalid/bunkum and did not belong in the PR.
+
+## 1.4.0
+
+### Added
+
+- Added a GitHub MCP server entry to `plugin.json` so the plugin can talk to GitHub through a stdio MCP process launched with `pnpm dlx`.
+- Documented the integration through the version bump so downstream installs pick up the new server registration.
+
+## 1.3.0
+
+### Changed
+
+- Tightened `agent-cortex:ralph-plan` Step 6 so every feature/task planning gate must stay open until the user explicitly confirms that specific item, and gate descriptions must be cold-start-ready (scope, decisions, open questions/risks, references).
+- Tightened `agent-cortex:ralph-plan` Step 7 so plan handoff output includes per-gate status (`✅`/`⏳`) and an explicit warning whenever any planning gates remain open and still block ralph handoff.
+
+### Added
+
+- Added `skills/run-beads/scripts/ralph-plan-planning-gate.test.ts` assertions that lock in the Step 6/7 confirmation, cold-start context, and open-gate warning requirements.
 ## 1.2.1
 
 ### Changed

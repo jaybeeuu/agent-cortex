@@ -2,6 +2,21 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.5.0
+
+### Changed
+
+- Rewrote `skills/ralph/` (SKILL.md + REFERENCE.md) for PI-agent compatibility. The ralph workflow
+  now runs sequentially inline rather than dispatching parallel background subagents. All references
+  to Copilot CLI tools (`task`, `read_agent`, `rg`, `glob`, `view`) have been removed; the skill
+  uses only PI's built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`). Pipeline
+  stage playbooks and bead/PR workflows remain unchanged.
+
+### Removed
+
+- Removed poll-timer, log-polling, and background-agent event-loop sections from the
+  ralph skill — PI does not support background subagents.
+
 ## 1.4.1
 
 ### Removed

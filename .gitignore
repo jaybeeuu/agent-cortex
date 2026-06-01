@@ -12,3 +12,4 @@
 # Node
 node_modules/
 .agent-cortex/worktrees/
+tmux-*.log

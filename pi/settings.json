@@ -1,6 +1,8 @@
 {
   "enableSkillCommands": true,
-  "skills": ["~/src/agent-cortex/skills"],
+  "skills": [
+    "~/src/agent-cortex/skills"
+  ],
   "lastChangelogVersion": "0.78.0",
   "defaultProvider": "opencode",
   "defaultModel": "big-pickle",
@@ -14,5 +16,8 @@
     "opencode/nemotron-3-super-free",
     "opencode/mimo-v2.5-free",
     "opencode/deepseek-v4-flash-free"
+  ],
+  "packages": [
+    "../../src/agent-cortex"
   ]
 }

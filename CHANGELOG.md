@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.5.0
+
+### Changed
+
+- Rewrote `skills/ralph/SKILL.md` and `skills/ralph/REFERENCE.md` for PI subagent dispatch. Ralph now calls the `subagent({ stage, promptPaths, task, cwd })` tool for each pipeline stage instead of spawning background subagents via prompt-template filling. The orchestrator remains sequential (one bead, one stage at a time) — branching, PR gates, worktree management, and bead lifecycle are unchanged.
+
 ## 1.4.1
 
 ### Removed

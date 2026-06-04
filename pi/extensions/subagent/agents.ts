@@ -1,12 +1,12 @@
 /**
- * Agent discovery for the subagent extension.
+ * Agent discovery and stage config loading for the subagent extension.
  *
- * Discovers user-facing agent .md files from standard PI agent directories:
- *   - ~/.pi/agent/agents/  (user level)
- *   - .pi/agents/           (project level, walked up from cwd)
+ * Discovery sources:
+ *   - User agents: ~/.pi/agent/agents/ (standard PI directory)
+ *   - Project agents: .pi/agents/ (walked up from cwd)
+ *   - Package agents: resolved from pi.agents in package.json (bundled agents)
  *
- * This does NOT include pipeline stage agents — those are configured via
- * skills/run-beads/stages.json and loaded by the stage mode of the subagent tool.
+ * Stage config path is resolved from pi.stageConfig in package.json.
  */
 
 import * as fs from "node:fs";
@@ -30,9 +30,94 @@ export interface AgentDiscoveryResult {
 	projectAgentsDir: string | null;
 }
 
+export interface WorkflowStageConfig {
+	description: string;
+	"model-pi"?: string;
+	model?: string;
+	tools?: string[];
+}
+
+export interface WorkflowStagesConfig {
+	[key: string]: WorkflowStageConfig;
+}
+
+interface PiManifest {
+	extensions?: string[];
+	skills?: string[];
+	stageConfig?: string;
+	agents?: string[];
+}
+
+// ─── Package manifest helpers ──────────────────────────────────────────────────
+
+/**
+ * Find the package root directory by walking up from `startDir` until
+ * a directory containing a package.json with a "pi" manifest key is found.
+ *
+ * This skips intermediate package.json files (e.g. the extension's own
+ * package.json inside node_modules or nested packages) to find the outer
+ * PI package root that has the pi.stageConfig and pi.agents entries.
+ *
+ * If no package.json with a "pi" key is found, returns the first package.json
+ * encountered (fallback). Returns null if no package.json at all.
+ */
+export function findPackageRoot(startDir: string): string | null {
+	let current = startDir;
+	let firstPkgDir: string | null = null;
+
+	while (true) {
+		const pkgPath = path.join(current, "package.json");
+		if (fs.existsSync(pkgPath)) {
+			if (firstPkgDir === null) firstPkgDir = current;
+
+			// Check if this package.json has a "pi" key (the outer PI package manifest)
+			try {
+				const content = fs.readFileSync(pkgPath, "utf-8");
+				const pkg = JSON.parse(content);
+				if (pkg.pi) return current;
+			} catch {
+				// Invalid JSON or read error — continue walking up
+			}
+		}
+
+		const parent = path.dirname(current);
+		if (parent === current) return firstPkgDir;
+		current = parent;
+	}
+}
+
+/**
+ * Read the pi manifest from a package.json at the given package root.
+ * Returns null if the file doesn't exist or has no valid pi key.
+ */
+function readPiManifest(pkgRoot: string): PiManifest | null {
+	const pkgPath = path.join(pkgRoot, "package.json");
+	if (!fs.existsSync(pkgPath)) return null;
+	try {
+		const content = fs.readFileSync(pkgPath, "utf-8");
+		const pkg = JSON.parse(content);
+		return pkg.pi || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Resolve a path from a pi manifest entry relative to the package root.
+ * The manifest entry can be a string or an array of strings.
+ */
+function resolveManifestPaths(pkgRoot: string, entry: string | string[] | undefined): string[] {
+	if (!entry) return [];
+	const items = Array.isArray(entry) ? entry : [entry];
+	return items
+		.map((p) => path.resolve(pkgRoot, p))
+		.filter((p) => fs.existsSync(p) && fs.statSync(p).isDirectory());
+}
+
+// ─── Agent loading ─────────────────────────────────────────────────────────────
+
 function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {
 	const agents: AgentConfig[] = [];
-
 	if (!fs.existsSync(dir)) return agents;
 
 	let entries: fs.Dirent[];
@@ -55,16 +140,15 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 		}
 
 		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
-
 		if (!frontmatter.name || !frontmatter.description) continue;
 
 		const tools = Array.isArray(frontmatter.tools)
 			? frontmatter.tools.map((t: string) => t.trim()).filter(Boolean)
 			: typeof frontmatter.tools === "string"
 				? frontmatter.tools
-					.split(",")
-					.map((t: string) => t.trim())
-					.filter(Boolean)
+						.split(",")
+						.map((t: string) => t.trim())
+						.filter(Boolean)
 				: undefined;
 
 		agents.push({
@@ -80,6 +164,8 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 
 	return agents;
 }
+
+// ─── Directory helpers ─────────────────────────────────────────────────────────
 
 function isDirectory(p: string): boolean {
 	try {
@@ -101,6 +187,11 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
+// ─── Discovery entry points ────────────────────────────────────────────────────
+
+/**
+ * Discover user-facing agents from standard PI directories and package agents.
+ */
 export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
 	const userDir = path.join(getAgentDir(), "agents");
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
@@ -122,7 +213,10 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 	return { agents: Array.from(agentMap.values()), projectAgentsDir };
 }
 
-export function formatAgentList(agents: AgentConfig[], maxItems: number): { text: string; remaining: number } {
+export function formatAgentList(
+	agents: AgentConfig[],
+	maxItems: number,
+): { text: string; remaining: number } {
 	if (agents.length === 0) return { text: "none", remaining: 0 };
 	const listed = agents.slice(0, maxItems);
 	const remaining = agents.length - listed.length;
@@ -132,37 +226,23 @@ export function formatAgentList(agents: AgentConfig[], maxItems: number): { text
 	};
 }
 
-export interface StageConfig {
-	description: string;
-	"model-pi"?: string;
-	model?: string;
-	tools?: string[];
-}
-
-export interface StagesConfig {
-	[key: string]: StageConfig;
-}
-
 /**
- * Load stage configuration from skills/run-beads/stages.json.
- * Returns null if the file doesn't exist (stage mode not yet configured).
+ * Load workflow stage configuration from the path specified in the package manifest
+ * (pi.stageConfig). Returns null if the manifest or config file doesn't exist.
  */
-export function loadStagesConfig(extensionDir: string): StagesConfig | null {
-	// Walk up from extension dir to find the package root (where package.json lives)
-	let current = extensionDir;
-	while (true) {
-		if (fs.existsSync(path.join(current, "package.json"))) break;
-		const parent = path.dirname(current);
-		if (parent === current) return null;
-		current = parent;
-	}
+export function loadWorkflowStagesConfig(extensionDir: string): WorkflowStagesConfig | null {
+	const pkgRoot = findPackageRoot(extensionDir);
+	if (!pkgRoot) return null;
 
-	const stagesPath = path.join(current, "skills", "run-beads", "stages.json");
+	const manifest = readPiManifest(pkgRoot);
+	if (!manifest?.stageConfig) return null;
+
+	const stagesPath = path.resolve(pkgRoot, manifest.stageConfig);
 	if (!fs.existsSync(stagesPath)) return null;
 
 	try {
 		const content = fs.readFileSync(stagesPath, "utf-8");
-		return JSON.parse(content) as StagesConfig;
+		return JSON.parse(content) as WorkflowStagesConfig;
 	} catch {
 		return null;
 	}

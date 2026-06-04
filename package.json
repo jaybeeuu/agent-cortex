@@ -7,7 +7,9 @@
   "license": "MIT",
   "pi": {
     "extensions": ["./pi/extensions"],
-    "skills": ["./skills"]
+    "skills": ["./skills"],
+    "stageConfig": "./skills/run-beads/stages.json",
+    "agents": ["./agents"]
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

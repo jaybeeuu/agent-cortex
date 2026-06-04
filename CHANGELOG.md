@@ -2,6 +2,19 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.6.0
+
+### Added
+
+- Updated `README.md` with PI Agent installation instructions, current project structure, pipeline stage table, and development guide for the subagent extension.
+- Verified Copilot CLI compatibility: `plugin.json` agents/skills paths unchanged, existing playbooks and stage-runner prompt still readable by Copilot CLI ralph.
+
+## 1.5.0
+
+### Changed
+
+- Rewrote `skills/ralph/SKILL.md` and `skills/ralph/REFERENCE.md` for PI subagent dispatch. Ralph now calls the `subagent({ stage, promptPaths, task, cwd })` tool for each pipeline stage instead of spawning background subagents via prompt-template filling. The orchestrator remains sequential (one bead, one stage at a time) — branching, PR gates, worktree management, and bead lifecycle are unchanged.
+
 ## 1.4.1
 
 ### Removed

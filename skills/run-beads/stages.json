@@ -1,0 +1,37 @@
+{
+  "coding": {
+    "description": "Implement features via TDD vertical slices using the style-code skill",
+    "model-pi": "big-pickle",
+    "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"]
+  },
+  "test-writing": {
+    "description": "Write tests for changes made in the coding stage",
+    "model-pi": "mimo-v2.5-free",
+    "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"]
+  },
+  "test-reviewing": {
+    "description": "Evaluate tests against bead requirements and acceptance criteria",
+    "model-pi": "deepseek-v4-flash-free",
+    "tools": ["read", "bash", "grep", "find", "ls"]
+  },
+  "reviewing": {
+    "description": "Review code changes and scan for security issues via the review-security skill",
+    "model-pi": "deepseek-v4-flash-free",
+    "tools": ["read", "bash", "grep", "find", "ls"]
+  },
+  "fixing": {
+    "description": "Fix issues found during review stages using the style-code skill",
+    "model-pi": "big-pickle",
+    "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"]
+  },
+  "verifying": {
+    "description": "Run test/lint/check commands and report results",
+    "model-pi": "deepseek-v4-flash-free",
+    "tools": ["read", "bash", "grep", "find", "ls"]
+  },
+  "documenting": {
+    "description": "Update documentation to reflect code changes using the style-documentation skill",
+    "model-pi": "mimo-v2.5-free",
+    "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"]
+  }
+}

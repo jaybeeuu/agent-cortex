@@ -1,14 +1,11 @@
 
-# Planning scratchpad — keep directory scaffold, ignore working docs content
-.agent-cortex/working-docs/*
-
-# Beads / Dolt files (added by bd init)
 .dolt/
 *.db
-.beads-credential-key
-.agent-cortex/*
-!.agent-cortex/working-docs/
+.bea
+ds-credential-key
 
-# Node
+.agent-cortex/
+
 node_modules/
-.agent-cortex/worktrees/
+tmux-*.log
+.junie/

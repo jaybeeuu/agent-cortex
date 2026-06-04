@@ -1,7 +1,7 @@
 {
   "name": "agent-cortex",
   "description": "Personal PI agent package and Copilot CLI plugin with custom agents and skills",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "keywords": ["pi-package"],
   "license": "MIT",

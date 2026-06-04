@@ -2,6 +2,13 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.6.0
+
+### Added
+
+- Updated `README.md` with PI Agent installation instructions, current project structure, pipeline stage table, and development guide for the subagent extension.
+- Verified Copilot CLI compatibility: `plugin.json` agents/skills paths unchanged, existing playbooks and stage-runner prompt still readable by Copilot CLI ralph.
+
 ## 1.5.0
 
 ### Changed

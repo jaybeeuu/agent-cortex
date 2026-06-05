@@ -1,7 +1,9 @@
 {
   "enableSkillCommands": true,
-  "skills": ["~/src/agent-cortex/skills"],
-  "lastChangelogVersion": "0.78.0",
+  "skills": [
+    "~/src/agent-cortex/skills"
+  ],
+  "lastChangelogVersion": "0.78.1",
   "defaultProvider": "opencode",
   "defaultModel": "big-pickle",
   "defaultThinkingLevel": "medium",

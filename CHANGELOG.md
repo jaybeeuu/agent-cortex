@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.5.0
+
+### Added
+
+- New `refactor-skill` interactive skill that upgrades existing SKILL.md files to the canonical anatomy template through gap analysis, user interview on optional sections, and one-pass rewrite.
+
 ## 1.4.1
 
 ### Removed

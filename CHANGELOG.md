@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.6.0
+
+### Changed
+
+- Rewrote `skills/write-a-skill/SKILL.md` to the anatomy template: added `When to use`, `When NOT to use`, `Red Flags`, `Cross-skill references`, and `Examples` sections; renamed `Process` → `Workflow` and `Review checklist` → `Verification checklist`; converted body to imperative second-person voice; added quoted trigger phrases to description.
+
 ## 1.5.1
 
 ### Removed

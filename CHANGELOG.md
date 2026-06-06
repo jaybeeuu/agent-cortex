@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.5.1
+
+### Removed
+
+- Removed `write-a-skill guidance deltas` test block from `skills/run-beads/scripts/generate-progress.test.ts` — it tested markdown file content, not code.
+
 ## 1.5.0
 
 ### Added

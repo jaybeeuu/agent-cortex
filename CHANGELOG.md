@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.7.0
+
+### Changed
+
+- Rewrote `skills/style-comms/SKILL.md` to the anatomy template: added `When to use`, `When NOT to use`, `Philosophy / rationale`, `Workflow`, `Cross-skill references`, `Examples`, and `Verification checklist` sections; restructured existing reference content into ordered workflow steps; added good/bad example pairs; updated description to the canonical two-sentence format with quoted trigger phrases.
+
 ## 1.6.0
 
 ### Changed

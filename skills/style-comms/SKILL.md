@@ -1,60 +1,93 @@
 ---
 name: style-comms
-description: "Communication style for jaybeeuu. Use this before writing any external document — tickets, RFCs, PRDs, proposals, reports, or any written communication intended for others."
+description: Sets tone, structure, and concision rules for external-facing written communication. Use when you need a "style review", want to "make this clearer", or are writing tickets, RFCs, PRDs, proposals, or reports.
 ---
 
 # Communication Style
 
-## Structure
+## When to use
 
-For specific content structure and templates, look for a `write-a-*` skill matching the document type (e.g. `write-a-ticket`, `write-a-prd`). Use it alongside this skill — it provides the template; this skill governs the style.
+- Writing a ticket, RFC, PRD, proposal, report, or any document someone else will read.
+- Reviewing a draft for tone, structure, or concision.
+- Asked for a "style review", "make this clearer", or "is this well written?".
 
-By default, or where there is not a "write-a-\*" template, use the following structure:
+## When NOT to use
 
-Lead with the ask — the question to answer or decision to make.
+- Deciding *whether and what* to document — use `style-documentation` instead.
+- Writing code or test code — use `style-code` or `style-tests` instead.
 
-- **Informal documents**: one or two sentence TL;DR.
-- **Formal documents**: a summary of no more than two paragraphs covering the purpose, key points, and conclusions. Background and detail follow.
+## Philosophy / rationale
 
-Then use a triangular approach: start broad, move inward.
+- **Reader time is more valuable than writer time.** Every sentence you write costs the reader time to process. Make each one count.
+- **Lead with the payoff because the reader's first question is always "why am I reading this?".** Put the key takeaway — whether it's a decision, a conclusion, a recommendation, or a summary — up front so they orient before diving into detail.
+- **Triangular structure (broad → narrow) lets readers self-select depth.** A reader who only needs context stops early; one who needs specifics reads on. Both get what they need without friction.
+- **Explicit language ages better than hedged language.** Hedging ("might", "potentially", "it could be") lets each reader fill in their own interpretation — which will differ from yours.
 
-- Open with the widest context — why this matters, what problem space it sits in.
-- Narrow progressively — from context to problem to proposed approach to specific detail.
-- Put the most granular information last. Readers who only need the big picture can stop early.
+## Workflow
 
-## Tone And Length
+1. **Identify the audience and the ask.** Who is reading this, and what do they need to decide or know by the end? Write the ask down first.
 
-- Be concise. Every sentence should earn its place.
-- Prefer plain language over formal or corporate phrasing.
-- State things directly. Avoid hedging, filler, and throat-clearing.
-- Do not restate what was just said in different words.
+2. **Lead with the payoff.** Open with the key takeaway — the decision needed, the conclusion reached, the recommendation, or a summary of findings.
+   - Informal documents: one or two sentence TL;DR.
+   - Formal documents: a summary of no more than two paragraphs covering purpose, key points, and conclusions.
 
-## Lists
+3. **Structure with the triangular approach.** Start broad, then narrow progressively — from context to problem to proposed approach to specific detail. Put the most granular information last.
 
-Use bullet points when items are genuinely enumerable and parallel. Do not use them as a default prose substitute.
+4. **Write with concision.** Every sentence must earn its place.
+   - Prefer plain language over formal or corporate phrasing.
+   - State things directly. Avoid hedging ("might", "potentially", "it could be said"), filler ("It is worth noting that…", "As mentioned above…"), and throat-clearing.
+   - Do not restate what was just said in different words.
+   - Do not open with a preamble that restates the document title or obvious context.
 
-- Good use: a list of constraints, a set of options, a series of discrete steps.
-- Bad use: breaking a single flowing thought into three bullets, or bulleting every paragraph.
+5. **Use lists, links, and examples intentionally.**
+   - **Lists:** Use for genuinely enumerable, parallel items. Do not break a single flowing thought into bullets.
+   - **Links:** Link to the specific location (code line, document section), not a top-level root. Do not link things the reader can trivially find. Add a **References** section at the end only when multiple links need collating — inline a single link instead.
+   - **Examples:** Use to illustrate complex ideas — code blocks under 15 lines, calculations with workings, concrete scenarios. Remove if the surrounding prose is already clear. Show only what makes the point.
 
-## Links And References
-
-Include links to supporting documents, code, or prior decisions where they add genuine value — a related RFC, the relevant source file, a prior decision record. Add a **References** section at the end when there are supporting links which don't fit in the text, or to collate multiple links.
-
-- Link to the specific location (e.g. code line or document section), not a top-level repo or doc root.
-- Do not link things the reader can trivially find themselves.
-- Do not pad a references section — if there is only one link, inline it instead.
+6. **Review against the checklist below.** Read the draft once as its intended audience before sending or committing.
 
 ## Examples
 
-Use examples to illustrate complex ideas — code blocks, calculations with workings shown, concrete scenarios. Keep them short and immediately relevant.
+### Lead with the payoff
 
-- Code blocks must be under 15 lines.
-- Every example must earn its place; remove it if the surrounding prose is already clear.
-- Show only what is needed to make the point — no scaffolding, no preamble, no trailing explanation of what the example just showed.
+| Instead of… | Write… |
+|---|---|
+| "I've been looking at the current auth system and thinking about ways we could improve it. There are a few options to consider…" | "We need to decide between OAuth2 and SAML for the new API gateway. Here's the tradeoff." |
 
-## What To Avoid
+### Conciseness
 
-- Preamble that restates the document title or the obvious context.
-- Padding phrases: "It is worth noting that…", "As mentioned above…", "In order to…"
-- Over-structured documents where every sentence becomes a heading or bullet.
-- Vague problem statements — be specific about what is broken, missing, or needed.
+| Instead of… | Write… |
+|---|---|
+| "It is worth noting that the database migration is something we should take into consideration at this point in time." | "The database migration is our next bottleneck." |
+
+### Intentional lists
+
+| Instead of… | Write… |
+|---|---|
+| "The system needs to be scalable. It also needs to be secure. And it also needs to be maintainable." | "Requirements: scalable, secure, maintainable." |
+
+### Direct over hedged
+
+| Instead of… | Write… |
+|---|---|
+| "This might potentially cause some issues that we could look at." | "This approach causes two problems: increased latency and a single point of failure." |
+
+## Cross-skill references
+
+| When you need… | Use this skill |
+|---|---|
+| A document template with section structure | `write-a-ticket`, `write-a-prd`, `write-a-skill` |
+| Guidance on what and whether to document | `style-documentation` |
+| Coding style and conventions | `style-code` |
+| Test writing style | `style-tests` |
+
+## Verification checklist
+
+- [ ] Document opens with the key takeaway (decision, conclusion, recommendation, or summary)
+- [ ] Triangular structure: broad context → narrow detail
+- [ ] No hedging, filler, preamble, or restated document title
+- [ ] Every sentence earns its place — nothing can be cut without loss
+- [ ] Lists are parallel and genuinely enumerable
+- [ ] Links point to specific locations, not top-level roots
+- [ ] Examples are under 15 lines and show only what's needed
+- [ ] References section used only for multiple links; single links are inlined

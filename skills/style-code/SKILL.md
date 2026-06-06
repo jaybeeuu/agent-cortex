@@ -61,7 +61,7 @@ description: Defines coding style, conventions, and architectural preferences fo
 | "I'll add types later" | Types are cheapest at write time. Adding them later is a refactor you will skip. |
 | "The existing code already does it this way" | Existing patterns may predate this guide. Follow the guide unless changing it would inflate scope beyond the task. |
 | "I'll throw an Error for this validation failure" | Expected domain failures should be typed results the caller can handle. Reserve thrown `Error` for things that are truly broken. |
-| "I'll extract this into a shared util — it might be useful later" | Extract locally first if it clarifies the code. Promote to shared only when a second real caller emerges. Guessing the shape before then wastes time and creates coupling. |
+| "I'll extract this into a shared util — it might be useful later" | Extract locally first if it clarifies the code. Promote to shared only when at least a third real caller emerges. Guessing the shape before then wastes time and creates coupling. |
 
 ## Cross-skill references
 

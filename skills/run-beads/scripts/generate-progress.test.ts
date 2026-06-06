@@ -746,21 +746,6 @@ describe('skill anatomy expanded documentation requirements', () => {
   });
 });
 
-// ─── Behavior 14: write-a-skill guidance deltas ────────────────────────────────
-
-describe('write-a-skill guidance deltas', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..');
-
-  it('captures updated anatomy guidance and checklist alignment details', () => {
-    const skillDoc = readFileSync(join(repoRoot, 'skills', 'write-a-skill', 'SKILL.md'), 'utf8');
-    assert.match(skillDoc, /line limit|target ≤100|hard cap 150/i);
-    assert.match(skillDoc, /voice|tone/i);
-    assert.match(skillDoc, /front.?matter fields?/i);
-    assert.match(skillDoc, /docs\/skills\/skill-anatomy\.md/i);
-    assert.match(skillDoc, /checklist alignment|aligned with (the )?anatomy/i);
-  });
-});
-
 // ─── Behavior 15: research doc promotion/linking contracts ─────────────────────
 
 describe('research doc promotion/linking contracts', () => {

@@ -2,6 +2,16 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.9.0
+
+### Changed
+
+- Rewrote `skills/style-documentation/SKILL.md` to the anatomy template: added `When to use`, `When NOT to use`, `Philosophy / rationale`, `Workflow`, `Red Flags`, `Common Rationalizations`, `Cross-skill references`, `Examples`, and `Verification checklist`; tightened the documentation philosophy into clear decision rules.
+
+### Fixed
+
+- Revised `skills/style-code/SKILL.md` abstraction guidance: Red Flag now says "across multiple callers" and Common Rationalizations clarifies "at least a third real caller" as the threshold for promoting a local helper to a shared module.
+
 ## 1.8.0
 
 ### Changed

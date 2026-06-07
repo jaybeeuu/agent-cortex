@@ -2,6 +2,40 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.16.0
+
+### Added
+
+- New `skills/prd-to-tasks/SKILL.md` — merges `prd-to-plan`, `plan-to-epics`, and `epic-to-tasks`
+  into a single skill that takes a PRD and produces the full bead tree (epics + tasks) in one
+  pass. Epics are the source of truth; no intermediate plan file.
+
+### Removed
+
+- Removed `skills/prd-to-plan/` — superseded by `prd-to-tasks`.
+- Removed `skills/plan-to-epics/` — superseded by `prd-to-tasks`.
+- Removed `skills/epic-to-tasks/` — superseded by `prd-to-tasks`.
+
+### Changed
+
+- `agents/ralph-plan.agent.md` step 1: replaced `prd-to-plan` reference with `prd-to-tasks`;
+  when input is a PRD, skip to step 7 (agree with user) since the skill handles exploration
+  and breakdown internally.
+- `agents/ralph-plan.agent.md` step 6: replaced `epic-to-tasks` with `prd-to-tasks` for large
+  workstreams.
+- Updated `docs/research/skill-design-research.md` — removed stale references to removed
+  skills from line-count stats, split candidates, and multi-phase skill list.
+
+## 1.15.0
+
+### Changed
+
+- Rewrote `skills/beads/SKILL.md` to the anatomy template: added `When to use`, `When NOT to use`, `Philosophy / rationale`, `Workflow`, `Red Flags`, `Common Rationalizations`, `Cross-skill references`, `Examples`, and `Verification checklist`; removed MCP server references; restructured existing key-commands reference and epics guidance into canonical workflow with phase separation.
+
+### Removed
+
+- Removed `beads` MCP server from `plugin.json` — CLI-based usage is the primary interface.
+
 ## 1.14.0
 
 ### Removed

@@ -25,6 +25,10 @@ All notable changes to this repository are documented in this file.
   for another agent to pick up. Imports from mattpocock/skills.
 - **New skill: `teach`** — multi-session teaching workspace with lessons, reference docs,
   learning records, and glossary support. Imports from mattpocock/skills.
+- **New PI extension: `skill-stats`** — tracks skill usage across PI sessions. Records when
+  skills are loaded, invoked via `/skill:name`, or actively read by the LLM. Data stored in
+  `~/.pi/agent-cortex/skill-usage.json` with per-project breakdowns. Provides `/skill-stats`
+  dashboard and `/skill-usage-reset`. Useful for identifying unused context-budget burners.
 
 ### Removed
 
@@ -38,17 +42,6 @@ All notable changes to this repository are documented in this file.
   `docs/research/skill-design-research.md` to use `grill-with-docs` instead of
   `ubiquitous-language`.
 - Updated `AGENTS.md` structure diagram to reflect new and removed skills.
-
-## 1.16.1
-
-### Fixed
-
-- **Untrack `pi/settings.json`**: personal PI agent config (providers, models, local paths) is
-  now gitignored — each developer keeps their own. Removed from index.
-
-### Changed
-
-- `.gitignore` now excludes `pi/settings.json`.
 
 ## 1.16.0
 

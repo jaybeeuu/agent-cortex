@@ -4,8 +4,9 @@ Instructions for agents working on this repository.
 
 ## What This Repo Is
 
-A personal Copilot CLI plugin containing custom agents and skills. Changes here affect the
-behaviour of every agent and skill available in the author's Copilot CLI sessions.
+A personal Copilot CLI plugin containing custom agents and skills, plus PI extensions for
+enhancing the coding agent runtime. Changes here affect the behaviour of every agent, skill,
+and PI extension available in the author's coding sessions.
 
 ## Structure
 
@@ -14,41 +15,18 @@ agent-cortex/
 ├── plugin.json           # Plugin manifest
 ├── agents/               # Custom agents (*.agent.md)
 │   └── ralph.agent.md
-└── skills/               # Grouped by domain, discovered recursively
-    ├── planning/         # Scope, spec, decompose
-    │   ├── classify-bead/
-    │   ├── create-task/
-    │   ├── prd-to-tasks/
-    │   ├── record-idea/
-    │   ├── request-refactor-plan/
-    │   ├── write-a-prd/
-    │   └── write-a-ticket/
-    ├── engineering/      # The coding loop
-    │   ├── design-an-interface/
-    │   ├── grill-with-docs/
-    │   ├── improve-codebase-architecture/
-    │   ├── tdd/
-    │   └── technical-direction/
-    ├── productivity/     # Workflow tooling, not code-specific
-    │   ├── bd-tool/
-    │   ├── grill-me/
-    │   ├── handoff/
-    │   ├── init-beads/
-    │   ├── teach/
-    │   └── write-a-skill/
-    ├── style/            # Conventions and standards
-    │   ├── style-code/
-    │   ├── style-comms/
-    │   ├── style-documentation/
-    │   └── style-tests/
-    ├── workflow/         # Orchestration and pipeline
-    │   ├── hitl-collab/
-    │   ├── ralph/
-    │   └── run-pipeline-stage/
-    └── review/           # Auditing and maintenance
-        ├── maintain-agent-docs/
-        ├── refactor-skill/
-        └── review-security/
+├── skills/               # Grouped by domain, discovered recursively
+│   ├── planning/         # Scope, spec, decompose
+│   ├── engineering/      # The coding loop
+│   ├── productivity/     # Workflow tooling
+│   ├── style/            # Conventions and standards
+│   ├── workflow/         # Orchestration and pipeline
+│   └── review/           # Auditing and maintenance
+├── extensions/           # PI extensions (one directory per extension, each with index.ts)
+│   └── skill-stats/
+│       ├── README.md     # Installation & usage
+│       └── index.ts      # Extension entrypoint
+└── package.json          # PI package manifest (pi: { extensions, skills })
 ```
 
 ## Versioning
@@ -90,6 +68,16 @@ follow-up commit.
 - Agent files are named `<name>.agent.md` and live in `agents/`.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
+
+## PI Extension Conventions
+
+- PI extensions live in `extensions/`, one subdirectory per extension.
+- Each extension directory contains `index.ts` (entrypoint) and `README.md` (install + usage).
+- Extensions are deployed via symlink to `~/.pi/agent/extensions/<name>/` for global PI discovery.
+- Keep extensions lightweight: no internal LLM calls. Extensions observe events and provide
+  commands — they should not add token overhead.
+- Extensions that persist data should write to `~/.pi/agent-cortex/` (global, cross-project)
+  and tag records with the project path for per-project slicing.
 
 ## Task tracking
 

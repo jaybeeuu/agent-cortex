@@ -94,9 +94,9 @@ This tags the bead with its current stage (beads are the source of truth for sta
 |-----------------|-----------|-------------|
 | `code` | — | Run **verify** stage |
 | `verify` | `OUTCOME: SUCCESS` | Run **review** stage |
-| `verify` | `OUTCOME: BLOCKED` | Create **fix** feedback bead (see _Feedback Beads_) |
+| `verify` | `OUTCOME: BLOCKED` | Create a `stage:fix` chore (see _Feedback Beads_) |
 | `review` | `OUTCOME: SUCCESS` | Run **document** stage |
-| `review` | `OUTCOME: BLOCKED` and fixRounds < maxFixRounds | Create **fix** feedback bead (see _Feedback Beads_); increment fixRounds |
+| `review` | `OUTCOME: BLOCKED` and fixRounds < maxFixRounds | Create a `stage:fix` chore (see _Feedback Beads_); increment fixRounds |
 | `review` | `OUTCOME: BLOCKED` and fixRounds ≥ maxFixRounds | `bd update <parent-id> --status blocked --notes "max fix rounds reached"` — record for shutdown |
 | `document` | — | `bd close <id>` — done |
 
@@ -104,7 +104,7 @@ This tags the bead with its current stage (beads are the source of truth for sta
 
 ### Fix loop flow
 
-When a fix feedback bead completes, the next stage depends on which stage triggered the fix:
+When a `stage:fix` chore completes, the next stage depends on which stage triggered the fix:
 - **Fix after verify failure** → re-run **verify**
 - **Fix after review failure** → re-run **review**
 

@@ -39,7 +39,7 @@ If the domain language is unclear or inconsistent, invoke the **ubiquitous-langu
 ### 3. Explore the codebase
 Dispatch parallel **explore** sub-agents — one per independent research area. Tell each sub-agent to write its findings to a named file in `.agent-cortex/working-docs/` and **not** to modify any beads or source files. Provide each sub-agent with the full `bd prime` output.
 
-- If the task involves a bug or regression, investigate the root cause directly before exploring broader context: trace the code path, check recent changes with `git log`, attempt to reproduce, and classify the failure (regression / missing edge case / design flaw).
+- If the task involves a bug or regression, investigate the root cause directly before exploring broader context: trace the code path, check recent changes with `git log`, attempt to reproduce, and classify the failure (regression / missing edge case / design flaw). Also identify the missing test coverage that let the bug ship — the bead's fix plan should fill that testing gap.
 - If the task involves architectural change, invoke **improve-codebase-architecture** to surface structural concerns.
 - If the task requires designing a new module API or interface, invoke **design-an-interface** to generate and compare options. Write the output to `.agent-cortex/working-docs/interface-design.md`.
 

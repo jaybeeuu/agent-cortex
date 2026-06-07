@@ -44,12 +44,15 @@ directly by a user who has a clear spec.
 1. Confirm the PRD is in context (conversation, bead description, or file).
 2. If you haven't explored the relevant codebase area, do so now — understand current
    architecture, existing patterns, and integration layers.
-3. Identify durable architectural decisions that will apply across all phases:
+3. Identify durable architectural decisions that will apply across all phases.
+   Examples:
    - Route structures / URL patterns
    - Database schema shape
    - Key data models
    - Authentication / authorisation approach
    - Third-party service boundaries
+   Add others relevant to the project — the goal is a shared skeleton every phase
+   can reference.
 4. Record these in a holding note — they inform every phase.
 
 ### Phase 2 — Draft the phase breakdown

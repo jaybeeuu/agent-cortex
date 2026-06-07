@@ -9,6 +9,8 @@ All notable changes to this repository are documented in this file.
 - New `skills/prd-to-tasks/SKILL.md` — merges `prd-to-plan`, `plan-to-epics`, and `epic-to-tasks`
   into a single skill that takes a PRD and produces the full bead tree (epics + tasks) in one
   pass. Epics are the source of truth; no intermediate plan file.
+- Recorded terminology decisions in `.agent-cortex/ralph/ubiquitous-language.md`: epic/task/stage
+  hierarchy, pipeline definition, and canonical term glossary.
 
 ### Removed
 
@@ -18,6 +20,26 @@ All notable changes to this repository are documented in this file.
 
 ### Changed
 
+- **Renamed `skills/beads/` → `skills/bd-tool/`**: clarifies this is about `bd` CLI mechanics
+  (prime, show, claim, close), not bead concepts. Removed classification section
+  (AFK/HITL/NEEDS-REFINEMENT) — delegated to `classify-bead` skill.
+- **Renamed `skills/run-beads/` → `skills/run-pipeline-stage/`**: clarifies this is a generic
+  pipeline stage executor, not TDD-specific. Removed classification section. Pipeline stages
+  aligned with canonical `pipeline.json` (`code → verify → review → document`). Internal paths
+  updated throughout (playbooks, prompts, scripts).
+- **Reconciled pipeline definitions**: `run-pipeline-stage` SKILL.md now references
+  `skills/create-task/pipeline.json` as the canonical pipeline source. Stage IDs
+  (`stage:code`, `stage:verify`, `stage:review`, `stage:document`) now match what
+  `create-chores.ts` creates. Fix loop caps read from `pipeline.json`'s `maxFixRounds`.
+- `ralph.agent.md`: updated all `run-beads` references to `run-pipeline-stage`; replaced
+  classification reference with `classify-bead` skill; updated dispatch rules to 4-stage
+  pipeline; TDD loop cap removed, fix caps aligned to `pipeline.json`.
+- `skills/ralph/REFERENCE.md`, `skills/ralph/SKILL.md`: updated path references to
+  `run-pipeline-stage`.
+- `skills/create-task/templates/*.md`: updated progress logging cross-references from
+  `run-beads` to `run-pipeline-stage`.
+- `AGENTS.md`: updated directory tree and agent delegation description.
+- `.github/workflows/ci.yml`: updated step names and paths.
 - `agents/ralph-plan.agent.md` step 1: replaced `prd-to-plan` reference with `prd-to-tasks`;
   when input is a PRD, skip to step 7 (agree with user) since the skill handles exploration
   and breakdown internally.
@@ -25,7 +47,6 @@ All notable changes to this repository are documented in this file.
   workstreams.
 - Updated `docs/research/skill-design-research.md` — removed stale references to removed
   skills from line-count stats, split candidates, and multi-phase skill list.
-
 ## 1.15.0
 
 ### Changed

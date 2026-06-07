@@ -76,7 +76,7 @@ Optional — beads work locally. Sync at session end when it's convenient.
 
 ## Key conventions
 
-- **Priority**: 0 = critical, 1 = high, 2 = medium, 3 = low
+- **Priority**: 0 = critical, 1 = high, 2 = medium, 3 = low, 4 = backlog. Aliased as P0-P4.
 - **HITL beads**: require human action — do not claim or implement them. Inform the user.
 - **Chore beads** (`--type chore --ephemeral`): auto-created pipeline stages. Do not create them manually — use `create-task`.
 

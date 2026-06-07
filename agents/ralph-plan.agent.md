@@ -39,7 +39,7 @@ If the domain language is unclear or inconsistent, invoke the **ubiquitous-langu
 ### 3. Explore the codebase
 Dispatch parallel **explore** sub-agents — one per independent research area. Tell each sub-agent to write its findings to a named file in `.agent-cortex/working-docs/` and **not** to modify any beads or source files. Provide each sub-agent with the full `bd prime` output.
 
-- If the task involves a bug or regression, invoke the **triage-issue** skill to locate root cause before exploring broader context.
+- If the task involves a bug or regression, investigate the root cause directly before exploring broader context: trace the code path, check recent changes with `git log`, attempt to reproduce, and classify the failure (regression / missing edge case / design flaw).
 - If the task involves architectural change, invoke **improve-codebase-architecture** to surface structural concerns.
 - If the task requires designing a new module API or interface, invoke **design-an-interface** to generate and compare options. Write the output to `.agent-cortex/working-docs/interface-design.md`.
 
@@ -75,6 +75,19 @@ Tag every bead created in this step with `workflow:ralph`:
 ```bash
 bd tag <id> workflow:ralph
 ```
+
+If the bead is a bug or regression fix, also tag it with a severity level:
+
+```bash
+bd tag <id> severity:<p0|p1|p2|p3>
+```
+
+| Severity | Priority | Examples |
+|---|---|---|
+| P0 | Critical | Data loss, crash, security breach |
+| P1 | High | Major feature broken, no workaround |
+| P2 | Medium | Minor feature broken, workaround exists |
+| P3 | Low | Cosmetic, nice-to-have |
 
 ### 7. Agree with the user
 Present the bead list (IDs, titles, one-line rationale each) plus planning gate status for each item using `✅` (confirmed/closed) or `⏳` (awaiting confirmation/open). Ask the user to confirm or request changes before finishing.

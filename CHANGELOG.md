@@ -2,6 +2,37 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.14.0
+
+### Removed
+
+- Removed `skills/triage-issue/` — the dedicated bug triage skill. After review, the
+  investigation steps are what a competent agent does by default; the few real conventions
+  (severity tagging) are now inlined into `ralph-plan.agent.md`.
+
+### Changed
+
+- `agents/ralph-plan.agent.md` step 3: replaced `triage-issue` invocation with inline
+  investigation instructions.
+- `agents/ralph-plan.agent.md` step 6: added severity tagging (`bd tag <id> severity:<p0|p1|p2|p3>`)
+  for bug/regression beads, with a severity-to-priority map.
+- Updated `docs/research/skill-design-research.md` — removed `triage-issue` from the list of
+  argument-hint candidates.
+
+## 1.13.0
+
+### Removed
+
+- Removed `skills/qa/` — the conversational QA session skill. Was unused; bug filing is better
+  done directly via `create-task`.
+
+### Changed
+
+- Rewrote `skills/triage-issue/SKILL.md` to the anatomy template with deepened investigation
+  (subsequently removed in 1.14.0).
+- Updated `docs/research/skill-design-research.md` — removed `qa` from line-count stats and
+  split-candidate list.
+
 ## 1.12.0
 
 ### Changed

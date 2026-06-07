@@ -5,69 +5,123 @@ description: Load project context and task state using the beads (bd) task track
 
 # Beads
 
-## Set workspace context
+## When to use
 
-Before any other beads command, set the MCP workspace context so the beads server knows which
-project to operate on. Detect the git repository root and pass it as `workspace_root`:
+- Starting a new session — load project context and see what is available.
+- Recording work that needs to be done — create beads for tasks, epics for workstreams, and dependencies between them.
+- Picking up work — find unblocked tasks and claim them.
+- Working through a task — update status, track progress, and close when done.
+- Planning with ralph — beads are the recording mechanism; create them rather than performing the work directly.
+- The user mentions "beads", "bd", "bead", or "prime".
 
-```bash
-git rev-parse --show-toplevel
-```
+## When NOT to use
 
-Then call the `context` MCP tool with that path as `workspace_root`. Do this once per session —
-all subsequent beads MCP calls will use it.
+- Performing raw git operations or direct dolt commands — use the CLI directly.
+- Tracking work in a different task system — beads is a local tool and does not sync to external trackers.
+- One-off questions or exploratory sessions that do not produce tracked work.
 
-## Prime
+## Philosophy / rationale
 
-Run `bd prime` and hold its full output in memory as your project context:
+- **Context is the most expensive thing to rebuild.** `bd prime` captures project state, conventions, and goals so you do not lose your place between sessions.
+- **Tracked work beats remembered work.** A bead captures what needs doing, why, and what blocks it. Writing it down means you can switch context and come back without losing the thread.
+- **Beads are a local tool.** They work for you, not for a team or a CI pipeline. Sync when it is useful; skip it when it is not.
+
+## Workflow
+
+### 1. Prime
 
 ```bash
 bd prime
 ```
 
-`bd prime` outputs the project's tech stack, conventions, current goals, and open task list. This is **project-level context** — complementary to the beads MCP tools, which handle task CRUD. Even with the MCP server configured, always run `bd prime` at the start of each session to load conventions and goals. Forward the output verbatim to any subagents you spawn — never summarise it.
+Hold the full output in memory as your project context. It contains tech stack, conventions, current goals, and the open task list. Forward it verbatim to any subagents you spawn — never summarise it. This is the only setup you need — `bd` detects the project from the working directory automatically.
 
-## Key commands
+### 2. Identify the bead
 
-> There should be an MCP tool for any of the following commands, but if not, you can shell out to the CLI directly. Always prefer MCP tools if they exist.
+If you were passed a bead ID, show it:
 
 ```bash
-bd ready                          # list unblocked tasks
-bd show <id>                      # full description of a task
-bd update <id> --claim            # claim a task before starting it
-bd close <id>                     # mark a task complete
-bd create "Title" -p <0-3>        # create a task (P0 = critical, P3 = low)
-bd create "Title" --type epic     # create an epic to group a workstream
-bd create "Title" --parent <id>   # create a task as a child of an epic
-bd block <id> --on <other-id>     # declare a dependency
-bd epic status                    # show completion progress across all epics
-bd children <id>                  # list all child beads of an epic
-bd dolt push                      # sync to remote at session end
+bd show <id>
 ```
 
-## Epics
+If you need to find work, list unblocked tasks:
 
-Use epics to group related tasks that belong to the same workstream. A workstream is a coherent body of work with a shared goal (e.g. "Authentication", "Data pipeline", "Admin UI"). Epics make it easy to track progress per workstream and understand how individual tasks relate to each other.
+```bash
+bd ready
+```
 
-**When to create an epic:**
-- You are breaking down a large feature or PRD into many tasks
-- The tasks naturally cluster into 2 or more distinct workstreams
-- You want to track the completion of a workstream as a unit
+Review descriptions with `bd show <id>` to understand what each one needs.
 
-**How to use epics:**
-1. Create the epic first: `bd create "Workstream name" --type epic`
-2. Create child tasks with `--parent <epic-id>`
-3. Check workstream progress with `bd epic status` or `bd children <epic-id>`
+### 3. Classify before claiming
 
-Tasks that do not clearly belong to any workstream can be created without a parent.
+Before claiming a task, invoke the `classify-bead` skill to ensure it has an `implementation-type` label. If the bead is **HITL**, do not claim it — inform the user that it requires human action.
 
-## Workflow
+### 4. Claim
 
-1. Run `bd prime` — hold the output as context for the session
-2. Run `bd ready` — see what's available
-3. Pick a task. Before claiming it, invoke the `classify-bead` skill to ensure it has an `implementation-type` label. If the bead is **HITL**, do not claim it — inform the user that it requires human action.
-4. Claim the task with `bd update <id> --claim`
-5. Implement it using the context from `bd prime` and `bd show <id>`
-6. Close it with `bd close <id>`
-7. Repeat from step 2
-8. Sync at the end: `bd dolt push`
+```bash
+bd update <id> --claim
+```
+
+### 5. Implement
+
+Use the context from `bd prime` and `bd show <id>` to complete the work.
+
+### 6. Close
+
+```bash
+bd close <id>
+```
+
+Add a reason when it is meaningful (e.g. PR link).
+
+## Red Flags
+
+- **Skipping `bd prime`.** Without it you lose project-level context — tech stack, conventions, goals. Always run it at session start.
+- **Claiming a HITL bead without informing the user.** HITL means the task needs a human. Claiming it blocks progress until you hand off.
+- **Forgetting to classify before claiming.** Missing the `implementation-type` label means downstream tools (ralph, run-beads) cannot route the task correctly.
+- **Working without beads.** Even a single task should be tracked. Every untracked task is a bead that will be re-created later when someone forgets it was done.
+
+## Common Rationalizations
+
+| Rationalization | Rebuttal |
+|---|---|
+| "I will just do this one task without creating a bead" | Untracked work is invisible work. Creating a bead takes ten seconds. |
+| "I will just do the work directly instead of recording it as a bead" | Especially during ralph-plan: beads are the recording mechanism. Creating a bead means ralph can execute it later. Doing the work directly bypasses the pipeline. |
+| "I will sync later" | Syncing is optional — beads work fine as a purely local tool. If you do sync, do it at session end when it is easy to remember what changed. |
+| "I already know what to do — I do not need `bd ready`" | `bd ready` also shows blocked tasks and priorities. You may be picking the wrong thing. |
+| "This bead is obvious — I do not need to classify it" | The classification feeds downstream routing. Without it, ralph will skip the bead. |
+
+## Cross-skill references
+
+| When you need… | Use this skill |
+|---|---|
+| Classifying a bead before claiming it | `classify-bead` |
+| Creating a new task with full pipeline expansion | `create-task` |
+| Executing a single pipeline stage | `run-beads` |
+| Running the full end-to-end pipeline | `ralph` |
+
+## Examples
+
+### Full session walkthrough
+
+```
+$ bd prime
+  → loads project conventions, goals, and open tasks
+
+$ bd show agnt-ctx-abc123
+  → reads the full description
+
+# classify-bead determines it is AFK
+$ bd tag agnt-ctx-abc123 implementation-type:afk
+$ bd update agnt-ctx-abc123 --claim
+
+# implement... then:
+$ bd close agnt-ctx-abc123 --reason="Implemented in PR #42"
+```
+
+## Verification checklist
+
+- [ ] `bd prime` run at session start
+- [ ] Tasks classified before claiming (implementation-type label present)
+- [ ] HITL beads handed off to the user, not claimed
+- [ ] All completed tasks closed with a reason

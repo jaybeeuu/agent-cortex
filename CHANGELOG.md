@@ -2,6 +2,16 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.15.0
+
+### Changed
+
+- Rewrote `skills/beads/SKILL.md` to the anatomy template: added `When to use`, `When NOT to use`, `Philosophy / rationale`, `Workflow`, `Red Flags`, `Common Rationalizations`, `Cross-skill references`, `Examples`, and `Verification checklist`; removed MCP server references; restructured existing key-commands reference and epics guidance into canonical workflow with phase separation.
+
+### Removed
+
+- Removed `beads` MCP server from `plugin.json` — CLI-based usage is the primary interface.
+
 ## 1.14.0
 
 ### Removed

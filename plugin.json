@@ -1,7 +1,7 @@
 {
   "name": "agent-cortex",
   "description": "Personal Copilot CLI plugin with custom agents and skills",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "author": {
     "name": "jaybeeuu"
   },
@@ -16,17 +16,6 @@
       "args": [
         "-y",
         "@upstash/context7-mcp@latest"
-      ]
-    },
-    "beads": {
-      "type": "stdio",
-      "command": "/Users/joshbickley-wallace/.local/bin/beads-mcp",
-      "args": [],
-      "env": {
-        "BEADS_PATH": "/opt/homebrew/bin/bd"
-      },
-      "tools": [
-        "*"
       ]
     },
     "github": {

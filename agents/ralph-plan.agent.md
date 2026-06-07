@@ -76,18 +76,24 @@ Tag every bead created in this step with `workflow:ralph`:
 bd tag <id> workflow:ralph
 ```
 
-If the bead is a bug or regression fix, also tag it with a severity level:
+Tag every bead with a priority using the unified scale:
 
 ```bash
-bd tag <id> severity:<p0|p1|p2|p3>
+bd tag <id> priority:<p0|p1|p2|p3|p4|p5>
 ```
 
-| Severity | Priority | Examples |
+| Priority | When | Examples |
 |---|---|---|
-| P0 | Critical | Data loss, crash, security breach |
-| P1 | High | Major feature broken, no workaround |
-| P2 | Medium | Minor feature broken, workaround exists |
-| P3 | Low | Cosmetic, nice-to-have |
+| P0 | Drop everything | Crash, data loss, security breach |
+| P1 | Fix before next feature | Major bug, no workaround |
+| P2 | Fix soon, still before features | Minor bug, workaround exists |
+| P3 | Core feature, blocks others | Feature that unlocks downstream work |
+| P4 | Feature, important | Valuable but doesn't block others |
+| P5 | Nice-to-have | Polish, cosmetic, improvement |
+
+Bugs naturally outrank features on this scale (P0-P2 are always bugs). Calibrate each
+bead against the full backlog — a P3 feature that blocks others may need a higher
+explicit priority than a standalone P4 feature.
 
 ### 7. Agree with the user
 Present the bead list (IDs, titles, one-line rationale each) plus planning gate status for each item using `✅` (confirmed/closed) or `⏳` (awaiting confirmation/open). Ask the user to confirm or request changes before finishing.

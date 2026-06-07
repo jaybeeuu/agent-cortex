@@ -5,14 +5,14 @@ import os from "node:os";
 
 // ── Data model ──────────────────────────────────────────────────────────────
 
-interface ProjectCounts {
+export interface ProjectCounts {
   loadedCount: number;
   invokedCount: number;
   readCount: number;
   lastUsed: string | null;
 }
 
-interface SkillStats {
+export interface SkillStats {
   /** Total across all projects */
   loadedCount: number;
   invokedCount: number;
@@ -22,7 +22,7 @@ interface SkillStats {
   byProject: Record<string, ProjectCounts>;
 }
 
-interface UsageStore {
+export interface UsageStore {
   version: 1;
   skills: Record<string, SkillStats>;
   /** Cumulative total agent turns */
@@ -32,7 +32,7 @@ interface UsageStore {
   recentEvents: RawEvent[];
 }
 
-interface RawEvent {
+export interface RawEvent {
   timestamp: string;
   skill: string;
   source: "loaded" | "invoked" | "read";
@@ -46,9 +46,10 @@ const MAX_RECENT_EVENTS = 200;
 
 // ── Storage helpers ──────────────────────────────────────────────────────────
 
-function loadStore(): UsageStore {
+export function loadStore(filePath?: string): UsageStore {
+  const target = filePath ?? STORE_FILE;
   try {
-    const raw = fs.readFileSync(STORE_FILE, "utf-8");
+    const raw = fs.readFileSync(target, "utf-8");
     const parsed = JSON.parse(raw) as UsageStore;
     if (parsed.version === 1) return parsed;
   } catch { /* corrupt or missing — start fresh */ }
@@ -61,8 +62,9 @@ function loadStore(): UsageStore {
   };
 }
 
-function saveStore(store: UsageStore): void {
-  const dir = path.dirname(STORE_FILE);
+export function saveStore(store: UsageStore, filePath?: string): void {
+  const target = filePath ?? STORE_FILE;
+  const dir = path.dirname(target);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   store.lastUpdated = new Date().toISOString();
@@ -71,14 +73,14 @@ function saveStore(store: UsageStore): void {
   }
 
   // Atomic write via tmpfile
-  const tmp = STORE_FILE + ".tmp";
+  const tmp = target + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(store, null, 2), "utf-8");
-  fs.renameSync(tmp, STORE_FILE);
+  fs.renameSync(tmp, target);
 }
 
 // ── Event recording ──────────────────────────────────────────────────────────
 
-function recordUsage(
+export function recordUsage(
   store: UsageStore,
   skillName: string,
   source: RawEvent["source"],
@@ -125,7 +127,7 @@ function recordUsage(
 
 // ── Skill discovery ──────────────────────────────────────────────────────────
 
-interface SkillRecord {
+export interface SkillRecord {
   name: string;
   skillMdPath: string;
 }
@@ -134,7 +136,7 @@ interface SkillRecord {
 const HOME = os.homedir();
 
 /** Known global skill base directories. */
-function globalSkillDirs(): string[] {
+export function globalSkillDirs(): string[] {
   return [
     path.join(HOME, ".pi", "agent", "skills"),
     path.join(HOME, ".agents", "skills"),
@@ -145,7 +147,7 @@ function globalSkillDirs(): string[] {
  * Scan a base directory for skill subdirectories containing SKILL.md.
  * Mutates `map` in place.
  */
-function scanSkills(baseDir: string, map: Map<string, SkillRecord>): void {
+export function scanSkills(baseDir: string, map: Map<string, SkillRecord>): void {
   let entries: string[];
   try { entries = fs.readdirSync(baseDir); } catch { return; }
 
@@ -167,7 +169,7 @@ function scanSkills(baseDir: string, map: Map<string, SkillRecord>): void {
 }
 
 /** Extract the `name` field from a skill's YAML frontmatter. */
-function extractSkillName(skillMdPath: string): string | null {
+export function extractSkillName(skillMdPath: string): string | null {
   try {
     const content = fs.readFileSync(skillMdPath, "utf-8");
     const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -184,7 +186,7 @@ function extractSkillName(skillMdPath: string): string | null {
  * Lazily discover skills from the current project directory.
  * Called on startup and on `/reload`.
  */
-function discoverProjectSkills(cwd: string, map: Map<string, SkillRecord>): void {
+export function discoverProjectSkills(cwd: string, map: Map<string, SkillRecord>): void {
   // Project-local skills directories
   const projectDirs = [
     path.join(cwd, "skills"),
@@ -205,7 +207,7 @@ function discoverProjectSkills(cwd: string, map: Map<string, SkillRecord>): void
  * 1. Exact match against pre-discovered skill SKILL.md paths
  * 2. Path heuristic: `<anything>/skills/<name>/SKILL.md` → `<name>`
  */
-function resolveSkillFromPath(
+export function resolveSkillFromPath(
   filePath: string,
   knownSkills: Map<string, SkillRecord>,
 ): string | null {
@@ -232,7 +234,7 @@ function resolveSkillFromPath(
 
 // ── Rendering helpers ────────────────────────────────────────────────────────
 
-function formatTable(header: string[], rows: string[][]): string {
+export function formatTable(header: string[], rows: string[][]): string {
   const colWidths = header.map((h, i) =>
     Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length)),
   );

@@ -39,7 +39,10 @@ All notable changes to this repository are documented in this file.
 - `skills/create-task/templates/*.md`: updated progress logging cross-references from
   `run-beads` to `run-pipeline-stage`.
 - `AGENTS.md`: updated directory tree and agent delegation description.
-- `.github/workflows/ci.yml`: updated step names and paths.
+- `.github/workflows/ci.yml`: replaced per-skill install/test/typecheck steps with a single
+  workspace setup (`pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm test`).
+  Created root `package.json` and `pnpm-workspace.yaml` to unify all `skills/*/scripts`
+  directories as a pnpm workspace.
 - `agents/ralph-plan.agent.md` step 1: replaced `prd-to-plan` reference with `prd-to-tasks`;
   when input is a PRD, skip to step 7 (agree with user) since the skill handles exploration
   and breakdown internally.

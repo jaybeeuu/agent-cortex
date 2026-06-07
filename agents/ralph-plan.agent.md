@@ -39,7 +39,7 @@ If the domain language is unclear or inconsistent, invoke the **ubiquitous-langu
 ### 3. Explore the codebase
 Dispatch parallel **explore** sub-agents — one per independent research area. Tell each sub-agent to write its findings to a named file in `.agent-cortex/working-docs/` and **not** to modify any beads or source files. Provide each sub-agent with the full `bd prime` output.
 
-- If the task involves a bug or regression, invoke the **triage-issue** skill to locate root cause before exploring broader context.
+- If the task involves a bug or regression, investigate the root cause directly before exploring broader context: trace the code path, check recent changes with `git log`, attempt to reproduce, and classify the failure (regression / missing edge case / design flaw). Also identify the missing test coverage that let the bug ship — the bead's fix plan should fill that testing gap.
 - If the task involves architectural change, invoke **improve-codebase-architecture** to surface structural concerns.
 - If the task requires designing a new module API or interface, invoke **design-an-interface** to generate and compare options. Write the output to `.agent-cortex/working-docs/interface-design.md`.
 
@@ -75,6 +75,25 @@ Tag every bead created in this step with `workflow:ralph`:
 ```bash
 bd tag <id> workflow:ralph
 ```
+
+Tag every bead with a priority using the unified scale:
+
+```bash
+bd tag <id> priority:<p0|p1|p2|p3|p4|p5>
+```
+
+| Priority | When | Examples |
+|---|---|---|
+| P0 | Drop everything | Crash, data loss, security breach |
+| P1 | Fix before next feature | Major bug, no workaround |
+| P2 | Fix soon, still before features | Minor bug, workaround exists |
+| P3 | Core feature, blocks others | Feature that unlocks downstream work |
+| P4 | Feature, important | Valuable but doesn't block others |
+| P5 | Nice-to-have | Polish, cosmetic, improvement |
+
+Bugs naturally outrank features on this scale (P0-P2 are always bugs). Calibrate each
+bead against the full backlog — a P3 feature that blocks others may need a higher
+explicit priority than a standalone P4 feature.
 
 ### 7. Agree with the user
 Present the bead list (IDs, titles, one-line rationale each) plus planning gate status for each item using `✅` (confirmed/closed) or `⏳` (awaiting confirmation/open). Ask the user to confirm or request changes before finishing.

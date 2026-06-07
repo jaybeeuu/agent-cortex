@@ -70,7 +70,7 @@ The agent-cortex description describes internal mechanics rather than what the u
 
 **Evidence**: Anthropic Claude Code best practices: *"Bloated CLAUDE.md files cause Claude to ignore your actual instructions!"* LIMA (Zhou et al., NeurIPS 2023) confirms quality beats quantity — 1,000 curated examples matched GPT-4; adding more degraded focus. Schulhoff et al. (ACL 2024, arXiv:2406.06608) found structure + clarity most consistently effective across 58 techniques.
 
-**Current state**: 12 of 31 agent-cortex skills exceed 100 lines (`run-beads` is 169, `style-code` 151, `qa` 137, `epic-to-tasks` 119). Only 3 have `REFERENCE.md`.
+**Current state**: 12 of 30 agent-cortex skills exceed 100 lines (`run-beads` is 169, `style-code` 151, `epic-to-tasks` 119). Only 3 have `REFERENCE.md`.
 
 **Recommendation**: Split all skills over ~100 lines. Prefer *named, purpose-specific files* over a catch-all `REFERENCE.md`:
 - `REFERENCE.md` — rarely-needed edge cases
@@ -78,7 +78,7 @@ The agent-cortex description describes internal mechanics rather than what the u
 - `FORMAT.md` — output schemas / templates
 - `WORKFLOW.md` — detailed step expansions
 
-Candidates to split immediately: `run-beads`, `style-code`, `qa`, `epic-to-tasks`, `prd-to-plan`, `tdd`, `ralph`.
+Candidates to split immediately: `run-beads`, `style-code`, `epic-to-tasks`, `prd-to-plan`, `tdd`, `ralph`.
 
 ---
 
@@ -207,7 +207,7 @@ description: >
 
 **Evidence**: Anthropic tool design (Building Effective Agents, Appendix 2): *"Is it obvious how to use this tool? ... This is especially important when using many similar tools."* The `argument-hint` front-matter field (present in mattpocock's plugin schema) surfaces a prompt to the user at invocation time — preventing input ambiguity before the skill runs.
 
-**Current state**: agent-cortex plugin schema doesn't include `argument-hint`. Skills like `triage-issue`, `write-a-ticket`, `run-beads` take implicit input that could benefit from a hint.
+**Current state**: agent-cortex plugin schema doesn't include `argument-hint`. Skills like `write-a-ticket`, `run-beads` take implicit input that could benefit from a hint.
 
 **Recommendation**: Add `argument-hint` support to `plugin.json` schema and add hints to skills that take input:
 

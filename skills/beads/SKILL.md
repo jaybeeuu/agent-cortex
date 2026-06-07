@@ -52,21 +52,17 @@ bd ready
 
 Review descriptions with `bd show <id>` to understand what each one needs.
 
-### 3. Classify before claiming
-
-Before claiming a task, invoke the `classify-bead` skill to ensure it has an `implementation-type` label. If the bead is **HITL**, do not claim it — inform the user that it requires human action.
-
-### 4. Claim
+### 3. Claim
 
 ```bash
 bd update <id> --claim
 ```
 
-### 5. Implement
+### 4. Implement
 
 Use the context from `bd prime` and `bd show <id>` to complete the work.
 
-### 6. Close
+### 5. Close
 
 ```bash
 bd close <id>
@@ -78,8 +74,7 @@ Add a reason when it is meaningful (e.g. PR link).
 
 - **Skipping `bd prime`.** Without it you lose project-level context — tech stack, conventions, goals. Always run it at session start.
 - **Claiming a HITL bead without informing the user.** HITL means the task needs a human. Claiming it blocks progress until you hand off.
-- **Forgetting to classify before claiming.** Missing the `implementation-type` label means downstream tools (ralph, run-beads) cannot route the task correctly.
-- **Working without beads.** Even a single task should be tracked. Every untracked task is a bead that will be re-created later when someone forgets it was done.
+- **Working without beads. Even a single task should be tracked. Every untracked task is a bead that will be re-created later when someone forgets it was done.
 
 ## Common Rationalizations
 
@@ -89,14 +84,12 @@ Add a reason when it is meaningful (e.g. PR link).
 | "I will just do the work directly instead of recording it as a bead" | Especially during ralph-plan: beads are the recording mechanism. Creating a bead means ralph can execute it later. Doing the work directly bypasses the pipeline. |
 | "I will sync later" | Syncing is optional — beads work fine as a purely local tool. If you do sync, do it at session end when it is easy to remember what changed. |
 | "I already know what to do — I do not need `bd ready`" | `bd ready` also shows blocked tasks and priorities. You may be picking the wrong thing. |
-| "This bead is obvious — I do not need to classify it" | The classification feeds downstream routing. Without it, ralph will skip the bead. |
 
 ## Cross-skill references
 
 | When you need… | Use this skill |
 |---|---|
-| Classifying a bead before claiming it | `classify-bead` |
-| Creating a new task with full pipeline expansion | `create-task` |
+| Creating a new task with classification and pipeline expansion | `create-task` |
 | Executing a single pipeline stage | `run-beads` |
 | Running the full end-to-end pipeline | `ralph` |
 
@@ -111,8 +104,6 @@ $ bd prime
 $ bd show agnt-ctx-abc123
   → reads the full description
 
-# classify-bead determines it is AFK
-$ bd tag agnt-ctx-abc123 implementation-type:afk
 $ bd update agnt-ctx-abc123 --claim
 
 # implement... then:
@@ -122,6 +113,5 @@ $ bd close agnt-ctx-abc123 --reason="Implemented in PR #42"
 ## Verification checklist
 
 - [ ] `bd prime` run at session start
-- [ ] Tasks classified before claiming (implementation-type label present)
 - [ ] HITL beads handed off to the user, not claimed
 - [ ] All completed tasks closed with a reason

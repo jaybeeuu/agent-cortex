@@ -20,22 +20,21 @@ Usage data is stored in `~/.pi/agent-cortex/skill-usage.json` — a single file 
 
 ## Installation
 
-### Symlink (recommended for development)
+This extension is bundled with the `agent-cortex` PI package. Install the package for
+auto-discovery:
 
 ```bash
-# From the repo root
-ln -sf $(pwd)/extensions/skill-stats ~/.pi/agent/extensions/skill-stats
+pi install git:https://github.com/jaybeeuu/agent-cortex
+pi config enable extension:skill-stats
 ```
 
-Then `/reload` inside PI (or restart PI).
+After install, `/reload` inside PI (or restart PI). The extension auto-registers.
 
-### Package install (future)
-
-If this repo is published as a PI package, users can run:
+### Development symlink (alternative)
 
 ```bash
-pi install git:github.com/jaybeeuu/agent-cortex
-pi config extensions skill-stats enable
+ln -sf $(pwd)/extensions/skill-stats ~/.pi/agent/extensions/skill-stats
+/reload
 ```
 
 ## Commands

@@ -29,6 +29,8 @@ All notable changes to this repository are documented in this file.
   skills are loaded, invoked via `/skill:name`, or actively read by the LLM. Data stored in
   `~/.pi/agent-cortex/skill-usage.json` with per-project breakdowns. Provides `/skill-stats`
   dashboard and `/skill-usage-reset`. Useful for identifying unused context-budget burners.
+- **Added `package.json` with `pi` manifest** — the repo is now installable as a PI
+  package. Extensions and skills are auto-discovered by PI.
 
 ### Removed
 

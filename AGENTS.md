@@ -12,8 +12,9 @@ and PI extension available in the author's coding sessions.
 
 ```
 agent-cortex/
-├── plugin.json           # Plugin manifest
-├── agents/               # Custom agents (*.agent.md)
+├── package.json           # PI package manifest (pi: { extensions, skills })
+├── plugin.json            # GitHub Copilot plugin manifest — agents, skills, MCP servers
+├── agents/                # Custom agents (*.agent.md)
 │   └── ralph.agent.md
 ├── skills/               # Grouped by domain, discovered recursively
 │   ├── planning/         # Scope, spec, decompose
@@ -24,8 +25,8 @@ agent-cortex/
 │   └── review/           # Auditing and maintenance
 ├── extensions/           # PI extensions (one directory per extension, each with index.ts)
 │   └── skill-stats/
-│       ├── README.md     # Installation & usage
-│       └── index.ts      # Extension entrypoint
+│       ├── README.md      # Installation & usage
+│       └── index.ts       # Extension entrypoint
 └── package.json          # PI package manifest (pi: { extensions, skills })
 ```
 
@@ -72,8 +73,8 @@ follow-up commit.
 ## PI Extension Conventions
 
 - PI extensions live in `extensions/`, one subdirectory per extension.
-- Each extension directory contains `index.ts` (entrypoint) and `README.md` (install + usage).
-- Extensions are deployed via symlink to `~/.pi/agent/extensions/<name>/` for global PI discovery.
+- Each extension directory contains `index.ts` (entrypoint) and `README.md` (usage).
+- Extensions are auto-discovered when the repo is installed as a PI package via `pi install`.
 - Keep extensions lightweight: no internal LLM calls. Extensions observe events and provide
   commands — they should not add token overhead.
 - Extensions that persist data should write to `~/.pi/agent-cortex/` (global, cross-project)

@@ -1,6 +1,6 @@
 ---
 name: style-code
-description: Defines coding style, conventions, and architectural preferences for TypeScript projects. Use when writing, editing, or reviewing code — or when you need a "style review", want to check "naming conventions", or are deciding "module boundaries".
+description: Defines coding style, conventions, and architectural preferences. Use when writing, editing, or reviewing code — or when you need a "style review", want to check "naming conventions", or are deciding "module boundaries".
 ---
 
 # Code Style

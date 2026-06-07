@@ -46,11 +46,16 @@ For new tasks with pipeline expansion:
 bd create "<title>" -d "<description>" -p <0-3>
 ```
 
-For dependencies:
+For parent-child relationships (create with `--parent`):
+
+```bash
+bd create "<title>" --parent <parent-id>
+```
+
+For blocking dependencies between beads:
 
 ```bash
 bd dep add <id> <blocked-by-id> --type blocks
-bd dep add <child-id> <parent-id> --type parent-child
 ```
 
 ## Completing work

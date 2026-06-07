@@ -12,7 +12,7 @@
 
 ## Progress log
 Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, each command run, test/lint result, and stage complete (see Progress Logging in run-beads skill).
+Log stage start, each command run, test/lint result, and stage complete (see Progress Logging in run-pipeline-stage skill).
 
 ## Instructions
 Discover and run the project's test and lint commands, then report the outcome.

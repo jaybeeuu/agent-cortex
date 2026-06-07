@@ -8,6 +8,7 @@
 .beads-credential-key
 .agent-cortex/*
 !.agent-cortex/working-docs/
+!.agent-cortex/ralph/ubiquitous-language.md
 
 # Node
 node_modules/

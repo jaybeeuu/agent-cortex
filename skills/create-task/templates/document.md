@@ -12,7 +12,7 @@
 
 ## Progress log
 Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start and stage complete (see Progress Logging in run-beads skill).
+Log stage start and stage complete (see Progress Logging in run-pipeline-stage skill).
 
 ## Instructions
 Invoke the `style-documentation` skill before making any documentation changes.

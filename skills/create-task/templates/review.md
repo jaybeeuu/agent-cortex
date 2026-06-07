@@ -12,7 +12,7 @@
 
 ## Progress log
 Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, security scan result, review outcome, and stage complete (see Progress Logging in run-beads skill).
+Log stage start, security scan result, review outcome, and stage complete (see Progress Logging in run-pipeline-stage skill).
 
 ## Instructions
 **First**, invoke the `review-security` skill and run the scan against the changes. If the

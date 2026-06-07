@@ -3,7 +3,7 @@
 
 ## Stage metadata
 - Stage: `<stage>`
-- Playbook: `skills/run-beads/playbooks/<stage>.md`
+- Playbook: `skills/run-pipeline-stage/playbooks/<stage>.md`
 
 ## Bead specification
 <bd show <id> output — verbatim>
@@ -22,7 +22,7 @@ Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 End your response with a `---REPORT---` block:
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: <stage>
+STAGE_COMPLETED: <code|verify|review|document>
 SUMMARY: <2–3 sentence summary>
 FILES_CHANGED: <comma-separated list, or "none">
 OUTCOME: <SUCCESS|BLOCKED>

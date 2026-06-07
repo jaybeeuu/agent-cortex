@@ -1,9 +1,9 @@
 ---
-name: beads
+name: bd-tool
 description: Load project context and task state using the beads (bd) task tracker. Use when asked to work on a bead, pick up a task, or check what is available — or when the user mentions "beads", "bd", "bead", or "prime".
 ---
 
-# Beads
+# bd-tool
 
 ## When to use
 
@@ -72,8 +72,7 @@ Add a reason when it is meaningful (e.g. PR link).
 ## Red Flags
 
 - **Skipping `bd prime`.** Without it you lose project-level context — tech stack, conventions, goals. Always run it when starting work on a bead.
-- **Claiming a HITL bead without informing the user.** HITL means the task needs a human. Claiming it blocks progress until you hand off.
-- **Working without beads. Even a single task should be tracked. Every untracked task is a bead that will be re-created later when someone forgets it was done.
+- **Working without beads.** Even a single task should be tracked. Every untracked task is a bead that will be re-created later when someone forgets it was done.
 
 ## Common Rationalizations
 
@@ -89,8 +88,9 @@ Add a reason when it is meaningful (e.g. PR link).
 | When you need… | Use this skill |
 |---|---|
 | Creating a new task with classification and pipeline expansion | `create-task` |
-| Executing a single pipeline stage | `run-beads` |
+| Executing a single pipeline stage | `run-pipeline-stage` |
 | Running the full end-to-end pipeline | `ralph` |
+| Classifying a bead's implementation type | `classify-bead` |
 
 ## Examples
 
@@ -112,5 +112,4 @@ $ bd close agnt-ctx-abc123 --reason="Implemented in PR #42"
 ## Verification checklist
 
 - [ ] `bd prime` run before starting work
-- [ ] HITL beads handed off to the user, not claimed
 - [ ] All completed tasks closed with a reason

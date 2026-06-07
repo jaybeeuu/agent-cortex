@@ -29,7 +29,7 @@ Do **not** write anywhere else. No source files, no READMEs, no tracked docs, no
 ### 1. Load context
 Invoke the **beads** skill (set workspace root, run `bd prime`). Hold the output in memory.
 
-If the input looks like a PRD (product requirements document), invoke the **prd-to-plan** skill first to convert it into a structured plan, then continue from step 2 using that plan as the request.
+If the input looks like a PRD (product requirements document), invoke the **prd-to-tasks** skill first — it handles exploration, user quizzing, and creates epics and task beads directly. Then continue from step 7 (Agree with the user).
 
 ### 2. Understand the request
 If the request is ambiguous or incomplete, use `ask_user` to resolve blockers before exploring. One question at a time.
@@ -54,7 +54,7 @@ Update the top-level bead's `design` field with a high-level implementation plan
 - No line-by-line code guidance — just what, not how.
 
 ### 6. Decompose into tasks
-For large workstreams (multiple distinct areas) invoke the **epic-to-tasks** skill. For a single self-contained task invoke **create-task**. Pass the full `bd prime` output and the written plan to each skill.
+For large workstreams (multiple distinct areas) invoke the **prd-to-tasks** skill. For a single self-contained task invoke **create-task**. Pass the full `bd prime` output and any relevant design context from the `design` field to each skill.
 
 For each new feature bead and each new task bead, create a HITL planning gate before handoff. The feature/task bead depends on this gate and stays blocked until the user explicitly confirms planning is sufficient **for that specific feature/task**.
 

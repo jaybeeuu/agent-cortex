@@ -81,10 +81,13 @@ directly by a user who has a clear spec.
      --description "<epic body from template below>"
    ```
 
-10. Tag each epic with:
+10. Tag each epic with a priority:
+    ```bash
+    bd tag <epic-id> priority:p3   # default for feature work; adjust if P4/P5
+    ```
+    If running in the context of ralph-plan or ralph, also tag with:
     ```bash
     bd tag <epic-id> workflow:ralph
-    bd tag <epic-id> priority:p3   # default for feature work; adjust if P4/P5
     ```
 
 ### Phase 4 — Create tasks within each epic
@@ -122,7 +125,8 @@ directly by a user who has a clear spec.
     ```
 
 15. If invoked by `ralph-plan`, signal completion so ralph-plan can proceed to the
-    agree-with-user step. If invoked directly, summarise and confirm.
+    agree-with-user step. If invoked directly by a user, summarise the bead tree and
+    confirm they're happy before finishing.
 
 ## Epic body template
 

@@ -1,5 +1,5 @@
 ## Project context
-<bd prime output — verbatim>
+Run `bd prime` if you need project-level context (conventions, tech stack, goals).
 
 ## Stage metadata
 - Stage: `<stage>`

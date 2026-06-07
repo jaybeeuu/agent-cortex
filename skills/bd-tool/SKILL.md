@@ -15,7 +15,7 @@ Always run this at the start of a session — it loads project context, conventi
 bd prime
 ```
 
-Hold the full output in memory. Forward it verbatim to any subagents — never summarise it.
+Hold the full output for your own context. Subagents can run `bd prime` themselves if they need project context.
 
 ## Finding and claiming work
 

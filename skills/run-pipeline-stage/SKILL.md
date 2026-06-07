@@ -9,7 +9,7 @@ Execute a single pipeline stage. Stage beads (`code`, `verify`, `review`, `docum
 
 ## Quick Start
 
-1. Run `bd prime` and hold the output — it goes verbatim into every subagent prompt.
+1. Run `bd prime` and hold the output for your own context. Subagents you spawn can run `bd prime` themselves if they need project context.
 2. If no bead is specified, run `bd ready` and ask the user which to work on.
 3. Claim the bead with `bd update <id> --claim`.
 4. Read the bead's `stage:*` label to determine which stage to execute.

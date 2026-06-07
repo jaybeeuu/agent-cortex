@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.11.0
+
+### Changed
+
+- Rewrote `skills/tdd/SKILL.md` to the anatomy template: added `When to use`, `When NOT to use`, `Philosophy / rationale`, `Red Flags`, `Common Rationalizations`, `Cross-skill references`, `Examples`, `Phase-gate checklists`, and `Verification checklist`; reorganised existing workflow into canonical structure.
+
 ## 1.10.0
 
 ### Changed

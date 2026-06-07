@@ -5,111 +5,81 @@ description: Load project context and task state using the beads (bd) task track
 
 # bd-tool
 
-## When to use
+This project uses **bd (beads)** for task tracking. This doc covers how we use it.
 
-- Asked to work on a bead — load context, claim it, implement, close.
-- Picking up work — find unblocked tasks and claim them.
-- Recording work that needs doing — create beads for tasks, epics, or dependencies.
-- Planning with ralph — beads are the recording mechanism; create them rather than performing the work directly.
-- The user mentions "beads", "bd", "bead", or "prime".
+## First thing: `bd prime`
 
-## When NOT to use
-
-- Performing raw git operations or direct dolt commands — use the CLI directly.
-- Tracking work in a different task system — beads is a local tool and does not sync to external trackers.
-- One-off questions or exploratory sessions that do not produce tracked work.
-
-## Philosophy / rationale
-
-- **Context is the most expensive thing to rebuild.** `bd prime` captures project state, conventions, and goals so you do not lose your place between sessions.
-- **Tracked work beats remembered work.** A bead captures what needs doing, why, and what blocks it. Writing it down means you can switch context and come back without losing the thread.
-- **Beads are a local tool.** They work for you, not for a team or a CI pipeline. Sync when it is useful; skip it when it is not.
-
-## Workflow
-
-### 1. Prime
+Always run this at the start of a session — it loads project context, conventions, and open tasks.
 
 ```bash
 bd prime
 ```
 
-Hold the full output in memory as your project context. It contains tech stack, conventions, current goals, and the open task list. Forward it verbatim to any subagents you spawn — never summarise it. This is the only setup you need — `bd` detects the project from the working directory automatically.
+Hold the full output in memory. Forward it verbatim to any subagents — never summarise it.
 
-### 2. Identify the bead
-
-If you were passed a bead ID, show it:
+## Finding and claiming work
 
 ```bash
-bd show <id>
-```
-
-If you need to find work, list unblocked tasks:
-
-```bash
-bd ready
-```
-
-Review descriptions with `bd show <id>` to understand what each one needs.
-
-### 3. Claim
-
-```bash
+bd ready          # list unblocked tasks
+bd show <id>      # view full description, labels, dependencies
 bd update <id> --claim
 ```
 
-### 4. Implement
+## Labels
 
-Use the context from `bd prime` and `bd show <id>` to complete the work.
+We use labels to track state. Key patterns:
 
-### 5. Close
+| Label | Purpose | Example |
+|---|---|---|
+| `stage:<id>` | Pipeline stage for chore beads | `stage:code`, `stage:verify` |
+| `implementation-type:<type>` | Who works it | `afk`, `hitl` |
+| `lifecycle:<phase>` | Lifecycle gate | `feature-pr` |
+| `epic:<id>` | Parent epic link | `epic:abc-123` |
+| `priority:<level>` | Priority (0-3) | `priority:1` |
+
+## Creating work
+
+For new tasks with pipeline expansion:
 
 ```bash
-bd close <id>
+# use the create-task skill, or manually:
+bd create "<title>" -d "<description>" -p <0-3>
 ```
 
-Add a reason when it is meaningful (e.g. PR link).
+For dependencies:
 
-## Red Flags
+```bash
+bd dep add <id> <blocked-by-id> --type blocks
+bd dep add <child-id> <parent-id> --type parent-child
+```
 
-- **Skipping `bd prime`.** Without it you lose project-level context — tech stack, conventions, goals. Always run it when starting work on a bead.
-- **Working without beads.** Even a single task should be tracked. Every untracked task is a bead that will be re-created later when someone forgets it was done.
+## Completing work
 
-## Common Rationalizations
+```bash
+bd close <id> --reason="Description of what was done"
+```
 
-| Rationalization | Rebuttal |
-|---|---|
-| "I will just do this one task without creating a bead" | Untracked work is invisible work. Creating a bead takes ten seconds. |
-| "I will just do the work directly instead of recording it as a bead" | Especially during ralph-plan: beads are the recording mechanism. Creating a bead means ralph can execute it later. Doing the work directly bypasses the pipeline. |
-| "I will sync later" | Syncing is optional — beads work fine as a purely local tool. If you do sync, do it at session end when it is easy to remember what changed. |
-| "I already know what to do — I do not need `bd ready`" | `bd ready` also shows blocked tasks and priorities. You may be picking the wrong thing. |
+Always add a reason (e.g. PR link).
+
+## Syncing
+
+```bash
+bd dolt push
+```
+
+Optional — beads work locally. Sync at session end when it's convenient.
+
+## Key conventions
+
+- **Priority**: 0 = critical, 1 = high, 2 = medium, 3 = low
+- **HITL beads**: require human action — do not claim or implement them. Inform the user.
+- **Chore beads** (`--type chore --ephemeral`): auto-created pipeline stages. Do not create them manually — use `create-task`.
 
 ## Cross-skill references
 
 | When you need… | Use this skill |
 |---|---|
-| Creating a new task with classification and pipeline expansion | `create-task` |
+| Creating a new task with pipeline expansion | `create-task` |
 | Executing a single pipeline stage | `run-pipeline-stage` |
 | Running the full end-to-end pipeline | `ralph` |
 | Classifying a bead's implementation type | `classify-bead` |
-
-## Examples
-
-### Full session walkthrough
-
-```
-$ bd prime
-  → loads project conventions, goals, and open tasks
-
-$ bd show agnt-ctx-abc123
-  → reads the full description
-
-$ bd update agnt-ctx-abc123 --claim
-
-# implement... then:
-$ bd close agnt-ctx-abc123 --reason="Implemented in PR #42"
-```
-
-## Verification checklist
-
-- [ ] `bd prime` run before starting work
-- [ ] All completed tasks closed with a reason

@@ -2,6 +2,12 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.12.0
+
+### Changed
+
+- Rewrote `skills/review-security/SKILL.md` to the anatomy template: added `When to use`, `When NOT to use`, `Philosophy / rationale`, `Workflow`, `Red Flags`, `Common Rationalizations`, `Cross-skill references`, `Examples`, and `Verification checklist`; restructured existing gitleaks commands into canonical workflow with scope-selection table.
+
 ## 1.11.0
 
 ### Changed

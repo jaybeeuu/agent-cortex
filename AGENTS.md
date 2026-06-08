@@ -17,14 +17,21 @@ agent-cortex/
 └── skills/               # Skills (one directory per skill, each with a SKILL.md)
     ├── bd-tool/
     │   └── SKILL.md      # CLI mechanics for the beads (bd) task tracker
+    ├── grill-me/
+    │   └── SKILL.md      # Grilling session for plans and designs
+    ├── handoff/
+    │   └── SKILL.md      # Agent-to-agent handoff documents
     ├── run-pipeline-stage/
     │   ├── SKILL.md
     │   ├── playbooks/     # Stage-specific behaviour guides
     │   ├── prompts/       # Stage runner prompt template
     │   └── scripts/       # Progress report generator
-    └── review-security/
+    ├── review-security/
+    │   ├── SKILL.md
+    │   └── scripts/      # Utility scripts bundled with the skill
+    └── teach/
         ├── SKILL.md
-        └── scripts/      # Utility scripts bundled with the skill
+        └── *-FORMAT.md   # Format templates for teaching workspace
 ```
 
 ## Versioning

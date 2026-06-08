@@ -97,7 +97,7 @@ After all tests pass, run `style-code` to guide the refactoring shape:
 |---|---|
 | Test-writing conventions (assertions, mocking, structure) | `style-tests` |
 | Code-level style and conventions | `style-code` |
-| Domain terminology for test names and module boundaries | `ubiquitous-language` |
+| Domain terminology for test names and module boundaries | `grill-with-docs` |
 
 Reference docs bundled with this skill: `tests.md`, `mocking.md`, `deep-modules.md`, `interface-design.md`, `refactoring.md`.
 

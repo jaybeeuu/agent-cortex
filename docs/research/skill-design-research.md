@@ -247,7 +247,7 @@ argument-hint: "Describe the bug or paste the error message"
 
 These are patterns present in `mattpocock/skills` that have no equivalent here and are backed by evidence:
 
-1. **`CONTEXT.md` at repo root** — a shared ubiquitous-language glossary that all skills read. Prevents terminology drift across skills and gives the agent grounding in project domain terms. (See also: `ubiquitous-language` skill in agent-cortex — but it writes per-project, not per-skill-repo.)
+1. **`CONTEXT.md` at repo root** — a shared domain glossary that all skills read. Prevents terminology drift across skills and gives the agent grounding in project domain terms. (The `grill-with-docs` skill builds this automatically.)
 
 2. **Philosophy sections in skills** — `tdd` doesn't just describe TDD, it argues *why* horizontal slicing is wrong. This bakes intent into the skill so the agent handles novel cases correctly (backed by CoT rationale evidence).
 

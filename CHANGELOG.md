@@ -2,6 +2,30 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.17.0
+
+### Added
+
+- **New skill: `grill-me`** — lightweight grilling session for stress-testing plans and
+  designs (no CONTEXT.md/ADR scaffolding). Imported from mattpocock/skills.
+- **New skill: `handoff`** — compacts the current conversation into a handoff document
+  for another agent to pick up. Imports from mattpocock/skills.
+- **New skill: `teach`** — multi-session teaching workspace with lessons, reference docs,
+  learning records, and glossary support. Imports from mattpocock/skills.
+
+### Removed
+
+- **Removed `ubiquitous-language` skill** — superseded by `grill-with-docs` which builds
+  and maintains `CONTEXT.md` inline with more structure (term glossary, ADRs, scenario
+  probing). All cross-references updated to point to `grill-with-docs` instead.
+
+### Changed
+
+- Updated cross-references in `style-code`, `tdd`, `ralph-plan.agent.md`, and
+  `docs/research/skill-design-research.md` to use `grill-with-docs` instead of
+  `ubiquitous-language`.
+- Updated `AGENTS.md` structure diagram to reflect new and removed skills.
+
 ## 1.16.1
 
 ### Fixed

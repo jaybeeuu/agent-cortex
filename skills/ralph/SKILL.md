@@ -7,7 +7,7 @@ description: "Run all pending beads end-to-end using parallel subagents with rev
 
 Parallel task orchestration: find ready beads, dispatch them as background subagents, process each outcome through the pipeline (code → verify → review → document, with fix loops on failure), then open review-gated PRs before considering feature work complete.
 
-Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration and prompt templates live in `skills/create-task/`.
+Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration lives in `skills/create-task/pipeline.json`. Stage runner prompt templates live in `skills/run-pipeline-stage/prompts/` and playbooks in `skills/run-pipeline-stage/playbooks/`.
 
 ## Branching and Review Model
 

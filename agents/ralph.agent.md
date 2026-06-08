@@ -22,10 +22,10 @@ Branching model:
 
 Run once at startup:
 
-1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
+1. Run `bd prime`. Hold the full output in memory for your own context. Subagents can run `bd prime` themselves if they need project context.
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
 3. Run `bd ready` to get the initial list of available beads.
-4. For each available bead, **classify it** (see _Classifying a bead_ in the `run-beads` skill):
+4. For each available bead, **classify it** (see the `classify-bead` skill):
    - **AFK** — eligible for agent work.
    - **HITL** — skip entirely; record the bead ID for the **Pending Human Action** summary at shutdown.
    - **NEEDS-REFINEMENT** — skip entirely; record the bead ID for the **Needs Refinement** summary at shutdown.
@@ -38,7 +38,7 @@ Run once at startup:
    ```bash
    # workspace must be the absolute path you cd'd into — never . or $(pwd)
    workspace="/absolute/path/to/worktree"
-   pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-beads/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
+   pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
    ```
 7. For each AFK bead (up to 5), kick off its pipeline:
    a. Ensure epic/feature branches and `.agent-cortex/worktrees/<parent-id>` exist (base from `origin/main`, not local `main`).
@@ -62,7 +62,7 @@ bd dep add $chore_id <parent-id> --type parent-child
 bd update $chore_id --claim
 ```
 
-Then load the universal stage runner prompt from `skills/run-beads/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, bd prime output, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode from the feature worktree. Stage-specific policy comes from `skills/run-beads/playbooks/<stage>.md`.
+Then load the universal stage runner prompt from `skills/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode from the feature worktree. Stage-specific policy comes from `skills/run-pipeline-stage/playbooks/<stage>.md`.
 
 Add the entry to `inflight` in `state.json`:
 ```json
@@ -79,7 +79,7 @@ Ralph uses two kinds of file:
   ```bash
   # workspace must be the absolute path you cd'd into — never . or $(pwd)
   workspace="/absolute/path/to/worktree"
-  pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-beads/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
+  pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
   ```
 - **`.agent-cortex/ralph/ralph-*.log`** — per-parent log files written by subagents (e.g. `.agent-cortex/ralph/ralph-abc-123.log`). Keyed by **parent** bead ID so all chore stages for a feature share one log.
 
@@ -123,15 +123,15 @@ After initialization, Ralph waits for background agents or the poll timer to com
 1. **Poll that bead's log** (see _Log polling_ below) to flush any final lines.
 2. **Read** the completed agent's full output with `read_agent`.
 3. **Re-read** `.agent-cortex/ralph/state.json` to identify the chore bead and parent for that agent ID.
-4. **Parse** the agent's `---REPORT---` block (see report format in the `run-beads` skill).
+4. **Parse** the agent's `---REPORT---` block (see report format in the `run-pipeline-stage` skill).
 5. **Close** the completed chore bead: `bd close <chore-id>`.
-6. **Advance** the parent using the dispatch rules in the `run-beads` skill:
-   - **Success paths** (test-writing → coding, coding → test-reviewing, test-reviewing DONE → verifying, verifying PASS → reviewing, reviewing APPROVED → documenting, fixing → test-reviewing): create the next chore bead and dispatch it immediately (see _Creating and dispatching a stage chore_ above). Update the inflight entry with the new choreId/agentId, reset logLine to 1.
+6. **Advance** the parent using the dispatch rules in the `run-pipeline-stage` skill:
+   - **Success paths** (code → verify, verify SUCCESS → review, review SUCCESS → document): create the next chore bead and dispatch it immediately (see _Creating and dispatching a stage chore_ above). Update the inflight entry with the new choreId/agentId, reset logLine to 1.
    - **Documenting → done**: close the parent feature bead (`bd close <parent-id>`), remove it from inflight, open/update the feature PR immediately (agent-branch → feature branch), report the PR URL in chat, then update the HITL PR gate bead with the PR URL.
-   - **Failure paths** (CHANGES_REQUESTED, VERIFY_FAIL, NEEDS_MORE): check loop cap (see below), then create a feedback bead per the _Feedback Beads_ section in `run-beads`. Do **not** dispatch immediately — the feedback bead appears in `bd ready` and is picked up in step 7. Remove the inflight entry for this chore; the feedback bead will create a new entry when dispatched.
+   - **Failure paths** (verify BLOCKED, review CHANGES_REQUESTED): check loop cap (see below), then create a feedback bead per the _Feedback Beads_ section in `run-pipeline-stage`. Do **not** dispatch immediately — the feedback bead appears in `bd ready` and is picked up in step 7. Remove the inflight entry for this chore; the feedback bead will create a new entry when dispatched.
 7. **Check for newly ready beads**: run `bd ready`. For each bead not yet tracked:
    - **Chore bead with `stage:*` label** (a feedback bead): find its parent via `bd show <chore-id>` (follow the `parent-child` dep). Check loop cap (see below). If under cap: dispatch it via _Creating and dispatching a stage chore_. If at cap: block it (`bd update <chore-id> --status blocked --notes "<cap> cap reached"`) and record for shutdown.
-   - **Task bead, AFK, in-flight count < 5, no open feature PR HITL gate**: claim the parent, create its first test-writing chore, dispatch it.
+   - **Task bead, AFK, in-flight count < 5, no open feature PR HITL gate**: claim the parent, create its first code chore, dispatch it.
    - **Task bead, AFK, in-flight count at 5**: hold in memory as Waiting.
    - **HITL task bead**: note for **Pending Human Action** shutdown summary.
    - **NEEDS-REFINEMENT bead**: note for **Needs Refinement** shutdown summary.
@@ -142,17 +142,13 @@ After initialization, Ralph waits for background agents or the poll timer to com
 
 ### Loop cap check
 
-Before creating a feedback bead, count existing chore children of the parent with the relevant stage label:
+Before creating a fix feedback bead, read `maxFixRounds` from `skills/create-task/pipeline.json` and count existing fix chore children:
 
 ```bash
-# TDD loop cap (before creating a test-writing feedback bead):
-tdd_loops=$(bd children <parent-id> | grep 'stage:test-writing' | wc -l)
-# Fix round cap (before creating a fixing feedback bead):
-fix_rounds=$(bd children <parent-id> | grep 'stage:fixing' | wc -l)
+fix_rounds=$(bd children <parent-id> | grep 'stage:fix' | wc -l)
 ```
 
-- `stage:test-writing` child count ≥ 5 → do **not** create feedback bead; block the parent instead.
-- `stage:fixing` child count ≥ 2 → do **not** create feedback bead; block the parent instead.
+- If `fix_rounds ≥ maxFixRounds` → do **not** create feedback bead; block the parent instead.
 
 Block command: `bd update <parent-id> --status blocked --notes "<cap> cap reached"`. Record for shutdown summary.
 
@@ -265,13 +261,12 @@ All beads complete.
 - **Never** edit bead task files directly — only use `bd` commands.
 - **Always** spawn subagents in **background** mode so multiple tasks run concurrently.
 - **Always** derive orchestration state from beads — do not store loop counts in state.json.
-- **Always** include the full `bd prime` output verbatim in every subagent prompt.
+- **Subagents can fetch their own context** — they will run `bd prime` if they need project-level state. Do not inject `bd prime` output into subagent prompts.
 - **Always** restart the poll timer immediately after it fires **if** agent work is still in-flight or AFK task beads are available — never let running agent work stall without a timer.
 - **Never** restart or start a new timer once the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending). Kill any running timer, proceed to **HITL Pause**, and stop completely.
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once (counted by parent features, not individual chore beads).
-- **Max 5** TDD loops per parent (count of `stage:test-writing` chore children); block the parent if exceeded.
-- **Max 2** fix rounds per parent (count of `stage:fixing` chore children); block the parent if exceeded.
+- **Max fix rounds** per parent (read `maxFixRounds` from `skills/create-task/pipeline.json`; count of `stage:fix` chore children); block the parent if exceeded.
 - **Always** run feature chores in the feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge feature or epic PRs — merge decisions are human-controlled.
 - **Never** continue past feature completion until PR `feature/<parent-id> -> epic/<epic-id>` is merged and the child HITL PR gate bead is closed by a human.

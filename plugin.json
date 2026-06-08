@@ -18,17 +18,6 @@
         "@upstash/context7-mcp@latest"
       ]
     },
-    "beads": {
-      "type": "stdio",
-      "command": "/Users/joshbickley-wallace/.local/bin/beads-mcp",
-      "args": [],
-      "env": {
-        "BEADS_PATH": "/opt/homebrew/bin/bd"
-      },
-      "tools": [
-        "*"
-      ]
-    },
     "github": {
       "type": "stdio",
       "command": "pnpm",

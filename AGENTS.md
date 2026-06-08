@@ -15,9 +15,13 @@ agent-cortex/
 ├── agents/               # Custom agents (*.agent.md)
 │   └── ralph.agent.md
 └── skills/               # Skills (one directory per skill, each with a SKILL.md)
-    ├── run-beads/
+    ├── bd-tool/
+    │   └── SKILL.md      # CLI mechanics for the beads (bd) task tracker
+    ├── run-pipeline-stage/
     │   ├── SKILL.md
-    │   └── scripts/      # Utility scripts bundled with the skill
+    │   ├── playbooks/     # Stage-specific behaviour guides
+    │   ├── prompts/       # Stage runner prompt template
+    │   └── scripts/       # Progress report generator
     └── review-security/
         ├── SKILL.md
         └── scripts/      # Utility scripts bundled with the skill
@@ -61,7 +65,7 @@ follow-up commit.
 
 - Agent files are named `<name>.agent.md` and live in `agents/`.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
-  so it can be reused (e.g. ralph delegates per-bead workflow to `run-beads`).
+  so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
 
 ## Task tracking
 

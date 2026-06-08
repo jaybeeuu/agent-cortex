@@ -9,7 +9,7 @@
 
 ## Progress log
 Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, test results, build errors, and stage complete (see Progress Logging in run-beads skill).
+Log stage start, test results, build errors, and stage complete (see Progress Logging in run-pipeline-stage skill).
 
 ## Instructions
 Invoke the `style-code` skill before making any code changes.

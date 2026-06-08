@@ -1,9 +1,9 @@
 ## Project context
-<bd prime output — verbatim>
+Run `bd prime` if you need project-level context (conventions, tech stack, goals).
 
 ## Stage metadata
 - Stage: `<stage>`
-- Playbook: `skills/run-beads/playbooks/<stage>.md`
+- Playbook: `skills/run-pipeline-stage/playbooks/<stage>.md`
 
 ## Bead specification
 <bd show <id> output — verbatim>
@@ -18,14 +18,3 @@ Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
 1. Read and follow the playbook file listed above.
 2. Treat the bead as the source-of-truth specification (not a prompt script).
 3. Keep output factual and stage-scoped.
-
-End your response with a `---REPORT---` block:
----REPORT---
-BEAD_ID: <id>
-STAGE_COMPLETED: <stage>
-SUMMARY: <2–3 sentence summary>
-FILES_CHANGED: <comma-separated list, or "none">
-OUTCOME: <SUCCESS|BLOCKED>
-BLOCKING_ISSUES:                               ← only if OUTCOME is BLOCKED
-- <specific blocking issue>
----

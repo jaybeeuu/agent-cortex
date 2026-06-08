@@ -7,8 +7,9 @@
    - set `OUTCOME: BLOCKED`,
    - include each finding under `BLOCKING_ISSUES`,
    - stop further review.
-3. Otherwise review for correctness, requirement alignment, and material quality issues.
-4. Do not request changes for stylistic preferences alone.
+3. Invoke `style-code` and `style-tests` for code and test review criteria.
+4. Review for correctness, requirement alignment, and material quality issues.
+5. Do not request changes for stylistic preferences alone.
 
 ## Stage Outcome
 

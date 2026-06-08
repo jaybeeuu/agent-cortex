@@ -2,14 +2,12 @@
 
 ## Stage Instructions
 
-1. Invoke the `style-code` skill before making any code changes.
-2. Implement via TDD vertical slices:
-   - one failing test (RED),
-   - minimal implementation to pass (GREEN),
-   - refactor while keeping tests green.
-3. Do not add speculative code — only what is required by current tests/requirements.
-4. Make only task-scoped changes; avoid unrelated refactors.
-5. Use context7 for third-party libraries when API/version details matter.
+1. Invoke `style-tests` before writing tests.
+2. Invoke `tdd` for the red-green-refactor implementation loop.
+3. Invoke `style-code` before making code changes.
+4. Do not add speculative code — only what is required by current tests/requirements.
+5. Make only task-scoped changes; avoid unrelated refactors.
+6. Use context7 for third-party libraries when API/version details matter.
 
 ## Stage Outcome
 

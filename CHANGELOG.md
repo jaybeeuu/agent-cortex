@@ -2,6 +2,17 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.16.1
+
+### Fixed
+
+- **Untrack `pi/settings.json`**: personal PI agent config (providers, models, local paths) is
+  now gitignored — each developer keeps their own. Removed from index.
+
+### Changed
+
+- `.gitignore` now excludes `pi/settings.json`.
+
 ## 1.16.0
 
 ### Added

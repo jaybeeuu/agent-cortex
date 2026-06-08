@@ -13,3 +13,6 @@
 # Node
 node_modules/
 .agent-cortex/worktrees/
+
+# Personal PI agent config — local settings per developer
+pi/settings.json

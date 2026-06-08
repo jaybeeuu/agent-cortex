@@ -13,6 +13,7 @@ import {
   extractSkillName,
   loadStore,
   saveStore,
+  ageOutStore,
 } from "./index.ts";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -343,5 +344,60 @@ describe("loadStore / saveStore", () => {
     const store = loadStore(file);
     assert.equal(store.version, 1);
     assert.deepEqual(store.skills, {});
+  });
+});
+
+// ─── ageOutStore ─────────────────────────────────────────────────────────────
+
+describe("ageOutStore", () => {
+  const recentDate = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(); // 1 day ago
+  const oldDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000).toISOString();   // 100 days ago (over 3mo)
+
+  it("removes skills with lastUsed older than 3 months", () => {
+    const store = freshStore();
+    store.skills["active"] = {
+      loadedCount: 5, invokedCount: 0, readCount: 0,
+      lastUsed: recentDate, byProject: {},
+    };
+    store.skills["stale"] = {
+      loadedCount: 10, invokedCount: 2, readCount: 1,
+      lastUsed: oldDate, byProject: {},
+    };
+
+    ageOutStore(store);
+
+    assert.ok(store.skills["active"], "active skill should be kept");
+    assert.equal(store.skills["stale"], undefined, "stale skill should be removed");
+  });
+
+  it("removes skills with no lastUsed (null)", () => {
+    const store = freshStore();
+    store.skills["never-used"] = {
+      loadedCount: 0, invokedCount: 0, readCount: 0,
+      lastUsed: null, byProject: {},
+    };
+
+    ageOutStore(store);
+    assert.equal(store.skills["never-used"], undefined);
+  });
+
+  it("removes recentEvents older than 3 months", () => {
+    const store = freshStore();
+    store.recentEvents = [
+      { timestamp: recentDate, skill: "active", source: "loaded", project: "/p" },
+      { timestamp: oldDate, skill: "stale", source: "invoked", project: "/p" },
+    ];
+
+    ageOutStore(store);
+
+    assert.equal(store.recentEvents.length, 1);
+    assert.equal(store.recentEvents[0].skill, "active");
+  });
+
+  it("leaves empty store unchanged", () => {
+    const store = freshStore();
+    ageOutStore(store);
+    assert.deepEqual(store.skills, {});
+    assert.deepEqual(store.recentEvents, []);
   });
 });

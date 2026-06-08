@@ -2,10 +2,12 @@
 
 ## Stage Instructions
 
-1. Invoke the `style-code` skill before making any code changes.
-2. Apply only the requested changes from the triggering feedback.
-3. Do not perform unrelated modifications.
-4. Preserve task scope and keep fixes minimal and explicit.
+1. Invoke `style-tests` before writing or updating tests.
+2. Invoke `tdd` to drive any implementation or test changes.
+3. Invoke `style-code` before making code changes.
+4. Apply only the requested changes from the triggering feedback.
+5. Do not perform unrelated modifications.
+6. Preserve task scope and keep fixes minimal and explicit.
 
 ## Stage Outcome
 

@@ -2,6 +2,19 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.18.0
+
+### Changed
+
+- **Grouped skills into domain subdirectories** — the flat listing was unwieldy. Skills
+  now live under `planning/`, `engineering/`, `productivity/`, `style/`, `workflow/`,
+  and `review/`. Discovery is recursive, so no config changes needed.
+- Updated `AGENTS.md` structure diagram.
+
+### Removed
+
+- **Removed `obsidian-vault` skill** — never used.
+
 ## 1.17.0
 
 ### Added

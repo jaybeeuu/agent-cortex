@@ -11,27 +11,44 @@ behaviour of every agent and skill available in the author's Copilot CLI session
 
 ```
 agent-cortex/
-├── plugin.json           # Plugin manifest — name, version, skill/agent paths, MCP servers
+├── plugin.json           # Plugin manifest
 ├── agents/               # Custom agents (*.agent.md)
 │   └── ralph.agent.md
-└── skills/               # Skills (one directory per skill, each with a SKILL.md)
-    ├── bd-tool/
-    │   └── SKILL.md      # CLI mechanics for the beads (bd) task tracker
-    ├── grill-me/
-    │   └── SKILL.md      # Grilling session for plans and designs
-    ├── handoff/
-    │   └── SKILL.md      # Agent-to-agent handoff documents
-    ├── run-pipeline-stage/
-    │   ├── SKILL.md
-    │   ├── playbooks/     # Stage-specific behaviour guides
-    │   ├── prompts/       # Stage runner prompt template
-    │   └── scripts/       # Progress report generator
-    ├── review-security/
-    │   ├── SKILL.md
-    │   └── scripts/      # Utility scripts bundled with the skill
-    └── teach/
-        ├── SKILL.md
-        └── *-FORMAT.md   # Format templates for teaching workspace
+└── skills/               # Grouped by domain, discovered recursively
+    ├── planning/         # Scope, spec, decompose
+    │   ├── classify-bead/
+    │   ├── create-task/
+    │   ├── prd-to-tasks/
+    │   ├── record-idea/
+    │   ├── request-refactor-plan/
+    │   ├── write-a-prd/
+    │   └── write-a-ticket/
+    ├── engineering/      # The coding loop
+    │   ├── design-an-interface/
+    │   ├── grill-with-docs/
+    │   ├── improve-codebase-architecture/
+    │   ├── tdd/
+    │   └── technical-direction/
+    ├── productivity/     # Workflow tooling, not code-specific
+    │   ├── bd-tool/
+    │   ├── grill-me/
+    │   ├── handoff/
+    │   ├── init-beads/
+    │   ├── teach/
+    │   └── write-a-skill/
+    ├── style/            # Conventions and standards
+    │   ├── style-code/
+    │   ├── style-comms/
+    │   ├── style-documentation/
+    │   └── style-tests/
+    ├── workflow/         # Orchestration and pipeline
+    │   ├── hitl-collab/
+    │   ├── ralph/
+    │   └── run-pipeline-stage/
+    └── review/           # Auditing and maintenance
+        ├── maintain-agent-docs/
+        ├── refactor-skill/
+        └── review-security/
 ```
 
 ## Versioning

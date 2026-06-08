@@ -32,7 +32,7 @@ description: Defines coding style, conventions, and architectural preferences. U
 
 2. **Define types and boundaries first.** Model domain concepts with named types, interfaces, discriminated unions, or typed result objects. Keep types close to the service or package that owns them. Validate unknown data at system edges (API ingress, deserialisation, inter-service boundaries) using runtime validators — treat incoming data as `unknown` until checked. Within the application, trust the type system to enforce correct calls.
 
-3. **Name for clarity.** Use descriptive names drawn from the project's ubiquitous language. Do not invent synonyms for established domain terms. If the language isn't yet defined for this area, run `ubiquitous-language` to extract it before naming. Use consistent suffixes: `Props`, `Options`, `Context`, `State` where they aid recognition. Name factories and builders with explicit verbs (`create`, `make`, `build`, `resolve`, `parse`, `compile`, `fetch`, `read`, `write`).
+3. **Name for clarity.** Use descriptive names drawn from the project's ubiquitous language. Do not invent synonyms for established domain terms. If the language isn't yet defined for this area, run `grill-with-docs` to extract it before naming. Use consistent suffixes: `Props`, `Options`, `Context`, `State` where they aid recognition. Name factories and builders with explicit verbs (`create`, `make`, `build`, `resolve`, `parse`, `compile`, `fetch`, `read`, `write`).
 
 4. **Structure with ownership in mind.** Keep ingress, processing, API, CLI, and infrastructure concerns in separate modules. Split modules when it sharpens bounded-context ownership; do not split just to reshuffle code.
 
@@ -69,7 +69,7 @@ description: Defines coding style, conventions, and architectural preferences. U
 |---|---|
 | Test-first development loop | `tdd` |
 | Test writing conventions | `style-tests` |
-| Building or hardening the project's ubiquitous language | `ubiquitous-language` |
+| Building or hardening the project's ubiquitous language | `grill-with-docs` |
 | Communication tone and document structure | `style-comms` |
 | What and whether to document | `style-documentation` |
 | Surfacing architectural friction and deepening shallow modules | `improve-codebase-architecture` |

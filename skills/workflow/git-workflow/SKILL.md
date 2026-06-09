@@ -5,7 +5,11 @@ description: Enforces git discipline: feature branches over direct pushes, git w
 
 # Git Workflow
 
-Always follow this workflow when making changes to any repository.
+Follow this workflow when asked to make changes unattended (AFK-mode). When
+collaborating with a human on the same branch, work in their workspace —
+do not create a separate worktree that splits attention.
+
+If unsure whether you're working solo or collaboratively, ask.
 
 ## Rules
 
@@ -24,15 +28,23 @@ Branch naming:
 - `refactor/<description>` — refactoring
 - `chore/<description>` — tooling, config, CI, docs
 
-### 2. Git worktrees — prefer by default
+### 2. Git worktrees — for unattended solo work
 
-Use `git worktree add` to create an isolated working directory instead of stashing or switching branches in-place. Worktrees let you work on multiple branches simultaneously without interference.
+Use `git worktree add` to create an isolated working directory instead of
+stashing or switching branches in-place. Worktrees let you work on multiple
+branches simultaneously without interference.
 
 ```bash
 git worktree add ../my-repo-feat-branch feat/my-branch
 ```
 
-Worktrees are cheaper than clones (shared object store) and safer than stashing.
+Worktrees are cheaper than clones (shared object store) and safer than
+stashing — **but only when you're working solo**. If the human is also
+working on the same thing, use a shared branch and workspace instead.
+
+**When collaborating**: ask the human what workspace/branch they're on. Do
+not spin up a separate worktree — work in the same checkout so you both see
+the same state.
 
 ### 3. Pull requests for review
 
@@ -66,5 +78,8 @@ git branch -d feat/my-branch
 
 ## When NOT to use
 
-- Single-character typo fixes that are already on a branch
-- Emergency hotfixes to production that bypass normal process (rare, explicit)
+- **Collaborating with a human** on the same code — use their workspace,
+  not a separate worktree.
+- Single-character typo fixes that are already on a branch.
+- Emergency hotfixes to production that bypass normal process (rare, explicit).
+- **If unsure** whether you're working solo or alongside a human: ask.

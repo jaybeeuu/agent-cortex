@@ -20,7 +20,6 @@ const HOME = os.homedir();
 export function globalSkillDirs(): string[] {
   return [
     path.join(HOME, ".pi", "agent", "skills"),
-    path.join(HOME, ".agents", "skills"),
   ].filter((d) => { try { return fs.statSync(d).isDirectory(); } catch { return false; } });
 }
 
@@ -74,7 +73,6 @@ export function discoverProjectSkills(cwd: string, map: Map<string, SkillRecord>
   const projectDirs = [
     path.join(cwd, "skills"),
     path.join(cwd, ".pi", "skills"),
-    path.join(cwd, ".agents", "skills"),
   ].filter((d) => { try { return fs.statSync(d).isDirectory(); } catch { return false; } });
 
   for (const d of projectDirs) scanSkills(d, map);
@@ -109,7 +107,7 @@ export function resolveSkillFromPath(
   if (m) return m[1];
 
   // Match .../<skill-dir>/<name>/SKILL.md for well-known dirs
-  m = normalized.match(/\/(?:\.pi\/skills|\.agents\/skills)\/([^/]+)\/SKILL\.md$/);
+  m = normalized.match(/\/(?:\.pi\/skills)\/([^/]+)\/SKILL\.md$/);
   if (m) return m[1];
 
   return null;

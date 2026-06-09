@@ -131,7 +131,7 @@ describe("resolveSkillFromPath", () => {
     assert.equal(result, "my-helper");
   });
 
-  it("resolves a .agents/skills path via heuristic", () => {
+  it("resolves a deeply nested skills/ path via heuristic", () => {
     const result = resolveSkillFromPath(
       "/home/user/projects/my-app/.agents/skills/deploy/SKILL.md",
       new Map(),

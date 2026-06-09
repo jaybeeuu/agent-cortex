@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Enforces git discipline: feature branches over direct pushes, git worktrees for isolation, and GitHub PRs for all changes. Use when making any change to a codebase — this is the default workflow.
+description: "Enforces git discipline: feature branches over direct pushes, git worktrees for isolation, and GitHub PRs for all changes. Use when making any change to a codebase — this is the default workflow."
 ---
 
 # Git Workflow

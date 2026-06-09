@@ -2,6 +2,17 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.19.0
+
+### Added
+
+- **`git-workflow` skill** — defines the default git discipline: feature branches,
+  git worktrees for isolation, and PRs for all changes. Auto-loaded every session
+  via a new `before_agent_start` extension.
+- **`extensions/git-workflow.ts`** — injects `git-workflow` and `bd-tool` skills
+  into `systemPromptOptions.skills` at session start, so the agent always has
+  workflow context available.
+
 ## 1.18.1
 
 ### Fixed

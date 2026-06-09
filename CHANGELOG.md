@@ -9,9 +9,10 @@ All notable changes to this repository are documented in this file.
 - **`git-workflow` skill** — defines the default git discipline: feature branches,
   git worktrees for isolation, and PRs for all changes. Auto-loaded every session
   via a new `before_agent_start` extension.
-- **`extensions/git-workflow.ts`** — injects `git-workflow` and `bd-tool` skills
-  into `systemPromptOptions.skills` at session start, so the agent always has
-  workflow context available.
+- **`extensions/session-start.ts`** — general session-start extension that injects
+  `git-workflow` and `bd-tool` skills into `systemPromptOptions.skills` so the
+  agent always has workflow context available. The place to add future
+  session-start concerns.
 
 ## 1.18.1
 

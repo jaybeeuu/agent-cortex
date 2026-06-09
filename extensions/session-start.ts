@@ -1,13 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 /**
- * Auto-loads the git-workflow and bd-tool skills into every session.
+ * General session-start extension.
  *
- * git-workflow enforces feature-branch / worktree / PR discipline.
- * bd-tool provides project context and task-tracking conventions.
- *
- * Both are injected via systemPromptOptions.skills so PI handles
- * content inclusion automatically.
+ * Add things here that should be loaded or configured at the start of every
+ * PI session. Currently injects essential skills into the system prompt.
  */
 export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
@@ -18,10 +15,13 @@ export default function (pi: ExtensionAPI) {
       opts.skills = [];
     }
 
-    const toInject = ["git-workflow", "bd-tool"];
+    const toInject = [
+      "git-workflow", // feature-branch / worktree / PR discipline
+      "bd-tool", // project context & task tracking
+    ];
 
     for (const name of toInject) {
-      // Avoid duplicates — skills can be strings or { name } objects
+      // Skills can be strings or { name } objects — handle both
       const alreadyPresent = opts.skills.some((s: string | { name: string }) =>
         typeof s === "string" ? s === name : s.name === name,
       );

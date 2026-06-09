@@ -19,12 +19,12 @@ A living record of external repos and promoted internal research that inform age
 
 | Pattern | Description | Adopted? |
 |---|---|---|
-| Consistent skeleton | Every skill follows a shared, predictable section model | Partially — `agent-nexus-dal` |
-| "When NOT to use" | Explicit out-of-scope conditions in every skill | Planned — `agent-nexus-crp` |
-| "Common Rationalizations" | Debunks excuses for skipping process steps | Planned — `agent-nexus-67g` |
-| "Red Flags" | Concrete anti-patterns to detect during execution | Planned — `agent-nexus-7mm` |
-| Verification checklist | Completion gate in each skill | Planned — `agent-nexus-9qd` |
-| Cross-references | `See Also` links to related skills | Planned — `agent-nexus-zk1` |
+| Consistent skeleton | Every skill follows a shared, predictable section model | Partially |
+| "When NOT to use" | Explicit out-of-scope conditions in every skill | Planned |
+| "Common Rationalizations" | Debunks excuses for skipping process steps | Planned |
+| "Red Flags" | Concrete anti-patterns to detect during execution | Planned |
+| Verification checklist | Completion gate in each skill | Planned |
+| Cross-references | `See Also` links to related skills | Planned |
 
 ## Matt Pocock — skills repo
 

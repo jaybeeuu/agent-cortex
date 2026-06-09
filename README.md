@@ -8,10 +8,18 @@ A personal [GitHub Copilot CLI plugin](https://docs.github.com/en/copilot/how-to
 agent-cortex/
 ├── plugin.json           # Plugin manifest
 ├── agents/               # Custom agents
-│   └── nexus.agent.md
-└── skills/               # Skills
-    └── example/
-        └── SKILL.md
+│   ├── ralph.agent.md
+│   ├── ralph-plan.agent.md
+│   └── strategy.agent.md
+├── skills/               # Skills (grouped by domain)
+│   ├── engineering/      #  tdd, improve-codebase-architecture, …
+│   ├── planning/         #  write-a-prd, prd-to-tasks, design-an-interface, …
+│   ├── productivity/     #  bd-tool, write-a-skill, grill-me, …
+│   ├── review/           #  review-security
+│   ├── style/            #  style-code, style-tests, style-comms, …
+│   └── workflow/         #  ralph, run-pipeline-stage, create-task, …
+└── extensions/           # PI extensions (optional)
+    └── skill-stats/
 ```
 
 ## Installation

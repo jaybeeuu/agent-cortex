@@ -16,7 +16,7 @@ shared skeleton, and include several patterns backed by LLM research that we cur
 
 ## What they do that we don't
 
-### 1. "Common Rationalizations" table `agent-nexus-67g`
+### 1. "Common Rationalizations" table
 
 Every skill includes a table debunking common excuses for not following it:
 
@@ -30,7 +30,7 @@ the behaviour.
 
 ---
 
-### 2. "When NOT to use" sections `agent-nexus-crp`
+### 2. "When NOT to use" sections
 
 Every skill explicitly states when _not_ to invoke it:
 
@@ -42,7 +42,7 @@ reduce false-positive invocations and improve precision.
 
 ---
 
-### 3. "Red Flags" list `agent-nexus-7mm`
+### 3. "Red Flags" list
 
 Concrete, detectable anti-patterns named inline:
 
@@ -54,7 +54,7 @@ failure modes alongside correct behaviour helps models self-correct.
 
 ---
 
-### 4. Verification checklists at the end `agent-nexus-9qd`
+### 4. Verification checklists at the end
 
 Every skill ends with a checkbox list:
 
@@ -68,7 +68,7 @@ omission errors and improves task completion reliability.
 
 ---
 
-### 5. Concrete code/output examples `agent-nexus-9k4`
+### 5. Concrete code/output examples
 
 Skills show realistic before/after examples, not just abstract descriptions.
 
@@ -77,7 +77,7 @@ prose descriptions for in-context learning.
 
 ---
 
-### 6. 100-line limit is too restrictive `agent-nexus-fvg`
+### 6. 100-line limit is too restrictive
 
 Our `write-a-skill` caps SKILL.md at 100 lines. The addyosmani skills are 200–350 lines and
 their richness (rationalizations, red flags, examples, checklists) directly follows from that
@@ -102,16 +102,16 @@ REFERENCE.md" — keeping SKILL.md as the primary working document rather than g
 
 ## Bead IDs
 
-| Improvement | Bead |
+| Improvement | Status |
 |---|---|
-| Common Rationalizations tables | `agent-nexus-67g` |
-| When NOT to use sections | `agent-nexus-crp` |
-| Red Flags sections | `agent-nexus-7mm` |
-| Verification checklists | `agent-nexus-9qd` |
-| Concrete examples | `agent-nexus-9k4` |
-| Reconsider 100-line limit | `agent-nexus-fvg` |
-| ASCII workflow diagrams | `agent-nexus-vc3` |
-| Cross-references between skills | `agent-nexus-zk1` |
-| Consistent skeleton template | `agent-nexus-dal` (pre-existing) |
+| Common Rationalizations tables | Planned |
+| When NOT to use sections | Planned |
+| Red Flags sections | Planned |
+| Verification checklists | Planned |
+| Concrete examples | Planned |
+| Reconsider 100-line limit | Done (raised to 150) |
+| ASCII workflow diagrams | Not yet |
+| Cross-references between skills | Planned |
+| Consistent skeleton template | Partially adopted |
 
 [Inspirations](../inspirations.md)

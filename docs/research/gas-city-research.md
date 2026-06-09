@@ -175,7 +175,7 @@ You do NOT manually run `git worktree add`. The controller handles it.
 
 ---
 
-## Implications for agent-nexus / ralph / run-beads
+## Implications for agent-cortex / ralph / run-beads
 
 ### Formulas for the TDD pipeline
 

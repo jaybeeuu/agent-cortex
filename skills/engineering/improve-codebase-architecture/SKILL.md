@@ -13,7 +13,7 @@ A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a sma
 
 ### 1. Explore the codebase
 
-Spawn a `nexus` agent (`agent-cortex:nexus`) with an explicit prompt to navigate the codebase and report architectural friction. The prompt must instruct the agent to explore organically and note where it experiences friction:
+Explore the codebase using your available tools (bash, rg, view, glob, find). Navigate organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small files?
 - Where are modules so shallow that the interface is nearly as complex as the implementation?
@@ -48,22 +48,22 @@ Show this to the user, then immediately proceed to Step 5. The user reads and th
 
 ### 5. Design multiple interfaces
 
-Spawn 3+ `nexus` agents (`agent-cortex:nexus`) in parallel using the Task tool. Each must produce a **radically different** interface for the deepened module.
+Design multiple radically different interfaces for the deepened module yourself, cycling through different constraints. For each design, write out the complete interface and evaluate it before moving to the next:
 
-Prompt each sub-agent with a separate technical brief (file paths, coupling details, dependency category, what's being hidden). This brief is independent of the user-facing explanation in Step 4. Give each agent a different design constraint:
+1. **Minimal interface** — aim for 1-3 entry points max. What complexity can you hide behind a small surface area?
+2. **Flexible interface** — support many use cases and extension. How do you make it open for future needs?
+3. **Caller-optimised** — make the most common calling pattern trivial. What does the primary caller look like?
+4. **Ports & adapters** (if cross-boundary deps) — isolate side effects from pure logic.
 
-- Agent 1: "Minimize the interface — aim for 1-3 entry points max"
-- Agent 2: "Maximize flexibility — support many use cases and extension"
-- Agent 3: "Optimize for the most common caller — make the default case trivial"
-- Agent 4 (if applicable): "Design around the ports & adapters pattern for cross-boundary dependencies"
-
-Each sub-agent outputs:
+For each design, output:
 
 1. Interface signature (types, methods, params)
 2. Usage example showing how callers use it
 3. What complexity it hides internally
 4. Dependency strategy (how deps are handled — see [REFERENCE.md](REFERENCE.md))
 5. Trade-offs
+
+The `design-an-interface` skill provides a structured approach for this step — invoke it if you want a guided parallel-design flow with sub-agents.
 
 Present designs sequentially, then compare them in prose.
 

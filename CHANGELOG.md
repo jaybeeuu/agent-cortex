@@ -2,6 +2,16 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.18.1
+
+### Fixed
+
+- **Removed stale nexus references from skills and docs** — the
+  `improve-codebase-architecture` skill was broken: it spawned `agent-cortex:nexus`
+  sub-agents that don't exist. Rewrote to use direct tool-based exploration and
+  inline interface design instead. Also cleaned up stale `nexus.agent.md` refs in
+  `README.md`, `docs/inspirations.md`, and research docs.
+
 ## 1.18.0
 
 ### Changed

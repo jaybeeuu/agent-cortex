@@ -1,4 +1,7 @@
 packages:
   - "skills/*/scripts"
+  - "extensions/*"
 allowBuilds:
+  '@google/genai': false
   esbuild: set this to true or false
+  protobufjs: false

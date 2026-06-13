@@ -2,8 +2,7 @@
   "lastChangelogVersion": "0.79.2",
   "packages": [
     "../../src/agent-cortex",
-    "npm:pi-web-access@0.10.7",
-    "npm:pi-notify@1.4.0"
+    "npm:pi-web-access@0.10.7"
   ],
   "defaultProvider": "opencode",
   "defaultModel": "big-pickle"

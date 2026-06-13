@@ -51,7 +51,11 @@ These packages are declared in `pi/settings.json` and auto-installed by pi:
 | Package | Version | Purpose |
 |---|---|---|
 | [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis |
-| [`pi-notify`](https://www.npmjs.com/package/pi-notify) | 1.4.0 | Desktop notifications via OSC escape sequences |
+
+Desktop notifications are handled by the local `extensions/notify/` extension
+(replaces the former `pi-notify` dependency). It sends an OSC desktop
+notification on multi-turn tasks, labelled with the tmux session:window.pane
+if available, or the project directory name otherwise.
 
 ### Copilot plugin (separate)
 

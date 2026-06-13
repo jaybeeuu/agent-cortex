@@ -7,16 +7,27 @@ All notable changes to this repository are documented in this file.
 ### Added
 
 - **`pi/settings.json` is now tracked and is the canonical global pi config** —
-  it's symlinked from `~/.pi/agent/settings.json`. This means `pi install`,
-  `pi remove`, provider/model settings are all version-controlled and
-  reproducible on a fresh checkout.
-- **`pi/settings.json` pins versions** for `pi-web-access` and `pi-notify` so
-  package upgrades are deliberate commits, not drift.
+  it's symlinked from `~/.pi/agent/settings.json`. All `pi install` / `pi remove`
+  and provider/model settings are version-controlled and reproducible on a fresh
+  checkout.
+- **`extensions/notify/` now handles desktop notifications** — replaced the
+  `pi-notify` npm dependency with a local extension that sends OSC desktop
+  notifications on multi-turn tasks. Notifications are labelled with the tmux
+  session:window.pane identifier when available, or the project directory name
+  otherwise.
+- **`pi/settings.json` pins versions** for `pi-web-access` (package deps are
+  deliberate commits, not drift).
 - **README** — documented the global config symlink setup, redeploy
   instructions, and package dependencies.
 - **`.gitignore`** — removed `pi/settings.json` ignore rule so the global
   config is tracked. Added `.pi/npm/` and `.pi/node_modules/` for project-level
   install artifacts.
+
+### Removed
+
+- **`pi-notify` dependency** — replaced by local `extensions/notify/` which
+  provides the same OSC desktop notification functionality with customisable
+  labels (tmux context or project name).
 
 ## 1.20.0
 

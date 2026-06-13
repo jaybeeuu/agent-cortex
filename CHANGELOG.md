@@ -6,13 +6,17 @@ All notable changes to this repository are documented in this file.
 
 ### Added
 
-- **`.pi/settings.json`** — project-level pi package manifest that declares
-  `pi-web-access` and `pi-notify` as dependencies. These auto-install when pi
-  starts from this directory after the project is trusted, making the setup
-  reproducible for new checkouts.
-- **README** — documented pi package dependencies and installation instructions.
-- **`.gitignore`** — ignore `.pi/npm/` and `.pi/node_modules/` (pi install
-  artifacts from project-level package installs).
+- **`pi/settings.json` is now tracked and is the canonical global pi config** —
+  it's symlinked from `~/.pi/agent/settings.json`. This means `pi install`,
+  `pi remove`, provider/model settings are all version-controlled and
+  reproducible on a fresh checkout.
+- **`pi/settings.json` pins versions** for `pi-web-access` and `pi-notify` so
+  package upgrades are deliberate commits, not drift.
+- **README** — documented the global config symlink setup, redeploy
+  instructions, and package dependencies.
+- **`.gitignore`** — removed `pi/settings.json` ignore rule so the global
+  config is tracked. Added `.pi/npm/` and `.pi/node_modules/` for project-level
+  install artifacts.
 
 ## 1.20.0
 

@@ -1,4 +1,9 @@
 {
+  "tinyModel": {
+    "model": "opencode/mimo-v2.5-free",
+    "maxNameLength": 40,
+    "maxSummaryLength": 100
+  },
   "lastChangelogVersion": "0.79.2",
   "packages": [
     "../../src/agent-cortex",

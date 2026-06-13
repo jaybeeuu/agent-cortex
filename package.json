@@ -1,6 +1,6 @@
 {
   "name": "agent-cortex",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "private": true,
   "description": "Personal PI package with custom agents, skills, and extensions",
   "keywords": ["pi-package"],

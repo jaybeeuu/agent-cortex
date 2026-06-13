@@ -2,6 +2,36 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.21.0
+
+### Added
+
+- **`.pi/settings.json`** — project-level pi package manifest that declares
+  `pi-web-access` and `pi-notify` as dependencies. These auto-install when pi
+  starts from this directory after the project is trusted, making the setup
+  reproducible for new checkouts.
+- **README** — documented pi package dependencies and installation instructions.
+- **`.gitignore`** — ignore `.pi/npm/` and `.pi/node_modules/` (pi install
+  artifacts from project-level package installs).
+
+## 1.20.0
+
+### Added
+
+- **`extensions/notify/`** — new pi extension that emits a terminal bell when pi
+  finishes a multi-turn task (≥2 turns or ≥30s runtime). Tmux catches this via
+  `monitor-bell` + `visual-bell` and shows "Bell in window X", so you can
+  navigate directly to pi's session/window with `y`/`g`.
+
+### Changed
+
+- **Zsh theme** — replaced naive bell-on-every-precmd with a threshold approach:
+  only ring bell if last command ran ≥10 seconds. Prevents noise from `cd`, `ls`,
+  and pi's internal bash tool calls.
+- **Tmux config** — enabled `allow-passthrough on` so OSC 777/99/9 escape sequences
+  pass through to the terminal emulator (needed by `pi-notify` and
+  `copilot-plugin-notify`). Simplified `g`/`G` bindings to plain session cycling.
+
 ## 1.19.0
 
 ### Added

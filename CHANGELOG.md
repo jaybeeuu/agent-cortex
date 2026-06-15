@@ -2,6 +2,17 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.24.0
+
+### Added
+
+- **New `plan` skill** — guides a feature from idea through PRD and task breakdown to
+  classified beads ready for ralph execution, then produces a handoff bead ID. Covers
+  the full workflow: codebase investigation, PRD creation, vertical-slice task
+  breakdown, bead classification and pipeline expansion, and handoff preparation.
+  Invoke with "plan this", "get this ready for ralph", or use it when starting a new
+  feature that needs scoping before autonomous execution.
+
 ## 1.23.0
 
 ### Fixed

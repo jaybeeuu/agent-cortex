@@ -4,11 +4,12 @@
     "maxNameLength": 40,
     "maxSummaryLength": 100
   },
-  "lastChangelogVersion": "0.79.2",
+  "lastChangelogVersion": "0.79.4",
   "packages": [
     "../../src/agent-cortex",
     "npm:pi-web-access@0.10.7"
   ],
   "defaultProvider": "opencode",
-  "defaultModel": "big-pickle"
+  "defaultModel": "big-pickle",
+  "theme": "dark"
 }

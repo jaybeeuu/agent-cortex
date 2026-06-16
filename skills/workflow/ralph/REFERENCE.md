@@ -70,7 +70,7 @@ When a verify or review stage fails:
 
 1. **Determine the parent task**: look up the chore bead's parent via `bd show <chore-id>` (follow the `parent-child` dependency).
 2. **Count existing fix rounds**: list all chore beads that are children of the parent task with label `stage:fix`. The count of these (including closed ones) is the number of fix rounds already attempted.
-3. **Read `maxFixRounds`** from `skills/create-task/pipeline.json` (held in memory since initialization).
+3. **Read `maxFixRounds`** from `skills/planning/create-task/pipeline.json` (held in memory since initialization).
 4. **If fix rounds ≥ maxFixRounds**: close the parent task bead as failed (`bd close <parent-id> --reason "Max fix rounds reached"`). Do not create another fix chore.
 5. **Otherwise, create a fix chore** with the feedback in its description so the fixer agent can read it directly from `bd show`:
    ```bash
@@ -197,6 +197,6 @@ All orchestration state is derived from beads:
 | What is in-flight? | `bd list --status=in_progress --type=chore` |
 | What is ready? | `bd ready` — filter for chores with `stage:*` labels |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
-| How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task. Read `maxFixRounds` from `skills/create-task/pipeline.json`. |
+| How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task. Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. |
 | Which features are review-gated? | Find open child task beads labelled `lifecycle:feature-pr` and `implementation-type:hitl` |
 | Which epics are review-gated? | `bd list -l awaiting-epic-pr-merge` |

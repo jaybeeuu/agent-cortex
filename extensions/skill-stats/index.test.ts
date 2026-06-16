@@ -117,7 +117,7 @@ describe("resolveSkillFromPath", () => {
 
   it("resolves a project-local path via heuristic", () => {
     const result = resolveSkillFromPath(
-      "/home/user/projects/agent-cortex/skills/run-pipeline-stage/SKILL.md",
+      "/home/user/projects/agent-cortex/skills/workflow/run-pipeline-stage/SKILL.md",
       new Map(), // empty known -> heuristic only
     );
     assert.equal(result, "run-pipeline-stage");

@@ -3,7 +3,7 @@ Run `bd prime` if you need project-level context (conventions, tech stack, goals
 
 ## Stage metadata
 - Stage: `<stage>`
-- Playbook: `skills/run-pipeline-stage/playbooks/<stage>.md`
+- Playbook: `skills/workflow/run-pipeline-stage/playbooks/<stage>.md`
 
 ## Bead specification
 <bd show <id> output — verbatim>

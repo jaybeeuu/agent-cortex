@@ -8,7 +8,7 @@ Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL
 
 1. **Claim** the bead: `bd update <id> --claim`.
 2. **Read its `stage:*` label** from `bd show <id>`.
-3. **Load the universal stage runner prompt** from `skills/run-pipeline-stage/prompts/stage-runner.md`.
+3. **Load the universal stage runner prompt** from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`.
 4. **Read the parent task context**: follow the `parent-child` dependency to the parent task bead, run `bd show <parent-id>` to get the full task description.
 5. **Ensure branch + worktree exist for this parent task** (see _Feature branches and worktrees_ below), then note the worktree path — you'll pass it as `cwd` to `task`.
 6. **Fill in the prompt** — replace placeholders with:
@@ -187,7 +187,7 @@ When `bd list --status=in_progress --type=chore` returns no results AND `bd read
 
 | File | Purpose |
 |------|---------|
-| `.agent-cortex/ralph/progress.md` | Human-readable snapshot. Regenerate: `workspace="/abs/path"; pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"`. `workspace` must be an **absolute** path — never `.` or `$(pwd)`. **Never hand-edit.** |
+| `.agent-cortex/ralph/progress.md` | Human-readable snapshot. Regenerate: `workspace="/abs/path"; pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"`. `workspace` must be an **absolute** path — never `.` or `$(pwd)`. **Never hand-edit.** |
 | `.agent-cortex/ralph/ralph-*.log` | Per-bead log files written by subagents (e.g. `.agent-cortex/ralph/ralph-abc-123.log`). |
 
 All orchestration state is derived from beads:

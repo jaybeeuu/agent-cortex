@@ -5,7 +5,7 @@ description: Execute a single pipeline stage for a task. Use when you want to wo
 
 # Run Pipeline Stage
 
-Execute a single pipeline stage. Stage beads (`code`, `verify`, `review`, `document`) are created by the `create-task` skill from the pipeline definition in `skills/create-task/pipeline.json`; this skill handles executing one at a time.
+Execute a single pipeline stage. Stage beads (`code`, `verify`, `review`, `document`) are created by the `create-task` skill from the pipeline definition in `skills/planning/create-task/pipeline.json`; this skill handles executing one at a time.
 
 ## Quick Start
 
@@ -63,7 +63,7 @@ Do not log every file read or minor action — only transitions and key events.
 
 ## Pipeline
 
-The canonical pipeline is defined in `skills/create-task/pipeline.json`. Current stages:
+The canonical pipeline is defined in `skills/planning/create-task/pipeline.json`. Current stages:
 
 | Stage | Notes |
 |-------|-------|
@@ -100,7 +100,7 @@ This tags the bead with its current stage (beads are the source of truth for sta
 | `review` | `OUTCOME: BLOCKED` and fixRounds ≥ maxFixRounds | `bd update <parent-id> --status blocked --notes "max fix rounds reached"` — record for shutdown |
 | `document` | — | `bd close <id>` — done |
 
-`maxFixRounds` is read from `skills/create-task/pipeline.json` (`maxFixRounds` field, currently `4`).
+`maxFixRounds` is read from `skills/planning/create-task/pipeline.json` (`maxFixRounds` field, currently `4`).
 
 ### Fix loop flow
 

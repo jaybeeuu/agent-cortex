@@ -142,7 +142,7 @@ After initialization, Ralph waits for background agents or the poll timer to com
 
 ### Loop cap check
 
-Before creating a fix feedback bead, read `maxFixRounds` from `skills/create-task/pipeline.json` and count existing fix chore children:
+Before creating a fix feedback bead, read `maxFixRounds` from `skills/planning/create-task/pipeline.json` and count existing fix chore children:
 
 ```bash
 fix_rounds=$(bd children <parent-id> | grep 'stage:fix' | wc -l)
@@ -266,7 +266,7 @@ All beads complete.
 - **Never** restart or start a new timer once the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending). Kill any running timer, proceed to **HITL Pause**, and stop completely.
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once (counted by parent features, not individual chore beads).
-- **Max fix rounds** per parent (read `maxFixRounds` from `skills/create-task/pipeline.json`; count of `stage:fix` chore children); block the parent if exceeded.
+- **Max fix rounds** per parent (read `maxFixRounds` from `skills/planning/create-task/pipeline.json`; count of `stage:fix` chore children); block the parent if exceeded.
 - **Always** run feature chores in the feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge feature or epic PRs — merge decisions are human-controlled.
 - **Never** continue past feature completion until PR `feature/<parent-id> -> epic/<epic-id>` is merged and the child HITL PR gate bead is closed by a human.

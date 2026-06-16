@@ -16,7 +16,7 @@ Canonical terms for the agent-cortex bead system.
 
 | Term | Meaning |
 |---|---|
-| **pipeline** | The ordered sequence of stages that implements a task. Defined in `skills/create-task/pipeline.json`. |
+| **pipeline** | The ordered sequence of stages that implements a task. Defined in `skills/planning/create-task/pipeline.json`. |
 | **stage** | One step in the pipeline. Identified by a `stage:<id>` label (e.g. `stage:code`, `stage:verify`). |
 
 Current pipeline stages (from `pipeline.json`): `code → verify → review → document`.

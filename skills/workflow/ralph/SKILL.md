@@ -7,7 +7,7 @@ description: "Run all pending beads end-to-end using parallel subagents with rev
 
 Parallel task orchestration: find ready beads, dispatch them as background subagents, process each outcome through the pipeline (code → verify → review → document, with fix loops on failure), then open review-gated PRs before considering feature work complete.
 
-Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration lives in `skills/create-task/pipeline.json`. Stage runner prompt templates live in `skills/run-pipeline-stage/prompts/` and playbooks in `skills/run-pipeline-stage/playbooks/`.
+Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration lives in `skills/planning/create-task/pipeline.json`. Stage runner prompt templates live in `skills/run-pipeline-stage/prompts/` and playbooks in `skills/run-pipeline-stage/playbooks/`.
 
 ## Branching and Review Model
 
@@ -28,7 +28,7 @@ Run once at startup:
 1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
 3. Ensure Ralph's workspace directory exists: `mkdir -p .agent-cortex/ralph`.
-4. Read `skills/create-task/pipeline.json` and hold it in memory — you need `maxFixRounds` for the fix loop.
+4. Read `skills/planning/create-task/pipeline.json` and hold it in memory — you need `maxFixRounds` for the fix loop.
 5. Run `bd ready` to get the initial list of available beads.
 6. For each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
@@ -96,7 +96,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 - **Always** keep the poll timer running — restart it immediately after it fires — **unless** the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending), in which case proceed to **HITL Pause** (see REFERENCE.md) and stop instead.
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once.
-- **Max fix rounds** per task as defined by `maxFixRounds` in `skills/create-task/pipeline.json`.
+- **Max fix rounds** per task as defined by `maxFixRounds` in `skills/planning/create-task/pipeline.json`.
 - **Always** execute chore subagents from the parent feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge PRs. Merges are human-controlled.
 - **Only continue past a feature review gate after the feature PR HITL task bead is closed by a human (after merge into the epic branch).**

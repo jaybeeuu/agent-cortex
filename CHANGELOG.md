@@ -2,6 +2,17 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.24.1
+
+### Fixed
+
+- **Fixed broken `pipeline.json` path in ralph skills** — all references to
+  `skills/create-task/pipeline.json` have been updated to the correct path
+  `skills/planning/create-task/pipeline.json`. Affected files:
+  `skills/workflow/ralph/SKILL.md`, `skills/workflow/ralph/REFERENCE.md`,
+  `skills/workflow/run-pipeline-stage/SKILL.md`, `agents/ralph.agent.md`,
+  and `.agent-cortex/ralph/ubiquitous-language.md`.
+
 ## 1.24.0
 
 ### Added

@@ -2,6 +2,33 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.26.0
+
+### Added
+
+- **`docs/user-preferences.md`** — new file recording personal development
+  preferences (package manager, tooling choices) so both Copilot CLI agents
+  and PI coding agents make decisions aligned with the user's habits.
+  Initial entry: prefer PNPM over npm.
+
+### Changed
+
+- **`AGENTS.md`** — added a User Preferences section pointing agents to
+  `docs/user-preferences.md` before making tooling or workflow decisions.
+- **`extensions/session-start.ts`** — PI sessions now automatically inject
+  a reference to `docs/user-preferences.md` so agents know to check it for
+  personal tooling context.
+
+## 1.25.0
+
+### Added
+
+- **New `subagent` PI extension** — copied from pi's example extensions.
+  Registers a `subagent` custom tool that delegates tasks to specialized
+  subagents with isolated context windows. Supports single, parallel (up to
+  8 tasks, 4 concurrent), and chained execution modes with streaming output,
+  usage tracking, and markdown rendering.
+
 ## 1.24.1
 
 ### Fixed

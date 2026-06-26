@@ -80,6 +80,12 @@ follow-up commit.
 - Extensions that persist data should write to `~/.pi/agent-cortex/` (global, cross-project)
   and tag records with the project path for per-project slicing.
 
+## User preferences
+
+Before making tooling or workflow decisions, read `docs/user-preferences.md` for the
+user's personal development preferences (e.g. preferred package manager, tooling
+choices). These preferences apply across all projects where this plugin is active.
+
 ## Task tracking
 
 This project uses **bd (beads)** for task tracking.

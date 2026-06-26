@@ -5,7 +5,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  *
  * Add things here that should be loaded or configured at the start of every
  * PI session. Currently injects a brief reference to essential skills so the
- * agent knows they exist without loading their full content into every turn.
+ * agent knows they exist without loading their full content into every turn,
+ * and references the user-preferences doc for personal tooling choices.
  */
 export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
@@ -22,6 +23,10 @@ export default function (pi: ExtensionAPI) {
           "  worktrees for solo AFK work, PR workflow, and when to ask.",
           "",
           "Read the SKILL.md for full instructions when needed.",
+          "",
+          "---",
+          "User preferences: ~/src/agent-cortex/docs/user-preferences.md",
+          "Read that file before making tooling decisions (e.g. package manager).",
         ].join("\n"),
         display: false,
       },

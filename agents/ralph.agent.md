@@ -10,11 +10,12 @@ You are a parallel task orchestration agent. You run multiple beads concurrently
 Each pipeline stage is a separate **chore bead** created on-demand as the previous stage completes. Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json` (timer shellId + agent-ID-to-bead mapping) and per-parent log files.
 
 Branching model:
-- Each epic runs on `epic/<epic-id>` (base: `origin/main`, never local `main`).
-- Each parent feature task runs on `feature/<parent-id>` in `.agent-cortex/worktrees/<parent-id>`, based from its epic branch. This branch is treated as the **agent branch** for HITL PRs.
+- **Single-feature epics** (epic has exactly one feature task child): skip the epic branch entirely. The feature branch (`feature/<parent-id>`) is based directly from `origin/main`. The HITL PR targets `main` directly. No epic PR is required.
+- **Multi-feature epics** (epic has two or more feature task children): each epic runs on `epic/<epic-id>` (base: `origin/main`, never local `main`). Each feature branch is based from its epic branch. Completed features PR into `epic/<epic-id>`; the completed epic PRs into `main`.
+- Each parent feature task runs on `feature/<parent-id>` in `.agent-cortex/worktrees/<parent-id>`.
 - Each feature includes a child HITL task bead (`lifecycle:feature-pr`) for PR review/merge.
-- Completed features must be reviewed by PR merge from the agent branch into the feature branch (`feature/<parent-id> -> epic/<epic-id>`), then the HITL PR task bead must be closed by a human before Ralph continues feature scheduling.
-- Completed epics must be reviewed by PR merge into `main`.
+- Completed features must be reviewed by PR merge from the agent branch (`feature/<parent-id>`) into its base (epic branch for multi-feature epics, `main` for single-feature epics), then the HITL PR task bead must be closed by a human before Ralph continues feature scheduling.
+- Completed multi-feature epics must be reviewed by PR merge into `main`.
 
 ---
 
@@ -41,7 +42,11 @@ Run once at startup:
    pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
    ```
 7. For each AFK bead (up to 5), kick off its pipeline:
-   a. Ensure epic/feature branches and `.agent-cortex/worktrees/<parent-id>` exist (base from `origin/main`, not local `main`).
+   a. Determine the epic for each bead, count its feature task children, then create branches accordingly:
+      - Count feature children: `bd children <epic-id> | grep -v 'chore'` (or use `bd show` to inspect the epic).
+      - **Single-feature epic (1 child)**: create only `feature/<parent-id>`, based from `origin/main`. No epic branch needed.
+      - **Multi-feature epic (2+ children)**: create `epic/<epic-id>` based from `origin/main`, then `feature/<parent-id>` based from `epic/<epic-id>`.
+      - Ensure `.agent-cortex/worktrees/<parent-id>` exists.
    b. Claim the parent bead: `bd update <parent-id> --claim`.
    c. Create the first stage chore bead and dispatch it (see _Creating and dispatching a stage chore_ below).
 8. Record each launched agent in `.agent-cortex/ralph/state.json` (see format below).
@@ -180,7 +185,7 @@ Run this procedure whenever polling is triggered (timer or agent completion):
 Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
 
 1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`.
+2. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — their feature branch PRs already target `main` directly.
 3. Run `bd dolt push`.
 4. Collect pending HITL gate beads and their PR URLs:
    - Run `bd list -l lifecycle:feature-pr -l implementation-type:hitl`
@@ -207,7 +212,7 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
 When `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels:
 
 1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each epic whose feature beads are complete, open/update a PR from `epic/<epic-id>` into `main`, then tag the epic `awaiting-epic-pr-merge`.
+2. For each **multi-feature** epic whose feature beads are complete, open/update a PR from `epic/<epic-id>` into `main`, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — no epic branch exists.
 3. Run:
    ```bash
    bd dolt push

@@ -2,7 +2,7 @@
 
 All notable changes to this repository are documented in this file.
 
-## 1.26.0
+## 1.25.0
 
 ### Added
 
@@ -19,15 +19,25 @@ All notable changes to this repository are documented in this file.
   a reference to `docs/user-preferences.md` so agents know to check it for
   personal tooling context.
 
-## 1.25.0
+## 1.24.3
+
+### Changed
+
+- **ralph: skip epic branch for single-feature epics** — when an epic has only one feature
+  task child, ralph now branches `feature/<parent-id>` directly from `origin/main` and opens
+  the PR straight into `main`, avoiding the awkward two-hop review. Epic branches are only
+  created when there are two or more feature tasks.
+
+## 1.24.2
 
 ### Added
 
-- **New `subagent` PI extension** — copied from pi's example extensions.
-  Registers a `subagent` custom tool that delegates tasks to specialized
-  subagents with isolated context windows. Supports single, parallel (up to
-  8 tasks, 4 concurrent), and chained execution modes with streaming output,
-  usage tracking, and markdown rendering.
+- **`~/.copilot/copilot-instructions.md` setup** — a new `scripts/install-instructions.sh`
+  script writes proactive skill-trigger rules into the global Copilot instructions file.
+  Skills are now applied automatically (style, tdd, bd, review-security, etc.) without
+  needing to invoke them by name. Re-run with `pnpm install` or
+  `bash scripts/install-instructions.sh` to update. The managed block is marker-delimited
+  so it coexists safely with any other content in the instructions file.
 
 ## 1.24.1
 
@@ -256,6 +266,7 @@ All notable changes to this repository are documented in this file.
   workstreams.
 - Updated `docs/research/skill-design-research.md` — removed stale references to removed
   skills from line-count stats, split candidates, and multi-phase skill list.
+
 ## 1.15.0
 
 ### Changed
@@ -380,6 +391,7 @@ All notable changes to this repository are documented in this file.
 ### Added
 
 - Added `skills/run-beads/scripts/ralph-plan-planning-gate.test.ts` assertions that lock in the Step 6/7 confirmation, cold-start context, and open-gate warning requirements.
+
 ## 1.2.1
 
 ### Changed
@@ -431,6 +443,7 @@ All notable changes to this repository are documented in this file.
 - `generate-progress.ts` workspace path: replaced `--workspace "$(pwd)"` with an explicit variable pattern (`workspace="/absolute/path"`) in all instruction files (`ralph.agent.md`, `skills/ralph/SKILL.md`, `skills/run-beads/SKILL.md`, `skills/ralph/REFERENCE.md`). Also fixed the `> .agent-cortex/ralph/progress.md` output redirect to use the same variable (`> "$workspace/.agent-cortex/ralph/progress.md"`). Prevents agents from simplifying `$(pwd)` to `.`, which caused the wrong `.beads` database to be found when running under `pnpm --prefix`.
 
 ### Changed
+
 - `record-idea` skill: idea files are now written to `docs/ideas/` instead of `.agent-cortex/ralph/ideas/` so they are tracked by git.
 
 ### Fixed

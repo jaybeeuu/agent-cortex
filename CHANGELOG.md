@@ -2,7 +2,7 @@
 
 All notable changes to this repository are documented in this file.
 
-## 1.27.0
+## 1.28.0
 
 ### Added
 
@@ -10,6 +10,20 @@ All notable changes to this repository are documented in this file.
   first discussion through PRD and task breakdown to classified beads
   ready for ralph. Uses the `plan` skill as its workflow with explicit
   phase gates. Auto-discovered by the agent-modes extension as `/agent plan`.
+
+## 1.27.0
+
+### Added
+
+- **`extensions/subagent/`** — new PI extension that registers a `subagent`
+  custom tool for delegating tasks to isolated agent processes. Supports
+  single, parallel (up to 8 tasks, 4 concurrent), and chained execution
+  modes with streaming output and usage tracking.
+- **`task` and `read_agent` tools** — added to the subagent extension for
+  Copilot CLI compatibility. `task` spawns a background subagent and returns
+  an ID immediately; `read_agent` retrieves the output when ready. This lets
+  the ralph agent's background-spawn-and-poll workflow work identically in
+  PI and Copilot CLI.
 
 ## 1.26.0
 

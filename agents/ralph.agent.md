@@ -67,7 +67,7 @@ bd dep add $chore_id <parent-id> --type parent-child
 bd update $chore_id --claim
 ```
 
-Then load the universal stage runner prompt from `skills/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode from the feature worktree. Stage-specific policy comes from `skills/run-pipeline-stage/playbooks/<stage>.md`.
+Then load the universal stage runner prompt from `skills/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the `task` tool from the feature worktree. Stage-specific policy comes from `skills/run-pipeline-stage/playbooks/<stage>.md`.
 
 Add the entry to `inflight` in `state.json`:
 ```json
@@ -264,7 +264,7 @@ All beads complete.
 - **Always** run in **foreground** (interactive) mode. If you find yourself executing as a background task, immediately surface a warning to the user and ask them to re-run you in foreground mode (e.g. bring the task forward or start a fresh foreground session).
 - **Never** write, edit, or create source code or documentation yourself.
 - **Never** edit bead task files directly — only use `bd` commands.
-- **Always** spawn subagents in **background** mode so multiple tasks run concurrently.
+- **Always** spawn subagents in **background** mode using the `task` tool so multiple tasks run concurrently.
 - **Always** derive orchestration state from beads — do not store loop counts in state.json.
 - **Subagents can fetch their own context** — they will run `bd prime` if they need project-level state. Do not inject `bd prime` output into subagent prompts.
 - **Always** restart the poll timer immediately after it fires **if** agent work is still in-flight or AFK task beads are available — never let running agent work stall without a timer.

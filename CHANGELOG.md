@@ -2,6 +2,15 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.27.0
+
+### Added
+
+- **`agents/plan.agent.md`** — new plan agent that guides features from
+  first discussion through PRD and task breakdown to classified beads
+  ready for ralph. Uses the `plan` skill as its workflow with explicit
+  phase gates. Auto-discovered by the agent-modes extension as `/agent plan`.
+
 ## 1.26.0
 
 ### Added

@@ -2,6 +2,15 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.24.3
+
+### Changed
+
+- **ralph: skip epic branch for single-feature epics** — when an epic has only one feature
+  task child, ralph now branches `feature/<parent-id>` directly from `origin/main` and opens
+  the PR straight into `main`, avoiding the awkward two-hop review. Epic branches are only
+  created when there are two or more feature tasks.
+
 ## 1.24.2
 
 ### Added

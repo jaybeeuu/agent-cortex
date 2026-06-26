@@ -2,6 +2,17 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.26.0
+
+### Added
+
+- **`extensions/agent-modes/`** — new PI extension that makes Copilot CLI
+  agents (ralph, ralph-plan, strategy) available as switchable PI modes.
+  Each mode restricts tools per the agent's frontmatter, injects the full
+  agent prompt on every turn, and shows a status indicator.
+  Commands: `/agent` (selector), `/agent <name>` (direct switch),
+  `Ctrl+Shift+A` (cycle), `--agent <name>` (CLI flag).
+
 ## 1.25.0
 
 ### Added

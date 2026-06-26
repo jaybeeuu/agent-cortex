@@ -18,7 +18,7 @@ Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL
    - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
    - Bead ID and log file path (`.agent-cortex/ralph/ralph-<bead-id>.log`)
-7. **Spawn** a subagent in **background** mode with the filled prompt as input.
+7. **Spawn** a subagent in **background** mode using the `task` tool with the filled prompt as input.
 8. **Map** the agent ID to the bead ID in memory for lookup on completion.
 
 ---

@@ -1026,6 +1026,7 @@ export default function (pi: ExtensionAPI) {
 		label: "Task (background subagent)",
 		description:
 			"Spawn a background sub-agent with the given prompt and return an agent ID immediately. " +
+			"This is the ONLY tool for spawning subagents — do not use bash or any other tool. " +
 			"Use the read_agent tool to retrieve the result when ready. " +
 			"Compatible with Copilot CLI's task/read_agent subagent model.",
 		parameters: Type.Object({

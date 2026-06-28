@@ -2,6 +2,20 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.29.0
+
+### Fixed
+
+- **`agents/ralph.agent.md`**, **`skills/workflow/ralph/SKILL.md`**,
+  **`skills/workflow/ralph/REFERENCE.md`** — strengthened subagent
+  spawning instructions to make it unambiguous that the `task` tool is
+  the ONLY mechanism. Added explicit tool reference guide at the top of
+  the ralph agent prompt with call format examples. All language now
+  reads "call the `task` tool" instead of "spawn a subagent".
+- **`extensions/subagent/index.ts`** — fixed `StringEnum` import that
+  prevented the subagent extension from loading in PI v0.80.2, causing
+  the `task` and `read_agent` tools to be unavailable.
+
 ## 1.28.0
 
 ### Added

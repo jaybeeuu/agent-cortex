@@ -1,0 +1,11 @@
+{
+  "name": "agent-cortex",
+  "version": "1.30.0",
+  "description": "Personal Claude Code plugin with custom agents and skills",
+  "author": {
+    "name": "jaybeeuu"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/jaybeeuu/agent-cortex",
+  "hooks": "./hooks.json"
+}

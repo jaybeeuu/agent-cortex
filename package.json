@@ -11,6 +11,7 @@
   "scripts": {
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
+    "build:claude": "node scripts/build-claude-agents.mjs",
     "postinstall": "bash scripts/install-instructions.sh"
   },
   "pi": {

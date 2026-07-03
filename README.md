@@ -21,9 +21,30 @@ agent-cortex/
 ├── extensions/           # PI extensions (optional)
 │   ├── skill-stats/
 │   └── notify/
-└── pi/                   # Global pi configuration (see below)
-    └── settings.json
+├── pi/                   # Global pi configuration (see below)
+│   └── settings.json
+└── claude/               # Self-contained Claude Code plugin (generated)
+    ├── .claude-plugin/
+    │   └── plugin.json
+    ├── .mcp.json         #  MCP servers (context7, github)
+    ├── hooks.json        #  SessionStart context hook
+    ├── agents/           #  *.md generated from agents/*.agent.md (do not edit)
+    └── skills/           #  symlinks to the grouped skills/ dirs (do not edit)
 ```
+
+The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
+The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
+(`pnpm build:claude`) and committed; CI checks it is never stale:
+
+- **Skills** stay single-source — `claude/skills/<name>` are symlinks into the grouped
+  `skills/<group>/<name>` dirs (Claude discovers skills only one level deep, so the
+  grouping is flattened via links, not copies).
+- **Agents** can't be shared files (the frontmatter formats differ), so `claude/agents/*.md`
+  are converted from the canonical `agents/*.agent.md`. Claude only loads agents from a
+  plugin's default `agents/` dir, so the plugin root is `claude/` — isolating it from the
+  Copilot `.agent.md` files.
+
+Edit the sources (`agents/*.agent.md`, `skills/**`), never anything under `claude/`.
 
 ## Installation
 
@@ -68,3 +89,27 @@ Or install a local checkout:
 ```sh
 copilot plugin install ./agent-cortex
 ```
+
+### Claude Code plugin (separate)
+
+The Claude plugin is the self-contained `claude/` subtree (manifest at
+`claude/.claude-plugin/plugin.json`). Build it from the canonical sources first:
+
+```sh
+pnpm build:claude
+```
+
+Then load the `claude/` directory for a session:
+
+```sh
+claude --plugin-dir /path/to/agent-cortex/claude
+```
+
+`SKILL.md` edits are picked up live; agent, hook, and MCP changes need `/reload-plugins`.
+For a persistent install, add `claude/` as a local marketplace and
+`/plugin install agent-cortex`.
+
+**Not yet ported to Claude:** the `ralph` orchestrator (its `task`+`read_agent`
+background-polling has no Claude equivalent and needs a redesign) and the pi `extensions/`
+(no Claude runtime-extension API). The `ralph` and `run-pipeline-stage` skills are still
+linked in, but their internal orchestration paths only work under the deferred ralph flow.

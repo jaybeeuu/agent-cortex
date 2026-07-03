@@ -13,12 +13,13 @@
 // Run: pnpm build:claude   (node scripts/build-claude-agents.mjs)
 // Zero dependencies so it runs on the CI Node (20) and local Node alike.
 
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, symlinkSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, symlinkSync, statSync, copyFileSync, existsSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const AGENT_SRC = join(ROOT, "agents");
+const NATIVE_SRC = join(ROOT, "agents-native");
 const SKILL_SRC = join(ROOT, "skills");
 const AGENT_OUT = join(ROOT, "claude", "agents");
 const SKILL_OUT = join(ROOT, "claude", "skills");
@@ -39,9 +40,14 @@ const TOOL_MAP = {
   read_agent: null, // Claude's Task returns results inline; no separate read step.
 };
 
-// Agents whose orchestration model has no Claude equivalent yet (background task
-// polling via task+read_agent). Skipped until redesigned for Claude's Task model.
+// Agents NOT transformed from the Copilot source. `ralph` is authored natively for Claude
+// instead (agents-native/ralph.md) — its event-driven orchestration can't be produced by
+// token substitution from the poll-loop Copilot source.
 const DEFER = new Set(["ralph"]);
+
+// Ralph-coupled Copilot skills that don't apply to the lean Claude Ralph (and carry dead
+// ~/.copilot orchestration paths). Not symlinked into the Claude plugin.
+const SKILL_EXCLUDE = new Set(["ralph", "run-pipeline-stage"]);
 
 const COPILOT_PLUGIN_ROOT = "~/.copilot/installed-plugins/_direct/agent-cortex";
 const CLAUDE_PLUGIN_ROOT = "${CLAUDE_PLUGIN_ROOT}";
@@ -123,7 +129,19 @@ function buildAgents() {
     written.push(slug);
   }
   console.log(`Generated ${written.length} Claude agent(s): ${written.join(", ")}`);
-  if (skipped.length) console.log(`Deferred agent(s): ${skipped.join(", ")}`);
+  if (skipped.length) console.log(`Skipped Copilot source(s): ${skipped.join(", ")}`);
+}
+
+// Copy hand-authored Claude-native agents into claude/agents/ verbatim, alongside the
+// generated ones. These have no Copilot source (their bodies differ structurally per harness).
+function copyNativeAgents() {
+  if (!existsSync(NATIVE_SRC)) return;
+  const copied = [];
+  for (const file of readdirSync(NATIVE_SRC).filter((f) => f.endsWith(".md")).sort()) {
+    copyFileSync(join(NATIVE_SRC, file), join(AGENT_OUT, file));
+    copied.push(file.replace(/\.md$/, ""));
+  }
+  if (copied.length) console.log(`Copied ${copied.length} native Claude agent(s): ${copied.join(", ")}`);
 }
 
 // Symlink each grouped skill (skills/<group>/<name>/) into the flat claude/skills/ dir
@@ -145,6 +163,7 @@ function buildSkills() {
         hasSkill = false;
       }
       if (!hasSkill) continue;
+      if (SKILL_EXCLUDE.has(name)) continue;
       if (byName.has(name)) {
         throw new Error(`duplicate skill name "${name}" (${byName.get(name)} and ${group}) — names must be unique when flattened`);
       }
@@ -156,4 +175,5 @@ function buildSkills() {
 }
 
 buildAgents();
+copyNativeAgents();
 buildSkills();

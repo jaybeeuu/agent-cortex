@@ -43,8 +43,13 @@ The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
   are converted from the canonical `agents/*.agent.md`. Claude only loads agents from a
   plugin's default `agents/` dir, so the plugin root is `claude/` — isolating it from the
   Copilot `.agent.md` files.
+- **Claude-native agents** that have no Copilot equivalent live in `agents-native/*.md` and are
+  copied verbatim into `claude/agents/`. `ralph` is one: it is reimplemented for Claude around
+  background workers + an independent review gate (the Copilot Ralph's `task`/`read_agent`
+  poll loop has no Claude equivalent), so it can't be mechanically converted.
 
-Edit the sources (`agents/*.agent.md`, `skills/**`), never anything under `claude/`.
+Edit the sources (`agents/*.agent.md`, `agents-native/*.md`, `skills/**`), never anything
+under `claude/`.
 
 ## Installation
 
@@ -109,7 +114,16 @@ claude --plugin-dir /path/to/agent-cortex/claude
 For a persistent install, add `claude/` as a local marketplace and
 `/plugin install agent-cortex`.
 
-**Not yet ported to Claude:** the `ralph` orchestrator (its `task`+`read_agent`
-background-polling has no Claude equivalent and needs a redesign) and the pi `extensions/`
-(no Claude runtime-extension API). The `ralph` and `run-pipeline-stage` skills are still
-linked in, but their internal orchestration paths only work under the deferred ralph flow.
+The lean Claude Ralph runs as the interactive main agent:
+
+```sh
+claude --plugin-dir /path/to/agent-cortex/claude --agent agent-cortex:ralph
+```
+
+It spawns parallel background workers (implement → independent review → fix), opens PRs, and
+pauses for you to merge — then resumes from `bd ready` when you re-invoke it.
+
+**Not ported to Claude:** the pi `extensions/` (no Claude runtime-extension API). Multi-feature
+epic branches and auto-resume-on-merge are Ralph follow-ups. The Copilot/pi Ralph (the 4-stage
+`run-pipeline-stage` pipeline) is unchanged; those two ralph-coupled skills are intentionally
+not shipped in the Claude plugin.

@@ -1,35 +1,44 @@
 # agent-cortex
 
-A personal [GitHub Copilot CLI plugin](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-creating) containing custom agents and skills.
+A personal collection of custom agents and skills, shipped to three harnesses from one
+source: the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-creating),
+pi, and [Claude Code](https://code.claude.com/docs) (as a plugin).
 
 ## Structure
 
 ```
 agent-cortex/
-├── plugin.json           # Plugin manifest
-├── agents/               # Custom agents
+├── plugin.json               # Copilot plugin manifest
+├── .claude-plugin/
+│   └── marketplace.json      # Claude marketplace (exposes ./claude as the "jaybeeuu" market)
+├── agents/                   # Canonical agents (Copilot/pi format: *.agent.md)
 │   ├── ralph.agent.md
 │   ├── ralph-plan.agent.md
+│   ├── plan.agent.md
 │   └── strategy.agent.md
-├── skills/               # Skills (grouped by domain)
-│   ├── engineering/      #  tdd, improve-codebase-architecture, …
-│   ├── planning/         #  write-a-prd, prd-to-tasks, design-an-interface, …
-│   ├── productivity/     #  bd-tool, write-a-skill, grill-me, …
-│   ├── review/           #  review-security
-│   ├── style/            #  style-code, style-tests, style-comms, …
-│   └── workflow/         #  ralph, run-pipeline-stage, create-task, …
-├── extensions/           # PI extensions (optional)
+├── agents-native/            # Claude-only agents with no Copilot equivalent
+│   └── ralph.md              #  the lean Claude Ralph
+├── skills/                   # Skills (grouped by domain) — shared by all harnesses
+│   ├── engineering/          #  tdd, improve-codebase-architecture, …
+│   ├── planning/             #  write-a-prd, prd-to-tasks, design-an-interface, …
+│   ├── productivity/         #  bd-tool, write-a-skill, grill-me, …
+│   ├── review/               #  review-security, refactor-skill, maintain-agent-docs
+│   ├── style/                #  style-code, style-tests, style-comms, style-documentation
+│   └── workflow/             #  ralph, run-pipeline-stage, create-task, …
+├── extensions/               # pi extensions (pi only)
 │   ├── skill-stats/
 │   └── notify/
-├── pi/                   # Global pi configuration (see below)
+├── pi/                       # Global pi configuration (see below)
 │   └── settings.json
-└── claude/               # Self-contained Claude Code plugin (generated)
+├── scripts/
+│   └── build-claude-agents.mjs   # builds the claude/ subtree from the sources above
+└── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
     ├── .claude-plugin/
     │   └── plugin.json
-    ├── .mcp.json         #  MCP servers (context7, github)
-    ├── hooks.json        #  SessionStart context hook
-    ├── agents/           #  *.md generated from agents/*.agent.md (do not edit)
-    └── skills/           #  symlinks to the grouped skills/ dirs (do not edit)
+    ├── .mcp.json             #  MCP servers (context7, github)
+    ├── hooks.json            #  SessionStart hooks (beads context + style policy)
+    ├── agents/               #  generated from agents/*.agent.md + copied from agents-native/
+    └── skills/               #  symlinks to the grouped skills/ dirs (28 skills)
 ```
 
 The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
@@ -98,32 +107,103 @@ copilot plugin install ./agent-cortex
 ### Claude Code plugin (separate)
 
 The Claude plugin is the self-contained `claude/` subtree (manifest at
-`claude/.claude-plugin/plugin.json`). Build it from the canonical sources first:
+`claude/.claude-plugin/plugin.json`), containing **4 agents** (`strategy`, `plan`,
+`ralph-plan`, `ralph`), **28 skills**, a `SessionStart` hook, and 2 MCP servers.
+
+`claude/` is committed, so a fresh clone is installable as-is. If you change the sources,
+rebuild it (the generator is a zero-dependency Node script):
 
 ```sh
-pnpm build:claude
+pnpm build:claude    # or: node scripts/build-claude-agents.mjs
 ```
 
-Then load the `claude/` directory for a session:
+#### Try it for one session
 
 ```sh
 claude --plugin-dir /path/to/agent-cortex/claude
+# verify what loaded:
+claude --plugin-dir /path/to/agent-cortex/claude plugin details agent-cortex
 ```
 
-`SKILL.md` edits are picked up live; agent, hook, and MCP changes need `/reload-plugins`.
-For a persistent install, add `claude/` as a local marketplace and
-`/plugin install agent-cortex`.
+`SKILL.md` edits are picked up live in that session; agent, hook, and MCP changes need
+`/reload-plugins`.
 
-The lean Claude Ralph runs as the interactive main agent:
+#### Install persistently (recommended)
+
+The repo ships a marketplace manifest (`.claude-plugin/marketplace.json`) that exposes the
+`claude/` subtree. Register it by **absolute path** (a bare `.` is rejected — use an absolute
+path or a `./`-prefixed one), then install:
 
 ```sh
-claude --plugin-dir /path/to/agent-cortex/claude --agent agent-cortex:ralph
+claude plugin marketplace add /path/to/agent-cortex
+claude plugin install agent-cortex@jaybeeuu          # every session (user scope)
+# or, for this project only:
+claude plugin install agent-cortex@jaybeeuu --scope local
 ```
 
-It spawns parallel background workers (implement → independent review → fix), opens PRs, and
-pauses for you to merge — then resumes from `bd ready` when you re-invoke it.
+After installing, the agents and skills are available in every session with no `--plugin-dir`
+flag, and Ralph is just `claude --agent agent-cortex:ralph`.
 
-**Not ported to Claude:** the pi `extensions/` (no Claude runtime-extension API). Multi-feature
-epic branches and auto-resume-on-merge are Ralph follow-ups. The Copilot/pi Ralph (the 4-stage
-`run-pipeline-stage` pipeline) is unchanged; those two ralph-coupled skills are intentionally
-not shipped in the Claude plugin.
+#### Update
+
+The marketplace source is your local checkout, so after pulling changes you must rebuild the
+`claude/` subtree and refresh the plugin:
+
+```sh
+git pull
+pnpm build:claude                          # regenerate claude/ from the sources
+claude plugin marketplace update jaybeeuu
+claude plugin update agent-cortex          # restart Claude Code to apply
+```
+
+#### Uninstall
+
+```sh
+claude plugin uninstall agent-cortex
+claude plugin marketplace remove jaybeeuu
+```
+
+#### Using the agents
+
+| Agent | How to invoke | Purpose |
+|---|---|---|
+| `strategy` | delegate: "use the **strategy** agent…" | Vision brief / PRD / technical-direction docs |
+| `ralph-plan` | delegate: "use the **ralph-plan** agent…" | Explore, grill, and file beads for a change |
+| `plan` | delegate: "use the **plan** agent…" | End-to-end planning (PRD → classified beads) |
+| `ralph` | **run as the main agent**: `claude --agent agent-cortex:ralph` | Parallel backlog orchestrator (below) |
+
+Skills auto-trigger from their descriptions, or invoke one explicitly as
+`/agent-cortex:<skill>` (e.g. `/agent-cortex:tdd`).
+
+The lean **Ralph** runs as the interactive main agent (not delegated — it must stay alive to
+receive its workers' completions):
+
+```sh
+claude --agent agent-cortex:ralph        # (add --plugin-dir .../claude if not installed)
+```
+
+It finds ready beads, spawns parallel background workers (implement → independent review →
+fix), opens a PR per feature, and pauses at each human merge gate. After you merge, re-invoke
+it and it resumes from `bd ready`.
+
+#### Style-skill enforcement
+
+The plugin's `SessionStart` hook injects a "style policy" each session, nudging Claude to
+invoke `style-code` / `style-tests` / `style-documentation` / `style-comms` before the
+corresponding work; the style skills' descriptions are also written to auto-trigger proactively.
+
+#### Not ported / follow-ups
+
+- The pi `extensions/` have no Claude runtime-extension equivalent (use hooks/MCP instead).
+- Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume
+  after a PR merge (instead of manual re-invocation).
+- The Copilot/pi Ralph (the 4-stage `run-pipeline-stage` pipeline) is unchanged; those two
+  ralph-coupled skills (`ralph`, `run-pipeline-stage`) are intentionally not shipped to Claude.
+
+#### Contributing to the Claude plugin
+
+Edit the **sources** — `agents/*.agent.md` (Copilot format, auto-converted),
+`agents-native/*.md` (Claude-only agents like `ralph`), and `skills/**` — then run
+`pnpm build:claude`. Never hand-edit anything under `claude/` (except the hand-authored
+`claude/hooks.json`, `claude/.mcp.json`, and `claude/.claude-plugin/plugin.json`). CI runs
+`git diff --exit-code claude/agents/ claude/skills/` so the generated tree can never drift.

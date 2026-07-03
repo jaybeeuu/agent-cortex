@@ -6,6 +6,10 @@
           {
             "type": "prompt",
             "prompt": "Load AGENTS.md and active beads context before taking action."
+          },
+          {
+            "type": "prompt",
+            "prompt": "Style policy: this project ships style skills — prefer them over ad-hoc choices. Invoke style-code BEFORE writing or editing code (and when refactoring); style-tests BEFORE writing or changing tests; style-documentation BEFORE writing or updating docs; style-comms BEFORE composing commit messages, PR descriptions, tickets, or other written deliverables."
           }
         ]
       }

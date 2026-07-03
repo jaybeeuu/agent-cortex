@@ -1,6 +1,6 @@
 ---
 name: style-comms
-description: Sets tone, structure, and concision rules for external-facing written communication. Use when you need a "style review", want to "make this clearer", or are writing tickets, RFCs, PRDs, proposals, or reports.
+description: Sets tone, structure, and concision rules for written communication. Use BEFORE composing project or external-facing text — commit messages, PR descriptions, tickets, RFCs, PRDs, proposals, reports, or status updates — and when asked to "make this clearer" or for a "style review".
 ---
 
 # Communication Style

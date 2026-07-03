@@ -1,6 +1,6 @@
 ---
 name: style-documentation
-description: Defines what to document, what to skip, and how to structure documentation for TypeScript projects. Use when you need to decide "what should I document", want to review existing docs for drift, or are setting up "documentation conventions".
+description: Defines what to document, what to skip, and how to structure documentation for TypeScript projects. Use BEFORE writing or updating any documentation (READMEs, doc comments, guides), when reviewing existing docs for drift, or when setting up "documentation conventions".
 ---
 
 # Documentation Style

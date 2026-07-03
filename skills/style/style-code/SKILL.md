@@ -1,6 +1,6 @@
 ---
 name: style-code
-description: Defines coding style, conventions, and architectural preferences. Use when writing, editing, or reviewing code — or when you need a "style review", want to check "naming conventions", or are deciding "module boundaries".
+description: Defines this project's coding style, conventions, and architectural preferences (naming, module boundaries, structure). Use BEFORE writing or editing any code and during any refactor or code review — consult it whenever you add or change functions, modules, types, or files rather than choosing style ad hoc. Also for a "style review", "naming conventions", or "module boundaries".
 ---
 
 # Code Style

@@ -2,6 +2,15 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.30.1
+
+### Fixed
+
+- **`claude/hooks.json`** — Claude Code rejects `prompt`-type hooks for
+  `SessionStart` (no conversation context exists yet at startup). Switched
+  both SessionStart hooks to `command`-type, echoing their text to stdout so
+  Claude Code still injects it into session context.
+
 ## 1.30.0
 
 ### Fixed

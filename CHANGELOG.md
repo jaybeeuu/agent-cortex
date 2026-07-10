@@ -2,18 +2,6 @@
 
 All notable changes to this repository are documented in this file.
 
-## 1.30.0
-
-### Fixed
-
-- **`agents/ralph.agent.md`**, **`skills/workflow/ralph/SKILL.md`**,
-  **`skills/workflow/ralph/REFERENCE.md`** — replaced the broken
-  background-timer polling mechanism (`sleep 120` + shellId tracking)
-  with an active LLM-driven polling loop. The LLM now explicitly checks
-  each in-flight agent with `read_agent`, sleeps 30s via bash, and
-  repeats — no background processes needed. Removed all `timerShellId`
-  state tracking and timer-related constraints.
-
 ## 1.29.0
 
 ### Fixed

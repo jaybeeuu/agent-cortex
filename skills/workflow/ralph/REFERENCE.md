@@ -95,7 +95,7 @@ When a verify or review stage fails:
 
 ## Log Polling
 
-Run every polling cycle:
+Run whenever polling is triggered (timer or agent completion):
 
 1. **Query in-flight beads**: `bd list --status=in_progress --type=chore`. Extract each bead's ID and title.
 2. For each in-flight bead, read new lines from its log file (track the next unread line number per bead in memory, starting at 1):
@@ -146,7 +146,7 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
 
    When you've completed the above, prompt me to continue.
    ```
-6. **Stop completely.** Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
+6. **Stop completely.** Do not restart the poll timer. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
 
 ---
 

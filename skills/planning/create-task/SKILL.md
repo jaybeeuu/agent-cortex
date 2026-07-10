@@ -42,10 +42,11 @@ Invoke the `classify-bead` skill on the new bead (as a subagent per that skill's
 
 **If AFK**: continue to step 4.
 
-### 4. Expand into pipeline stage wisps
+### 4. Expand into pipeline stage chores
 
 Run the `create-chores` script, which reads `pipeline.json` and deterministically creates all
-stage chore wisps (ephemeral beads) in one shot:
+stage chores in one shot. They are plain (non-ephemeral) chores — `bd ready` must surface
+them without `--include-ephemeral` for ralph to discover them:
 
 ```bash
 pnpm --prefix skills/create-task/scripts exec tsx create-chores.ts \
@@ -53,19 +54,19 @@ pnpm --prefix skills/create-task/scripts exec tsx create-chores.ts \
   --priority <priority>
 ```
 
-The script outputs a JSON object mapping stage IDs to wisp bead IDs, plus a HITL PR gate task bead ID, e.g.:
+The script outputs a JSON object mapping stage IDs to chore bead IDs, plus a HITL PR gate task bead ID, e.g.:
 
 ```json
 {
-  "code": "bd-wisp-abc123",
-  "verify": "bd-wisp-def456",
-  "review": "bd-wisp-ghi789",
-  "document": "bd-wisp-jkl012",
+  "code": "abc123",
+  "verify": "def456",
+  "review": "ghi789",
+  "document": "jkl012",
   "featurePrReview": "bd-mno345"
 }
 ```
 
-Each wisp is created with:
+Each stage chore is created with:
 - **type**: `chore`
 - **Title pattern**: `[<parent-id>] <stage title>` (e.g. `[abc-123] Code`)
 - **Labels**: `stage:<id>` (e.g. `stage:code`, `stage:verify`)

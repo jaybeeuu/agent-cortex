@@ -2,6 +2,31 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.31.0
+
+### Changed
+
+- **`agents-native/ralph.md`**, **`claude/agents/ralph.md`**,
+  **`skills/planning/classify-bead/SKILL.md`** — ralph now checks
+  `bd label list <id>` itself before treating a ready bead as AFK/HITL,
+  only falling back to the `classify-bead` subagent when the
+  `implementation-type` label is missing. The `classify-bead` subagent and
+  ralph's Fix worker now run on `model: haiku` (rubric lookup / scoped
+  mechanical edits, not full reasoning), while Implementer and Reviewer
+  keep the default model.
+
+## 1.30.2
+
+### Fixed
+
+- **`skills/planning/create-task/scripts/create-chores.ts`** — pipeline stage
+  chores (`code`/`verify`/`review`/`document`) were created with `--ephemeral`.
+  `bd ready` excludes ephemeral issues by default, so ralph's documented plain
+  `bd ready` calls never surfaced this work — it was invisible, not blocked.
+  Stage chores are now plain (non-ephemeral) beads. Updated
+  `skills/productivity/bd-tool/SKILL.md` and `.agent-cortex/ralph/ubiquitous-language.md`
+  to match.
+
 ## 1.30.1
 
 ### Fixed

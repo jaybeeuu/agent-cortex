@@ -15,9 +15,11 @@ Determine whether a bead requires human action (HITL) or can be completed autono
 
 ## Invocation
 
-**Always run this skill as a subagent** (background `general-purpose` agent) to avoid loading bead content into the calling agent's context. Pass the bead ID and the `bd prime` output. The subagent runs the procedure below and reports back the classification and the `bd tag` command it applied.
+**Always run this skill as a subagent** (background `general-purpose` agent, `model: haiku`) to avoid loading bead content into the calling agent's context. Classification is a rubric lookup, not code generation, so the smaller/cheaper model is sufficient. Pass the bead ID and the `bd prime` output. The subagent runs the procedure below and reports back the classification and the `bd tag` command it applied.
 
 Only run inline (without a subagent) if no task-spawning capability is available in the current environment.
+
+**Callers should check `bd label list <id>` themselves first.** If `implementation-type` is already present, skip spawning this skill entirely — spawning a subagent purely to re-read a label that's already there wastes a full agent call.
 
 ## Procedure
 

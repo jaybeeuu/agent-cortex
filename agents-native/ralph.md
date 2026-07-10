@@ -27,6 +27,21 @@ Keep at most **5 features in flight** at once (a feature is "in flight" from the
 claim it until its PR is open or it is blocked). When a slot frees, promote the next AFK
 feature. Use `TaskList`/`TaskGet` to see which workers are still running.
 
+## Classifying a bead
+
+Before treating any ready feature/task bead as AFK, check `bd label list <id>` **yourself** —
+do not spawn a subagent just to read a label:
+
+- `implementation-type:afk` present → **AFK**. Done.
+- `implementation-type:hitl` present → **HITL**. Skip; record for the pending-action summary.
+- Neither present → spawn the **classify-bead** skill as a background subagent with
+  `model: haiku` (classification is a rubric lookup, not code generation, so the smaller model
+  is sufficient and cheaper). It persists the label itself; treat its returned classification
+  the same as above, or as **NEEDS-REFINEMENT** (skip; record) if it reports that.
+
+A bead only needs this once — `create-task` already classifies new beads at creation, so most
+beads you see here will already carry the label and cost nothing to check.
+
 ## Initialization
 
 Run once at startup:
@@ -35,9 +50,8 @@ Run once at startup:
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in `.gitignore` (append if missing,
    via `Bash`).
 3. `bd ready` to list available work.
-4. For each ready **feature/task** bead (ignore `chore` beads), invoke the **classify-bead**
-   skill → **AFK** (agent-eligible), **HITL** (skip; record for the pending-action summary), or
-   **NEEDS-REFINEMENT** (skip; record). 
+4. For each ready **feature/task** bead (ignore `chore` beads), classify it per
+   **Classifying a bead** above.
 5. Read `maxFixRounds` from `${CLAUDE_PLUGIN_ROOT}/skills/create-task/pipeline.json` if present;
    otherwise default to **4**.
 6. Dispatch up to 5 AFK features (see below). Then end your turn — you will be woken on the
@@ -87,8 +101,8 @@ Parse the reviewer's `RESULT` block.
   - If `fix-round >= maxFixRounds`: `bd update <id> --status blocked --notes "max fix rounds reached"`,
     record it, remove the worktree, free the slot, promote the next AFK feature.
 
-After **every** completion, also run `bd ready` and promote any newly-unblocked AFK features
-into free slots.
+After **every** completion, also run `bd ready`, classify any newly-ready beads per
+**Classifying a bead**, and promote AFK features into free slots.
 
 ## Idle — pending human action / shutdown
 
@@ -104,7 +118,10 @@ When no workers are running and no AFK features remain:
 ## Worker prompts
 
 Spawn workers with the `Agent` tool, `subagent_type: general-purpose`, in the background. Fill
-in the placeholders. Each worker returns a `RESULT` block as its final message.
+in the placeholders. Each worker returns a `RESULT` block as its final message. Implementer and
+Reviewer keep the session's default model — they need full reasoning capability. The Fix worker
+below is spawned with `model: haiku`, since it only applies an already-specified, scoped list of
+changes rather than reasoning from scratch.
 
 ### Implementer
 
@@ -156,7 +173,7 @@ CHANGES: <numbered, specific, actionable required changes — only if CHANGES_RE
 
 ### Fix
 
-Same as the implementer prompt, but replace the Instructions with:
+Spawn with `model: haiku`. Same as the implementer prompt, but replace the Instructions with:
 ```
 - Apply ONLY the following reviewer-requested changes, minimally:
 <REVIEWER CHANGES>
@@ -171,5 +188,8 @@ Same as the implementer prompt, but replace the Instructions with:
 - **Never** poll or `sleep` — react to worker-completion wake-ups.
 - **Never** auto-merge PRs or close a feature bead before the human merges its PR.
 - **Max 5** features in flight; **max `maxFixRounds`** fix rounds per feature, then block it.
+- **Never** spawn a subagent just to check an existing `implementation-type` label — read it
+  yourself via `bd label list`. Only the classify-bead subagent (missing label) and the Fix
+  worker run on `model: haiku`; Implementer and Reviewer keep the default model.
 - **Single-feature model only** for now: each feature branches from `origin/main` and PRs into
   `main`. (Multi-feature epic branches are not yet supported.)

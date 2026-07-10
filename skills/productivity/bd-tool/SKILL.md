@@ -78,7 +78,7 @@ Optional — beads work locally. Sync at session end when it's convenient.
 
 - **Priority**: 0 = critical, 1 = high, 2 = medium, 3 = low, 4 = backlog. Aliased as P0-P4.
 - **HITL beads**: require human action — do not claim or implement them. Inform the user.
-- **Chore beads** (`--type chore --ephemeral`): auto-created pipeline stages. Do not create them manually — use `create-task`.
+- **Chore beads** (`--type chore`): auto-created pipeline stages. Do not create them manually — use `create-task`. Not ephemeral — they must stay visible to plain `bd ready` for ralph to discover them.
 
 ## Cross-skill references
 

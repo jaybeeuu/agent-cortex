@@ -125,14 +125,43 @@ function parseFrontmatter(raw: string): {
     }
   }
 
-  // Parse tools from the tools frontmatter (it's a YAML array)
-  // We look for unindented `tools:` followed by indented `- item` or `- "item"` lines
+  // Parse tools from the tools frontmatter.
+  // Supports two formats:
+  //   tools: ["bash", "view"]        (JSON array, single line)
+  //   tools:                         (YAML list, subsequent lines)
+  //     - bash
+  //     - view
   let inToolsBlock = false;
   for (const line of yamlLines) {
     const trimmed = line.trim();
-    if (trimmed === "tools:" || trimmed === "tools: []") {
+
+    // Check for inline JSON array: tools: ["foo", "bar"]
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx !== -1) {
+      const key = trimmed.slice(0, colonIdx).trim().toLowerCase();
+      const val = trimmed.slice(colonIdx + 1).trim();
+      if (key === "tools") {
+        if (val.startsWith("[")) {
+          // Inline JSON array
+          try {
+            tools = JSON.parse(val);
+          } catch {
+            // Malformed JSON — fall through
+          }
+          continue;
+        }
+        if (val === "[]" || val === "") {
+          // Empty tools — explicit
+          tools = [];
+          continue;
+        }
+      }
+    }
+
+    // YAML block format: "tools:" on its own line, items on subsequent lines
+    if (trimmed === "tools:") {
       inToolsBlock = true;
-      tools = [];
+      if (!tools) tools = [];
       continue;
     }
     if (inToolsBlock) {

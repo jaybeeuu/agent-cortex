@@ -8,7 +8,7 @@ Canonical terms for the agent-cortex bead system.
 |---|---|---|
 | **epic** | `epic` | A workstream, may nest sub-epics. Broken into tasks. |
 | **task** | `task` | A unit of work. Has a description, priority, and acceptance criteria. |
-| **stage** | `chore` (ephemeral) | One step of the implementation pipeline within a task. Auto-created during task expansion, consumed by automation, garbage-collected. |
+| **stage** | `chore` | One step of the implementation pipeline within a task. Auto-created during task expansion, consumed by automation. Plain (non-ephemeral) — must stay visible to plain `bd ready`. |
 
 "Chore" is an implementation detail of the `bd` tool — it is not a user-facing concept. Refer to stages, not chores.
 

@@ -27,3 +27,7 @@ jobs:
         run: pnpm typecheck
       - name: Test
         run: pnpm test
+      - name: Check generated Claude plugin is up to date
+        run: |
+          pnpm build:claude
+          git diff --exit-code claude/agents/ claude/skills/

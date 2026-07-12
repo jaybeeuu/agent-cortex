@@ -1,6 +1,6 @@
 ---
 name: style-tests
-description: Defines test-writing conventions, assertion strategies, and mock discipline. Use when writing, editing, or reviewing tests — or when you need a "test review", want to check "mock strategy", or are deciding "what to test".
+description: Defines this project's test-writing conventions: assertion strategy, mock discipline, and what to test. Use BEFORE writing or editing any test and when reviewing tests — consult it whenever you add or change test files rather than choosing an approach ad hoc. Also for a "test review", "mock strategy", or deciding "what to test".
 ---
 
 # Test Style

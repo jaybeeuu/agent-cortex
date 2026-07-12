@@ -65,7 +65,6 @@ for (const stage of pipeline.stages) {
     '--priority', priority,
     '--labels', `stage:${stage.id}`,
     '--parent', parentId,
-    '--ephemeral',
     '--silent',
   ]);
 

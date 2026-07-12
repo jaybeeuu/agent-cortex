@@ -1,0 +1,16 @@
+{
+  "name": "jaybeeuu",
+  "owner": {
+    "name": "jaybeeuu"
+  },
+  "metadata": {
+    "description": "jaybeeuu's personal Claude Code plugins."
+  },
+  "plugins": [
+    {
+      "name": "agent-cortex",
+      "source": "./claude",
+      "description": "Personal Claude Code plugin with custom agents and skills"
+    }
+  ]
+}

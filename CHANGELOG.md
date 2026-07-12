@@ -2,6 +2,21 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.32.0
+
+### Added
+
+- **`skills/workflow/using-agent-skills/`** — new meta-skill that routes
+  incoming work to the right skill and enforces core agent behaviors
+  (surface assumptions, manage confusion, push back, enforce simplicity,
+  maintain scope discipline, verify don't assume). Adapted from upstream
+  `addyosmani/agent-skills` with agent-cortex skill names and conventions.
+  Includes a decision-tree workflow, lifecycle sequence, and structural
+  validation tests.
+- **`extensions/session-start.ts`** — now injects a reference to the
+  `using-agent-skills` meta-skill at session start so agents can orient
+  on available workflows without loading full skill content.
+
 ## 1.31.1
 
 ### Fixed
@@ -50,18 +65,6 @@ All notable changes to this repository are documented in this file.
   `SessionStart` (no conversation context exists yet at startup). Switched
   both SessionStart hooks to `command`-type, echoing their text to stdout so
   Claude Code still injects it into session context.
-
-## 1.30.0
-
-### Fixed
-
-- **`agents/ralph.agent.md`**, **`skills/workflow/ralph/SKILL.md`**,
-  **`skills/workflow/ralph/REFERENCE.md`** — replaced the broken
-  background-timer polling mechanism (`sleep 120` + shellId tracking)
-  with an active LLM-driven polling loop. The LLM now explicitly checks
-  each in-flight agent with `read_agent`, sleeps 30s via bash, and
-  repeats — no background processes needed. Removed all `timerShellId`
-  state tracking and timer-related constraints.
 
 ## 1.29.0
 

@@ -4,12 +4,26 @@
     "maxNameLength": 40,
     "maxSummaryLength": 100
   },
-  "lastChangelogVersion": "0.79.4",
+  "lastChangelogVersion": "0.83.0",
   "packages": [
     "../../src/agent-cortex",
-    "npm:pi-web-access@0.10.7"
+    "npm:pi-web-access@0.10.7",
+    "npm:@getpipher/vision",
+    "npm:@hypabolic/pi-hypa",
+    "npm:context-mode"
   ],
-  "defaultProvider": "opencode",
-  "defaultModel": "big-pickle",
-  "theme": "dark"
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4-flash",
+  "theme": "dark",
+  "defaultThinkingLevel": "high",
+  "enabledModels": [
+    "opencode/nemotron-3-ultra-free",
+    "opencode-go/qwen3.7-max",
+    "opencode/kimi-k2.7-code",
+    "opencode/mimo-v2.5-free",
+    "opencode-go/mimo-v2.5",
+    "opencode/deepseek-v4-flash-free",
+    "opencode-go/deepseek-v4-flash",
+    "opencode/big-pickle"
+  ]
 }

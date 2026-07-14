@@ -49,7 +49,12 @@ stage chores in one shot. They are plain (non-ephemeral) chores — `bd ready` m
 them without `--include-ephemeral` for ralph to discover them:
 
 ```bash
-pnpm --prefix skills/create-task/scripts exec tsx create-chores.ts \
+# Run from the target project's directory — bd resolves its beads DB from cwd,
+# not from the skill's location. Do NOT use `pnpm --prefix <scripts> exec`,
+# which changes cwd to the scripts dir and makes bd pick the skill repo's own
+# .beads instead of the target project's.
+~/.copilot/installed-plugins/_direct/agent-cortex/skills/planning/create-task/scripts/node_modules/.bin/tsx \
+  ~/.copilot/installed-plugins/_direct/agent-cortex/skills/planning/create-task/scripts/create-chores.ts \
   --parent <parent-id> \
   --priority <priority>
 ```

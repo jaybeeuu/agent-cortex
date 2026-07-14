@@ -11,9 +11,11 @@ All notable changes to this repository are documented in this file.
   with cwd set to the scripts dir. `bd` resolves its beads DB from cwd, so this
   made the script create chores against the skill repo's own `.beads` instead of
   the target project's — failing with `parent issue not found` for any project
-  other than agent-cortex itself. Also fixed the path itself, which was missing
-  the `planning/` segment from the domain-grouping reorg. Invocation now runs the
-  `tsx` binary by absolute path so cwd stays in the target project.
+  other than agent-cortex itself. Invocation now runs the `tsx` binary by
+  absolute path (resolved from wherever the skill is actually installed, not
+  hardcoded to one harness) so cwd stays in the target project. Also dropped
+  the stale example path, which was missing the `planning/` segment from the
+  domain-grouping reorg.
 
 ## 1.31.0
 

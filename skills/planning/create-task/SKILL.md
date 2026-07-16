@@ -49,10 +49,22 @@ stage chores in one shot. They are plain (non-ephemeral) chores — `bd ready` m
 them without `--include-ephemeral` for ralph to discover them:
 
 ```bash
-pnpm --prefix skills/create-task/scripts exec tsx create-chores.ts \
+# Run from the TARGET project's directory (cwd must be inside the target's
+# .beads tree) — bd resolves its beads DB from cwd, not from the skill's
+# location. Do NOT use `pnpm --prefix <scripts> exec`, which changes cwd to
+# the scripts dir and makes bd pick the skill repo's own .beads instead of
+# the target project's.
+<skill-scripts>/node_modules/.bin/tsx \
+  <skill-scripts>/create-chores.ts \
   --parent <parent-id> \
   --priority <priority>
 ```
+
+Where `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory —
+resolve it from wherever this skill was actually loaded from (it varies by harness and
+install location; e.g. a Claude Code plugin cache dir vs. a Copilot
+`~/.copilot/installed-plugins/...` install vs. a local dev checkout). Do not hardcode
+one harness's path.
 
 The script outputs a JSON object mapping stage IDs to chore bead IDs, plus a HITL PR gate task bead ID, e.g.:
 

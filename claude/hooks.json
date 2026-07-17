@@ -11,6 +11,10 @@
           {
             "type": "command",
             "command": "echo 'Style policy: this project ships style skills — prefer them over ad-hoc choices. Invoke style-code BEFORE writing or editing code (and when refactoring); style-tests BEFORE writing or changing tests; style-documentation BEFORE writing or updating docs; style-comms BEFORE composing commit messages, PR descriptions, tickets, or other written deliverables.'"
+          },
+          {
+            "type": "command",
+            "command": "echo 'Be extremely concise. Sacrifice grammar for the sake of concision.'"
           }
         ]
       }

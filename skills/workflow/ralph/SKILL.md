@@ -32,7 +32,7 @@ Run once at startup:
 5. Run `bd ready` to get the initial list of available beads.
 6. For each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
-   - **Task or other type without an `implementation-type:*` label**: invoke the `classify-bead` skill. AFK tasks may need expansion via `create-task`; HITL tasks are noted for the shutdown summary.
+   - **Task or other type without an `implementation-type:*` label**: unexpected here — classification is a planning-stage concern already applied by `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note for the shutdown summary.
    - **Task labelled `implementation-type:hitl`**: skip — record the bead ID for the **Pending Human Action** summary at shutdown.
 7. For each ready chore bead (up to 5), **dispatch** it (see _Dispatching a chore bead_ in REFERENCE.md). Chores for a parent bead must run from that parent's worktree.
 8. **If** any chore beads were dispatched in step 7, start the **poll timer**: run `sleep 120` as a background bash process and hold its shellId in memory. **Otherwise**, if HITL gate beads are pending (check `bd list -l lifecycle:feature-pr -l implementation-type:hitl` and `bd list -l awaiting-epic-pr-merge`), proceed to **HITL Pause** (see REFERENCE.md) immediately.
@@ -76,7 +76,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 
 6. **Check for newly ready beads**: run `bd ready` and inspect results:
     - **Chore beads with `stage:*` label**: dispatch if in-flight count (from `bd list --status=in_progress --type=chore`) is < 5.
-    - **Task beads without `implementation-type:*` label**: invoke `classify-bead`. Note HITL tasks for shutdown; expand AFK tasks via `create-task` if needed.
+    - **Task beads without `implementation-type:*` label**: unexpected here — classification happens at planning time via `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note for shutdown.
    - If any feature PR gate bead (`lifecycle:feature-pr`, `implementation-type:hitl`) is open, do **not** schedule new parent features. Keep working only already in-flight chores.
 7. **Check shutdown or pause**: if `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels:
    - If HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see REFERENCE.md).

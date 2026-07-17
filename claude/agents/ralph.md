@@ -29,18 +29,15 @@ feature. Use `TaskList`/`TaskGet` to see which workers are still running.
 
 ## Classifying a bead
 
-Before treating any ready feature/task bead as AFK, check `bd label list <id>` **yourself** —
-do not spawn a subagent just to read a label:
+Classification is a planning-stage concern: `create-task` invokes `classify-bead` when a bead is
+created, so by the time a bead reaches `bd ready` here it should already carry an
+`implementation-type` label. Check `bd label list <id>` **yourself** — never spawn
+`classify-bead` from the ralph loop:
 
 - `implementation-type:afk` present → **AFK**. Done.
 - `implementation-type:hitl` present → **HITL**. Skip; record for the pending-action summary.
-- Neither present → spawn the **classify-bead** skill as a background subagent with
-  `model: haiku` (classification is a rubric lookup, not code generation, so the smaller model
-  is sufficient and cheaper). It persists the label itself; treat its returned classification
-  the same as above, or as **NEEDS-REFINEMENT** (skip; record) if it reports that.
-
-A bead only needs this once — `create-task` already classifies new beads at creation, so most
-beads you see here will already carry the label and cost nothing to check.
+- Neither present → treat as **NEEDS-REFINEMENT**: skip; record for the summary. A missing label
+  here means the bead skipped planning-stage classification — flag it, don't classify inline.
 
 ## Initialization
 
@@ -50,7 +47,7 @@ Run once at startup:
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in `.gitignore` (append if missing,
    via `Bash`).
 3. `bd ready` to list available work.
-4. For each ready **feature/task** bead (ignore `chore` beads), classify it per
+4. For each ready **feature/task** bead (ignore `chore` beads), check its classification per
    **Classifying a bead** above.
 5. Read `maxFixRounds` from `${CLAUDE_PLUGIN_ROOT}/skills/create-task/pipeline.json` if present;
    otherwise default to **4**.
@@ -101,8 +98,8 @@ Parse the reviewer's `RESULT` block.
   - If `fix-round >= maxFixRounds`: `bd update <id> --status blocked --notes "max fix rounds reached"`,
     record it, remove the worktree, free the slot, promote the next AFK feature.
 
-After **every** completion, also run `bd ready`, classify any newly-ready beads per
-**Classifying a bead**, and promote AFK features into free slots.
+After **every** completion, also run `bd ready`, check the classification of any newly-ready
+beads per **Classifying a bead**, and promote AFK features into free slots.
 
 ## Idle — pending human action / shutdown
 
@@ -189,7 +186,8 @@ Spawn with `model: haiku`. Same as the implementer prompt, but replace the Instr
 - **Never** auto-merge PRs or close a feature bead before the human merges its PR.
 - **Max 5** features in flight; **max `maxFixRounds`** fix rounds per feature, then block it.
 - **Never** spawn a subagent just to check an existing `implementation-type` label — read it
-  yourself via `bd label list`. Only the classify-bead subagent (missing label) and the Fix
-  worker run on `model: haiku`; Implementer and Reviewer keep the default model.
+  yourself via `bd label list`. **Never** spawn `classify-bead` from the ralph loop —
+  classification is a planning-stage concern already handled by `create-task`. Only the Fix
+  worker runs on `model: haiku`; Implementer and Reviewer keep the default model.
 - **Single-feature model only** for now: each feature branches from `origin/main` and PRs into
   `main`. (Multi-feature epic branches are not yet supported.)

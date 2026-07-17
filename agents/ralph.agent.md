@@ -50,10 +50,11 @@ Run once at startup:
 1. Run `bd prime`. Hold the full output in memory for your own context. Subagents can run `bd prime` themselves if they need project context.
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
 3. Run `bd ready` to get the initial list of available beads.
-4. For each available bead, **classify it** (see the `classify-bead` skill):
+4. For each available bead, **check its classification** (already applied at creation by
+   `create-task` via the `classify-bead` skill — do not spawn `classify-bead` from this loop):
    - **AFK** — eligible for agent work.
    - **HITL** — skip entirely; record the bead ID for the **Pending Human Action** summary at shutdown.
-   - **NEEDS-REFINEMENT** — skip entirely; record the bead ID for the **Needs Refinement** summary at shutdown.
+   - **Missing label / NEEDS-REFINEMENT** — skip entirely; record the bead ID for the **Needs Refinement** summary at shutdown.
 5. Create Ralph's workspace directory: `mkdir -p .agent-cortex/ralph`
 6. Create `.agent-cortex/ralph/state.json` with initial content:
    ```json

@@ -2,6 +2,21 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.32.2
+
+### Fixed
+
+- **`skills/workflow/run-pipeline-stage/`** — corrected stale path references
+  (`skills/run-pipeline-stage/...` → `skills/workflow/run-pipeline-stage/...`)
+  in the ralph agent and skill docs so the documented commands resolve from
+  the repo root.
+- **`extensions/skill-stats/`** — skill discovery and read-path resolution
+  now handle the domain-grouped skills layout (`skills/<domain>/<name>/`)
+  introduced by the reorganisation. `scanSkills` recurses into subdirectories
+  and the path heuristic accepts nested skill paths, so reads of skills like
+  `skills/workflow/run-pipeline-stage/SKILL.md` are correctly attributed in
+  usage stats instead of being dropped as unknown.
+
 ## 1.32.1
 
 ### Fixed

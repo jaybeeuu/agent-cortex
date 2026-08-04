@@ -11,6 +11,7 @@ import {
   resolveSkillFromPath,
   formatTable,
   extractSkillName,
+  scanSkills,
   loadStore,
   saveStore,
   ageOutStore,
@@ -161,6 +162,54 @@ describe("resolveSkillFromPath", () => {
       new Map(),
     );
     assert.equal(result, "my-skill");
+  });
+});
+
+// ─── scanSkills ──────────────────────────────────────────────────────────────
+
+describe("scanSkills", () => {
+  it("discovers skills in a domain-grouped (nested) layout", () => {
+    const root = mkdtempSync(join(tmpdir(), "skill-stats-scan-"));
+    try {
+      const skillDir = join(root, "skills", "workflow", "run-pipeline-stage");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(
+        join(skillDir, "SKILL.md"),
+        "---\nname: run-pipeline-stage\ndescription: Runs a pipeline stage\n---\n",
+        "utf-8",
+      );
+
+      // A non-skill subdir must not produce false positives
+      mkdirSync(join(root, "skills", "docs"), { recursive: true });
+      writeFileSync(join(root, "skills", "docs", "notes.md"), "hi", "utf-8");
+
+      const map = new Map<string, SkillRecord>();
+      scanSkills(join(root, "skills"), map);
+
+      assert.equal(map.size, 1);
+      assert.equal(
+        map.get("run-pipeline-stage")?.skillMdPath,
+        join(skillDir, "SKILL.md"),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps flat layout discovery working", () => {
+    const root = mkdtempSync(join(tmpdir(), "skill-stats-scan-flat-"));
+    try {
+      const skillDir = join(root, "skills", "bd-tool");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), "---\nname: bd-tool\n---\n", "utf-8");
+
+      const map = new Map<string, SkillRecord>();
+      scanSkills(join(root, "skills"), map);
+
+      assert.equal(map.get("bd-tool")?.skillMdPath, join(skillDir, "SKILL.md"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

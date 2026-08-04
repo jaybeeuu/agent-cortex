@@ -1,0 +1,15 @@
+{
+  "name": "@agent-cortex/validate-agent-dir",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --import tsx/esm validate-agent-dir.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsx": "^4.23.0",
+    "typescript": "^5.0.0"
+  }
+}

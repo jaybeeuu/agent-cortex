@@ -2,6 +2,19 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.36.0
+
+### Added
+
+- **`agents/README.md`** — new ADR defining the composable agent directory format.
+  Documents file layout (`agent.md` + per-harness `frontmatter.json` + section files),
+  frontmatter schema (required: `name`, `description`, `tools`; optional: `model`,
+  `argumentHint`), token format (`{{TOOL:name}}`, `{{PATH:name}}`, `{{SECTION:name}}`),
+  composition rules, and migration path.
+- **`skills/productivity/validate-agent-dir/`** — new validation script with 21 tests
+  covering frontmatter schema validation, agent directory structure validation,
+  and token format extraction.
+
 ## 1.35.1
 
 ### Changed

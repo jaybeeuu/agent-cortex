@@ -16,6 +16,9 @@ export default function (pi: ExtensionAPI) {
         content: [
           "Available skills — invoke when relevant (not pre-loaded to save context):",
           "",
+          "• /skill:using-agent-skills — meta-skill that routes to the right skill",
+          "  and enforces core agent behaviors. Check this first if unsure.",
+          "",
           "• /skill:bd-tool — project context & task tracking with beads.",
           "  Run `bd ready` to see available work.",
           "",

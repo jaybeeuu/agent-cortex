@@ -7,7 +7,7 @@ description: "Run all pending beads end-to-end using parallel subagents with rev
 
 Parallel task orchestration: find ready beads, dispatch them as background subagents, process each outcome through the pipeline (code → verify → review → document, with fix loops on failure), then open review-gated PRs before considering feature work complete.
 
-Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration lives in `skills/planning/create-task/pipeline.json`. Stage runner prompt templates live in `skills/run-pipeline-stage/prompts/` and playbooks in `skills/run-pipeline-stage/playbooks/`.
+Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration lives in `skills/planning/create-task/pipeline.json`. Stage runner prompt templates live in `skills/workflow/run-pipeline-stage/prompts/` and playbooks in `skills/workflow/run-pipeline-stage/playbooks/`.
 
 ## Branching and Review Model
 
@@ -40,7 +40,7 @@ Run once at startup:
    ```bash
    # workspace must be the absolute path you cd'd into — never . or $(pwd)
    workspace="/absolute/path/to/worktree"
-   pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-beads/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
+   pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
    ```
 
 ---

@@ -26,27 +26,30 @@ export function globalSkillDirs(): string[] {
 // ── Scanning ─────────────────────────────────────────────────────────────────
 
 /**
- * Scan a base directory for skill subdirectories containing SKILL.md.
- * Mutates `map` in place.
+ * Recursively scan a base directory for skill subdirectories containing
+ * SKILL.md. Handles both flat layouts (`skills/<name>/SKILL.md`) and
+ * domain-grouped layouts (`skills/<domain>/<name>/SKILL.md`). Does not
+ * follow symlinks (avoids cycles). Mutates `map` in place.
  */
 export function scanSkills(baseDir: string, map: Map<string, SkillRecord>): void {
-  let entries: string[];
-  try { entries = fs.readdirSync(baseDir); } catch { return; }
+  let entries: fs.Dirent[];
+  try { entries = fs.readdirSync(baseDir, { withFileTypes: true }); } catch { return; }
 
   for (const entry of entries) {
-    const full = path.join(baseDir, entry);
-    let st: fs.Stats;
-    try { st = fs.statSync(full); } catch { continue; }
+    if (!entry.isDirectory()) continue; // excludes symlinks
 
-    if (!st.isDirectory()) continue;
+    const full = path.join(baseDir, entry.name);
 
     const skillMd = path.join(full, "SKILL.md");
-    if (!fs.existsSync(skillMd)) continue;
-
-    const name = extractSkillName(skillMd) ?? entry;
-    if (!map.has(name)) {
-      map.set(name, { name, skillMdPath: skillMd });
+    if (fs.existsSync(skillMd)) {
+      const name = extractSkillName(skillMd) ?? entry.name;
+      if (!map.has(name)) {
+        map.set(name, { name, skillMdPath: skillMd });
+      }
     }
+
+    // Plain subdirectory (e.g. a domain group) — recurse into it.
+    scanSkills(full, map);
   }
 }
 
@@ -86,7 +89,9 @@ export function discoverProjectSkills(cwd: string, map: Map<string, SkillRecord>
  *
  * Strategy:
  * 1. Exact match against pre-discovered skill SKILL.md paths
- * 2. Path heuristic: `<anything>/skills/<name>/SKILL.md` → `<name>`
+ * 2. Path heuristic: `<anything>/skills/[.../]<name>/SKILL.md` → `<name>`
+ *    (the `[.../]` allows domain-grouped layouts like
+ *    `skills/workflow/run-pipeline-stage/SKILL.md`)
  */
 export function resolveSkillFromPath(
   filePath: string,
@@ -102,8 +107,8 @@ export function resolveSkillFromPath(
   // 2. Path heuristic — includes both project-local and global skill dirs
   const normalized = abs.replace(/\\/g, "/");
 
-  // Match .../skills/<name>/SKILL.md (project skills, nested skill dirs)
-  let m = normalized.match(/\/skills\/([^/]+)\/SKILL\.md$/);
+  // Match .../skills/<name>/SKILL.md and .../skills/<domain>/<name>/SKILL.md
+  let m = normalized.match(/\/skills\/(?:[^/]+\/)*([^/]+)\/SKILL\.md$/);
   if (m) return m[1];
 
   // Match .../<skill-dir>/<name>/SKILL.md for well-known dirs

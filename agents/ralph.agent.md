@@ -64,7 +64,7 @@ Run once at startup:
    ```bash
    # workspace must be the absolute path you cd'd into — never . or $(pwd)
    workspace="/absolute/path/to/worktree"
-   pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
+   pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
    ```
 7. For each AFK bead (up to 5), kick off its pipeline:
    a. Determine the epic for each bead, count its feature task children, then create branches accordingly:
@@ -92,7 +92,7 @@ bd dep add $chore_id <parent-id> --type parent-child
 bd update $chore_id --claim
 ```
 
-Then load the universal stage runner prompt from `skills/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the `task` tool from the feature worktree. Stage-specific policy comes from `skills/run-pipeline-stage/playbooks/<stage>.md`.
+Then load the universal stage runner prompt from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the `task` tool from the feature worktree. Stage-specific policy comes from `skills/workflow/run-pipeline-stage/playbooks/<stage>.md`.
 
 Add the entry to `inflight` in `state.json`:
 ```json
@@ -109,7 +109,7 @@ Ralph uses two kinds of file:
   ```bash
   # workspace must be the absolute path you cd'd into — never . or $(pwd)
   workspace="/absolute/path/to/worktree"
-  pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
+  pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
   ```
 - **`.agent-cortex/ralph/ralph-*.log`** — per-parent log files written by subagents (e.g. `.agent-cortex/ralph/ralph-abc-123.log`). Keyed by **parent** bead ID so all chore stages for a feature share one log.
 

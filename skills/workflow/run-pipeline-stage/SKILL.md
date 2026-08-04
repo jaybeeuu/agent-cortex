@@ -13,8 +13,8 @@ Execute a single pipeline stage. Stage beads (`code`, `verify`, `review`, `docum
 2. If no bead is specified, run `bd ready` and ask the user which to work on.
 3. Claim the bead with `bd update <id> --claim`.
 4. Read the bead's `stage:*` label to determine which stage to execute.
-5. Load the universal stage runner prompt from `skills/run-pipeline-stage/prompts/stage-runner.md`.
-6. Populate `<stage>` (from the bead's `stage:*` label), and follow `skills/run-pipeline-stage/playbooks/<stage>.md` for stage-specific behavior before spawning a subagent.
+5. Load the universal stage runner prompt from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`.
+6. Populate `<stage>` (from the bead's `stage:*` label), and follow `skills/workflow/run-pipeline-stage/playbooks/<stage>.md` for stage-specific behavior before spawning a subagent.
 
 ## Progress Report
 
@@ -23,14 +23,14 @@ To generate a Markdown snapshot of all bead status (Mermaid dependency graph, ac
 ```bash
 # workspace must be the absolute path of the project — never . or $(pwd)
 workspace="/absolute/path/to/project"
-pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace"
+pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace"
 ```
 
 To typecheck or test the scripts package:
 
 ```bash
-pnpm --prefix skills/run-pipeline-stage/scripts typecheck
-pnpm --prefix skills/run-pipeline-stage/scripts test
+pnpm --prefix skills/workflow/run-pipeline-stage/scripts typecheck
+pnpm --prefix skills/workflow/run-pipeline-stage/scripts test
 ```
 
 The data-fetch layer (`parseBdList` / `parseBdShow`) is kept separate from the renderer so the output format can be swapped without re-fetching.
@@ -83,7 +83,7 @@ bd tag <id> stage:<stage>
 # workspace must be the absolute path of the worktree — never . or $(pwd)
 workspace="/absolute/path/to/worktree"
 mkdir -p "$workspace/.agent-cortex/ralph"
-pnpm --prefix ~/.copilot/installed-plugins/_direct/agent-cortex/skills/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
+pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
 ```
 
 This tags the bead with its current stage (beads are the source of truth for stage progress) and regenerates the progress doc so any inline pairing session stays current.

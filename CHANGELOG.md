@@ -2,6 +2,19 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.34.0
+
+### Added
+
+- **`extensions/session-start.ts`** — now dynamically loads project context
+  files (AGENTS.md, docs/user-preferences.md) and injects them into the
+  session at startup. Agent gets baseline project context without manual
+  file reads.
+- **`extensions/context-loader.ts`** — new utility module for reading and
+  formatting context files from the project root.
+- **`extensions/skill-stats/context-loader.test.ts`** — tests for the
+  context-loader module (9 tests).
+
 ## 1.33.0
 
 ### Added

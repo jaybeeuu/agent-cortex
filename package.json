@@ -1,6 +1,6 @@
 {
   "name": "agent-cortex",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "private": true,
   "description": "Personal PI package with custom agents, skills, and extensions",
   "keywords": [
@@ -8,6 +8,9 @@
   ],
   "license": "MIT",
   "repository": "https://github.com/jaybeeuu/agent-cortex",
+  "bin": {
+    "agent-cortex": "./bin/agent-cortex.mjs"
+  },
   "scripts": {
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",

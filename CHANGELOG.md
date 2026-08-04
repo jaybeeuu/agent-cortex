@@ -2,6 +2,19 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.33.0
+
+### Added
+
+- **`bin/agent-cortex.mjs`** — new CLI entrypoint for agent-cortex.
+  Accepts `agent-cortex install <harness>` where harness is one of
+  `copilot`, `claude`, or `pi`. Includes `--help` / `-h` support and
+  proper error handling for unknown commands and harnesses.
+- **`lib/cli.mjs`** — CLI logic module with argument parsing, help text,
+  and harness validation.
+- **`test/cli.test.mjs`** — 21 tests covering unit logic and CLI
+  integration (Node built-in test runner).
+
 ## 1.32.2
 
 ### Fixed

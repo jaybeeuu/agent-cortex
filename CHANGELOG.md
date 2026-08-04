@@ -2,6 +2,25 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.35.0
+
+### Added
+
+- **`.github/workflows/publish.yml`** — new npm publish workflow that
+  triggers on GitHub release publication. Sets up Node with npm registry
+  authentication, runs lint/test/build, then publishes via `pnpm publish`.
+  Requires `NPM_TOKEN` secret in repository settings.
+- **`.github/workflows/ci.test.ts`** — validation tests for CI and
+  publish workflow structure, plus package.json publish configuration.
+- **`package.json`** — removed `private: true` and added `build` and
+  `lint` scripts, `publishConfig` with public access, and `tsx`/`yaml`
+  devDependencies for workflow tests.
+
+### Changed
+
+- **`.github/workflows/ci.yml`** — renamed the `tests` job to `checks` and
+  replaced the `Typecheck` step with `Lint` + `Build` steps.
+
 ## 1.34.0
 
 ### Added

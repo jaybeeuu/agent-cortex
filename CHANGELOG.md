@@ -2,6 +2,14 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.32.1
+
+### Fixed
+
+- **`skills/style/style-tests/`** — fixed a YAML parse error in the skill's
+  `description` front-matter (an unquoted colon followed by a space) that
+  broke skill discovery on startup. Replaced the colon with an em dash.
+
 ## 1.32.0
 
 ### Added

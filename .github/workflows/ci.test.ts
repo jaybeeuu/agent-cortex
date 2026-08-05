@@ -159,11 +159,12 @@ describe("Publish workflow", () => {
     assert.ok(!run.includes("pnpm publish"), "does not publish via pnpm");
   });
 
-  it("grants id-token: write permission for OIDC", () => {
+  it("grants contents: read and id-token: write permissions for OIDC", () => {
     const jobs = publish.jobs as Record<string, unknown>;
     const jobNames = Object.keys(jobs);
     const job = jobs[jobNames[0]] as Record<string, unknown>;
     const permissions = job.permissions as Record<string, unknown>;
+    assert.equal(permissions["contents"], "read");
     assert.equal(permissions["id-token"], "write");
   });
 

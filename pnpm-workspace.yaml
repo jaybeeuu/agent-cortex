@@ -3,5 +3,5 @@ packages:
   - "extensions/*"
 allowBuilds:
   '@google/genai': false
-  esbuild: set this to true or false
+  esbuild: false
   protobufjs: false

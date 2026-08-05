@@ -7,14 +7,16 @@ All notable changes to this repository are documented in this file.
 ### Changed
 
 - **`.github/workflows/publish.yml`** — replaced `NPM_TOKEN` secret auth with
-  npm Trusted Publishing (OIDC). The publish job now grants `id-token: write`
-  and runs Node 24 / setup-node v6 (npm >= 11.5.1, required for OIDC). The
-  publish step packs with `pnpm pack` and uploads the tarball with
-  `npm publish` (pnpm 11's OIDC publish path is broken — pnpm#11513).
-  Publishing no longer needs a long-lived npm token in repository secrets.
+  npm Trusted Publishing (OIDC). The publish job now grants `contents: read`
+  + `id-token: write` permissions and runs Node 24 / setup-node v6
+  (npm >= 11.5.1, required for OIDC). The publish step packs with
+  `pnpm pack` and uploads the tarball with `npm publish` (pnpm 11's OIDC
+  publish path is broken — pnpm#11513). Publishing no longer needs a
+  long-lived npm token in repository secrets.
 - **`.github/workflows/ci.test.ts`** — updated publish-workflow assertions to
-  expect the OIDC shape: `id-token: write` permission, `pnpm pack` +
-  `npm publish`, and no `NPM_TOKEN` / `NODE_AUTH_TOKEN` references.
+  expect the OIDC shape: `contents: read` + `id-token: write` permissions,
+  `pnpm pack` + `npm publish`, and no `NPM_TOKEN` / `NODE_AUTH_TOKEN`
+  references.
 
 ### Fixed
 

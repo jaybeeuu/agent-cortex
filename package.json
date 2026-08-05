@@ -1,7 +1,6 @@
 {
   "name": "agent-cortex",
-  "version": "1.19.0",
-  "private": true,
+  "version": "1.20.0",
   "description": "Personal PI package with custom agents, skills, and extensions",
   "keywords": [
     "pi-package"
@@ -11,11 +10,20 @@
   "bin": {
     "agent-cortex": "./bin/agent-cortex.mjs"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "echo 'Build complete — no compilation needed for PI package'",
+    "lint": "pnpm typecheck",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "build:claude": "node scripts/build-claude-agents.mjs",
     "postinstall": "bash scripts/install-instructions.sh"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "yaml": "^2.0.0"
   },
   "pi": {
     "extensions": [

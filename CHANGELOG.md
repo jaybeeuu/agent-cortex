@@ -2,6 +2,47 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.35.1
+
+### Changed
+
+- **`.github/workflows/publish.yml`** — replaced `NPM_TOKEN` secret auth with
+  npm Trusted Publishing (OIDC). The publish job now grants `id-token: write`
+  and runs Node 24 / setup-node v6 (npm >= 11.5.1, required for OIDC). The
+  publish step packs with `pnpm pack` and uploads the tarball with
+  `npm publish` (pnpm 11's OIDC publish path is broken — pnpm#11513).
+  Publishing no longer needs a long-lived npm token in repository secrets.
+- **`.github/workflows/ci.test.ts`** — updated publish-workflow assertions to
+  expect the OIDC shape: `id-token: write` permission, `pnpm pack` +
+  `npm publish`, and no `NPM_TOKEN` / `NODE_AUTH_TOKEN` references.
+
+### Fixed
+
+- **`pnpm-workspace.yaml`** — `allowBuilds.esbuild` held a placeholder string
+  (`set this to true or false`) that made `pnpm install` fail with
+  `ERR_PNPM_IGNORED_BUILDS` under pnpm 11. Replaced with `false` (matching
+  the other `allowBuilds` entries) so local installs and the `pnpm lint` /
+  `pnpm test` / `pnpm build` pipeline run cleanly.
+
+## 1.35.0
+
+### Added
+
+- **`.github/workflows/publish.yml`** — new npm publish workflow that
+  triggers on GitHub release publication. Sets up Node with npm registry
+  authentication, runs lint/test/build, then publishes via `pnpm publish`.
+  Requires `NPM_TOKEN` secret in repository settings.
+- **`.github/workflows/ci.test.ts`** — validation tests for CI and
+  publish workflow structure, plus package.json publish configuration.
+- **`package.json`** — removed `private: true` and added `build` and
+  `lint` scripts, `publishConfig` with public access, and `tsx`/`yaml`
+  devDependencies for workflow tests.
+
+### Changed
+
+- **`.github/workflows/ci.yml`** — renamed the `tests` job to `checks` and
+  replaced the `Typecheck` step with `Lint` + `Build` steps.
+
 ## 1.34.0
 
 ### Added

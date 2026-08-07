@@ -13,7 +13,7 @@
     "npm:context-mode"
   ],
   "defaultProvider": "opencode-go",
-  "defaultModel": "deepseek-v4-flash",
+  "defaultModel": "qwen3.7-max",
   "theme": "dark",
   "defaultThinkingLevel": "high",
   "enabledModels": [

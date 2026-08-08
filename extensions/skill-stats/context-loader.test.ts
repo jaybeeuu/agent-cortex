@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import {
   loadContextFile,
   loadSessionContext,
-} from "../context-loader.ts";
+} from "../lib/context-loader.ts";
 
 // ─── loadContextFile ─────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 packages:
+  - "."
   - "skills/*/scripts"
   - "extensions/*"
 allowBuilds:

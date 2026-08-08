@@ -2,6 +2,20 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.37.0
+
+### Added
+
+- **Changesets for automated releases** — replaced manual version bumping and GitHub
+  release creation with `@changesets/cli` and `release.yml` workflow. PRs include
+  changeset files, merging to main triggers automatic "Version Packages" PRs, and
+  publishing to npm via OIDC happens automatically. `plugin.json` stays in lockstep
+  via `scripts/sync-plugin-version.sh`.
+
+### Removed
+
+- **`publish.yml`** — old release-triggered publish workflow. Replaced by `release.yml`.
+
 ## 1.36.1
 
 ### Added

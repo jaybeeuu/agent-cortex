@@ -19,9 +19,13 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "build:claude": "node scripts/build-claude-agents.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version && bash scripts/sync-plugin-version.sh",
+    "release": "changeset publish",
     "postinstall": "bash scripts/install-instructions.sh"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.1",
     "tsx": "^4.0.0",
     "yaml": "^2.0.0"
   },

@@ -7,6 +7,45 @@ on:
   pull_request:
 
 jobs:
+  changeset:
+    name: Changeset check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for changeset
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # Paths that require a changeset when modified
+          VERSIONED_PATHS='extensions/\|skills/\|agents/\|package.json\|plugin.json'
+
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          echo "Changed files:"
+          echo "$changed"
+
+          versioned=$(echo "$changed" | grep -E "$VERSIONED_PATHS" || true)
+          if [ -z "$versioned" ]; then
+            echo "No versioned paths changed — skipping changeset check."
+            exit 0
+          fi
+
+          changesets=$(echo "$changed" | grep -E '^\.changeset/.*\.md$' | grep -v 'README.md' || true)
+          if [ -z "$changesets" ]; then
+            echo ""
+            echo "::error::This PR modifies versioned paths but does not include a changeset."
+            echo "Run 'pnpm changeset' to add one. See: style-versioning skill."
+            echo ""
+            echo "Versioned paths changed:"
+            echo "$versioned"
+            exit 1
+          fi
+
+          echo "Changeset found: $changesets"
+
   checks:
     runs-on: ubuntu-latest
     steps:

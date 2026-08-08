@@ -32,27 +32,13 @@ agent-cortex/
 
 ## Versioning
 
-**Always bump `plugin.json` version** when making any change to agents or skills. Follow
-semantic versioning:
-
-| Change type | Bump |
-|---|---|
-| New skill or agent added | `minor` |
-| Existing skill or agent meaningfully changed (new behaviour, new steps, restructured workflow) | `minor` |
-| Bug fix or clarification with no behaviour change | `patch` |
-| Breaking change (removed skill, renamed agent, incompatible workflow change) | `major` |
-
-The version bump must be included in the same commit as the change — do not leave it for a
-follow-up commit.
+Use `pnpm changeset` for all version bumps. Never edit versions manually.
+`package.json`, `plugin.json`, and `CHANGELOG.md` stay in lockstep automatically.
+See the `style-versioning` skill for the full workflow.
 
 ## Changelog
 
-- Keep a root `CHANGELOG.md` for repository changes.
-- When making any repo change (agents, skills, docs, scripts, or workflow rules), update
-  `CHANGELOG.md` in the same commit.
-- Write entries under a version header that matches the bumped `plugin.json` version
-  (e.g. `## 0.40.0`). Add a new version section on every change.
-- Keep entries user-facing and outcome-focused (what changed and why it matters).
+Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Skill Conventions
 

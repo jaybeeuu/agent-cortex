@@ -32,8 +32,14 @@ agent-cortex/
 
 ## Versioning
 
-**Always bump `plugin.json` version** when making any change to agents or skills. Follow
-semantic versioning:
+**All version numbers must stay in lockstep.** When making any change to agents,
+skills, or workflows, bump the version in **all three places**:
+
+1. `plugin.json` → `"version"` field
+2. `package.json` → `"version"` field
+3. `CHANGELOG.md` → new `## X.Y.Z` header at the top
+
+Follow semantic versioning:
 
 | Change type | Bump |
 |---|---|

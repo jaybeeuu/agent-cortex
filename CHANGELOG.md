@@ -2,6 +2,26 @@
 
 All notable changes to this repository are documented in this file.
 
+## 1.36.1
+
+### Added
+
+- **`.agents/skills/style-versioning/`** — new repo-local skill enforcing
+  version lockstep across `package.json`, `plugin.json`, and `CHANGELOG.md`.
+  Discovered by pi, Copilot CLI, and Claude Code when working in this repo;
+  not distributed with the plugin.
+
+### Changed
+
+- **Version alignment** — `package.json` version aligned to match `plugin.json`
+  (both now `1.36.1`). Going forward, all versions (`package.json`, `plugin.json`,
+  and `CHANGELOG.md` top header) must stay in lockstep. See AGENTS.md versioning
+  section for rules.
+- **AGENTS.md** — versioning section updated to require lockstep across all
+  three version files (package.json, plugin.json, CHANGELOG.md).
+- **First npm release via Trusted Publishing** — this is the first version
+  published to npm using OIDC (no `NPM_TOKEN` secret).
+
 ## 1.36.0
 
 ### Added

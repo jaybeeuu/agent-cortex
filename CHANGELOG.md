@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.37.0
+
+### Minor Changes
+
+- 75e2111: Switch to changesets for automated releases
+
+  Replace manual version bumping and GitHub release creation with changesets automation:
+
+  - Added `@changesets/cli` for intent-based versioning
+  - Added `release.yml` workflow that creates "Version Packages" PRs and auto-publishes via OIDC
+  - Added `scripts/sync-plugin-version.sh` to keep `plugin.json` in lockstep with `package.json`
+  - Updated `style-versioning` skill to document the new workflow
+  - Removed old `publish.yml` (release-triggered) workflow
+
+  Going forward: run `pnpm changeset` to describe changes, merge to main, and the rest is automatic.
+
+### Patch Changes
+
+- ad7ac8d: **Enforce changeset requirement in CI** — PRs that modify `extensions/`, `skills/`, `agents/`, `package.json`, or `plugin.json` now fail CI unless they include a `.changeset/*.md` file. Prevents merges that the release pipeline can't pick up.
+- 1ad1920: Fix changesets workflow by adding root package to workspace
+
+  Changesets couldn't find @jaybeeuu/agent-cortex because pnpm-workspace.yaml
+  only listed skills/_/scripts and extensions/_. Adding "." makes the root
+  a workspace member so changesets can version it.
+
+- 75e2111: Trim AGENTS.md versioning section to reference style-versioning skill instead of duplicating detail
+
 All notable changes to this repository are documented in this file.
 
 ## 1.37.0
@@ -55,11 +82,11 @@ All notable changes to this repository are documented in this file.
 
 - **`.github/workflows/publish.yml`** — replaced `NPM_TOKEN` secret auth with
   npm Trusted Publishing (OIDC). The publish job now grants `contents: read`
-  + `id-token: write` permissions and runs Node 24 / setup-node v6
-  (npm >= 11.5.1, required for OIDC). The publish step packs with
-  `pnpm pack` and uploads the tarball with `npm publish` (pnpm 11's OIDC
-  publish path is broken — pnpm#11513). Publishing no longer needs a
-  long-lived npm token in repository secrets.
+  - `id-token: write` permissions and runs Node 24 / setup-node v6
+    (npm >= 11.5.1, required for OIDC). The publish step packs with
+    `pnpm pack` and uploads the tarball with `npm publish` (pnpm 11's OIDC
+    publish path is broken — pnpm#11513). Publishing no longer needs a
+    long-lived npm token in repository secrets.
 - **`.github/workflows/ci.test.ts`** — updated publish-workflow assertions to
   expect the OIDC shape: `contents: read` + `id-token: write` permissions,
   `pnpm pack` + `npm publish`, and no `NPM_TOKEN` / `NODE_AUTH_TOKEN`

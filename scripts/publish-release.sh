@@ -20,8 +20,8 @@ fi
 TARBALL=$(pnpm pack | tail -n 1)
 echo "Created tarball: $TARBALL"
 
-# Publish using npm (which picks up OIDC automatically in GitHub Actions)
-npm publish "$TARBALL"
+# Publish using npm with OIDC (provenance flag enables trusted publishing)
+npm publish "$TARBALL" --provenance --access public
 
 echo "✓ Published $PACKAGE_NAME@$VERSION"
 

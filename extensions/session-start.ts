@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { loadSessionContext } from "./context-loader.js";
+import { loadSessionContext } from "./lib/context-loader.js";
 
 /**
  * Session-start extension.

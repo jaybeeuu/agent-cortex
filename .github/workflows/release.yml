@@ -52,6 +52,7 @@ jobs:
 
       # When there are no changesets (i.e. the "Version Packages" PR was
       # merged), changesets/action does nothing - so we publish directly.
+      # NOTE: @v1 (v1.9.0) exposes the output as 'hasChangesets' (camelCase).
       - name: Publish to npm
-        if: steps.changesets.outputs.has-changesets == 'false'
+        if: steps.changesets.outputs.hasChangesets == 'false'
         run: bash scripts/publish-release.sh

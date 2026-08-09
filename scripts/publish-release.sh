@@ -20,8 +20,11 @@ fi
 TARBALL=$(pnpm pack | tail -n 1)
 echo "Created tarball: $TARBALL"
 
-# Publish using npm with OIDC (provenance flag enables trusted publishing)
-npm publish "$TARBALL" --provenance --access public
+# Publish using npm with OIDC trusted publishing.
+# NOTE: provenance is disabled because this repo is private - npm's
+# trusted publishing auto-enables provenance, but sigstore only supports
+# public repos. The masked error would be ENEEDAUTH.
+npm publish "$TARBALL" --access public --no-provenance
 
 echo "✓ Published $PACKAGE_NAME@$VERSION"
 

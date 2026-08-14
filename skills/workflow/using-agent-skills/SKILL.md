@@ -78,6 +78,10 @@ Touch only what you're asked to touch. Do not clean up orthogonal code, refactor
 
 A task is not complete until verification passes. "Seems right" is never sufficient — there must be evidence: passing tests, build output, or runtime data.
 
+### 7. Investigate Persistent Failures
+
+When a tool or command fails repeatedly, stop and investigate the root cause. Don't paper over failures with workarounds — workarounds waste tokens and hide real problems. If you can't resolve it after reasonable investigation, flag it to the human with what you've tried and what you suspect. Inefficiencies and failures should be squashed, not hidden.
+
 ## Lifecycle Sequence
 
 For a complete feature, the typical skill sequence is:

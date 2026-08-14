@@ -78,9 +78,9 @@ Touch only what you're asked to touch. Do not clean up orthogonal code, refactor
 
 A task is not complete until verification passes. "Seems right" is never sufficient — there must be evidence: passing tests, build output, or runtime data.
 
-### 7. Investigate Persistent Failures
+### 7. Flag Persistent Failures
 
-When a tool or command fails repeatedly, stop and investigate the root cause. Don't paper over failures with workarounds — workarounds waste tokens and hide real problems. If you can't resolve it after reasonable investigation, flag it to the human with what you've tried and what you suspect. Inefficiencies and failures should be squashed, not hidden.
+When a tool or command fails repeatedly, stop and flag it to the user for investigation. Don't paper over failures with workarounds — workarounds waste tokens and hide real problems. Describe what failed, how many times, and any obvious patterns. The investigation should happen in a dedicated session, not as a side-quest. Inefficiencies and failures should be squashed, not hidden.
 
 ## Lifecycle Sequence
 

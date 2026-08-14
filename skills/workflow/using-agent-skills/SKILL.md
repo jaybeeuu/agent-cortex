@@ -110,6 +110,9 @@ Not every task needs every skill. A bug fix might only need: `tdd` → `style-co
 - Making wrong assumptions without stating them.
 - Overcomplicating code when a simple solution exists.
 - Modifying code orthogonal to the task scope.
+- Going on side-quests instead of staying on target.
+- Going on side-quests instead of staying on target.
+- Going on side-quests instead of staying on target.
 
 ## Verification checklist
 

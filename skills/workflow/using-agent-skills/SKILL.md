@@ -28,9 +28,11 @@ Task arrives
     ├── Running beads / task execution? ────→ ralph
     │   └── Single stage? ─────────────────→ run-pipeline-stage
     ├── Implementing code? ────────────────→ tdd
-    │   └── Designing an interface? ───────→ design-an-interface
+    │   ├── Designing an interface? ───────→ design-an-interface
+    │   └── Need style conventions? ───────→ style-code
     ├── Reviewing code? ───────────────────→ style-code
-    │   └── Security concerns? ────────────→ review-security
+    │   ├── Security concerns? ────────────→ review-security
+    │   └── Reviewing tests? ──────────────→ style-tests
     ├── Writing tests? ────────────────────→ style-tests
     ├── Writing docs? ─────────────────────→ style-documentation
     ├── Writing external comms? ───────────→ style-comms

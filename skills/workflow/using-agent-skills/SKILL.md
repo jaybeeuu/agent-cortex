@@ -80,7 +80,11 @@ A task is not complete until verification passes. "Seems right" is never suffici
 
 ### 7. Flag Persistent Failures
 
-When a tool or command fails repeatedly, stop and flag it to the user for investigation. Don't paper over failures with workarounds — workarounds waste tokens and hide real problems. Describe what failed, how many times, and any obvious patterns. The investigation should happen in a dedicated session, not as a side-quest. Inefficiencies and failures should be squashed, not hidden.
+When a tool or command fails repeatedly, stop and flag it to the user for investigation. Don't paper over failures with workarounds — workarounds waste tokens and hide real problems. Describe what failed, how many times, and any obvious patterns. Let the user decide whether to investigate in a dedicated session. Inefficiencies and failures should be squashed, not hidden.
+
+### 8. Stay On Target
+
+Stick to the task at hand. If you discover work that's outside the current scope — a tangential bug, an adjacent improvement, a missing doc — flag it to the user but don't pursue it. If the side quest blocks or slows your progress, stop and report it. Otherwise, note it and get back on track. Scope creep mid-task burns tokens and dilutes focus.
 
 ## Lifecycle Sequence
 

@@ -46,16 +46,6 @@ jobs:
           path: node_modules
           retention-days: 1
 
-      - name: Upload build output
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: |
-            dist
-            build
-            *.js
-            *.mjs
-          retention-days: 1
 
   changeset:
     name: Changeset check
@@ -109,11 +99,6 @@ jobs:
         with:
           name: node-modules
           path: node_modules
-
-      - name: Download build output
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
 
       - name: Lint
         run: pnpm lint

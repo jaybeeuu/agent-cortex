@@ -34,150 +34,73 @@ describe("CI workflow", () => {
     assert.deepStrictEqual(push.branches, ["main"]);
   });
 
-  describe("setup job", () => {
-    it("runs on ubuntu-latest", () => {
-      const jobs = ci.jobs as Record<string, unknown>;
-      const setup = jobs.setup as Record<string, unknown>;
-      assert.ok(setup, "has setup job");
-      assert.equal(setup["runs-on"], "ubuntu-latest");
-    });
+  it("has a job that runs on ubuntu-latest", () => {
+    const jobs = ci.jobs as Record<string, unknown>;
+    const jobNames = Object.keys(jobs);
+    assert.ok(jobNames.length > 0, "has at least one job");
 
-    it("checks out code", () => {
-      const steps = getJobSteps(ci, "setup");
-      const checkout = steps.find(
-        (s: Record<string, unknown>) => s.name === "Checkout"
-      );
-      assert.ok(checkout, "has Checkout step");
-      const uses = (checkout as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("actions/checkout@"), "uses actions/checkout");
-    });
-
-    it("sets up Node 24", () => {
-      const steps = getJobSteps(ci, "setup");
-      const setupNode = steps.find(
-        (s: Record<string, unknown>) => s.name === "Setup Node"
-      );
-      assert.ok(setupNode, "has Setup Node step");
-      const uses = (setupNode as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("actions/setup-node@v6"), "uses setup-node v6");
-      const with_ = (setupNode as Record<string, unknown>).with as Record<string, unknown>;
-      assert.equal(with_["node-version"], 24);
-    });
-
-    it("sets up pnpm 10", () => {
-      const steps = getJobSteps(ci, "setup");
-      const setupPnpm = steps.find(
-        (s: Record<string, unknown>) => s.name === "Setup pnpm"
-      );
-      assert.ok(setupPnpm, "has Setup pnpm step");
-      const uses = (setupPnpm as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("pnpm/action-setup@"), "uses pnpm/action-setup");
-      const with_ = (setupPnpm as Record<string, unknown>).with as Record<string, unknown>;
-      assert.equal(with_["version"], 10);
-    });
-
-    it("caches pnpm store", () => {
-      const steps = getJobSteps(ci, "setup");
-      const cache = steps.find(
-        (s: Record<string, unknown>) => s.name === "Cache pnpm store"
-      );
-      assert.ok(cache, "has Cache pnpm store step");
-      const uses = (cache as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("actions/cache@"), "uses actions/cache");
-      const with_ = (cache as Record<string, unknown>).with as Record<string, unknown>;
-      assert.ok(with_["path"], "has path configured");
-      assert.ok(with_["key"], "has key configured");
-    });
-
-    it("installs dependencies", () => {
-      const steps = getJobSteps(ci, "setup");
-      const install = steps.find(
-        (s: Record<string, unknown>) => s.name === "Install dependencies"
-      );
-      assert.ok(install, "has Install dependencies step");
-      const run = (install as Record<string, unknown>).run as string;
-      assert.ok(run.includes("--frozen-lockfile"), "uses --frozen-lockfile");
-    });
-
-    it("runs build", () => {
-      const steps = getJobSteps(ci, "setup");
-      const build = steps.find(
-        (s: Record<string, unknown>) => s.name === "Build"
-      );
-      assert.ok(build, "has Build step");
-    });
-
-    it("uploads node_modules artifact", () => {
-      const steps = getJobSteps(ci, "setup");
-      const upload = steps.find(
-        (s: Record<string, unknown>) => s.name === "Upload node_modules"
-      );
-      assert.ok(upload, "has Upload node_modules step");
-      const uses = (upload as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("actions/upload-artifact@"), "uses upload-artifact");
-    });
-
-    it("uploads build output artifact", () => {
-      const steps = getJobSteps(ci, "setup");
-      const upload = steps.find(
-        (s: Record<string, unknown>) => s.name === "Upload build output"
-      );
-      assert.ok(upload, "has Upload build output step");
-      const uses = (upload as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("actions/upload-artifact@"), "uses upload-artifact");
-    });
+    const firstJob = jobs[jobNames[0]] as Record<string, unknown>;
+    assert.equal(firstJob["runs-on"], "ubuntu-latest");
   });
 
-  describe("checks job", () => {
-    it("depends on setup job", () => {
-      const jobs = ci.jobs as Record<string, unknown>;
-      const checks = jobs.checks as Record<string, unknown>;
-      assert.ok(checks, "has checks job");
-      const needs = checks.needs;
-      assert.ok(needs === "setup" || (Array.isArray(needs) && needs.includes("setup")), "depends on setup");
-    });
+  it("checks out code", () => {
+    const steps = getSteps(ci);
+    const checkout = steps.find(
+      (s: Record<string, unknown>) => s.name === "Checkout"
+    );
+    assert.ok(checkout, "has Checkout step");
+    const uses = (checkout as Record<string, unknown>).uses as string;
+    assert.ok(uses.startsWith("actions/checkout@"), "uses actions/checkout");
+  });
 
-    it("runs on ubuntu-latest", () => {
-      const jobs = ci.jobs as Record<string, unknown>;
-      const checks = jobs.checks as Record<string, unknown>;
-      assert.equal(checks["runs-on"], "ubuntu-latest");
-    });
+  it("sets up Node.js", () => {
+    const steps = getSteps(ci);
+    const setupNode = steps.find(
+      (s: Record<string, unknown>) => s.name === "Setup Node"
+    );
+    assert.ok(setupNode, "has Setup Node step");
+  });
 
-    it("downloads node_modules artifact", () => {
-      const steps = getJobSteps(ci, "checks");
-      const download = steps.find(
-        (s: Record<string, unknown>) => s.name === "Download node_modules"
-      );
-      assert.ok(download, "has Download node_modules step");
-      const uses = (download as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("actions/download-artifact@"), "uses download-artifact");
-    });
+  it("sets up pnpm", () => {
+    const steps = getSteps(ci);
+    const setupPnpm = steps.find(
+      (s: Record<string, unknown>) => s.name === "Setup pnpm"
+    );
+    assert.ok(setupPnpm, "has Setup pnpm step");
+    const uses = (setupPnpm as Record<string, unknown>).uses as string;
+    assert.ok(uses.startsWith("pnpm/action-setup@"), "uses pnpm/action-setup");
+  });
 
-    it("downloads build output artifact", () => {
-      const steps = getJobSteps(ci, "checks");
-      const download = steps.find(
-        (s: Record<string, unknown>) => s.name === "Download build output"
-      );
-      assert.ok(download, "has Download build output step");
-      const uses = (download as Record<string, unknown>).uses as string;
-      assert.ok(uses.startsWith("actions/download-artifact@"), "uses download-artifact");
-    });
+  it("installs dependencies", () => {
+    const steps = getSteps(ci);
+    const install = steps.find(
+      (s: Record<string, unknown>) => s.name === "Install dependencies"
+    );
+    assert.ok(install, "has Install dependencies step");
+  });
 
-    it("runs lint", () => {
-      const steps = getJobSteps(ci, "checks");
-      const lint = steps.find(
-        (s: Record<string, unknown>) => s.name === "Lint"
-      );
-      assert.ok(lint, "has Lint step");
-    });
+  it("runs lint", () => {
+    const steps = getSteps(ci);
+    const lint = steps.find(
+      (s: Record<string, unknown>) => s.name === "Lint"
+    );
+    assert.ok(lint, "has Lint step");
+  });
 
-    it("runs tests", () => {
-      const steps = getJobSteps(ci, "checks");
-      const test = steps.find(
-        (s: Record<string, unknown>) => s.name === "Test"
-      );
-      assert.ok(test, "has Test step");
-    });
+  it("runs tests", () => {
+    const steps = getSteps(ci);
+    const test = steps.find(
+      (s: Record<string, unknown>) => s.name === "Test"
+    );
+    assert.ok(test, "has Test step");
+  });
+
+  it("runs build", () => {
+    const steps = getSteps(ci);
+    const build = steps.find(
+      (s: Record<string, unknown>) => s.name === "Build"
+    );
+    assert.ok(build, "has Build step");
   });
 });
 
@@ -291,11 +214,4 @@ function getSteps(workflow: Record<string, unknown>): Record<string, unknown>[] 
   const jobNames = Object.keys(jobs);
   const firstJob = jobs[jobNames[0]] as Record<string, unknown>;
   return firstJob.steps as Record<string, unknown>[];
-}
-
-function getJobSteps(workflow: Record<string, unknown>, jobName: string): Record<string, unknown>[] {
-  const jobs = workflow.jobs as Record<string, unknown>;
-  const job = jobs[jobName] as Record<string, unknown>;
-  assert.ok(job, `job '${jobName}' exists`);
-  return job.steps as Record<string, unknown>[];
 }

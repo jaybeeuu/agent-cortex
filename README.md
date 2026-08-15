@@ -60,6 +60,14 @@ The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
 Edit the sources (`agents/*.agent.md`, `agents-native/*.md`, `skills/**`), never anything
 under `claude/`.
 
+## CI
+
+The CI pipeline runs lint, test, and claude-plugin-check as three parallel jobs
+(`lint`, `test`, `claude-plugin-check`), each gated on `needs: setup`. Each job
+does its own checkout and `pnpm install` rather than sharing build artifacts from
+the `setup` job — pnpm workspace symlinks don't survive artifact upload/download,
+so artifact sharing would break the workspace resolution that the build depends on.
+
 ## Installation
 
 ### Symlink as global pi config

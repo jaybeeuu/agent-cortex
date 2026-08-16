@@ -40,7 +40,7 @@ jobs:
         run: pnpm build
 
 
-  changeset:
+  changeset-check:
     name: Changeset check
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -54,7 +54,7 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           # Paths that require a changeset when modified
-          VERSIONED_PATHS='extensions/\|skills/\|agents/\|package.json\|plugin.json'
+          VERSIONED_PATHS='extensions/|skills/|agents/|package\.json|plugin\.json'
 
           changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
           echo "Changed files:"

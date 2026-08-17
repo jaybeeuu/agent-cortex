@@ -73,6 +73,12 @@ touches a versioned path (`extensions/`, `skills/`, `agents/`, `package.json`, o
 `plugin.json`) without a changeset in `.changeset/`. Add one with `pnpm changeset` —
 the `style-versioning` skill documents the format.
 
+On pushes to `main`, a `release` job (gated on `lint`, `test`, and
+`claude-plugin-check`) runs changesets to open a `chore: version packages` PR when
+changesets are pending, then publishes to npm once it lands — packing with `pnpm
+pack` and publishing with `npm publish --provenance --access public`. Releases are
+sourced entirely from `main`.
+
 ## Installation
 
 ### Symlink as global pi config

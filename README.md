@@ -68,6 +68,11 @@ does its own checkout and `pnpm install` rather than sharing build artifacts fro
 the `setup` job — pnpm workspace symlinks don't survive artifact upload/download,
 so artifact sharing would break the workspace resolution that the build depends on.
 
+A separate `changeset-check` job runs only on pull requests and fails any PR that
+touches a versioned path (`extensions/`, `skills/`, `agents/`, `package.json`, or
+`plugin.json`) without a changeset in `.changeset/`. Add one with `pnpm changeset` —
+the `style-versioning` skill documents the format.
+
 ## Installation
 
 ### Symlink as global pi config

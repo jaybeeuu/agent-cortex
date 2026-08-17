@@ -22,6 +22,7 @@ When CI pipeline speed or release safety becomes a recurring friction — e.g. a
 P2 — infrastructure quality-of-life. Not blocking current work, but a clear improvement once the release flow stabilises.
 
 ## Notes
+- Setup job with artifact infrastructure added (2026-08): install + build now happen once in a `setup` job, artifacts are shared with downstream jobs via upload/download-artifact. This is the first step toward the unified pipeline vision.
 - Depends on the changesets release workflow being in place (P1 beads `agnt-ctx-d1ht`, `agnt-ctx-5bcu`).
 - Should be straightforward once the pipeline shape is settled.
 - **Release pipeline fires on every push to main** — this wastes CI minutes. It should only run when there are changesets to process (e.g. when the version packages PR is merged, or when new changesets land on main). Add a path filter or a pre-check that skips the job when no `.changeset/*.md` files changed.

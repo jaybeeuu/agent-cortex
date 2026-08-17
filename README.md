@@ -60,6 +60,25 @@ The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
 Edit the sources (`agents/*.agent.md`, `agents-native/*.md`, `skills/**`), never anything
 under `claude/`.
 
+## CI
+
+The CI pipeline runs lint, test, and claude-plugin-check as three parallel jobs
+(`lint`, `test`, `claude-plugin-check`), each gated on `needs: setup`. Each job
+does its own checkout and `pnpm install` rather than sharing build artifacts from
+the `setup` job — pnpm workspace symlinks don't survive artifact upload/download,
+so artifact sharing would break the workspace resolution that the build depends on.
+
+A separate `changeset-check` job runs only on pull requests and fails any PR that
+touches a versioned path (`extensions/`, `skills/`, `agents/`, `package.json`, or
+`plugin.json`) without a changeset in `.changeset/`. Add one with `pnpm changeset` —
+the `style-versioning` skill documents the format.
+
+On pushes to `main`, a `release` job (gated on `lint`, `test`, and
+`claude-plugin-check`) runs changesets to open a `chore: version packages` PR when
+changesets are pending, then publishes to npm once it lands — packing with `pnpm
+pack` and publishing with `npm publish --provenance --access public`. Releases are
+sourced entirely from `main`.
+
 ## Installation
 
 ### Symlink as global pi config

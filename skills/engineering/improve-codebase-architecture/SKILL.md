@@ -13,7 +13,7 @@ A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a sma
 
 ### 1. Explore the codebase
 
-Explore the codebase using your available tools (bash, rg, view, glob, find). Navigate organically and note where you experience friction:
+Explore the codebase using your available tools ({{TOOL:bash}}, {{TOOL:rg}}, {{TOOL:view}}, {{TOOL:glob}}). Navigate organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small files?
 - Where are modules so shallow that the interface is nearly as complex as the implementation?

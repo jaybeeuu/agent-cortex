@@ -59,7 +59,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 ### Background agent completed
 
 1. **Poll that bead's log** to flush any final lines.
-2. **Read** the completed agent's full output with `read_agent`.
+2. **Read** the completed agent's full output with {{TOOL:read_agent}}.
 3. **Identify the bead**: parse the `---REPORT---` block for `BEAD_ID` and `STAGE_COMPLETED`.
 4. **Close** the chore bead: `bd close <bead-id>`.
 5. **Handle stage outcome**:
@@ -90,9 +90,9 @@ After initialization, wait for background agents or the poll timer to complete. 
 - **Always** run in **foreground** (interactive) mode. If you find yourself executing as a background task, immediately surface a warning to the user and ask them to re-run you in foreground mode.
 - **Never** write, edit, or create source code or documentation yourself.
 - **Never** edit bead task files directly — only use `bd` commands.
-- **ALWAYS call the `task` tool to spawn subagents** — never use bash, never run stages inline, never use any other tool. This is your only spawning mechanism.
+- **ALWAYS call the {{TOOL:task}} tool to spawn subagents** — never use {{TOOL:bash}}, never run stages inline, never use any other tool. This is your only spawning mechanism.
 - **Always** derive orchestration state from beads — do not maintain a separate state file.
-- **Always** include the full `bd prime` output verbatim in every `task` tool prompt.
+- **Always** include the full `bd prime` output verbatim in every {{TOOL:task}} tool prompt.
 - **Always** keep the poll timer running — restart it immediately after it fires — **unless** the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending), in which case proceed to **HITL Pause** (see REFERENCE.md) and stop instead.
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once.

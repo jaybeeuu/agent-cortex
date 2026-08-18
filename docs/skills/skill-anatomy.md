@@ -29,6 +29,14 @@ Optional fields:
 - Add one rationale sentence for non-obvious rules so behavior generalizes in novel cases.
 - Avoid ALL-CAPS emphasis.
 
+## Tool references
+
+Reference agent tools by `{{TOOL:name}}` token (canonical copilot name), never a
+hardcoded harness-specific name such as `bash`, `task`, or `read_agent` — installers
+substitute the per-harness name from `token-map.json` at install time. Add any new tool
+to the map's `tools` section in the same change; unknown tokens are hard errors. See
+`token-map.README.md` for the full authoring rules.
+
 ## Required sections
 
 Every skill must include:
@@ -81,6 +89,7 @@ Provide completion gates that are testable and stage-scoped.
 
 A skill passes anatomy review when:
 - [ ] Front matter uses required fields and valid description format.
+- [ ] Tool references use `{{TOOL:name}}` tokens, not hardcoded tool names.
 - [ ] Required sections exist and follow canonical ordering.
 - [ ] Optional sections (if present) include what/when/example guidance.
 - [ ] Verification checklist contains concrete, machine-checkable items.

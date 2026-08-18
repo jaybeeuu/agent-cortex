@@ -1,0 +1,6 @@
+{
+  "name": "agent-cortex:strategy",
+  "description": "Creates top-level design documents across strategy, PRD, and technical direction so delivery planning starts with clear intent and justified decisions. Use when defining product direction before implementation planning, shaping a feature PRD, or selecting technical direction before ralph-plan.",
+  "tools": ["bash", "view", "rg", "glob", "ask_user", "web_fetch", "skill", "edit", "create"],
+  "argumentHint": "Design <problem, feature, or product direction>"
+}

@@ -123,9 +123,9 @@ Tokens in agent.md reference tools, paths, and sections:
 
 | Token | Syntax | Description |
 |-------|--------|-------------|
-| Tool reference | `{{TOOL:name}}` | Reference a tool by name (for documentation/highlighting) |
-| Path reference | `{{PATH:path}}` | Reference a file path (e.g., skills, extensions) |
-| Section include | `{{SECTION:name}}` | Include content from a section file in the harness directory |
+| Tool reference | `{{TOOL:name}}` | Canonical tool name; substituted per harness at install time from `token-map.json` |
+| Path reference | `{{PATH:path}}` | Canonical path name; resolved per harness at install time from `token-map.json` |
+| Section include | `{{SECTION:name}}` | Include content from a section file in the harness directory (substituted by the composer) |
 
 ### Examples
 
@@ -141,7 +141,9 @@ When composing the final agent file for a specific harness:
 
 1. Start with agent.md content
 2. Replace `{{SECTION:name}}` with content from `<harness>/<name>.md`
-3. `{{TOOL:name}}` and `{{PATH:name}}` remain as-is (documentation tokens)
+3. `{{TOOL:name}}` and `{{PATH:name}}` are substituted by the installer against
+   `token-map.json` — the canonical tool/path/agent names per harness. See the
+   `contract` section of `token-map.json` and `token-map.README.md` for the rules.
 
 ## Composition Rules
 

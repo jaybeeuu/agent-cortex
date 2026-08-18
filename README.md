@@ -11,11 +11,12 @@ agent-cortex/
 ├── plugin.json               # Copilot plugin manifest
 ├── .claude-plugin/
 │   └── marketplace.json      # Claude marketplace (exposes ./claude as the "jaybeeuu" market)
-├── agents/                   # Canonical agents (Copilot/pi format: *.agent.md)
-│   ├── ralph.agent.md
-│   ├── ralph-plan.agent.md
-│   ├── plan.agent.md
-│   └── strategy.agent.md
+├── agents/                   # Canonical agents — flat *.agent.md (Copilot/pi format) + composable <name>/ dirs (see agents/README.md)
+│   ├── *.agent.md            #   ralph, ralph-plan, plan, strategy — flat form, live until the composer/installer migration
+│   ├── ralph/                #   composable form (shared agent.md + per-harness pi/, copilot/, claude/)
+│   ├── plan/                 #   "
+│   ├── ralph-plan/           #   "
+│   └── strategy/             #   "
 ├── agents-native/            # Claude-only agents with no Copilot equivalent
 │   └── ralph.md              #  the lean Claude Ralph
 ├── skills/                   # Skills (grouped by domain) — shared by all harnesses

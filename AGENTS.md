@@ -14,8 +14,9 @@ and PI extension available in the author's coding sessions.
 agent-cortex/
 ├── package.json           # PI package manifest (pi: { extensions, skills })
 ├── plugin.json            # GitHub Copilot plugin manifest — agents, skills, MCP servers
-├── agents/                # Custom agents (*.agent.md)
-│   └── ralph.agent.md
+├── agents/                # Custom agents (*.agent.md, or <name>/ composable dirs)
+│   ├── ralph.agent.md     #   flat format — live until the composer migration
+│   └── ralph/             #   composable format — see agents/README.md
 ├── skills/               # Grouped by domain, discovered recursively
 │   ├── planning/         # Scope, spec, decompose
 │   ├── engineering/      # The coding loop
@@ -52,7 +53,9 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Agent Conventions
 
-- Agent files are named `<name>.agent.md` and live in `agents/`.
+- Agent files are named `<name>.agent.md` and live in `agents/`. Multi-harness agents may instead
+  use a composable `<name>/` directory (`agent.md` shared body + per-harness `pi/`, `copilot/`,
+  `claude/` frontmatter and section files) per the spec in `agents/README.md`.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
 

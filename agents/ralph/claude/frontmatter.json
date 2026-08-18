@@ -1,0 +1,6 @@
+{
+  "name": "agent-cortex:ralph",
+  "description": "Use when running all pending beads end-to-end: finds the next available beads (dependencies met), runs the full implement → review → fix cycle for each feature in its own worktree, opens and reports PRs immediately, then waits for human merges before continuing.",
+  "tools": ["Bash", "Read", "Grep", "Glob", "Skill", "Task", "TaskList", "TaskGet", "TaskStop", "SendMessage"],
+  "argumentHint": "Run all pending beads"
+}

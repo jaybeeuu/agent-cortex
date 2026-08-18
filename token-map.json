@@ -1,0 +1,104 @@
+{
+  "name": "agent-cortex token map",
+  "description": "Central mapping of tool names, paths, and agent naming conventions across the copilot, claude, and pi harnesses. Single source of truth for install-time token substitution. See token-map.README.md for the design rationale.",
+  "version": 1,
+  "harnesses": ["copilot", "claude", "pi"],
+  "token_format": {
+    "convention": "{{TYPE:NAME}}",
+    "decision": "Adopt the {{TOOL:name}} / {{PATH:name}} / {{SECTION:name}} grammar already standardised by ADR #63 (agents/README.md) rather than a dotted {{tool.name}} form. The uppercase type prefix disambiguates token kinds at a glance, keeps tool/path/section names in one namespace collision-free, and matches the token grammar skills are already written against.",
+    "types": {
+      "TOOL": "{{TOOL:<canonical tool key>}} — replaced at install time with the bound harness's tool name (see tools).",
+      "PATH": "{{PATH:<path key or relative path>}} — replaced at install time with the harness-resolved path (see paths).",
+      "SECTION": "{{SECTION:<name>}} — replaced by the agent composer with <harness>/<name>.md section content. Not a global substitution; out of scope for token-map.json (see contract)."
+    }
+  },
+  "tools": {
+    "bash": { "copilot": "bash", "claude": "Bash", "pi": "bash" },
+    "view": { "copilot": "view", "claude": "Read", "pi": "read" },
+    "edit": { "copilot": "edit", "claude": "Edit", "pi": "edit" },
+    "create": { "copilot": "create", "claude": "Write", "pi": "write" },
+    "grep": { "copilot": "grep", "claude": "Grep", "pi": "grep" },
+    "rg": { "copilot": "rg", "claude": "Grep", "pi": "grep" },
+    "glob": { "copilot": "glob", "claude": "Glob", "pi": "find" },
+    "ask_user": { "copilot": "ask_user", "claude": "AskUserQuestion", "pi": null },
+    "web_fetch": { "copilot": "web_fetch", "claude": "WebFetch", "pi": "fetch_content" },
+    "skill": { "copilot": "skill", "claude": "Skill", "pi": null },
+    "task": { "copilot": "task", "claude": "Task", "pi": "task" },
+    "read_agent": { "copilot": "read_agent", "claude": null, "pi": "read_agent" }
+  },
+  "paths": {
+    "plugin_root": {
+      "copilot": "~/.copilot/installed-plugins/_direct/agent-cortex",
+      "claude": "${CLAUDE_PLUGIN_ROOT}",
+      "pi": "~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex"
+    },
+    "agents_dir": {
+      "copilot": { "base": "plugin_root", "relative": "agents" },
+      "claude": { "base": "plugin_root", "relative": "agents" },
+      "pi": { "base": "plugin_root", "relative": "agents" }
+    },
+    "skills_dir": {
+      "copilot": { "base": "plugin_root", "relative": "skills" },
+      "claude": { "base": "plugin_root", "relative": "skills" },
+      "pi": { "base": "plugin_root", "relative": "skills" }
+    }
+  },
+  "agents": {
+    "prefix": {
+      "copilot": "agent-cortex:",
+      "claude": "",
+      "pi": "agent-cortex:"
+    },
+    "deferred": {
+      "ralph": ["claude"]
+    },
+    "sources": {
+      "copilot": "agents/*.agent.md (canonical)",
+      "pi": "agents/*.agent.md (canonical)",
+      "claude": "agents/*.agent.md converted by scripts/build-claude-agents.mjs, plus agents-native/*.md for deferred agents"
+    }
+  },
+  "notes": {
+    "tools": {
+      "rg": "Copilot alias for grep. Claude and pi collapse it onto their single search tool (Grep / grep) — same collapse rule as the build script.",
+      "glob": "Claude has a dedicated Glob tool. pi's built-in pattern-search tool is find (hypa_find when the pi-hypa extension is installed).",
+      "ask_user": "Copilot (ask_user) and Claude (AskUserQuestion) prompt the user mid-run. pi intentionally ships no permission-popup/ask tool (per pi docs 'it intentionally does not include permission popups'), so the mapping is null.",
+      "web_fetch": "pi's fetch_content comes from the pi-web-access package (declared in pi/settings.json).",
+      "skill": "Copilot (skill) and Claude (Skill) expose skills as a tool. pi discovers skills but the agent loads them via read and /skill:<name> commands — there is no dedicated tool, so the mapping is null.",
+      "read_agent": "Claude's Task returns results inline — there is no separate read step, so read_agent drops on claude (null). Copilot and pi use the task + read_agent poll loop."
+    },
+    "paths": {
+      "pi": "plugin_root defaults to the npm-package install layout (~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex). Local-checkout installs (pi/settings.json packages entry referencing a local src path) or symlinked installs differ — installers must compute plugin_root from the actual resolution and can override it."
+    },
+    "agents": {
+      "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in scripts/build-claude-agents.mjs): copilot/pi agents are agent-cortex:<slug>, claude agents are <slug>.",
+      "deferred": "ralph has no generated claude counterpart — it is authored natively as agents-native/ralph.md (its event-driven orchestration cannot be produced by token substitution from the poll-loop copilot source)."
+    }
+  },
+  "contract": {
+    "version": 1,
+    "summary": "Installers substitute {{TOOL:...}}, {{PATH:...}}, and {{SECTION:...}} tokens in generated harness files using this map. This contract is the single reference installers must implement; token-map.json is the data those rules operate on.",
+    "harness_ids": ["copilot", "claude", "pi"],
+    "binding": "The harness id is the same value the installer is invoked with (agent-cortex install <harness>). Each harness reads its own column from the tools, paths, and agents sections.",
+    "substitution_order": ["SECTION", "TOOL", "PATH"],
+    "rules": [
+      "TOOL: replace {{TOOL:<key>}} with tools.<key>.<harness>. Canonical keys are exact, case-sensitive strings (the copilot tool names, which are the authoring names in agents/*.agent.md).",
+      "TOOL null: a null value means the harness has no equivalent. In prose, remove the token (and emit a warning). In a tool-list context (frontmatter tools: [...]), omit the entry. Do not substitute an empty string.",
+      "TOOL unknown: a {{TOOL:<key>}} with no entry in tools is a hard error — the map must be extended. This mirrors build-claude-agents.mjs, which throws on unknown tools.",
+      "PATH named key: replace {{PATH:<key>}} with the resolved value of paths.<key>.<harness>.",
+      "PATH relative: replace {{PATH:<relative>}} with plugin_root + '/' + <relative> (e.g. {{PATH:skills/workflow/plan/SKILL.md}}).",
+      "PATH resolution: a value may be a literal string, an ${ENV_VAR} token, or a {base, relative} spec. Resolve {base, relative} by joining relative onto the resolved base. Leave ${ENV_VAR} values verbatim — the harness expands them at runtime (claude's ${CLAUDE_PLUGIN_ROOT}).",
+      "PATH unknown base: a {base, relative} spec whose base is not a key in paths is a hard error.",
+      "SECTION: {{SECTION:<name>}} is resolved by the agent composer from <agents_dir>/<harness>/<name>.md; token-map.json does not substitute it. Installers must leave SECTION tokens untouched for the composer.",
+      "Contract version: installers must reject token-map.json versions higher than the contract version they implement.",
+      "Case sensitivity: all token arguments and map keys are case-sensitive."
+    ],
+    "error_handling": {
+      "unknown_tool": "throw — the map must stay complete",
+      "unknown_path_base": "throw — the map must stay complete",
+      "null_tool_in_prose": "warn and drop the token",
+      "null_tool_in_tool_list": "omit the entry from the array",
+      "unsupported_version": "throw with the supported version range"
+    }
+  }
+}

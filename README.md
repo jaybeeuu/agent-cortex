@@ -30,6 +30,8 @@ agent-cortex/
 │   └── notify/
 ├── pi/                       # Global pi configuration (see below)
 │   └── settings.json
+├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
+├── token-map.README.md       # design decisions behind token-map.json
 ├── scripts/
 │   └── build-claude-agents.mjs   # builds the claude/ subtree from the sources above
 └── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
@@ -42,6 +44,9 @@ agent-cortex/
 ```
 
 The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
+The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
+per harness at install time from `token-map.json`, the single source of truth for
+canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
 The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
 (`pnpm build:claude`) and committed; CI checks it is never stale:
 

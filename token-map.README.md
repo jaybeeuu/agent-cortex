@@ -76,6 +76,12 @@ Unknown (unmapped) tokens are a **hard error**, not a null — a silently-passed
 token is exactly the bug the map exists to prevent, and mirrors the build script's
 `unknown tool "x"` throw.
 
+One consumer deviates from this rule deliberately: the pi `agent-modes` extension reads
+the map at **runtime** (not install time) to compose agent prompts from the composable
+agents format. For it, an unmapped tool name passes through unchanged — it may be a
+native PI tool — while a mapped-null tool (`ask_user`, `skill`) is omitted with a
+warning. See `extensions/agent-modes/README.md`.
+
 ### 4. Token substitution contract
 
 The full contract is embedded in `token-map.json` under `contract`. In summary, installers:

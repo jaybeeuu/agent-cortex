@@ -180,6 +180,11 @@ jobs:
           pnpm build:claude
           git diff --exit-code claude/agents/ claude/skills/
 
+      - name: Check generated Copilot agent files are up to date
+        run: |
+          pnpm build:copilot
+          git diff --exit-code -- 'agents/*.agent.md'
+
   release:
     name: Release
     needs: [lint, test, claude-plugin-check]

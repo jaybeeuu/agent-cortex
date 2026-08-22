@@ -14,8 +14,8 @@ decisions behind the map.
 
 | id | Platform | Agent format | Plugin root |
 |---|---|---|---|
-| `copilot` | GitHub Copilot CLI | `agents/*.agent.md` (canonical) | `~/.copilot/installed-plugins/_direct/agent-cortex` |
-| `pi` | pi coding agent | `agents/*.agent.md` (canonical) | `~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex` |
+| `copilot` | GitHub Copilot CLI | `agents/<name>/` composable dirs → generated `agents/*.agent.md` | `~/.copilot/installed-plugins/_direct/agent-cortex` |
+| `pi` | pi coding agent | `agents/<name>/` composable dirs (composed at runtime by agent-modes) | `~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex` |
 | `claude` | Claude Code | `claude/agents/*.md` (generated) | `${CLAUDE_PLUGIN_ROOT}` (env var) |
 
 The harness ids match the values accepted by `agent-cortex install <harness>` in
@@ -40,12 +40,12 @@ rather than inventing a dotted form:
 
 ### 2. What is mapped
 
-- **`tools`** — the twelve canonical tool names as authored in `agents/*.agent.md`
+- **`tools`** — the twelve canonical tool names as authored in `agents/<name>/agent.md`
   (copilot names are the authoring names). Each row gives the equivalent tool name per
-  harness. Source of truth for the copilot → claude half is the `TOOL_MAP` in
-  `scripts/build-claude-agents.mjs` (PR #57); the pi column is grounded in pi's documented
-  built-in tool surface (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) plus
-  `task` / `read_agent` subagents.
+  harness. Source of truth for the copilot → claude half is `token-map.json`'s own claude
+  column, consumed by `scripts/build-claude-agents.mjs` (PR #57); the pi column is grounded
+  in pi's documented built-in tool surface (`read`, `bash`, `edit`, `write`, `grep`, `find`,
+  `ls`) plus `task` / `read_agent` subagents.
 - **`paths`** — `plugin_root`, `agents_dir`, and `skills_dir`. These are the install-time
   variables that differ per harness. `plugin_root` is the anchor; the other two resolve
   relative to it (`{base, relative}` specs) so a harness only overrides the single root it
@@ -98,9 +98,10 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
 
 - Write tokens with the **canonical (copilot) names**: `Use {{TOOL:task}} to spawn
   subagents`, `Read {{PATH:skills/workflow/plan/SKILL.md}}`.
-- Never embed a harness-specific name in the canonical sources (`agents/*.agent.md`,
-  `skills/**/SKILL.md`) — that defeats the map. The generated `claude/` subtree and any
-  installed copies are the only places substituted names appear.
+- Never embed a harness-specific name in the canonical sources (`agents/<name>/agent.md`,
+  `skills/**/SKILL.md`) — that defeats the map. The generated `claude/` subtree, the
+  generated `agents/*.agent.md` files, and any installed copies are the only places
+  substituted names appear.
 - When you add a new tool to an agent's frontmatter, add a row to `tools` in
   `token-map.json` in the same change — the contract treats unknown tools as errors, so a
   missing row breaks the install pipeline loudly instead of silently.
@@ -109,7 +110,8 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
 
 - `agents/README.md` — composable agent directory format (ADR #63), defines the token
   grammar the map implements.
-- `scripts/build-claude-agents.mjs` — PR #57 build script whose `TOOL_MAP` is the
-  reference data for the copilot → claude half of `tools`.
+- `scripts/build-copilot-agents.mjs` / `scripts/build-claude-agents.mjs` — the token
+  composer (scripts/lib/compose-agent.mjs) resolves `{{TOOL:...}}` / `{{PATH:...}}` against
+  the map and `{{SECTION:...}}` from the per-harness section files.
 - `lib/cli.mjs` — `SUPPORTED_HARNESSES`, the install command surface the harness ids come
   from.

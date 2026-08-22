@@ -37,10 +37,10 @@ contract:
    location. Tools without a PI equivalent (`ask_user`, `skill`) are omitted
    from the tool set.
 
-Flat `agents/*.agent.md` files are still parsed as a fallback for agents that
-have not been migrated to composable directories (retained until the
-composer/installer migration). A composable directory always wins over its flat
-counterpart for the same agent id.
+Flat `agents/*.agent.md` files are parsed as a fallback when an agent has no
+composable directory — they are generated output (scripts/build-copilot-agents.mjs)
+but may exist for non-migrated agents. A composable directory always wins over its
+flat counterpart for the same agent id.
 
 ## Development
 

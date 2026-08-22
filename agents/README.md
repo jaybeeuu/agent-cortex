@@ -4,9 +4,9 @@ This document defines the canonical format for composable agent directories in a
 
 ## Motivation
 
-The current format uses a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This creates duplication when the same agent needs to run on multiple harnesses (PI, Copilot, Claude) with different tool names and polling mechanisms.
+The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Copilot, Claude) with different tool names and polling mechanisms.
 
-The new format separates concerns:
+The composable directory format separates concerns:
 
 - **Shared body**: Harness-agnostic instructions (workflow, branching model, constraints)
 - **Harness-specific frontmatter**: Tool names, model preferences, metadata per harness
@@ -195,10 +195,26 @@ agents/plan/
 ## Migration Path
 
 1. Define the format (this document)
-2. Migrate ralph agent first (proves the pattern)
-3. Migrate plan, ralph-plan, strategy agents
+2. Migrate ralph agent first (proves the pattern) — DONE
+3. Migrate plan, ralph-plan, strategy agents — DONE
 4. Update the installer/composer to handle the new format
-5. Remove old `*.agent.md` files
+5. Remove old `*.agent.md` files — DONE (the flat files are now **generated output**, see below)
+
+All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout and the
+flat `agents/*.agent.md` files are built from them:
+
+- `scripts/build-copilot-agents.mjs` (`pnpm build:copilot`) composes `agents/*.agent.md` from
+  each agent's `copilot/` harness dir — committed for Copilot CLI, which loads `*.agent.md`
+  from `plugin.json`'s `agents: "agents/"` path.
+- `scripts/build-claude-agents.mjs` (`pnpm build:claude`) composes `claude/agents/*.md` from
+  each agent's `claude/` harness dir (except `ralph`, which ships natively from
+  `agents-native/ralph.md`).
+- The pi harness needs no build step: the `agent-modes` extension composes `agent.md` +
+  `pi/frontmatter.json` at runtime and substitutes tokens against `token-map.json`.
+
+Never edit the generated flat/claude files by hand — edit the composable directory. CI
+regenerates both outputs and fails on drift. The install-time composer/installers (which
+will own full token/path resolution per harness) are tracked as separate workstreams.
 
 ## Validation
 

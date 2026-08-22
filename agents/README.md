@@ -145,6 +145,11 @@ When composing the final agent file for a specific harness:
    `token-map.json` — the canonical tool/path/agent names per harness. See the
    `contract` section of `token-map.json` and `token-map.README.md` for the rules.
 
+The pi harness's `agent-modes` extension is a runtime consumer of this format: it
+composes agent prompts on the fly from `agent.md` + `pi/frontmatter.json`, substituting
+tokens against `token-map.json`'s pi column with no install step. See
+`extensions/agent-modes/README.md`.
+
 ## Composition Rules
 
 ### For Harnesses with Sections

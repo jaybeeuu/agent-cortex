@@ -27,6 +27,7 @@ agent-cortex/
 │   ├── style/                #  style-code, style-tests, style-comms, style-documentation
 │   └── workflow/             #  ralph, run-pipeline-stage, create-task, …
 ├── extensions/               # pi extensions (pi only)
+│   ├── agent-modes/          #   switchable agent modes (reads composable agents/)
 │   ├── skill-stats/
 │   └── notify/
 ├── pi/                       # Global pi configuration (see below)

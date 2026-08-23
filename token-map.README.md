@@ -15,11 +15,14 @@ decisions behind the map.
 | id | Platform | Agent format | Plugin root |
 |---|---|---|---|
 | `copilot` | GitHub Copilot CLI | `agents/<name>/` composable dirs → generated `agents/*.agent.md` | `~/.copilot/installed-plugins/_direct/agent-cortex` |
-| `pi` | pi coding agent | `agents/<name>/` composable dirs (composed at runtime by agent-modes) | `~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex` |
+| `pi` | pi coding agent | `agents/<name>/` composable dirs (composed at runtime by agent-modes, or installed install-time by `agent-cortex install pi`) | `~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex` |
 | `claude` | Claude Code | `claude/agents/*.md` (generated) | `${CLAUDE_PLUGIN_ROOT}` (env var) |
 
 The harness ids match the values accepted by `agent-cortex install <harness>` in
-`lib/cli.mjs` (`SUPPORTED_HARNESSES`).
+`lib/cli.mjs` (`SUPPORTED_HARNESSES`). The pi `plugin_root` row is the npm-layout
+literal that `agent-cortex install pi` uses by default; local checkout and symlinked
+installs pass `--plugin-root <dir>` to override it (see README "Pi harness agents &
+skills").
 
 ## Design decisions
 
@@ -76,9 +79,10 @@ Unknown (unmapped) tokens are a **hard error**, not a null — a silently-passed
 token is exactly the bug the map exists to prevent, and mirrors the build script's
 `unknown tool "x"` throw.
 
-One consumer deviates from this rule deliberately: the pi `agent-modes` extension reads
-the map at **runtime** (not install time) to compose agent prompts from the composable
-agents format. For it, an unmapped tool name passes through unchanged — it may be a
+The pi install-time installer (`bin/installers/pi.mjs`) follows the strict contract above.
+One consumer deviates deliberately: the pi `agent-modes` extension reads the map at
+**runtime** (not install time) to compose agent prompts from the composable agents
+format. For it, an unmapped tool name passes through unchanged — it may be a
 native PI tool — while a mapped-null tool (`ask_user`, `skill`) is omitted with a
 warning. See `extensions/agent-modes/README.md`.
 
@@ -116,3 +120,5 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
   is the shared generator both `build:claude` and `agent-cortex install claude` run.
 - `lib/cli.mjs` — `SUPPORTED_HARNESSES`, the install command surface the harness ids come
   from.
+- `bin/installers/pi.mjs` — the pi harness installer (`agent-cortex install pi`), the
+  first install-time consumer of the map's contract.

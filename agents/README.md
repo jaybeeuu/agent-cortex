@@ -123,8 +123,8 @@ Tokens in agent.md reference tools, paths, and sections:
 
 | Token | Syntax | Description |
 |-------|--------|-------------|
-| Tool reference | `{{TOOL:name}}` | Canonical tool name; substituted per harness at install time from `token-map.json` |
-| Path reference | `{{PATH:path}}` | Canonical path name; resolved per harness at install time from `token-map.json` |
+| Tool reference | `{{TOOL:name}}` | Canonical tool name; resolved per harness from `token-map.json` |
+| Path reference | `{{PATH:path}}` | Canonical path name; resolved per harness from `token-map.json` |
 | Section include | `{{SECTION:name}}` | Include content from a section file in the harness directory (substituted by the composer) |
 
 ### Examples
@@ -141,9 +141,11 @@ When composing the final agent file for a specific harness:
 
 1. Start with agent.md content
 2. Replace `{{SECTION:name}}` with content from `<harness>/<name>.md`
-3. `{{TOOL:name}}` and `{{PATH:name}}` are substituted by the installer against
-   `token-map.json` — the canonical tool/path/agent names per harness. See the
-   `contract` section of `token-map.json` and `token-map.README.md` for the rules.
+3. `{{TOOL:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
+   canonical tool/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
+   `build:copilot` / `build:claude`) resolves them when generating the flat files; pi's
+   `agent-modes` extension does the same at runtime. See the `contract` section of
+   `token-map.json` and `token-map.README.md` for the rules.
 
 The pi harness's `agent-modes` extension is a runtime consumer of this format: it
 composes agent prompts on the fly from `agent.md` + `pi/frontmatter.json`, substituting
@@ -213,8 +215,9 @@ flat `agents/*.agent.md` files are built from them:
   `pi/frontmatter.json` at runtime and substitutes tokens against `token-map.json`.
 
 Never edit the generated flat/claude files by hand — edit the composable directory. CI
-regenerates both outputs and fails on drift. The install-time composer/installers (which
-will own full token/path resolution per harness) are tracked as separate workstreams.
+regenerates both outputs and fails on drift. The install-time installers (`agent-cortex
+install <harness>`), which will own token/path resolution in the installed context, are
+tracked as separate workstreams.
 
 ## Validation
 

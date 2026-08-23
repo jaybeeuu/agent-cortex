@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -78,14 +78,62 @@ describe("parseArgs", () => {
     assert.deepStrictEqual(result, { command: "install", harness: "claude", output: "/tmp/x", dryRun: true });
   });
 
-  it("returns unknown for an unrecognized flag", () => {
+  it("reports an unknown option for claude", () => {
     const result = parseArgs(["install", "claude", "--bogus"]);
-    assert.deepStrictEqual(result, { command: "unknown", name: "--bogus" });
+    assert.equal(result.command, "install");
+    assert.equal(result.harness, "claude");
+    assert.ok(result.optionError.includes("--bogus"));
   });
 
-  it("returns unknown for --output without a value", () => {
+  it("reports a missing value for --output for claude", () => {
     const result = parseArgs(["install", "claude", "--output"]);
-    assert.deepStrictEqual(result, { command: "unknown", name: "--output" });
+    assert.equal(result.command, "install");
+    assert.equal(result.harness, "claude");
+    assert.ok(result.optionError.includes("--output"));
+  });
+
+  it("parses --dry-run for install", () => {
+    const result = parseArgs(["install", "pi", "--dry-run"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "pi", dryRun: true });
+  });
+
+  it("parses --output <dir> for install", () => {
+    const result = parseArgs(["install", "pi", "--output", "/tmp/out"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "pi", output: "/tmp/out" });
+  });
+
+  it("parses --plugin-root <dir> for install", () => {
+    const result = parseArgs(["install", "pi", "--plugin-root", "/tmp/plugin"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "pi", pluginRoot: "/tmp/plugin" });
+  });
+
+  it("combines multiple install options", () => {
+    const result = parseArgs(["install", "pi", "--dry-run", "--output", "/tmp/out", "--plugin-root", "/tmp/plugin"]);
+    assert.deepStrictEqual(result, {
+      command: "install",
+      harness: "pi",
+      dryRun: true,
+      output: "/tmp/out",
+      pluginRoot: "/tmp/plugin",
+    });
+  });
+
+  it("reports a missing value for --output", () => {
+    const result = parseArgs(["install", "pi", "--output"]);
+    assert.equal(result.command, "install");
+    assert.equal(result.harness, "pi");
+    assert.ok(result.optionError.includes("--output"));
+  });
+
+  it("reports an unknown option", () => {
+    const result = parseArgs(["install", "pi", "--bogus"]);
+    assert.equal(result.command, "install");
+    assert.equal(result.harness, "pi");
+    assert.ok(result.optionError.includes("--bogus"));
+  });
+
+  it("keeps the old shape when no options are given", () => {
+    assert.deepStrictEqual(parseArgs(["install", "pi"]), { command: "install", harness: "pi" });
   });
 
   it("returns { command: 'unknown', name: 'foo' } for unknown command", () => {
@@ -166,6 +214,38 @@ describe("CLI integration", () => {
     const { exitCode, stderr } = await runCli(["install"]);
     assert.equal(exitCode, 1);
     assert.ok(stderr.includes("Missing harness"));
+  });
+
+  it("exits 1 and prints error for install with an unknown option", async () => {
+    const { exitCode, stderr } = await runCli(["install", "pi", "--bogus"]);
+    assert.equal(exitCode, 1);
+    assert.ok(stderr.includes("--bogus"));
+  });
+
+  it("exits 1 and prints error for install with a missing option value", async () => {
+    const { exitCode, stderr } = await runCli(["install", "pi", "--output"]);
+    assert.equal(exitCode, 1);
+    assert.ok(stderr.includes("--output"));
+  });
+
+  it("exits 0 for install pi --dry-run and writes nothing", async () => {
+    const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"]);
+    assert.equal(exitCode, 0);
+    assert.ok(stdout.includes("ralph.agent.md"));
+    assert.ok(stdout.includes("dry-run"));
+  });
+
+  it("exits 0 for install pi --output <tmp> and writes agent files", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "cli-pi-install-"));
+    try {
+      const { exitCode, stdout } = await runCli(["install", "pi", "--output", outDir]);
+      assert.equal(exitCode, 0);
+      assert.ok(stdout.includes("ralph.agent.md"));
+      const ralph = readFileSync(join(outDir, "agents", "ralph.agent.md"), "utf-8");
+      assert.ok(ralph.includes("agent-cortex:ralph"));
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 
   it("exits 1 and prints error for install with unknown harness", async () => {

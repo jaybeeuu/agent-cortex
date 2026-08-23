@@ -14,6 +14,19 @@
 // errors: a committed generated file must never ship a literal token or a
 // silently dropped section.
 //
+// Options (the pi installer passes `dropNullTools`, `pluginRoot` and
+// `resolveRelativePaths`; the build scripts use the strict defaults):
+//   dropNullTools          replace null-mapped tool tokens with an empty string and
+//                          warn instead of throwing (pi's prose rule per the
+//                          token-map contract)
+//   pluginRoot             override the plugin_root used for resolved paths
+//                          (installers compute it from the actual install layout)
+//   resolveRelativePaths   non-keyed {{PATH:...}} args resolve to pluginRoot/arg
+//                          instead of staying verbatim (install time; the build
+//                          scripts leave them bare for Copilot CLI resolution)
+//   warn                   callback for drop/omit warnings (default: no-op; the
+//                          pi installer collects them into its result)
+//
 // Zero dependencies so it runs on the CI Node (20) and local Node alike.
 
 import { readFileSync, existsSync } from "node:fs";
@@ -21,17 +34,66 @@ import { join } from "node:path";
 
 // ─── Token substitution ──────────────────────────────────────────────────────
 
-const TOKEN = /\{\{(SECTION|TOOL|PATH):([^}]+)\}\}/g;
+const TOOL_RE = /\{\{TOOL:([^}]+)\}\}/g;
+const PATH_RE = /\{\{PATH:([^}]+)\}\}/g;
+
+function noop() {}
+
+/**
+ * Substitute {{TOOL:...}} and {{PATH:...}} tokens in arbitrary content (agent
+ * bodies, skill files) against one harness column of token-map.json.
+ *
+ * - TOOL: unknown key → throw (the map must stay complete); null mapping → drop
+ *   with a warning when `dropNullTools`, otherwise throw.
+ * - PATH: named key → resolve through the paths table (plugin_root overridable);
+ *   non-keyed → join(pluginRoot, arg) when `resolveRelativePaths`, else verbatim.
+ * - SECTION tokens are *not* handled here — the agent composer resolves them from
+ *   the harness's section files before calling this.
+ *
+ * @param {string} content  Source text containing {{TOOL:...}}/{{PATH:...}} tokens
+ * @param {string} harness  Harness id: "copilot" | "claude" | "pi"
+ * @param {object} tokenMap Parsed token-map.json (from loadTokenMap)
+ * @param {object} options  { dropNullTools, pluginRoot, resolveRelativePaths, warn, context }
+ * @returns {string}
+ */
+export function substituteTokens(content, harness, tokenMap, options = {}) {
+  const { dropNullTools = false, pluginRoot, resolveRelativePaths = false, warn = noop, context = "" } = options;
+  const ctx = context ? `${context}: ` : "";
+
+  // 2. {{TOOL:key}} → token-map.json tools.<key>.<harness>
+  content = content.replace(TOOL_RE, (_token, key) => {
+    const entry = tokenMap.tools[key];
+    if (!entry) throw new Error(`${ctx}unknown tool token {{TOOL:${key}}} — extend token-map.json`);
+    const mapped = entry[harness];
+    if (mapped == null) {
+      if (dropNullTools) {
+        warn(`tool token {{TOOL:${key}}} has no ${harness} mapping — dropped`);
+        return "";
+      }
+      throw new Error(`${ctx}tool token {{TOOL:${key}}} has no ${harness} mapping (null) — drop the token in agent.md first`);
+    }
+    return mapped;
+  });
+
+  // 3. {{PATH:arg}} → named keys via token-map.json paths; relative paths verbatim
+  //    (or resolved against pluginRoot when the installer option is set)
+  content = content.replace(PATH_RE, (_token, arg) =>
+    resolvePath(arg, harness, tokenMap, { pluginRoot, resolveRelativePaths }),
+  );
+
+  return content;
+}
 
 /**
  * Compose the harness-specific agent content from a composable agent directory.
  *
  * @param {string} root    Package root (contains agents/ and token-map.json)
  * @param {string} name    Agent directory name (e.g. "ralph", "plan")
- * @param {string} harness Harness id: "copilot" | "claude"
- * @returns {{ name: string, description: string, tools: string[], argumentHint?: string, body: string }}
+ * @param {string} harness Harness id: "copilot" | "claude" | "pi"
+ * @returns {{ name: string, description: string, tools: string[], model?: string, argumentHint?: string, body: string }}
  */
-export function composeAgent(root, name, harness) {
+export function composeAgent(root, name, harness, options = {}) {
+  const { dropNullTools = false, pluginRoot, resolveRelativePaths = false, warn = noop } = options;
   const agentDir = join(root, "agents", name);
   const frontmatter = parseFrontmatter(join(agentDir, harness, "frontmatter.json"), name, harness);
   const tokenMap = loadTokenMap(root);
@@ -47,19 +109,14 @@ export function composeAgent(root, name, harness) {
     return readFileSync(sectionPath, "utf-8").trim();
   });
 
-  // 2. {{TOOL:key}} → token-map.json tools.<key>.<harness>
-  body = body.replace(/\{\{TOOL:([^}]+)\}\}/g, (_token, key) => {
-    const entry = tokenMap.tools[key];
-    if (!entry) throw new Error(`agent "${name}": unknown tool token {{TOOL:${key}}} — extend token-map.json`);
-    const mapped = entry[harness];
-    if (mapped == null) {
-      throw new Error(`agent "${name}": tool token {{TOOL:${key}}} has no ${harness} mapping (null) — drop the token in agent.md first`);
-    }
-    return mapped;
+  // 2. + 3. TOOL/PATH substitution (contextualised for error messages)
+  body = substituteTokens(body, harness, tokenMap, {
+    dropNullTools,
+    pluginRoot,
+    resolveRelativePaths,
+    warn,
+    context: `agent "${name}"`,
   });
-
-  // 3. {{PATH:arg}} → named keys via token-map.json paths; relative paths verbatim
-  body = body.replace(/\{\{PATH:([^}]+)\}\}/g, (_token, arg) => resolvePath(arg, harness, tokenMap));
 
   return { ...frontmatter, body: body.trim() };
 }
@@ -98,6 +155,7 @@ function parseFrontmatter(path, name, harness) {
     name: fm.name,
     description: fm.description,
     tools: fm.tools,
+    ...(typeof fm.model === "string" ? { model: fm.model } : {}),
     ...(typeof fm.argumentHint === "string" ? { argumentHint: fm.argumentHint } : {}),
   };
 }
@@ -109,17 +167,59 @@ function parseFrontmatter(path, name, harness) {
  * Named keys resolve through token-map.json's paths table (recursively for
  * {base, relative} specs); non-keyed args are relative paths, kept verbatim —
  * the installer beads own precise runtime path resolution (see token-map.README.md).
+ * With the installer options (`pluginRoot`, `resolveRelativePaths`) the
+ * plugin_root base and bare relative paths resolve against the actual install
+ * layout instead.
  */
-function resolvePath(arg, harness, tokenMap) {
+function resolvePath(arg, harness, tokenMap, opts = {}) {
   const entry = tokenMap.paths?.[arg];
-  if (!entry) return arg;
+  if (!entry) {
+    if (opts.resolveRelativePaths && opts.pluginRoot) return join(opts.pluginRoot, arg);
+    return arg;
+  }
 
   const spec = entry[harness];
-  if (typeof spec === "string") return spec;
+  if (typeof spec === "string") {
+    if (arg === "plugin_root" && opts.pluginRoot) return opts.pluginRoot;
+    return spec;
+  }
   if (spec && typeof spec === "object" && typeof spec.base === "string" && typeof spec.relative === "string") {
-    return join(resolvePath(spec.base, harness, tokenMap), spec.relative);
+    return join(resolvePath(spec.base, harness, tokenMap, opts), spec.relative);
   }
   throw new Error(`unresolvable {{PATH:${arg}}} for harness "${harness}" — extend token-map.json`);
+}
+
+/**
+ * Translate a frontmatter tool list into one harness's tool names.
+ *
+ * Canonical keys resolve through token-map.json's tools table; a null mapping
+ * means the harness has no equivalent and the entry is omitted (the contract's
+ * tool-list rule); a name that is not a canonical key passes through untouched
+ * (it may be a native tool, e.g. pi's fetch_content). Mirrors the runtime
+ * translation in extensions/agent-modes/discover.ts.
+ *
+ * @param {string[]} tools  Canonical tool names from a harness frontmatter.json
+ * @param {object} tokenMap Parsed token-map.json (from loadTokenMap)
+ * @param {string} harness  Harness id: "copilot" | "claude" | "pi"
+ * @param {object} options  { warn }
+ * @returns {string[]}
+ */
+export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}) {
+  const out = [];
+  for (const tool of tools) {
+    const mapping = tokenMap.tools[tool];
+    if (mapping === undefined) {
+      out.push(tool);
+      continue;
+    }
+    const mapped = mapping[harness];
+    if (mapped == null) {
+      warn(`tool "${tool}" has no ${harness} mapping — omitted from the tool list`);
+      continue;
+    }
+    out.push(mapped);
+  }
+  return out;
 }
 
 // ─── Token map ───────────────────────────────────────────────────────────────

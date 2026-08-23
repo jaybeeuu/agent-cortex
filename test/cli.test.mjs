@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
@@ -54,6 +56,36 @@ describe("parseArgs", () => {
   it("returns { command: 'install', harness: null } when install has no harness", () => {
     const result = parseArgs(["install"]);
     assert.deepStrictEqual(result, { command: "install", harness: null });
+  });
+
+  it("returns output for install claude --output <dir>", () => {
+    const result = parseArgs(["install", "claude", "--output", "/tmp/x"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "claude", output: "/tmp/x" });
+  });
+
+  it("returns output for install claude --output=<dir>", () => {
+    const result = parseArgs(["install", "claude", "--output=/tmp/x"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "claude", output: "/tmp/x" });
+  });
+
+  it("returns dryRun for install claude --dry-run", () => {
+    const result = parseArgs(["install", "claude", "--dry-run"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "claude", dryRun: true });
+  });
+
+  it("combines --dry-run with --output", () => {
+    const result = parseArgs(["install", "claude", "--output", "/tmp/x", "--dry-run"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "claude", output: "/tmp/x", dryRun: true });
+  });
+
+  it("returns unknown for an unrecognized flag", () => {
+    const result = parseArgs(["install", "claude", "--bogus"]);
+    assert.deepStrictEqual(result, { command: "unknown", name: "--bogus" });
+  });
+
+  it("returns unknown for --output without a value", () => {
+    const result = parseArgs(["install", "claude", "--output"]);
+    assert.deepStrictEqual(result, { command: "unknown", name: "--output" });
   });
 
   it("returns { command: 'unknown', name: 'foo' } for unknown command", () => {
@@ -117,8 +149,9 @@ describe("CLI integration", () => {
     assert.ok(stdout.includes("copilot"));
   });
 
-  it("exits 0 for install claude", async () => {
-    const { exitCode, stdout } = await runCli(["install", "claude"]);
+  it("exits 0 for install claude (into a temp output dir)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agent-cortex-cli-"));
+    const { exitCode, stdout } = await runCli(["install", "claude", "--output", dir]);
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes("claude"));
   });

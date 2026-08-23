@@ -34,16 +34,20 @@ agent-cortex/
 │   └── settings.json
 ├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
 ├── token-map.README.md       # design decisions behind token-map.json
+├── bin/
+│   ├── agent-cortex.mjs      # CLI entrypoint
+│   └── installers/
+│       └── claude.mjs        # shared generator: agent-cortex install claude + scripts/build-claude-agents.mjs
 ├── scripts/
 │   ├── build-copilot-agents.mjs  # composes agents/*.agent.md from the composable dirs (Copilot/pi format)
-│   └── build-claude-agents.mjs   # builds the claude/ subtree from the sources above
+│   └── build-claude-agents.mjs   # thin wrapper over bin/installers/claude.mjs (regenerates committed claude/)
 └── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
     ├── .claude-plugin/
     │   └── plugin.json
-    ├── .mcp.json             #  MCP servers (context7, github)
-    ├── hooks.json            #  SessionStart hooks (beads context + style policy)
+    ├── .mcp.json             #  MCP servers (context7, github) — hand-authored
+    ├── hooks.json            #  SessionStart hooks (beads context + style policy) — generated from hooks/claude/
     ├── agents/               #  composed from agents/<name>/claude/ + copied from agents-native/
-    └── skills/               #  symlinks to the grouped skills/ dirs (28 skills)
+    └── skills/               #  symlinks to the grouped skills/ dirs (29 skills)
 ```
 
 The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
@@ -54,8 +58,10 @@ and pi keep loading the agents — don't hand-edit them.
 The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
-The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
-(`pnpm build:claude`) and committed; CI checks both generated outputs are never stale:
+The `claude/` subtree is **generated** by the shared installer
+(`agent-cortex install claude`, or `scripts/build-claude-agents.mjs` via `pnpm build:claude` —
+both run the same `bin/installers/claude.mjs` code path, so install-time and build-time output
+can never diverge) and committed; CI regenerates and checks it is never stale:
 
 - **Skills** stay single-source — `claude/skills/<name>` are symlinks into the grouped
   `skills/<group>/<name>` dirs (Claude discovers skills only one level deep, so the
@@ -69,9 +75,13 @@ The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
   copied verbatim into `claude/agents/`. `ralph` is one: it is reimplemented for Claude around
   background workers + an independent review gate (the Copilot Ralph's `task`/`read_agent`
   poll loop has no Claude equivalent), so it can't be mechanically converted.
+- **Manifests** are generated too: `claude/.claude-plugin/plugin.json` (its `version` tracks
+  `package.json`, so it never goes stale) and `claude/hooks.json` (copied from the canonical
+  `hooks/claude/hooks.json` source). `claude/.mcp.json` and `claude/scripts/` stay hand-authored.
 
-Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`), never
-anything under `claude/` or the generated `agents/*.agent.md` files.
+Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
+`hooks/claude/`, `package.json`), never anything under `claude/` or the generated
+`agents/*.agent.md` files.
 
 ## CI
 
@@ -140,7 +150,7 @@ copilot plugin install ./agent-cortex
 
 The Claude plugin is the self-contained `claude/` subtree (manifest at
 `claude/.claude-plugin/plugin.json`), containing **4 agents** (`strategy`, `plan`,
-`ralph-plan`, `ralph`), **28 skills**, a `SessionStart` hook, and 2 MCP servers.
+`ralph-plan`, `ralph`), **29 skills**, a `SessionStart` hook, and 2 MCP servers.
 
 `claude/` is committed, so a fresh clone is installable as-is. If you change the sources,
 rebuild it (both generators are zero-dependency Node scripts):
@@ -148,6 +158,10 @@ rebuild it (both generators are zero-dependency Node scripts):
 ```sh
 pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
 pnpm build:claude    # or: node scripts/build-claude-agents.mjs
+# or the install-time entry (same generator, less typing):
+node bin/agent-cortex.mjs install claude          # regenerates ./claude in place
+node bin/agent-cortex.mjs install claude --dry-run       # plan only, no writes
+node bin/agent-cortex.mjs install claude --output /tmp/x # write the subtree elsewhere
 ```
 
 #### Try it for one session
@@ -237,9 +251,11 @@ corresponding work; the style skills' descriptions are also written to auto-trig
 
 Edit the **sources** — the composable `agents/<name>/` directories (shared `agent.md` +
 per-harness frontmatter/sections, auto-composed by `scripts/build-copilot-agents.mjs` and
-`scripts/build-claude-agents.mjs`), `agents-native/*.md` (Claude-only agents like `ralph`),
-and `skills/**` — then run `pnpm build:copilot && pnpm build:claude`. Never hand-edit anything
-under `claude/` (except the hand-authored `claude/hooks.json`, `claude/.mcp.json`, and
-`claude/.claude-plugin/plugin.json`) or the generated `agents/*.agent.md` files. CI runs
-`git diff --exit-code claude/agents/ claude/skills/` and `git diff --exit-code -- 'agents/*.agent.md'`
-so the generated outputs can never drift.
+the shared `bin/installers/claude.mjs`), `agents-native/*.md` (Claude-only agents like
+`ralph`), `skills/**`, `hooks/claude/hooks.json` (hook config), and `package.json` (plugin
+version) — then run `pnpm build:claude` (or `agent-cortex install claude`). Never hand-edit
+anything under `claude/` except the hand-authored `claude/.mcp.json` and `claude/scripts/`
+files, or the generated `agents/*.agent.md` files, `claude/agents/`, `claude/skills/`,
+`claude/.claude-plugin/plugin.json`, and `claude/hooks.json`. CI runs
+`git diff --exit-code claude/agents/ claude/skills/ claude/.claude-plugin/plugin.json claude/hooks.json`
+and `git diff --exit-code -- 'agents/*.agent.md'` so the generated outputs can never drift.

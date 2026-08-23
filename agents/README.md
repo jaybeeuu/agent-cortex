@@ -216,8 +216,9 @@ flat `agents/*.agent.md` files are built from them:
 
 Never edit the generated flat/claude files by hand — edit the composable directory. CI
 regenerates both outputs and fails on drift. The install-time installers (`agent-cortex
-install <harness>`), which will own token/path resolution in the installed context, are
-tracked as separate workstreams.
+install <harness>`) run the same generators in the installed context: `claude` ships today
+(`bin/installers/claude.mjs` is the shared code path behind both `agent-cortex install
+claude` and `scripts/build-claude-agents.mjs`); `copilot` and `pi` are separate workstreams.
 
 ## Validation
 

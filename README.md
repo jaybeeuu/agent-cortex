@@ -11,8 +11,8 @@ agent-cortex/
 ├── plugin.json               # Copilot plugin manifest
 ├── .claude-plugin/
 │   └── marketplace.json      # Claude marketplace (exposes ./claude as the "jaybeeuu" market)
-├── agents/                   # Canonical agents — flat *.agent.md (Copilot/pi format) + composable <name>/ dirs (see agents/README.md)
-│   ├── *.agent.md            #   ralph, ralph-plan, plan, strategy — flat form, live until the composer/installer migration
+├── agents/                   # Canonical agents — composable <name>/ dirs (see agents/README.md)
+│   ├── *.agent.md            #   ralph, ralph-plan, plan, strategy — GENERATED from <name>/ by scripts/build-copilot-agents.mjs
 │   ├── ralph/                #   composable form (shared agent.md + per-harness pi/, copilot/, claude/)
 │   ├── plan/                 #   "
 │   ├── ralph-plan/           #   "
@@ -35,37 +35,43 @@ agent-cortex/
 ├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
 ├── token-map.README.md       # design decisions behind token-map.json
 ├── scripts/
+│   ├── build-copilot-agents.mjs  # composes agents/*.agent.md from the composable dirs (Copilot/pi format)
 │   └── build-claude-agents.mjs   # builds the claude/ subtree from the sources above
 └── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
     ├── .claude-plugin/
     │   └── plugin.json
     ├── .mcp.json             #  MCP servers (context7, github)
     ├── hooks.json            #  SessionStart hooks (beads context + style policy)
-    ├── agents/               #  generated from agents/*.agent.md + copied from agents-native/
+    ├── agents/               #  composed from agents/<name>/claude/ + copied from agents-native/
     └── skills/               #  symlinks to the grouped skills/ dirs (28 skills)
 ```
 
 The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
+The composable `agents/<name>/` directories are the single source of truth; the flat
+`agents/*.agent.md` files are **generated** by `scripts/build-copilot-agents.mjs`
+(`pnpm build:copilot`) and committed so Copilot CLI (plugin.json `agents: "agents/"`)
+and pi keep loading the agents — don't hand-edit them.
 The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
 The `claude/` subtree is **generated** by `scripts/build-claude-agents.mjs`
-(`pnpm build:claude`) and committed; CI checks it is never stale:
+(`pnpm build:claude`) and committed; CI checks both generated outputs are never stale:
 
 - **Skills** stay single-source — `claude/skills/<name>` are symlinks into the grouped
   `skills/<group>/<name>` dirs (Claude discovers skills only one level deep, so the
   grouping is flattened via links, not copies).
 - **Agents** can't be shared files (the frontmatter formats differ), so `claude/agents/*.md`
-  are converted from the canonical `agents/*.agent.md`. Claude only loads agents from a
-  plugin's default `agents/` dir, so the plugin root is `claude/` — isolating it from the
-  Copilot `.agent.md` files.
+  are composed from the canonical `agents/<name>/` directories' `claude/` harness dirs
+  (frontmatter.json + section files), exactly like the Copilot flats are composed from their
+  `copilot/` dirs. Claude only loads agents from a plugin's default `agents/` dir, so the plugin
+  root is `claude/` — isolating it from the Copilot `.agent.md` files.
 - **Claude-native agents** that have no Copilot equivalent live in `agents-native/*.md` and are
   copied verbatim into `claude/agents/`. `ralph` is one: it is reimplemented for Claude around
   background workers + an independent review gate (the Copilot Ralph's `task`/`read_agent`
   poll loop has no Claude equivalent), so it can't be mechanically converted.
 
-Edit the sources (`agents/*.agent.md`, `agents-native/*.md`, `skills/**`), never anything
-under `claude/`.
+Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`), never
+anything under `claude/` or the generated `agents/*.agent.md` files.
 
 ## CI
 
@@ -137,9 +143,10 @@ The Claude plugin is the self-contained `claude/` subtree (manifest at
 `ralph-plan`, `ralph`), **28 skills**, a `SessionStart` hook, and 2 MCP servers.
 
 `claude/` is committed, so a fresh clone is installable as-is. If you change the sources,
-rebuild it (the generator is a zero-dependency Node script):
+rebuild it (both generators are zero-dependency Node scripts):
 
 ```sh
+pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
 pnpm build:claude    # or: node scripts/build-claude-agents.mjs
 ```
 
@@ -228,8 +235,11 @@ corresponding work; the style skills' descriptions are also written to auto-trig
 
 #### Contributing to the Claude plugin
 
-Edit the **sources** — `agents/*.agent.md` (Copilot format, auto-converted),
-`agents-native/*.md` (Claude-only agents like `ralph`), and `skills/**` — then run
-`pnpm build:claude`. Never hand-edit anything under `claude/` (except the hand-authored
-`claude/hooks.json`, `claude/.mcp.json`, and `claude/.claude-plugin/plugin.json`). CI runs
-`git diff --exit-code claude/agents/ claude/skills/` so the generated tree can never drift.
+Edit the **sources** — the composable `agents/<name>/` directories (shared `agent.md` +
+per-harness frontmatter/sections, auto-composed by `scripts/build-copilot-agents.mjs` and
+`scripts/build-claude-agents.mjs`), `agents-native/*.md` (Claude-only agents like `ralph`),
+and `skills/**` — then run `pnpm build:copilot && pnpm build:claude`. Never hand-edit anything
+under `claude/` (except the hand-authored `claude/hooks.json`, `claude/.mcp.json`, and
+`claude/.claude-plugin/plugin.json`) or the generated `agents/*.agent.md` files. CI runs
+`git diff --exit-code claude/agents/ claude/skills/` and `git diff --exit-code -- 'agents/*.agent.md'`
+so the generated outputs can never drift.

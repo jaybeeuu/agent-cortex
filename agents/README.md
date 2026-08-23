@@ -4,9 +4,9 @@ This document defines the canonical format for composable agent directories in a
 
 ## Motivation
 
-The current format uses a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This creates duplication when the same agent needs to run on multiple harnesses (PI, Copilot, Claude) with different tool names and polling mechanisms.
+The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Copilot, Claude) with different tool names and polling mechanisms.
 
-The new format separates concerns:
+The composable directory format separates concerns:
 
 - **Shared body**: Harness-agnostic instructions (workflow, branching model, constraints)
 - **Harness-specific frontmatter**: Tool names, model preferences, metadata per harness
@@ -123,8 +123,8 @@ Tokens in agent.md reference tools, paths, and sections:
 
 | Token | Syntax | Description |
 |-------|--------|-------------|
-| Tool reference | `{{TOOL:name}}` | Canonical tool name; substituted per harness at install time from `token-map.json` |
-| Path reference | `{{PATH:path}}` | Canonical path name; resolved per harness at install time from `token-map.json` |
+| Tool reference | `{{TOOL:name}}` | Canonical tool name; resolved per harness from `token-map.json` |
+| Path reference | `{{PATH:path}}` | Canonical path name; resolved per harness from `token-map.json` |
 | Section include | `{{SECTION:name}}` | Include content from a section file in the harness directory (substituted by the composer) |
 
 ### Examples
@@ -141,9 +141,11 @@ When composing the final agent file for a specific harness:
 
 1. Start with agent.md content
 2. Replace `{{SECTION:name}}` with content from `<harness>/<name>.md`
-3. `{{TOOL:name}}` and `{{PATH:name}}` are substituted by the installer against
-   `token-map.json` — the canonical tool/path/agent names per harness. See the
-   `contract` section of `token-map.json` and `token-map.README.md` for the rules.
+3. `{{TOOL:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
+   canonical tool/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
+   `build:copilot` / `build:claude`) resolves them when generating the flat files; pi's
+   `agent-modes` extension does the same at runtime. See the `contract` section of
+   `token-map.json` and `token-map.README.md` for the rules.
 
 The pi harness's `agent-modes` extension is a runtime consumer of this format: it
 composes agent prompts on the fly from `agent.md` + `pi/frontmatter.json`, substituting
@@ -195,10 +197,27 @@ agents/plan/
 ## Migration Path
 
 1. Define the format (this document)
-2. Migrate ralph agent first (proves the pattern)
-3. Migrate plan, ralph-plan, strategy agents
+2. Migrate ralph agent first (proves the pattern) — DONE
+3. Migrate plan, ralph-plan, strategy agents — DONE
 4. Update the installer/composer to handle the new format
-5. Remove old `*.agent.md` files
+5. Remove old `*.agent.md` files — DONE (the flat files are now **generated output**, see below)
+
+All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout and the
+flat `agents/*.agent.md` files are built from them:
+
+- `scripts/build-copilot-agents.mjs` (`pnpm build:copilot`) composes `agents/*.agent.md` from
+  each agent's `copilot/` harness dir — committed for Copilot CLI, which loads `*.agent.md`
+  from `plugin.json`'s `agents: "agents/"` path.
+- `scripts/build-claude-agents.mjs` (`pnpm build:claude`) composes `claude/agents/*.md` from
+  each agent's `claude/` harness dir (except `ralph`, which ships natively from
+  `agents-native/ralph.md`).
+- The pi harness needs no build step: the `agent-modes` extension composes `agent.md` +
+  `pi/frontmatter.json` at runtime and substitutes tokens against `token-map.json`.
+
+Never edit the generated flat/claude files by hand — edit the composable directory. CI
+regenerates both outputs and fails on drift. The install-time installers (`agent-cortex
+install <harness>`), which will own token/path resolution in the installed context, are
+tracked as separate workstreams.
 
 ## Validation
 

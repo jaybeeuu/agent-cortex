@@ -1,9 +1,15 @@
-// Builds the self-contained Claude Code plugin subtree at claude/ from the canonical
-// Copilot sources. The Copilot files (agents/*.agent.md) and the grouped skills/ tree
-// stay the single source of truth; the claude/ subtree is generated and committed.
-// CI runs this and checks `git diff --exit-code claude/` to guarantee it is never stale.
+// Builds the self-contained Claude Code plugin subtree at claude/ from the
+// canonical composable agent sources (agents/<name>/) and the grouped skills/
+// tree. Those stay the single source of truth; the claude/ subtree is generated
+// and committed. CI runs this and checks `git diff --exit-code claude/` to
+// guarantee it is never stale.
 //
-//   claude/agents/*.md   generated from agents/*.agent.md (frontmatter + tools converted)
+//   claude/agents/<slug>.md  composed from agents/<name>/agent.md +
+//                            agents/<name>/claude/frontmatter.json +
+//                            agents/<name>/claude/<section>.md ({{SECTION:...}}),
+//                            with {{TOOL:...}}/{{PATH:...}} substituted against
+//                            the claude column of token-map.json. Agents in the
+//                            DEFER set ship instead from agents-native/<name>.md.
 //   claude/skills/<name> symlinks to the grouped skills/<group>/<name> dirs (single source)
 //
 // Claude only loads agents from the default ./agents/ dir of the plugin root (custom
@@ -13,9 +19,10 @@
 // Run: pnpm build:claude   (node scripts/build-claude-agents.mjs)
 // Zero dependencies so it runs on the CI Node (20) and local Node alike.
 
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, symlinkSync, statSync, copyFileSync, existsSync } from "node:fs";
+import { readdirSync, writeFileSync, mkdirSync, rmSync, symlinkSync, statSync, copyFileSync, existsSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { composeAgent } from "./lib/compose-agent.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const AGENT_SRC = join(ROOT, "agents");
@@ -24,77 +31,23 @@ const SKILL_SRC = join(ROOT, "skills");
 const AGENT_OUT = join(ROOT, "claude", "agents");
 const SKILL_OUT = join(ROOT, "claude", "skills");
 
-// Copilot tool name -> Claude tool name. `null` = drop (no Claude equivalent).
-const TOOL_MAP = {
-  bash: "Bash",
-  view: "Read",
-  edit: "Edit",
-  create: "Write",
-  grep: "Grep",
-  rg: "Grep",
-  glob: "Glob",
-  ask_user: "AskUserQuestion",
-  web_fetch: "WebFetch",
-  skill: "Skill",
-  task: "Task",
-  read_agent: null, // Claude's Task returns results inline; no separate read step.
-};
-
-// Agents NOT transformed from the Copilot source. `ralph` is authored natively for Claude
+// Agents NOT transformed from the composable sources. `ralph` is authored natively for Claude
 // instead (agents-native/ralph.md) — its event-driven orchestration can't be produced by
-// token substitution from the poll-loop Copilot source.
+// section composition from the poll-loop sources.
 const DEFER = new Set(["ralph"]);
 
 // Ralph-coupled Copilot skills that don't apply to the lean Claude Ralph (and carry dead
 // ~/.copilot orchestration paths). Not symlinked into the Claude plugin.
 const SKILL_EXCLUDE = new Set(["ralph", "run-pipeline-stage"]);
 
-const COPILOT_PLUGIN_ROOT = "~/.copilot/installed-plugins/_direct/agent-cortex";
-const CLAUDE_PLUGIN_ROOT = "${CLAUDE_PLUGIN_ROOT}";
 const NAME_PREFIX = "agent-cortex:";
 
-function parseFrontmatter(text, file) {
-  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!m) throw new Error(`${file}: no YAML frontmatter found`);
-  return { fm: m[1], body: text.slice(m[0].length) };
-}
-
-function scalarLine(fm, key) {
-  const m = fm.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m"));
-  return m ? m[1] : undefined;
-}
-
-function stripQuotes(s) {
-  return s === undefined ? undefined : s.replace(/^["']([\s\S]*)["']$/, "$1");
-}
-
-function mapTools(fm, file) {
-  const raw = scalarLine(fm, "tools");
-  if (!raw) throw new Error(`${file}: no tools field`);
-  let list;
+function isFile(p) {
   try {
-    list = JSON.parse(raw);
+    return statSync(p).isFile();
   } catch {
-    throw new Error(`${file}: tools is not a JSON array: ${raw}`);
+    return false;
   }
-  const out = [];
-  for (const t of list) {
-    if (!(t in TOOL_MAP)) throw new Error(`${file}: unknown tool "${t}" — extend TOOL_MAP`);
-    const mapped = TOOL_MAP[t];
-    if (mapped && !out.includes(mapped)) out.push(mapped);
-  }
-  return out;
-}
-
-// Rewrite harness-specific tokens in the prose body: exact backticked tool names and
-// the hardcoded Copilot plugin path. Only touches `\`token\`` so shell snippets like
-// `bd create` inside code fences are untouched.
-function transformBody(body) {
-  let out = body;
-  for (const [copilot, claude] of Object.entries(TOOL_MAP)) {
-    if (claude) out = out.split("`" + copilot + "`").join("`" + claude + "`");
-  }
-  return out.split(COPILOT_PLUGIN_ROOT).join(CLAUDE_PLUGIN_ROOT);
 }
 
 function buildAgents() {
@@ -103,37 +56,36 @@ function buildAgents() {
 
   const written = [];
   const skipped = [];
-  for (const file of readdirSync(AGENT_SRC).filter((f) => f.endsWith(".agent.md")).sort()) {
-    const { fm, body } = parseFrontmatter(readFileSync(join(AGENT_SRC, file), "utf8"), file);
+  const entries = readdirSync(AGENT_SRC, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
 
-    const rawName = stripQuotes(scalarLine(fm, "name"));
-    if (!rawName) throw new Error(`${file}: no name field`);
-    const slug = rawName.startsWith(NAME_PREFIX) ? rawName.slice(NAME_PREFIX.length) : rawName;
-    if (DEFER.has(slug)) {
-      skipped.push(slug);
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(AGENT_SRC, entry.name);
+    if (!isFile(join(dir, "agent.md")) || !isFile(join(dir, "claude", "frontmatter.json"))) continue;
+
+    if (DEFER.has(entry.name)) {
+      skipped.push(entry.name);
       continue;
     }
 
-    const description = scalarLine(fm, "description");
-    if (!description) throw new Error(`${file}: no description field`);
-
+    const fm = composeAgent(ROOT, entry.name, "claude");
+    const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
     const header =
       `---\n` +
-      `# GENERATED from agents/${file} by scripts/build-claude-agents.mjs — DO NOT EDIT.\n` +
+      `# GENERATED from agents/${entry.name}/ by scripts/build-claude-agents.mjs — DO NOT EDIT.\n` +
       `name: ${slug}\n` +
-      `description: ${description}\n` +
-      `tools: ${mapTools(fm, file).join(", ")}\n` +
+      `description: ${JSON.stringify(fm.description)}\n` +
+      `tools: ${fm.tools.join(", ")}\n` +
       `---\n`;
-    const out = `${header}\n${transformBody(body).replace(/^\r?\n+/, "").replace(/\s*$/, "")}\n`;
-    writeFileSync(join(AGENT_OUT, `${slug}.md`), out);
+    writeFileSync(join(AGENT_OUT, `${slug}.md`), `${header}\n${fm.body}\n`);
     written.push(slug);
   }
   console.log(`Generated ${written.length} Claude agent(s): ${written.join(", ")}`);
-  if (skipped.length) console.log(`Skipped Copilot source(s): ${skipped.join(", ")}`);
+  if (skipped.length) console.log(`Skipped composable source(s): ${skipped.join(", ")}`);
 }
 
 // Copy hand-authored Claude-native agents into claude/agents/ verbatim, alongside the
-// generated ones. These have no Copilot source (their bodies differ structurally per harness).
+// generated ones. These have no composable body (their bodies differ structurally per harness).
 function copyNativeAgents() {
   if (!existsSync(NATIVE_SRC)) return;
   const copied = [];

@@ -112,6 +112,7 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
   grammar the map implements.
 - `scripts/build-copilot-agents.mjs` / `scripts/build-claude-agents.mjs` — the token
   composer (scripts/lib/compose-agent.mjs) resolves `{{TOOL:...}}` / `{{PATH:...}}` against
-  the map and `{{SECTION:...}}` from the per-harness section files.
+  the map and `{{SECTION:...}}` from the per-harness section files. `bin/installers/claude.mjs`
+  is the shared generator both `build:claude` and `agent-cortex install claude` run.
 - `lib/cli.mjs` — `SUPPORTED_HARNESSES`, the install command surface the harness ids come
   from.

@@ -16,7 +16,7 @@
   "scripts": {
     "build": "echo 'Build complete — no compilation needed for PI package'",
     "lint": "pnpm typecheck",
-    "test": "pnpm -r test",
+    "test": "node --test test/*.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "build:claude": "node scripts/build-claude-agents.mjs",
     "build:copilot": "node scripts/build-copilot-agents.mjs",

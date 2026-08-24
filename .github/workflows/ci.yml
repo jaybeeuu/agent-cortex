@@ -175,6 +175,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `pnpm build:claude` is an alias of `agent-cortex install claude` (both run
+      # bin/installers/claude.mjs), so this drift check proves the committed subtree
+      # equals the installer's output — stale output or hand-edits to generated
+      # files fail the build. The subtree stays committed because the marketplace
+      # install flow reads it straight from the working tree (fresh clone installs
+      # as-is).
       - name: Check generated Claude plugin is up to date
         run: |
           pnpm build:claude

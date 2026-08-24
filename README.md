@@ -37,10 +37,9 @@ agent-cortex/
 ├── bin/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
-│       └── claude.mjs        # shared generator: agent-cortex install claude + scripts/build-claude-agents.mjs
+│       └── claude.mjs        # the ONLY generator — agent-cortex install claude (pnpm build:claude aliases it)
 ├── scripts/
-│   ├── build-copilot-agents.mjs  # composes agents/*.agent.md from the composable dirs (Copilot/pi format)
-│   └── build-claude-agents.mjs   # thin wrapper over bin/installers/claude.mjs (regenerates committed claude/)
+│   └── build-copilot-agents.mjs  # composes agents/*.agent.md from the composable dirs (Copilot/pi format)
 └── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
     ├── .claude-plugin/
     │   └── plugin.json
@@ -58,10 +57,11 @@ and pi keep loading the agents — don't hand-edit them.
 The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
-The `claude/` subtree is **generated** by the shared installer
-(`agent-cortex install claude`, or `scripts/build-claude-agents.mjs` via `pnpm build:claude` —
-both run the same `bin/installers/claude.mjs` code path, so install-time and build-time output
-can never diverge) and committed; CI regenerates and checks it is never stale:
+The `claude/` subtree is **generated** by the install-time generator
+(`bin/installers/claude.mjs`) — `pnpm build:claude` is a pure alias of
+`agent-cortex install claude`, so there is no separate build-time code path, and the
+committed subtree can never diverge from a real install. CI regenerates it and checks
+it is never stale:
 
 - **Skills** stay single-source — `claude/skills/<name>` are symlinks into the grouped
   `skills/<group>/<name>` dirs (Claude discovers skills only one level deep, so the
@@ -175,12 +175,13 @@ The Claude plugin is the self-contained `claude/` subtree (manifest at
 `claude/.claude-plugin/plugin.json`), containing **4 agents** (`strategy`, `plan`,
 `ralph-plan`, `ralph`), **29 skills**, a `SessionStart` hook, and 2 MCP servers.
 
-`claude/` is committed, so a fresh clone is installable as-is. If you change the sources,
-rebuild it (both generators are zero-dependency Node scripts):
+`claude/` is committed (the marketplace install flow reads it straight from the working
+tree, so a fresh clone installs as-is), and rebuilt via the install-time generator if you
+change the sources:
 
 ```sh
 pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
-pnpm build:claude    # or: node scripts/build-claude-agents.mjs
+pnpm build:claude    # or: node bin/agent-cortex.mjs install claude (same generator)
 # or the install-time entry (same generator, less typing):
 node bin/agent-cortex.mjs install claude          # regenerates ./claude in place
 node bin/agent-cortex.mjs install claude --dry-run       # plan only, no writes
@@ -221,7 +222,7 @@ The marketplace source is your local checkout, so after pulling changes you must
 
 ```sh
 git pull
-pnpm build:claude                          # regenerate claude/ from the sources
+pnpm build:claude                          # alias of agent-cortex install claude
 claude plugin marketplace update jaybeeuu
 claude plugin update agent-cortex          # restart Claude Code to apply
 ```
@@ -274,9 +275,10 @@ corresponding work; the style skills' descriptions are also written to auto-trig
 
 Edit the **sources** — the composable `agents/<name>/` directories (shared `agent.md` +
 per-harness frontmatter/sections, auto-composed by `scripts/build-copilot-agents.mjs` and
-the shared `bin/installers/claude.mjs`), `agents-native/*.md` (Claude-only agents like
-`ralph`), `skills/**`, `hooks/claude/hooks.json` (hook config), and `package.json` (plugin
-version) — then run `pnpm build:claude` (or `agent-cortex install claude`). Never hand-edit
+the install-time generator `bin/installers/claude.mjs`), `agents-native/*.md` (Claude-only
+agents like `ralph` — the canonical bodies the installer copies verbatim), `skills/**`,
+`hooks/claude/hooks.json` (hook config), and `package.json` (plugin
+version) — then run `pnpm build:claude` (an alias of `agent-cortex install claude`). Never hand-edit
 anything under `claude/` except the hand-authored `claude/.mcp.json` and `claude/scripts/`
 files, or the generated `agents/*.agent.md` files, `claude/agents/`, `claude/skills/`,
 `claude/.claude-plugin/plugin.json`, and `claude/hooks.json`. CI runs

@@ -209,21 +209,21 @@ flat `agents/*.agent.md` files are built from them:
 - `scripts/build-copilot-agents.mjs` (`pnpm build:copilot`) composes `agents/*.agent.md` from
   each agent's `copilot/` harness dir — committed for Copilot CLI, which loads `*.agent.md`
   from `plugin.json`'s `agents: "agents/"` path.
-- `scripts/build-claude-agents.mjs` (`pnpm build:claude`) composes `claude/agents/*.md` from
-  each agent's `claude/` harness dir (except `ralph`, which ships natively from
-  `agents-native/ralph.md`).
+- `bin/installers/claude.mjs` (`agent-cortex install claude`; `pnpm build:claude` is a pure
+  alias) composes `claude/agents/*.md` from each agent's `claude/` harness dir (except
+  `ralph`, which ships natively from `agents-native/ralph.md`, copied verbatim).
 - The pi harness delivers two ways: the `agent-modes` extension composes `agent.md` +
   `pi/frontmatter.json` at runtime against `token-map.json`, and `agent-cortex install pi`
   materialises composed agents + token-substituted skills into `~/.pi/agent` at install
   time (see README "Pi harness agents & skills").
 
 Never edit the generated flat/claude files by hand — edit the composable directory. CI
-regenerates both outputs and fails on drift. The install-time installers (`agent-cortex
-install <harness>`) run the same generators in the installed context: `claude` ships today
-(`bin/installers/claude.mjs` is the shared code path behind both `agent-cortex install
-claude` and `scripts/build-claude-agents.mjs`); `pi` ships today too
-(`bin/installers/pi.mjs`, which materialises composed agents + token-substituted skills
-into `~/.pi/agent`); `copilot` remains a separate workstream.
+regenerates both outputs and fails on drift. Generation is install-time: `claude` ships
+via `bin/installers/claude.mjs`, the single generator behind both `agent-cortex install
+claude` and the `pnpm build:claude` alias (the committed `claude/` subtree is regenerated
+by it and drift-checked, so it can never be stale); `pi` ships via
+`bin/installers/pi.mjs`, which materialises composed agents + token-substituted skills
+into `~/.pi/agent`; `copilot` remains a separate workstream (`scripts/build-copilot-agents.mjs`).
 
 ## Validation
 

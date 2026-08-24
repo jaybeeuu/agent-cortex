@@ -143,9 +143,10 @@ When composing the final agent file for a specific harness:
 2. Replace `{{SECTION:name}}` with content from `<harness>/<name>.md`
 3. `{{TOOL:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
    canonical tool/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
-   `build:copilot` / `build:claude`) resolves them when generating the flat files; pi's
-   `agent-modes` extension does the same at runtime. See the `contract` section of
-   `token-map.json` and `token-map.README.md` for the rules.
+   `build:copilot` / `build:claude` and by `bin/installers/pi.mjs`) resolves them when
+   generating the flat files / installing for pi; pi's `agent-modes` extension does the
+   same at runtime. See the `contract` section of `token-map.json` and
+   `token-map.README.md` for the rules.
 
 The pi harness's `agent-modes` extension is a runtime consumer of this format: it
 composes agent prompts on the fly from `agent.md` + `pi/frontmatter.json`, substituting
@@ -211,14 +212,18 @@ flat `agents/*.agent.md` files are built from them:
 - `scripts/build-claude-agents.mjs` (`pnpm build:claude`) composes `claude/agents/*.md` from
   each agent's `claude/` harness dir (except `ralph`, which ships natively from
   `agents-native/ralph.md`).
-- The pi harness needs no build step: the `agent-modes` extension composes `agent.md` +
-  `pi/frontmatter.json` at runtime and substitutes tokens against `token-map.json`.
+- The pi harness delivers two ways: the `agent-modes` extension composes `agent.md` +
+  `pi/frontmatter.json` at runtime against `token-map.json`, and `agent-cortex install pi`
+  materialises composed agents + token-substituted skills into `~/.pi/agent` at install
+  time (see README "Pi harness agents & skills").
 
 Never edit the generated flat/claude files by hand — edit the composable directory. CI
 regenerates both outputs and fails on drift. The install-time installers (`agent-cortex
 install <harness>`) run the same generators in the installed context: `claude` ships today
 (`bin/installers/claude.mjs` is the shared code path behind both `agent-cortex install
-claude` and `scripts/build-claude-agents.mjs`); `copilot` and `pi` are separate workstreams.
+claude` and `scripts/build-claude-agents.mjs`); `pi` ships today too
+(`bin/installers/pi.mjs`, which materialises composed agents + token-substituted skills
+into `~/.pi/agent`); `copilot` remains a separate workstream.
 
 ## Validation
 

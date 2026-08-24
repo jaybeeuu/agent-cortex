@@ -134,6 +134,29 @@ Desktop notifications are handled by the local `extensions/notify/` extension
 notification on multi-turn tasks, labelled with the tmux session:window.pane
 if available, or the project directory name otherwise.
 
+### Pi harness agents & skills (`agent-cortex install pi`)
+
+The agents are already available to pi through the package (`pi.skills` + the
+`agent-modes` extension compose them at runtime), but the raw package files carry
+literal `{{TOOL:...}}` / `{{PATH:...}}` tokens. Run the pi installer to materialise
+composed agents and token-substituted skills into pi's user scope:
+
+```sh
+agent-cortex install pi
+# → ~/.pi/agent/agents/<name>.agent.md (ralph, plan, ralph-plan, strategy)
+# → ~/.pi/agent/skills/  (token-substituted skill tree)
+```
+
+Flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Show what would be installed without writing anything |
+| `--output <dir>` | Install into `<dir>/agents` and `<dir>/skills` (default `~/.pi/agent`) |
+| `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
+
+Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).
+
 ### Copilot plugin (separate)
 
 ```sh

@@ -48,7 +48,8 @@ if (parsed.command === "install") {
 
   // claude is the first wired harness: generates the plugin subtree from the
   // canonical sources (agents/, agents-native/, skills/, hooks/claude/) via the
-  // shared installClaude generator — the same code path `pnpm build:claude` runs.
+  // shared installClaude generator — `pnpm build:claude` is an alias of this
+  // invocation, so there is no separate build-time code path.
   if (parsed.harness === "claude") {
     // Avoid loading the installer on the help/summary paths and for other harnesses.
     const { installClaude } = await import("./installers/claude.mjs");

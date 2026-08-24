@@ -18,7 +18,7 @@
     "lint": "pnpm typecheck",
     "test": "node --test test/*.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build:claude": "node scripts/build-claude-agents.mjs",
+    "build:claude": "node bin/agent-cortex.mjs install claude",
     "build:copilot": "node scripts/build-copilot-agents.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version && bash scripts/sync-plugin-version.sh",

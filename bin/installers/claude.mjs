@@ -1,13 +1,21 @@
-// Install-time generator for the Claude Code plugin subtree. This is the single
-// code path for producing claude/ from the canonical sources — both entry points
-// below call installClaude() with different defaults, so install-time and
-// build-time output can never diverge:
+// Install-time generator for the Claude Code plugin subtree — the ONLY code path
+// for producing claude/ from the canonical sources. There is no build-time
+// generator: the package script `pnpm build:claude` is a pure alias of the CLI
+// (`node bin/agent-cortex.mjs install claude`), so regenerating the committed
+// subtree and installing the plugin run exactly the same code:
 //
-//   - bin/agent-cortex.mjs     `agent-cortex install claude` (install-time;
-//                              `--output <dir>` overrides the target,
-//                              `--dry-run` plans without writing)
-//   - scripts/build-claude-agents.mjs  `pnpm build:claude` (dev/CI: regenerates
-//                              the committed claude/ subtree in place)
+//   node bin/agent-cortex.mjs install claude   `pnpm build:claude` (regenerates
+//                              the committed claude/ subtree in place; `--output
+//                              <dir>` targets another dir, `--dry-run` plans
+//                              without writing)
+//
+// claude/ stays committed (not gitignored): the marketplace install flow
+// (`claude plugin marketplace add <repo>` → `claude plugin install
+// agent-cortex@jaybeeuu`) reads the subtree straight from the working tree, so a
+// fresh clone installs as-is with no generation step. CI regenerates it via the
+// same installer and runs `git diff --exit-code claude/...` — byte-for-byte
+// validation that the committed output equals installer output, catching stale
+// output and hand-edits to generated files alike.
 //
 // Generated from:
 //   claude/agents/<slug>.md          agents/<name>/agent.md +
@@ -79,7 +87,7 @@ function buildAgents(root) {
     const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
     const header =
       `---\n` +
-      `# GENERATED from agents/${entry.name}/ by scripts/build-claude-agents.mjs — DO NOT EDIT.\n` +
+      `# GENERATED from agents/${entry.name}/ by bin/installers/claude.mjs — DO NOT EDIT.\n` +
       `name: ${slug}\n` +
       `description: ${JSON.stringify(fm.description)}\n` +
       `tools: ${fm.tools.join(", ")}\n` +

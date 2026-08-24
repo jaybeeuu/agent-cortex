@@ -53,6 +53,10 @@ describe("install claude", () => {
 
     const plan = readFileSync(join(out, "agents", "plan.md"), "utf-8");
     assert.match(plan, /^---\n# GENERATED from agents\/plan\//);
+    // provenance names the shared installer (no build-time script), so the
+    // committed subtree can only come from the install-time generator.
+    assert.match(plan, /bin\/installers\/claude\.mjs/);
+    assert.doesNotMatch(plan, /build-claude-agents/);
     assert.match(plan, /\nname: plan\n/);
     assert.doesNotMatch(plan, /\{\{(TOOL|PATH|SECTION):/);
 

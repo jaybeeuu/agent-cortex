@@ -25,7 +25,7 @@
     ],
     "Notification": [
       {
-        "matcher": "success|error",
+        "matcher": "agent_completed|agent_needs_input|permission_prompt",
         "hooks": [
           {
             "type": "command",

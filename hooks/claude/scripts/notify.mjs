@@ -7,9 +7,11 @@
 // itself (it handles tmux/screen re-wrapping); writing /dev/tty directly fails.
 //
 // Mapped from the pi `notify` extension (extensions/notify/): pi notifies on
-// agent_end for multi-turn or long tasks; Claude Code's Notification event fires
-// `success`/`error` at the equivalent completion points and already carries a
-// message + title in the payload, so no summarization LLM call is needed here.
+// agent_end for multi-turn or long tasks. Claude Code's Notification matcher is an
+// exact-string list over `notification_type` values (there are no `success`/
+// `error` types) — hooks.json selects `agent_completed|agent_needs_input|permission_prompt`
+// to mirror "task completed / failed / needs approval". The payload already carries
+// a message + title, so no summarization LLM call is needed here.
 //
 // Zero dependencies; runs on the Node that ships with Claude Code.
 

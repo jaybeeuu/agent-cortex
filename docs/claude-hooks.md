@@ -54,14 +54,26 @@ in the payload — and hooks emit desktop notifications by returning a
 `terminalSequence` JSON field (hooks have no controlling terminal; Claude Code
 emits the sequence itself, including inside tmux/screen).
 
-Implemented as `Notification` hooks with matcher `success|error` (the two
-long-standing notification types, mapped to pi's "task completed / failed"
-semantics; version-coupling types like `agent_completed` are deliberately not
-matched) invoking `scripts/notify.mjs`, which reads the payload from stdin and
-prints the OSC sequence for the detected terminal (Kitty OSC 99, iTerm2/Windows
-Terminal OSC 9, default urxvt/Ghostty/Warp OSC 777 — same detection as the pi
-`notify` extension). Skipped from the pi original: the LLM response summary
-(Claude's notification message is already the summary) and the tmux
+Implemented as a `Notification` hook with matcher
+`agent_completed|agent_needs_input|permission_prompt` invoking `scripts/notify.mjs`,
+which reads the payload from stdin and prints the OSC sequence for the detected
+terminal (Kitty OSC 99, iTerm2/Windows Terminal OSC 9, default urxvt/Ghostty/Warp
+OSC 777 — same detection as the pi `notify` extension). The Notification matcher
+is an **exact-string list** over the `notification_type` field; there are no
+`success`/`error` types (an earlier draft used that matcher, which silently never
+fired). The documented types are `permission_prompt`, `idle_prompt`, `auth_success`,
+`elicitation_dialog`, `elicitation_url_dialog`, `elicitation_complete`,
+`elicitation_response`, `agent_needs_input`, `agent_completed`,
+`quota_auto_resume_fired`, `quota_auto_resume_stale`, `quota_auto_resume_disabled`
+(the `agent_*` types require Claude Code v2.1.198+, the `quota_auto_resume_*`
+types v2.1.234+). The selection maps to pi's "task completed / failed / needs
+approval" semantics: `agent_completed` covers completion and failure ("finishes
+or fails"), `agent_needs_input` covers a background session waiting on input, and
+`permission_prompt` covers an awaited approval. Explicitly excluded as noise:
+`idle_prompt` (fires ~60s after every turn you don't answer within a minute — a
+desktop ping on every pause), `auth_success` and `quota_auto_resume_*` (not task
+events), and `elicitation_*` (dialog trivia). Skipped from the pi original: the LLM
+response summary (Claude's notification message is already the summary) and the tmux
 session:window.pane title (unavailable to hooks; the plugin title suffices).
 
 ## `skill-stats/` → Reject (no equivalent)

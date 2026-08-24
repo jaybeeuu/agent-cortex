@@ -29,9 +29,9 @@ function runNotify(payload, env = {}) {
 }
 
 describe("notify.mjs (Claude Notification hook)", () => {
-  it("emits an OSC 777 desktop notification on a bare-terminal success payload", async () => {
+  it("emits an OSC 777 desktop notification on a bare-terminal agent_completed payload", async () => {
     const { exitCode, stdout } = await runNotify(
-      { notification_type: "success", title: "task done", message: "all tests pass" },
+      { notification_type: "agent_completed", title: "task done", message: "all tests pass" },
       { PATH: process.env.PATH },
     );
     assert.equal(exitCode, 0);
@@ -43,7 +43,7 @@ describe("notify.mjs (Claude Notification hook)", () => {
 
   it("switches to OSC 99 when running inside Kitty", async () => {
     const { exitCode, stdout } = await runNotify(
-      { notification_type: "error", title: "failed", message: "build broke" },
+      { notification_type: "agent_needs_input", title: "input needed", message: "build broke" },
       { PATH: process.env.PATH, KITTY_WINDOW_ID: "0" },
     );
     assert.equal(exitCode, 0);
@@ -54,7 +54,7 @@ describe("notify.mjs (Claude Notification hook)", () => {
 
   it("stays silent (no output, exit 0) when the payload has no message", async () => {
     const { exitCode, stdout } = await runNotify(
-      { notification_type: "success" },
+      { notification_type: "permission_prompt" },
       { PATH: process.env.PATH },
     );
     assert.equal(exitCode, 0);

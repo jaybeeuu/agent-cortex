@@ -104,6 +104,21 @@ describe("install claude", () => {
     assert.ok(source.hooks.SessionStart);
   });
 
+  it("bundles hook support scripts into claude/hooks/ and references them via the plugin root", async () => {
+    const out = makeTmp();
+    await runCli(["install", "claude", "--output", out]);
+
+    const canonical = readFileSync(join(ROOT, "hooks", "claude", "scripts", "notify.mjs"), "utf-8");
+    const bundled = readFileSync(join(out, "hooks", "scripts", "notify.mjs"), "utf-8");
+    assert.equal(bundled, canonical);
+
+    const installed = JSON.parse(readFileSync(join(out, "hooks.json"), "utf-8"));
+    const notify = installed.hooks.Notification.flatMap((g) => g.hooks)
+      .filter((h) => h.command?.includes("notify.mjs"));
+    assert.ok(notify.length === 1, "hooks.json should reference the notification script");
+    assert.match(notify[0].command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/scripts\/notify\.mjs"$/);
+  });
+
   it("is deterministic across repeated installs into the same output", async () => {
     const out = makeTmp();
     await runCli(["install", "claude", "--output", out]);

@@ -184,7 +184,7 @@ jobs:
       - name: Check generated Claude plugin is up to date
         run: |
           pnpm build:claude
-          git diff --exit-code claude/agents/ claude/skills/ claude/.claude-plugin/plugin.json claude/hooks.json
+          git diff --exit-code claude/agents/ claude/skills/ claude/.claude-plugin/plugin.json claude/hooks.json claude/hooks/
 
       - name: Check generated Copilot agent files are up to date
         run: |

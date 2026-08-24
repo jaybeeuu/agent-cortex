@@ -44,7 +44,8 @@ agent-cortex/
     ├── .claude-plugin/
     │   └── plugin.json
     ├── .mcp.json             #  MCP servers (context7, github) — hand-authored
-    ├── hooks.json            #  SessionStart hooks (beads context + style policy) — generated from hooks/claude/
+    ├── hooks.json            #  SessionStart + Notification hooks — generated from hooks/claude/
+    ├── hooks/                #  hook scripts (e.g. scripts/notify.mjs) — generated from hooks/claude/
     ├── agents/               #  composed from agents/<name>/claude/ + copied from agents-native/
     └── skills/               #  symlinks to the grouped skills/ dirs (29 skills)
 ```
@@ -77,7 +78,10 @@ it is never stale:
   poll loop has no Claude equivalent), so it can't be mechanically converted.
 - **Manifests** are generated too: `claude/.claude-plugin/plugin.json` (its `version` tracks
   `package.json`, so it never goes stale) and `claude/hooks.json` (copied from the canonical
-  `hooks/claude/hooks.json` source). `claude/.mcp.json` and `claude/scripts/` stay hand-authored.
+  `hooks/claude/hooks.json` source), plus any support files under `hooks/claude/` bundled into
+  `claude/hooks/` so hook commands can reach them via `$CLAUDE_PLUGIN_ROOT`. `claude/.mcp.json`
+  and `claude/scripts/` stay hand-authored. See `docs/claude-hooks.md` for the extension→hook
+  mapping and the rejections (auto-name, skill-stats, subagent, agent-modes).
 
 Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
 `hooks/claude/`, `package.json`), never anything under `claude/` or the generated

@@ -233,13 +233,16 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          # Regenerate committed generated output after the version bump, before
-          # the action commits: build:claude writes claude/.claude-plugin/plugin.json
-          # with the NEW package version and build:copilot re-derives the flat
-          # agents/*.agent.md files, so the Version Packages PR always passes the
-          # claude-plugin-check drift gates below.
-          version: bash -c 'pnpm version-packages && pnpm build:claude && pnpm build:copilot'
-          publish: bash -c 'TARBALL=$(pnpm pack | tail -n 1) && npm publish "$TARBALL" --provenance --access public'
+          # changesets/action execs these inputs via @actions/exec with NO shell:
+          # the string is split by argStringToArray on whitespace (single quotes
+          # survive literally), so each must be a single unquoted command token
+          # that runs a pnpm script. version-packages bumps versions, syncs
+          # plugin.json, THEN regenerates the committed generated output
+          # (build:claude writes claude/.claude-plugin/plugin.json with the NEW
+          # version, build:copilot re-derives agents/*.agent.md) before the action
+          # commits, so the Version Packages PR always passes the drift gates.
+          version: pnpm version-packages
+          publish: pnpm publish-package
           commit: "chore: version packages"
           title: "chore: version packages"
         env:

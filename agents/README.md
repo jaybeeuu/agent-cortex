@@ -221,9 +221,11 @@ Never edit the generated flat/claude files by hand — edit the composable direc
 regenerates both outputs and fails on drift. Generation is install-time: `claude` ships
 via `bin/installers/claude.mjs`, the single generator behind both `agent-cortex install
 claude` and the `pnpm build:claude` alias (the committed `claude/` subtree is regenerated
-by it and drift-checked, so it can never be stale); `pi` ships via
+by it and drift-checked, so it can never be stale); `copilot` ships via
+`bin/installers/copilot.mjs`, the shared code path behind both `agent-cortex install
+copilot` and `scripts/build-copilot-agents.mjs`; `pi` ships via
 `bin/installers/pi.mjs`, which materialises composed agents + token-substituted skills
-into `~/.pi/agent`; `copilot` remains a separate workstream (`scripts/build-copilot-agents.mjs`).
+into `~/.pi/agent`.
 
 ## Validation
 

@@ -37,9 +37,10 @@ agent-cortex/
 ├── bin/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
-│       └── claude.mjs        # the ONLY generator — agent-cortex install claude (pnpm build:claude aliases it)
+│       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
+│       └── claude.mjs        # install-time generator — agent-cortex install claude (pnpm build:claude aliases it)
 ├── scripts/
-│   └── build-copilot-agents.mjs  # composes agents/*.agent.md from the composable dirs (Copilot/pi format)
+│   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
 └── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
     ├── .claude-plugin/
     │   └── plugin.json
@@ -52,9 +53,11 @@ agent-cortex/
 
 The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
 The composable `agents/<name>/` directories are the single source of truth; the flat
-`agents/*.agent.md` files are **generated** by `scripts/build-copilot-agents.mjs`
-(`pnpm build:copilot`) and committed so Copilot CLI (plugin.json `agents: "agents/"`)
-and pi keep loading the agents — don't hand-edit them.
+`agents/*.agent.md` files are **generated** by the shared copilot installer
+(`agent-cortex install copilot`, or `scripts/build-copilot-agents.mjs` via
+`pnpm build:copilot` — both run the same `bin/installers/copilot.mjs` code path, so
+install-time and build-time output can never diverge) and committed so Copilot CLI
+(plugin.json `agents: "agents/"`) and pi keep loading the agents — don't hand-edit them.
 The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
@@ -187,7 +190,10 @@ change the sources:
 pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
 pnpm build:claude    # or: node bin/agent-cortex.mjs install claude (same generator)
 # or the install-time entry (same generator, less typing):
-node bin/agent-cortex.mjs install claude          # regenerates ./claude in place
+node bin/agent-cortex.mjs install copilot          # regenerates agents/*.agent.md in place
+node bin/agent-cortex.mjs install copilot --dry-run       # plan only, no writes
+node bin/agent-cortex.mjs install copilot --output /tmp/x # preview the flat files elsewhere
+node bin/agent-cortex.mjs install claude           # regenerates ./claude in place
 node bin/agent-cortex.mjs install claude --dry-run       # plan only, no writes
 node bin/agent-cortex.mjs install claude --output /tmp/x # write the subtree elsewhere
 ```

@@ -24,7 +24,8 @@
     "web_fetch": { "copilot": "web_fetch", "claude": "WebFetch", "pi": "fetch_content" },
     "skill": { "copilot": "skill", "claude": "Skill", "pi": null },
     "task": { "copilot": "task", "claude": "Task", "pi": "task" },
-    "read_agent": { "copilot": "read_agent", "claude": null, "pi": "read_agent" }
+    "read_agent": { "copilot": "read_agent", "claude": null, "pi": "read_agent" },
+    "wait_for_agents": { "copilot": null, "claude": null, "pi": "wait_for_agents" }
   },
   "paths": {
     "plugin_root": {
@@ -65,7 +66,8 @@
       "ask_user": "Copilot (ask_user) and Claude (AskUserQuestion) prompt the user mid-run. pi intentionally ships no permission-popup/ask tool (per pi docs 'it intentionally does not include permission popups'), so the mapping is null.",
       "web_fetch": "pi's fetch_content comes from the pi-web-access package (declared in pi/settings.json).",
       "skill": "Copilot (skill) and Claude (Skill) expose skills as a tool. pi discovers skills but the agent loads them via read and /skill:<name> commands — there is no dedicated tool, so the mapping is null.",
-      "read_agent": "Claude's Task returns results inline — there is no separate read step, so read_agent drops on claude (null). Copilot and pi use the task + read_agent poll loop."
+      "read_agent": "Claude's Task returns results inline — there is no separate read step, so read_agent drops on claude (null). Copilot uses the task + read_agent poll loop; pi blocks on wait_for_agents and keeps read_agent as a fallback.",
+      "wait_for_agents": "PI-only blocking wait over background subagent runs (the task tool): returns the results of completed agents and STILL RUNNING for the rest. Copilot has no equivalent tool (its task + read_agent poll loop stays) and Claude's Task delivers results inline with no wait step — both null."
     },
     "paths": {
       "pi": "plugin_root defaults to the npm-package install layout (~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex). Local-checkout installs (pi/settings.json packages entry referencing a local src path) or symlinked installs differ — installers must compute plugin_root from the actual resolution and can override it."

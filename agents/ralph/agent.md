@@ -59,7 +59,7 @@ Run once at startup:
    b. Claim the parent bead: `bd update <parent-id> --claim`.
    c. Create the first stage chore bead and dispatch it (see _Creating and dispatching a stage chore_ below).
 8. Record each launched agent in `.agent-cortex/ralph/state.json` (see format below).
-9. Hand over to the completion-detection mechanism in the polling section: it starts any active poll loop (PI/Copilot) or waits for event-driven wake-ups (Claude), and proceeds to **HITL Pause** directly when no agent work was dispatched and HITL gate beads are pending.
+9. Hand over to the completion-detection mechanism in the polling section: it starts the Copilot poll loop, blocks with `wait_for_agents` (PI), or waits for event-driven wake-ups (Claude), and proceeds to **HITL Pause** directly when no agent work was dispatched and HITL gate beads are pending.
 
 ---
 
@@ -109,7 +109,7 @@ All orchestration state is derived from beads:
 }
 ```
 
-- **timerShellId**: the shellId of the active poll-timer bash process used for completion polling (PI/Copilot; stays `null` on harnesses with event-driven completion such as Claude).
+- **timerShellId**: the shellId of the active poll-timer bash process used for completion polling (Copilot; stays `null` on PI, which blocks with `wait_for_agents` instead, and on event-driven harnesses such as Claude).
 - **inflight[].choreId**: the chore bead currently being worked by the subagent.
 - **inflight[].parentId**: the parent feature task bead. Log file is `.agent-cortex/ralph/ralph-<parentId>.log`.
 - **inflight[].logLine**: the next line number to read from the parent's log file (1-based; start at 1). Updated after every poll.
@@ -127,12 +127,12 @@ Update `.agent-cortex/ralph/state.json` after **every** agent completion or disp
 
 ## Event loop
 
-After initialization, Ralph waits for background agents to complete. Completion notifications are delivered by the mechanism documented in the polling section — PI/Copilot use an active poll timer plus log polling; Claude is event-driven (you are re-invoked automatically when a worker completes, with its result delivered inline). On each completion notification:
+After initialization, Ralph waits for background agents to complete. Completion notifications are delivered by the mechanism documented in the polling section — PI blocks with `wait_for_agents` until a worker completes and its result is returned inline; Copilot uses an active poll timer plus log polling; Claude is event-driven (you are re-invoked automatically when a worker completes, with its result delivered inline). On each completion notification:
 
 ### If a background agent completed
 
-1. **Flush** that bead's log using the log-polling procedure in the polling section to pick up any final lines. (Claude: nothing to flush — the result is delivered with the wake-up.)
-2. **Read** the completed agent's full output (PI: `read_agent`; Claude: the result was delivered inline).
+1. **Flush** that bead's log using the log-polling procedure in the polling section to pick up any final lines for the chat summary (PI: flush new log lines as part of handling the `wait_for_agents` result; Copilot: flush to detect completion; Claude: nothing to flush — the result is delivered with the wake-up).
+2. **Read** the completed agent's full output (PI: the result arrives in the `wait_for_agents` response, with `read_agent` as a fallback for a specific result; Copilot: `read_agent`; Claude: the result was delivered inline).
 3. **Re-read** `.agent-cortex/ralph/state.json` to identify the chore bead and parent for that agent ID.
 4. **Parse** the agent's `---REPORT---` block (see report format in the `run-pipeline-stage` skill).
 5. **Close** the completed chore bead: `bd close <chore-id>`.
@@ -188,7 +188,7 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
 
    When you've completed the above actions, prompt me to continue.
    ```
-6. **Stop completely.** Stop the polling mechanism documented in the polling section (PI/Copilot: kill any running timer; Claude: nothing to stop — there is no timer). Do **not** restart or schedule anything. Do **not** start any background processes. Do **not** check bead status again. Do **not** continue the event loop. Output **nothing further** after the summary above. Ralph is now fully idle — it must not act again until the user explicitly re-prompts.
+6. **Stop completely.** Stop the polling mechanism documented in the polling section (Copilot: kill any running timer; PI and Claude: nothing to stop — there is no timer). Do **not** restart or schedule anything. Do **not** start any background processes. Do **not** check bead status again. Do **not** continue the event loop. Output **nothing further** after the summary above. Ralph is now fully idle — it must not act again until the user explicitly re-prompts.
 
 ---
 

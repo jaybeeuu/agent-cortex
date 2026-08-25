@@ -96,6 +96,25 @@ Use a chain: first have scout find the read tool, then have planner suggest impr
 | Parallel | `{ tasks: [...] }` | Multiple agents run concurrently (max 8, 4 concurrent) |
 | Chain | `{ chain: [...] }` | Sequential with `{previous}` placeholder |
 
+## Background subagents (task / wait_for_agents / read_agent)
+
+Beyond the all-in-one `subagent` tool, the extension ships three bottom-up tools for
+fire-and-forget orchestration:
+
+- **`task`** — spawn a background sub-agent and return its agent ID immediately. The
+  agent runs detached from the current tool call.
+- **`wait_for_agents`** — block until at least one background sub-agent completes.
+  Pass the `agentIds` (plus optional `timeout` in seconds, default 120); it returns the
+  results of every agent that has finished and `STILL RUNNING` for the rest. This is the
+  event-driven way to run parallel orchestration: dispatch 5 tasks, then one
+  `wait_for_agents` call returns as soon as any of them finishes.
+- **`read_agent`** — fallback: read one specific agent's output once you know it has
+  finished (or query its `STILL RUNNING` state directly).
+
+These mirror Copilot CLI's `task`/`read_agent` model; `wait_for_agents` adds the
+blocking wait that Copilot's poll loop does manually. Abort (Ctrl+C) propagates: a
+pending `wait_for_agents` returns immediately with whatever is known so far.
+
 ## Output Display
 
 **Collapsed view** (default):

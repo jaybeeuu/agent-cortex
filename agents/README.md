@@ -35,11 +35,11 @@ agents/
 agents/ralph/
 ├── agent.md                        # Shared body (branching model, dispatch logic, constraints)
 ├── pi/
-│   ├── frontmatter.json            # PI tools: ["bash", "task", "read_agent"]
-│   └── polling.md                  # PI polling loop using read_agent
+│   ├── frontmatter.json            # PI tools: ["bash", "task", "read_agent", "wait_for_agents"]
+│   └── polling.md                  # PI completion: blocking wait_for_agents (no poll timer)
 ├── copilot/
-│   ├── frontmatter.json            # Copilot tools (same as PI for now)
-│   └── polling.md                  # Copilot polling (same as PI)
+│   ├── frontmatter.json            # Copilot tools: ["bash", "task", "read_agent"]
+│   └── polling.md                  # Copilot completion: sleep-120 poll timer + read_agent
 └── claude/
     ├── frontmatter.json            # Claude tools: ["bash", "task"]
     └── polling.md                  # Claude event-driven (no polling)

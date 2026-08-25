@@ -20,6 +20,7 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
+import { waitForAgents } from "./wait.ts";
 import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -1019,6 +1020,16 @@ export default function (pi: ExtensionAPI) {
 		cwd: string;
 	}
 
+	interface ReadAgentDetails {
+		agentId: string;
+		error?: string;
+		status?: string;
+		exitCode?: number;
+		usage?: UsageStats;
+		model?: string;
+		stopReason?: string;
+	}
+
 	const backgroundRuns = new Map<string, BackgroundRun>();
 
 	pi.registerTool({
@@ -1027,7 +1038,7 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Spawn a background sub-agent with the given prompt and return an agent ID immediately. " +
 			"This is the ONLY tool for spawning subagents — do not use bash or any other tool. " +
-			"Use the read_agent tool to retrieve the result when ready. " +
+			"Use wait_for_agents to block until results are ready, or read_agent to check a specific agent. " +
 			"Compatible with Copilot CLI's task/read_agent subagent model.",
 		parameters: Type.Object({
 			prompt: Type.String({ description: "Task prompt for the sub-agent to execute" }),
@@ -1050,48 +1061,120 @@ export default function (pi: ExtensionAPI) {
 
 			const entry: BackgroundRun = {
 				result: null,
-				promise: (async () => {
-					try {
-						const agents = [backgroundAgent, ...discoverAgents(ctx.cwd, "user").agents];
-						const result = await runSingleAgent(
-							cwd,
-							agents,
-							"background-agent",
-							params.prompt,
-							cwd,
-							undefined,
-							signal,
-							undefined,
-							(results: SingleResult[]) => ({
-								mode: "single" as const,
-								agentScope: "user" as AgentScope,
-								projectAgentsDir: null,
-								results,
-							}),
-						);
-						entry.result = result;
-					} catch (err) {
-						entry.result = {
-							agent: "background-agent",
-							agentSource: "user",
-							task: params.prompt,
-							exitCode: 1,
-							messages: [],
-							stderr: String(err),
-							usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-						};
-					}
-				})(),
+				promise: Promise.resolve(),
 				startTime: Date.now(),
 				prompt: params.prompt,
 				cwd,
 			};
+
+			const run = (async () => {
+				try {
+					const agents = [backgroundAgent, ...discoverAgents(ctx.cwd, "user").agents];
+					const result = await runSingleAgent(
+						cwd,
+						agents,
+						"background-agent",
+						params.prompt,
+						cwd,
+						undefined,
+						signal,
+						undefined,
+						(results: SingleResult[]) => ({
+							mode: "single" as const,
+							agentScope: "user" as AgentScope,
+							projectAgentsDir: null,
+							results,
+						}),
+					);
+					entry.result = result;
+				} catch (err) {
+					entry.result = {
+						agent: "background-agent",
+						agentSource: "user",
+						task: params.prompt,
+						exitCode: 1,
+						messages: [],
+						stderr: String(err),
+						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+					};
+				}
+			})();
+			// Attach the real run promise after construction so the run's completion
+			// (entry.result committed before the promise settles) is what waiters race on.
+			entry.promise = run;
 
 			backgroundRuns.set(agentId, entry);
 
 			return {
 				content: [{ type: "text", text: agentId }],
 				details: { agentId },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "wait_for_agents",
+		label: "Wait for Background Agents",
+		description:
+			"Block until at least one background sub-agent spawned with the task tool completes. " +
+			"Takes an array of agentIds and an optional timeout; returns the results of every agent " +
+			"that has completed, and STILL RUNNING for agents that have not. " +
+			"Preserves parallelism: dispatch several tasks, then wait_for_agents returns as soon as " +
+			"any of them finishes. Use read_agent as a fallback to re-read a specific result.",
+		parameters: Type.Object({
+			agentIds: Type.Array(Type.String({ description: "Agent IDs returned by the task tool to wait on" })),
+			timeout: Type.Optional(
+				Type.Number({
+					description:
+						"Maximum seconds to block (default 120) before returning STILL RUNNING for unfinished agents",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, signal) {
+			const timeoutSeconds = params.timeout ?? 120;
+			const outcome = await waitForAgents(
+				(agentId) => backgroundRuns.get(agentId),
+				params.agentIds,
+				{ timeoutMs: timeoutSeconds * 1000, signal },
+			);
+
+			const lines: string[] = [];
+			if (outcome.aborted) lines.push("(aborted)");
+			if (outcome.timedOut) lines.push(`(timed out after ${timeoutSeconds}s)`);
+			if (lines.length > 0) lines.push("");
+
+			for (const { agentId, result } of outcome.completed) {
+				lines.push(`### ${agentId} — completed`);
+				lines.push(truncateParallelOutput(getResultOutput(result)));
+				lines.push("");
+			}
+			if (outcome.running.length > 0) {
+				lines.push(`### STILL RUNNING (${outcome.running.length})`);
+				lines.push(outcome.running.map((id) => `- ${id}`).join("\n"));
+				lines.push("");
+			}
+			if (outcome.notFound.length > 0) {
+				lines.push(`### NOT FOUND (${outcome.notFound.length})`);
+				lines.push(outcome.notFound.map((id) => `- ${id}`).join("\n"));
+			}
+
+			const summary = `completed: ${outcome.completed.length}, still running: ${outcome.running.length}, not found: ${outcome.notFound.length}`;
+			const body = lines.join("\n").trim();
+			return {
+				content: [{ type: "text", text: body ? `${summary}\n\n${body}` : summary }],
+				details: {
+					agentIds: params.agentIds,
+					completed: outcome.completed.map(({ agentId, result }) => ({
+						agentId,
+						exitCode: result.exitCode,
+						stopReason: result.stopReason,
+						output: truncateParallelOutput(getResultOutput(result)),
+					})),
+					running: outcome.running,
+					notFound: outcome.notFound,
+					timedOut: outcome.timedOut,
+					aborted: outcome.aborted,
+				},
 			};
 		},
 	});
@@ -1107,31 +1190,34 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_toolCallId, params) {
 			const entry = backgroundRuns.get(params.agentId);
+			const details: ReadAgentDetails = {
+				agentId: params.agentId,
+				error: !entry ? "not found" : undefined,
+				status: entry && !entry.result ? "running" : undefined,
+				exitCode: entry?.result?.exitCode,
+				usage: entry?.result?.usage,
+				model: entry?.result?.model,
+				stopReason: entry?.result?.stopReason,
+			};
+
 			if (!entry) {
 				return {
 					content: [{ type: "text", text: `ERROR: No agent found with ID "${params.agentId}"` }],
-					details: { error: "not found", agentId: params.agentId },
+					details,
 				};
 			}
 
 			if (entry.result) {
-				const output = getResultOutput(entry.result);
 				return {
-					content: [{ type: "text", text: output }],
-					details: {
-						agentId: params.agentId,
-						exitCode: entry.result.exitCode,
-						usage: entry.result.usage,
-						model: entry.result.model,
-						stopReason: entry.result.stopReason,
-					},
+					content: [{ type: "text", text: getResultOutput(entry.result) }],
+					details,
 				};
 			}
 
-			// Still running — check if the promise is still active
+			// Still running — the wait_for_agents tool can block until it finishes.
 			return {
 				content: [{ type: "text", text: "STILL RUNNING" }],
-				details: { status: "running", agentId: params.agentId },
+				details,
 			};
 		},
 	});

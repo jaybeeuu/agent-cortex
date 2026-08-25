@@ -320,10 +320,10 @@ describe("installPi — real repo integration", () => {
       const names = result.agents.map((a) => a.name).sort();
       assert.deepEqual(names, ["plan", "ralph", "ralph-plan", "strategy"]);
 
-      // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent"]
+      // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents"]
       const ralph = readFileSync(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
       assert.match(ralph, /name: "agent-cortex:ralph"/);
-      assert.match(ralph, /tools: "bash read grep find task read_agent"/);
+      assert.match(ralph, /tools: "bash read grep find task read_agent wait_for_agents"/);
       assert.ok(ralph.includes("## Spawning subagents (PI)"), "{{SECTION:polling}} composed from pi/polling.md");
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");

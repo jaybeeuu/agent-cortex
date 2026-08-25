@@ -4,9 +4,10 @@ Instructions for agents working on this repository.
 
 ## What This Repo Is
 
-A personal Copilot CLI plugin containing custom agents and skills, plus PI extensions for
-enhancing the coding agent runtime. Changes here affect the behaviour of every agent, skill,
-and PI extension available in the author's coding sessions.
+A personal Copilot CLI plugin containing custom agents and skills, shipped to Copilot, pi,
+and Claude Code, plus PI extensions and Claude hooks for enhancing the coding agent
+runtime. Changes here affect the behaviour of every agent, skill, and PI extension
+available in the author's coding sessions.
 
 ## Structure
 
@@ -31,6 +32,8 @@ agent-cortex/
 │   └── skill-stats/
 │       ├── README.md      # Installation & usage
 │       └── index.ts       # Extension entrypoint
+├── hooks/                # Canonical Claude Code hooks (hooks.json + scripts — see docs/claude-hooks.md)
+│   └── claude/           #   generated into claude/hooks.json + claude/hooks/ by bin/installers/claude.mjs
 └── package.json          # PI package manifest (pi: { extensions, skills })
 ```
 
@@ -78,6 +81,8 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   commands — they should not add token overhead.
 - Extensions that persist data should write to `~/.pi/agent-cortex/` (global, cross-project)
   and tag records with the project path for per-project slicing.
+- PI extensions with Claude Code equivalents are ported to `hooks/claude/`; the port/reject
+  audit with rationale lives in `docs/claude-hooks.md`.
 
 ## User preferences
 

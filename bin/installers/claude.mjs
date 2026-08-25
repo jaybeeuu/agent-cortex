@@ -29,6 +29,8 @@
 //   claude/.claude-plugin/plugin.json  name/version/description from package.json
 //                                    (version tracks the package — never stale)
 //   claude/hooks.json                copied from hooks/claude/hooks.json when present
+//   claude/hooks/<scripts>           copied from hooks/claude/ (support files bundled
+//                                    alongside hooks.json, referenced via ${CLAUDE_PLUGIN_ROOT})
 //
 // The claude/ subtree stays committed and CI drift-checks it (build:claude +
 // git diff --exit-code), so a fresh clone remains installable as-is. Hand-authored
@@ -149,6 +151,27 @@ function buildPluginJson(root) {
 }
 
 /**
+ * Hook support files (hooks/claude/ except hooks.json) bundled into
+ * claude/hooks/ so hook commands can reference them via ${CLAUDE_PLUGIN_ROOT}.
+ * hooks.json itself is special-cased to the plugin root (claude/hooks.json).
+ */
+function buildHookFiles(root) {
+  const files = [];
+  const srcDir = join(root, "hooks", "claude");
+  if (!existsSync(srcDir)) return files;
+  const walk = (dir, rel) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => byName(a.name, b.name))) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, join(rel, entry.name));
+      else if (entry.name !== "hooks.json")
+        files.push({ rel: join(rel, entry.name), content: readFileSync(full, "utf-8") });
+    }
+  };
+  walk(srcDir, "");
+  return files;
+}
+
+/**
  * Generate the Claude Code plugin subtree.
  *
  * @param {object} options
@@ -167,6 +190,7 @@ export function installClaude({ root = DEFAULT_ROOT, output, dryRun = false } = 
   const pluginJson = buildPluginJson(root);
   const hooksSrc = join(root, "hooks", "claude", "hooks.json");
   const hooksJson = isFile(hooksSrc) ? readFileSync(hooksSrc, "utf-8") : null;
+  const hookFiles = buildHookFiles(root);
 
   const summary = {
     output: out,
@@ -174,6 +198,7 @@ export function installClaude({ root = DEFAULT_ROOT, output, dryRun = false } = 
     natives: natives.map((f) => f.file.replace(/\.md$/, "")),
     skills: skills.map((l) => l.name),
     hooks: hooksJson !== null,
+    hookFiles: hookFiles.map((f) => f.rel),
     dryRun,
   };
 
@@ -186,6 +211,8 @@ export function installClaude({ root = DEFAULT_ROOT, output, dryRun = false } = 
     console.log(`  skills: ${summary.skills.length} symlink(s)`);
     console.log(`  .claude-plugin/plugin.json (version ${JSON.parse(pluginJson).version})`);
     if (summary.hooks) console.log("  hooks.json (from hooks/claude/hooks.json)");
+    if (summary.hookFiles.length)
+      console.log(`  hook scripts: ${summary.hookFiles.join(", ")} (bundled into claude/hooks/)`);
     return summary;
   }
 
@@ -215,6 +242,18 @@ export function installClaude({ root = DEFAULT_ROOT, output, dryRun = false } = 
   if (summary.hooks) {
     writeFileSync(join(out, "hooks.json"), hooksJson);
     console.log(`Wrote ${join(out, "hooks.json")} (from ${hooksSrc})`);
+
+    if (hookFiles.length > 0) {
+      const hookOut = join(out, "hooks");
+      rmSync(hookOut, { recursive: true, force: true });
+      mkdirSync(hookOut, { recursive: true });
+      for (const { rel, content } of hookFiles) {
+        const dest = join(hookOut, rel);
+        mkdirSync(dirname(dest), { recursive: true });
+        writeFileSync(dest, content);
+      }
+      console.log(`Bundled ${hookFiles.length} hook support file(s) into ${hookOut}`);
+    }
   } else {
     console.log(`Skipped hooks.json — ${hooksSrc} not found (existing file left untouched)`);
   }

@@ -44,7 +44,8 @@ agent-cortex/
     ├── .claude-plugin/
     │   └── plugin.json
     ├── .mcp.json             #  MCP servers (context7, github) — hand-authored
-    ├── hooks.json            #  SessionStart hooks (beads context + style policy) — generated from hooks/claude/
+    ├── hooks.json            #  SessionStart + Notification hooks — generated from hooks/claude/
+    ├── hooks/                #  hook scripts (e.g. scripts/notify.mjs) — generated from hooks/claude/
     ├── agents/               #  composed from agents/<name>/claude/ + copied from agents-native/
     └── skills/               #  symlinks to the grouped skills/ dirs (29 skills)
 ```
@@ -77,7 +78,10 @@ it is never stale:
   poll loop has no Claude equivalent), so it can't be mechanically converted.
 - **Manifests** are generated too: `claude/.claude-plugin/plugin.json` (its `version` tracks
   `package.json`, so it never goes stale) and `claude/hooks.json` (copied from the canonical
-  `hooks/claude/hooks.json` source). `claude/.mcp.json` and `claude/scripts/` stay hand-authored.
+  `hooks/claude/hooks.json` source), plus any support files under `hooks/claude/` bundled into
+  `claude/hooks/` so hook commands can reach them via `$CLAUDE_PLUGIN_ROOT`. `claude/.mcp.json`
+  and `claude/scripts/` stay hand-authored. See `docs/claude-hooks.md` for the extension→hook
+  mapping and the rejections (auto-name, skill-stats, subagent, agent-modes).
 
 Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
 `hooks/claude/`, `package.json`), never anything under `claude/` or the generated
@@ -173,7 +177,7 @@ copilot plugin install ./agent-cortex
 
 The Claude plugin is the self-contained `claude/` subtree (manifest at
 `claude/.claude-plugin/plugin.json`), containing **4 agents** (`strategy`, `plan`,
-`ralph-plan`, `ralph`), **29 skills**, a `SessionStart` hook, and 2 MCP servers.
+`ralph-plan`, `ralph`), **29 skills**, `SessionStart` + `Notification` hooks, and 2 MCP servers.
 
 `claude/` is committed (the marketplace install flow reads it straight from the working
 tree, so a fresh clone installs as-is), and rebuilt via the install-time generator if you
@@ -257,15 +261,22 @@ It finds ready beads, spawns parallel background workers (implement → independ
 fix), opens a PR per feature, and pauses at each human merge gate. After you merge, re-invoke
 it and it resumes from `bd ready`.
 
-#### Style-skill enforcement
+#### Hooks
 
-The plugin's `SessionStart` hook injects a "style policy" each session, nudging Claude to
-invoke `style-code` / `style-tests` / `style-documentation` / `style-comms` before the
-corresponding work; the style skills' descriptions are also written to auto-trigger proactively.
+`SessionStart` injects a per-session policy nudging Claude to prefer the shipped skills over
+ad-hoc choices: the "style policy" (invoke `style-code` / `style-tests` /
+`style-documentation` / `style-comms` before the corresponding work — their descriptions also
+auto-trigger proactively) and the "skill policy" (`using-agent-skills` for routing, `bd-tool`
+for beads context, `git-workflow` for branch/PR discipline). A `Notification` hook matched on
+`agent_completed|agent_needs_input|permission_prompt` raises a desktop notification when a
+task finishes, waits on input, or needs approval. See `docs/claude-hooks.md` for the full
+extension→hook audit.
 
 #### Not ported / follow-ups
 
-- The pi `extensions/` have no Claude runtime-extension equivalent (use hooks/MCP instead).
+- Only `session-start` and `notify` had Claude equivalents (both ported to hooks); the other
+  pi `extensions/` (auto-name, skill-stats, subagent, agent-modes) have none — the audit and
+  rejection rationale live in `docs/claude-hooks.md`.
 - Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume
   after a PR merge (instead of manual re-invocation).
 - The Copilot/pi Ralph (the 4-stage `run-pipeline-stage` pipeline) is unchanged; those two

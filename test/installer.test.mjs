@@ -104,6 +104,52 @@ describe("install claude", () => {
     assert.ok(source.hooks.SessionStart);
   });
 
+  it("matches the Notification hook only on documented notification types", async () => {
+    // The Notification matcher is an exact-string list over `notification_type` —
+    // there are no success/error types, so that matcher would never fire. Guard
+    // against it recurring (see docs/claude-hooks.md for the documented type list).
+    const out = makeTmp();
+    await runCli(["install", "claude", "--output", out]);
+    const installed = JSON.parse(readFileSync(join(out, "hooks.json"), "utf-8"));
+    const matcher = installed.hooks.Notification.flatMap((g) => g.hooks).length
+      ? installed.hooks.Notification[0].matcher
+      : "";
+    const documented = new Set([
+      "permission_prompt",
+      "idle_prompt",
+      "auth_success",
+      "elicitation_dialog",
+      "elicitation_url_dialog",
+      "elicitation_complete",
+      "elicitation_response",
+      "agent_needs_input",
+      "agent_completed",
+      "quota_auto_resume_fired",
+      "quota_auto_resume_stale",
+      "quota_auto_resume_disabled",
+    ]);
+    const types = matcher ? matcher.split("|") : [];
+    assert.ok(types.length > 0, "Notification hook should list at least one matcher type");
+    for (const t of types) {
+      assert.ok(documented.has(t), `Notification matcher references unknown type "${t}"`);
+    }
+  });
+
+  it("bundles hook support scripts into claude/hooks/ and references them via the plugin root", async () => {
+    const out = makeTmp();
+    await runCli(["install", "claude", "--output", out]);
+
+    const canonical = readFileSync(join(ROOT, "hooks", "claude", "scripts", "notify.mjs"), "utf-8");
+    const bundled = readFileSync(join(out, "hooks", "scripts", "notify.mjs"), "utf-8");
+    assert.equal(bundled, canonical);
+
+    const installed = JSON.parse(readFileSync(join(out, "hooks.json"), "utf-8"));
+    const notify = installed.hooks.Notification.flatMap((g) => g.hooks)
+      .filter((h) => h.command?.includes("notify.mjs"));
+    assert.ok(notify.length === 1, "hooks.json should reference the notification script");
+    assert.match(notify[0].command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/scripts\/notify\.mjs"$/);
+  });
+
   it("is deterministic across repeated installs into the same output", async () => {
     const out = makeTmp();
     await runCli(["install", "claude", "--output", out]);

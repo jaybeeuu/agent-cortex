@@ -55,7 +55,7 @@
     "sources": {
       "copilot": "agents/<name>/ composable dirs (canonical) — composed to agents/*.agent.md by scripts/build-copilot-agents.mjs",
       "pi": "agents/<name>/ composable dirs (canonical) — composed at runtime by the agent-modes extension",
-      "claude": "agents/<name>/ composable dirs (canonical) — composed by scripts/build-claude-agents.mjs, plus agents-native/*.md for deferred agents"
+      "claude": "agents/<name>/ composable dirs (canonical) — composed by bin/installers/claude.mjs (install-time generator; pnpm build:claude aliases it), plus agents-native/*.md for deferred agents"
     }
   },
   "notes": {
@@ -71,7 +71,7 @@
       "pi": "plugin_root defaults to the npm-package install layout (~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex). Local-checkout installs (pi/settings.json packages entry referencing a local src path) or symlinked installs differ — installers must compute plugin_root from the actual resolution and can override it."
     },
     "agents": {
-      "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in scripts/build-claude-agents.mjs): copilot/pi agents are agent-cortex:<slug>, claude agents are <slug>.",
+      "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in bin/installers/claude.mjs): copilot/pi agents are agent-cortex:<slug>, claude agents are <slug>.",
       "deferred": "ralph has no generated claude counterpart — it is authored natively as agents-native/ralph.md (its event-driven orchestration cannot be produced by section composition from the polling copilot source)."
     }
   },
@@ -84,7 +84,7 @@
     "rules": [
       "TOOL: replace {{TOOL:<key>}} with tools.<key>.<harness>. Canonical keys are exact, case-sensitive strings (the copilot tool names, which are the authoring names in agents/<name>/agent.md).",
       "TOOL null: a null value means the harness has no equivalent. In prose, remove the token (and emit a warning). In a tool-list context (frontmatter tools: [...]), omit the entry. Do not substitute an empty string.",
-      "TOOL unknown: a {{TOOL:<key>}} with no entry in tools is a hard error — the map must be extended. This mirrors the build scripts (scripts/build-copilot-agents.mjs, scripts/build-claude-agents.mjs), which throw on unknown tools.",
+      "TOOL unknown: a {{TOOL:<key>}} with no entry in tools is a hard error — the map must be extended. This mirrors the generators (scripts/build-copilot-agents.mjs, bin/installers/claude.mjs), which throw on unknown tools.",
       "PATH named key: replace {{PATH:<key>}} with the resolved value of paths.<key>.<harness>.",
       "PATH relative: replace {{PATH:<relative>}} with plugin_root + '/' + <relative> (e.g. {{PATH:skills/workflow/plan/SKILL.md}}).",
       "PATH resolution: a value may be a literal string, an ${ENV_VAR} token, or a {base, relative} spec. Resolve {base, relative} by joining relative onto the resolved base. Leave ${ENV_VAR} values verbatim — the harness expands them at runtime (claude's ${CLAUDE_PLUGIN_ROOT}).",

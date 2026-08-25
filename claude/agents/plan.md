@@ -1,5 +1,5 @@
 ---
-# GENERATED from agents/plan/ by scripts/build-claude-agents.mjs — DO NOT EDIT.
+# GENERATED from agents/plan/ by bin/installers/claude.mjs — DO NOT EDIT.
 name: plan
 description: "Guide a feature from first discussion through PRD and task breakdown to classified beads ready for ralph execution. Full end-to-end planning workflow using the plan skill. Use when starting a new feature, scoping work to hand off to ralph, or saying 'plan this'."
 tools: Bash, Read, Edit, Write, Grep, Glob, AskUserQuestion, Task, Skill

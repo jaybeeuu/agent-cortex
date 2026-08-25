@@ -1,7 +1,7 @@
 // Shared composer: reads a composable agent directory (agents/<name>/) and emits
-// the harness-specific agent content defined by agents/README.md. Both the
-// Copilot generator (scripts/build-copilot-agents.mjs) and the Claude generator
-// (scripts/build-claude-agents.mjs) compose from here, so the composable dirs are
+// the harness-specific agent content defined by agents/README.md. The Copilot
+// generator (scripts/build-copilot-agents.mjs) and the Claude install-time generator
+// (bin/installers/claude.mjs) compose from here, so the composable dirs are
 // the single source of truth and the flat/generated files stay in lockstep.
 //
 // Composition per the agents/README.md contract:
@@ -15,7 +15,7 @@
 // silently dropped section.
 //
 // Options (the pi installer passes `dropNullTools`, `pluginRoot` and
-// `resolveRelativePaths`; the build scripts use the strict defaults):
+// `resolveRelativePaths`; the copilot generator and claude installer use the strict defaults):
 //   dropNullTools          replace null-mapped tool tokens with an empty string and
 //                          warn instead of throwing (pi's prose rule per the
 //                          token-map contract)

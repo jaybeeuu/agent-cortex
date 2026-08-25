@@ -48,7 +48,7 @@ rather than inventing a dotted form:
   harness. Source of truth for the copilot → claude half is `token-map.json`'s own claude
   column, consumed by `scripts/build-claude-agents.mjs` (PR #57); the pi column is grounded
   in pi's documented built-in tool surface (`read`, `bash`, `edit`, `write`, `grep`, `find`,
-  `ls`) plus `task` / `read_agent` subagents.
+  `ls`) plus `task` / `read_agent` / `wait_for_agents` subagent tools.
 - **`paths`** — `plugin_root`, `agents_dir`, and `skills_dir`. These are the install-time
   variables that differ per harness. `plugin_root` is the anchor; the other two resolve
   relative to it (`{base, relative}` specs) so a harness only overrides the single root it

@@ -35,7 +35,7 @@ Run once at startup:
    - **Task or other type without an `implementation-type:*` label**: unexpected here — classification is a planning-stage concern already applied by `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note for the shutdown summary.
    - **Task labelled `implementation-type:hitl`**: skip — record the bead ID for the **Pending Human Action** summary at shutdown.
 7. For each ready chore bead (up to 5), **dispatch** it (see _Dispatching a chore bead_ in REFERENCE.md). Chores for a parent bead must run from that parent's worktree.
-8. **If** any chore beads were dispatched in step 7, start the **poll timer**: run `sleep 120` as a background bash process and hold its shellId in memory. **Otherwise**, if HITL gate beads are pending (check `bd list -l lifecycle:feature-pr -l implementation-type:hitl` and `bd list -l awaiting-epic-pr-merge`), proceed to **HITL Pause** (see REFERENCE.md) immediately.
+8. **If** any chore beads were dispatched in step 7, start the **poll timer** (Copilot only): run `sleep 120` as a background bash process and hold its shellId in memory. PI has no timer — keep a `wait_for_agents` call outstanding over every in-flight agent ID instead (see the Event Loop note). **Otherwise**, if HITL gate beads are pending (check `bd list -l lifecycle:feature-pr -l implementation-type:hitl` and `bd list -l awaiting-epic-pr-merge`), proceed to **HITL Pause** (see REFERENCE.md) immediately.
 9. Regenerate `.agent-cortex/ralph/progress.md`:
    ```bash
    # workspace must be the absolute path you cd'd into — never . or $(pwd)
@@ -47,7 +47,7 @@ Run once at startup:
 
 ## Event Loop
 
-After initialization, wait for background agents or the poll timer to complete. On each completion notification:
+After initialization, wait for background agents or the poll timer to complete. Completion detection is harness-specific: the `sleep 120` poll timer described below is the **Copilot** mechanism. **PI** replaces it with the blocking `wait_for_agents` tool — it returns as soon as any in-flight agent finishes, so each return plays the role of a poll-timer tick with its completed-agent result attached; there is no timer to start or kill on PI. On each completion notification:
 
 ### Poll timer completed
 
@@ -59,7 +59,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 ### Background agent completed
 
 1. **Poll that bead's log** to flush any final lines.
-2. **Read** the completed agent's full output with {{TOOL:read_agent}}.
+2. **Read** the completed agent's full output with {{TOOL:read_agent}} (on PI the completed result arrives in the `wait_for_agents` response; read_agent remains a fallback for a specific result).
 3. **Identify the bead**: parse the `---REPORT---` block for `BEAD_ID` and `STAGE_COMPLETED`.
 4. **Close** the chore bead: `bd close <bead-id>`.
 5. **Handle stage outcome**:
@@ -93,7 +93,7 @@ After initialization, wait for background agents or the poll timer to complete. 
 - **ALWAYS call the {{TOOL:task}} tool to spawn subagents** — never use {{TOOL:bash}}, never run stages inline, never use any other tool. This is your only spawning mechanism.
 - **Always** derive orchestration state from beads — do not maintain a separate state file.
 - **Always** include the full `bd prime` output verbatim in every {{TOOL:task}} tool prompt.
-- **Always** keep the poll timer running — restart it immediately after it fires — **unless** the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending), in which case proceed to **HITL Pause** (see REFERENCE.md) and stop instead.
+- **Always** keep the poll timer running (Copilot) — restart it immediately after it fires — **unless** the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending), in which case proceed to **HITL Pause** (see REFERENCE.md) and stop instead. On PI there is no timer to keep alive — always keep one `wait_for_agents` call outstanding while agents are in-flight.
 - **Never** post empty poll updates to chat — only surface new log content.
 - **Max 5** tasks in-flight at once.
 - **Max fix rounds** per task as defined by `maxFixRounds` in `skills/planning/create-task/pipeline.json`.

@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.38.0
+
+### Minor Changes
+
+- fbc6fa5: Add the Copilot CLI harness installer (`agent-cortex install copilot`), sharing the generator with `pnpm build:copilot`. It regenerates the flat `agents/*.agent.md` files the Copilot plugin loads (plugin.json `agents: "agents/"`), with the same `--dry-run` / `--output` contract as the claude and pi installers.
+- 42d3a33: Add central token-map.json mapping tool names, paths, and agent naming across the copilot, claude, and pi harnesses, with the token substitution contract for the install-time generation system. Use {{TOOL:...}} / {{PATH:...}} tokens in canonical sources; installers substitute per-harness names from the map.
+- 3a7e896: Add using-agent-skills meta-skill with 8 core operating behaviors and skill routing tree. Routes incoming work to the right skill, enforces scope discipline, and flags persistent failures to the user instead of working around them.
+- 4f5b134: Add a `wait_for_agents` tool to the subagent extension: it blocks until at least one background sub-agent (spawned with `task`) completes and returns its result, with `read_agent` kept as a fallback. Ralph's PI completion detection now waits on `wait_for_agents` instead of a `sleep 120` poll loop.
+- e1180d5: Update the agent-modes extension to discover agents from the composable directory format (`agents/<name>/` + per-harness `pi/frontmatter.json`). The PI system prompt is composed from `agent.md`, resolving `{{SECTION:...}}` includes from the agent's `pi/` directory and substituting `{{TOOL:...}}` / `{{PATH:...}}` tokens via token-map.json, so tool restrictions now translate to real PI tool names (e.g. `view` → `read`, `web_fetch` → `fetch_content`, null-mapped tools dropped). Flat `*.agent.md` files remain supported as a fallback for agents that have not been migrated to composable directories yet.
+- 603679a: Make the composable agent directories (`agents/<name>/`) canonical: the hand-authored flat `agents/*.agent.md` sources are removed and the flat Copilot/pi agent files are now generated output, composed from the canonical dirs by `scripts/build-copilot-agents.mjs` (`pnpm build:copilot`). `claude/agents/*.md` is composed from the same dirs' `claude/` harness by `scripts/build-claude-agents.mjs` (ralph stays native via `agents-native/ralph.md`). Agent names, descriptions, and tool sets are unchanged; agent bodies now carry the composable (tokenized) content. CI verifies both generated outputs never drift.
+- 60d498f: Port the pi extensions with Claude equivalents to the Claude Code plugin's hooks:
+  SessionStart now also injects the using-agent-skills / bd-tool / git-workflow skill
+  policy, and a Notification hook matched on documented notification types
+  (`agent_completed|agent_needs_input|permission_prompt`) raises desktop notifications
+  via the bundled `hooks/scripts/notify.mjs`. Hook support scripts are now bundled
+  into `claude/hooks/` by the shared installer, and the audit (auto-name, skill-stats,
+  subagent, agent-modes rejected with rationale) is recorded in `docs/claude-hooks.md`.
+- 6863b0e: Add `agent-cortex install claude` — install-time generator for the Claude Code plugin
+  subtree, sharing one code path with `pnpm build:claude` so the outputs can never diverge.
+  `claude/.claude-plugin/plugin.json` (version now tracked from `package.json`) and
+  `claude/hooks.json` (from the new canonical `hooks/claude/` source) are generated rather
+  than hand-maintained, and the committed `claude/skills/` gains the previously-missing
+  `using-agent-skills` symlink. Root tests (`test/`) are now included in `pnpm test`.
+- f2b441e: Add the pi harness installer (`agent-cortex install pi`): composes agents from the canonical composable directories plus `pi/` sections, substitutes `{{TOOL:...}}` / `{{PATH:...}}` tokens against token-map.json's pi column (null-mapped tools dropped with warnings, paths resolved against the plugin root), and writes `<output>/agents/<name>.agent.md` plus token-substituted skill copies to `<output>/skills` (default `~/.pi/agent`). Supports `--dry-run`, `--output <dir>`, and an optional `--plugin-root <dir>` override. The shared composer gains pi-friendly options (`dropNullTools`, `pluginRoot`, `resolveRelativePaths`, `warn`) with the copilot/claude build defaults unchanged, and the root test suite is now wired into `pnpm test`.
+
+### Patch Changes
+
+- 99fcc9a: Complete the move to install-time Claude code generation: the standalone `scripts/build-claude-agents.mjs` build script is removed and `pnpm build:claude` is now a pure alias of `agent-cortex install claude` — both invoke the shared `bin/installers/claude.mjs` generator, so there is a single code path for the committed `claude/` plugin subtree and install-time vs regenerated output can never diverge. Generated agents carry installer provenance headers, and CI's drift check (regenerate + `git diff --exit-code`) validates the committed subtree byte-for-byte against installer output. `agents-native/` remains the canonical source for Claude-native agents (`ralph`), copied verbatim by the installer.
+- 9b0c4fc: Fix the release pipeline so Version Packages PRs regenerate generated output. `changesets/action` execs the `version`/`publish` inputs without a shell, so quoted multi-command strings crash (`bash -c '...'` split on whitespace → unterminated quote, exit 2). The chain now lives in exec-safe single-command pnpm scripts: `pnpm version-packages` bumps versions, syncs `plugin.json`, then regenerates the committed Claude/Copilot agent output so the drift gates never fail on the bumped version; `pnpm publish-package` performs the pack + provenance publish.
+- f1b8a25: Add composable agent directory structures for the plan, ralph-plan, and strategy agents (`agents/plan/`, `agents/ralph-plan/`, `agents/strategy/` with per-harness `pi/`, `copilot/`, and `claude/` frontmatter). The existing flat `*.agent.md` files are retained until the composer/installer migration lands, so no shipped behaviour changes yet.
+- d83a7cf: Add composable agent directory structure for the ralph agent (`agents/ralph/` with per-harness `pi/`, `copilot/`, and `claude/` frontmatter and polling sections). The existing flat `agents/ralph.agent.md` is retained until the composer/installer migration lands, so no shipped behaviour changes yet.
+- c4728c5: Migrate hardcoded tool names in skill files to `{{TOOL:name}}` tokens (task, read_agent, bash, view, rg, glob) so installers can substitute per-harness names.
+
 ## 1.37.1
 
 ### Patch Changes

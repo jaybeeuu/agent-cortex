@@ -1,6 +1,6 @@
 {
   "name": "agent-cortex",
-  "version": "1.37.1",
+  "version": "1.38.0",
   "description": "Personal Claude Code plugin with custom agents and skills",
   "author": {
     "name": "jaybeeuu"

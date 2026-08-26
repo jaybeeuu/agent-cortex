@@ -105,8 +105,10 @@ the `style-versioning` skill documents the format.
 
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when
-changesets are pending, then publishes to npm once it lands — packing with `pnpm
-pack` and publishing with `npm publish --provenance --access public`. Releases are
+changesets are pending, then publishes to npm once it lands. The version step runs
+`pnpm version-packages` — bumping `package.json`, syncing `plugin.json`, and
+regenerating the committed generated output so the drift gates stay green; the
+publish step runs `pnpm publish-package` (pack + provenance publish). Releases are
 sourced entirely from `main`.
 
 ## Installation

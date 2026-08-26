@@ -61,17 +61,18 @@ Fix status bead showing wrong priority after update
 
 ## After merge to main
 
-The `release.yml` workflow handles everything automatically:
+The `release` job in `.github/workflows/ci.yml` handles everything automatically:
 
 1. **Detects new changesets** on main
-2. **Creates or updates a "Version Packages" PR** with bumped versions and updated CHANGELOG
+2. **Creates a "Version Packages" PR** — the `version` step runs `pnpm version-packages`, which bumps `package.json`, syncs `plugin.json` (via `scripts/sync-plugin-version.sh`), updates `CHANGELOG.md`, and regenerates the committed generated output (`pnpm build:claude`, `pnpm build:copilot`) so the drift gates never fail on a version bump
 3. **When "Version Packages" is merged**:
-   - Bumps `package.json` version
-   - Syncs `plugin.json` version (via `scripts/sync-plugin-version.sh`)
-   - Updates `CHANGELOG.md`
    - Creates a git tag
-   - Publishes to npm via OIDC (no `NPM_TOKEN` needed)
+   - Publishes to npm via OIDC (no `NPM_TOKEN` needed) — `pnpm publish-package` packs with `pnpm pack` and publishes with `npm publish --provenance --access public`
    - Creates a GitHub release automatically
+
+`changesets/action` execs the `version`/`publish` inputs without a shell, so each
+must be a single unquoted command token — keep release logic in pnpm scripts
+(`version-packages`, `publish-package`), never inline shell strings.
 
 ### Version lockstep
 
@@ -96,6 +97,6 @@ All version numbers stay in lockstep automatically:
 | Before (manual) | After (changesets) |
 |---|---|
 | Agent bumps versions locally | Agent writes a changeset file |
-| Manual GitHub release creation | Automated via `release.yml` |
-| `publish.yml` triggered by release | `release.yml` triggered by push to main |
+| Manual GitHub release creation | Automated by the `release` job in `ci.yml` |
+| `publish.yml` triggered by release | `ci.yml` release job on push to main |
 | Version sync was manual | `sync-plugin-version.sh` runs automatically |

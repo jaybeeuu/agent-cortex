@@ -50,8 +50,10 @@ const STATUS_CHAR_MAP: Record<string, BeadStatus> = {
 export function parseListLine(
   line: string,
 ): { id: string; status: BeadStatus; title: string } | null {
-  // Format: {STATUS_CHAR} {ID} ● P{N} {TITLE}
-  const match = line.trim().match(/^([○◐●✓❄])\s+(\S+)\s+●\s+P\d+\s+(.+)$/);
+  // Formats accepted:
+  //   {STATUS_CHAR} {ID} P{N} {TITLE}        — current bd list output
+  //   {STATUS_CHAR} {ID} ● P{N} {TITLE}      — older bd (● before P{N} is optional)
+  const match = line.trim().match(/^([○◐●✓❄])\s+(\S+)\s+(?:●\s+)?P\d+\s+(.+)$/);
   if (!match) return null;
   const [, statusChar, id, title] = match;
   const status = STATUS_CHAR_MAP[statusChar];

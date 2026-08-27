@@ -199,6 +199,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # npm Trusted Publishing (OIDC): npm exchanges this id-token for a
+      # short-lived npm token at publish time — no token config or secret.
       id-token: write
     concurrency: ${{ github.workflow }}-${{ github.ref }}
     steps:
@@ -247,13 +249,8 @@ jobs:
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Registry auth for `npm publish --provenance` (was failing with
-          # ENEEDAUTH). The repo's .npmrc references ${NODE_AUTH_TOKEN} and npm
-          # substitutes it at runtime — the token itself is never committed.
-          #
-          # USER ACTION REQUIRED before publish can succeed: add an npm publish
-          # token as the NPM_TOKEN Actions secret (Settings → Secrets and
-          # variables → Actions). Prefer a granular access token with
-          # read-and-publish scope on @jaybeeuu/agent-cortex only
-          # (npmjs.com/settings/<user>/tokens).
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Publish authenticates via npm Trusted Publishing (OIDC token
+          # exchange at publish time) — no NPM_TOKEN secret, no token config.
+          # Requires the one-time npm-side setup: npmjs.com → @jaybeeuu/
+          # agent-cortex → Access → Trusted Publishing, tied to GitHub repo
+          # jaybeeuu/agent-cortex + workflow .github/workflows/ci.yml.

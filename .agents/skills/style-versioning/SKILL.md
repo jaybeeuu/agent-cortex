@@ -67,7 +67,7 @@ The `release` job in `.github/workflows/ci.yml` handles everything automatically
 2. **Creates a "Version Packages" PR** — the `version` step runs `pnpm version-packages`, which bumps `package.json`, syncs `plugin.json` (via `scripts/sync-plugin-version.sh`), updates `CHANGELOG.md`, and regenerates the committed generated output (`pnpm build:claude`, `pnpm build:copilot`) so the drift gates never fail on a version bump
 3. **When "Version Packages" is merged**:
    - Creates a git tag
-   - Publishes to npm — `pnpm publish-package` packs with `pnpm pack` and publishes with `npm publish --provenance --access public`. Provenance is signed via OIDC (`id-token` permission), but registry AUTH requires the `NPM_TOKEN` Actions secret (wired into the release job as `NODE_AUTH_TOKEN` + the repo `.npmrc` reference) — without it, publish fails with ENEEDAUTH
+   - Publishes to npm — `pnpm publish-package` packs with `pnpm pack` and publishes with `npm publish --provenance --access public`. Authenticates via npm Trusted Publishing (OIDC): the release job's `id-token` permission lets npm exchange a GitHub OIDC token for a short-lived npm token at publish time, so no `NPM_TOKEN` secret or `.npmrc` auth config is required — only the one-time npm-side Trusted Publishing setup on npmjs.com (package → Access → Trusted Publishing → GitHub repo `jaybeeuu/agent-cortex` + workflow `.github/workflows/ci.yml`)
    - Creates a GitHub release automatically
 
 `changesets/action` execs the `version`/`publish` inputs without a shell, so each

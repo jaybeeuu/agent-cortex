@@ -199,6 +199,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # npm Trusted Publishing (OIDC): npm exchanges this id-token for a
+      # short-lived npm token at publish time — no token config or secret.
       id-token: write
     concurrency: ${{ github.workflow }}-${{ github.ref }}
     steps:
@@ -247,3 +249,8 @@ jobs:
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Publish authenticates via npm Trusted Publishing (OIDC token
+          # exchange at publish time) — no NPM_TOKEN secret, no token config.
+          # Requires the one-time npm-side setup: npmjs.com → @jaybeeuu/
+          # agent-cortex → Access → Trusted Publishing, tied to GitHub repo
+          # jaybeeuu/agent-cortex + workflow .github/workflows/ci.yml.

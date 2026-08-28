@@ -108,8 +108,11 @@ On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 changesets are pending, then publishes to npm once it lands. The version step runs
 `pnpm version-packages` — bumping `package.json`, syncing `plugin.json`, and
 regenerating the committed generated output so the drift gates stay green; the
-publish step runs `pnpm publish-package` (pack + provenance publish). Releases are
-sourced entirely from `main`.
+publish step runs `pnpm publish-package` (pack + provenance publish). Publish
+authenticates via npm Trusted Publishing (OIDC) — no npm token or GitHub
+secret is needed, only the one-time npm-side setup on npmjs.com (package →
+Access → Trusted Publishing for the `jaybeeuu/agent-cortex` repo). Releases
+are sourced entirely from `main`.
 
 ## Installation
 

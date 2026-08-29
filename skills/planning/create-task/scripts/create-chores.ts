@@ -39,8 +39,13 @@ function parseArgs(args: string[]): { parentId: string; priority: string } {
 
 // ─── Exec ─────────────────────────────────────────────────────────────────────
 
+// BD_PATH env override lets machines where bd is not on PATH pin a location.
+// Defaults to `bd`, resolved via PATH.
+const BD_PATH = process.env.BD_PATH || 'bd';
+
 function run(args: string[]): string {
-  return execSync(args.join(' '), { encoding: 'utf-8' }).trim();
+  const cmd = args[0] === 'bd' ? [BD_PATH, ...args.slice(1)] : args;
+  return execSync(cmd.join(' '), { encoding: 'utf-8' }).trim();
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

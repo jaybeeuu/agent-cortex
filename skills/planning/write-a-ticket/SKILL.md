@@ -1,122 +1,111 @@
 ---
 name: write-a-ticket
-description: Write a well-structured ticket for an external issue tracker (e.g. Jira) aimed at skilled human engineers. Use when asked to "write a ticket", "create an issue", "open a Jira item", or draft work for a human engineering audience — not for creating implementation tasks in the ralph/bd loop.
+description: Write a well-structured ticket for an external issue tracker (e.g. Jira) that an engineer can act on without follow-up questions. Use when asked to "write a ticket", "file this in Jira", or "create a work item" — not for creating implementation tasks in a ralph/bd loop.
 ---
 
 # Write a Ticket
 
-Tickets are for skilled engineers: they should be able to pick one up, understand the context immediately, know where to start, and deliver the right outcome without asking questions or wading through noise.
-
-Write for clarity, not coverage. A ticket is not a specification — prefer one well-chosen sentence over three that say the same thing.
-
 ## When to use
 
-- Asked to "write a ticket", "create an issue", "open a Jira item", or "file a bug" in an external tracker.
-- Drafting any work item for a human engineering audience in an external issue tracker.
+- Asked to "write a ticket", "file this in Jira", or "create a work item".
+- Drafting an actionable work item for a human engineering audience in an external issue tracker (Jira, Linear, GitHub Issues).
+- Checking an existing ticket for clarity before it goes to the team.
 
 ## When NOT to use
 
-- Creating implementation tasks for the ralph/bd loop — use `create-task` instead.
-- Writing product requirement documents — use `write-a-prd` instead.
-- Capturing early-stage ideas that are not ready to build — use `record-idea` instead.
-- Tickets for non-engineering audiences — a different structure would communicate better.
-
-## Philosophy / rationale
-
-- A ticket is the boundary between planning and doing: its job is to make the next engineer productive, not to archive the conversation that produced it. This is why linking beats copy-pasting — linked sources keep one version of the truth.
-- Concision is a form of respect. Engineers skim; short, decision-dense tickets let the signal survive the skim. Padding reads as a lack of understanding of what matters.
+- Creating implementation tasks for the ralph/bd loop — those are beads executed by agents, not tickets read by engineers.
+- Writing a requirements document for a feature that is not yet actionable — run `write-a-prd` first and link the PRD from the ticket.
 
 ## Workflow
 
-1. Gather context: the goal of the work, the owning epic/RFC/initiative, any agreed constraints or decisions, and relevant code locations, schemas, or prior art. Ask the user anything still unclear before drafting.
-2. Draft the ticket using the template below. Every section has a purpose — do not pad it, and do not omit a required section without a good reason.
-3. Review the draft against the Verification checklist before finalising.
+1. **Gather context.** Confirm the goal of the work, the epic/RFC/initiative it belongs to (if any), known constraints or decisions, and relevant code locations, schemas, or prior art. Outcome: you can state the ticket's purpose in one sentence. If you cannot, ask before writing.
+
+2. **Draft the ticket.** Work through the template below. Every section has a purpose — write it only if it earns its place, and never omit a required section without recording why.
+
+```markdown
+## Context
+
+<1–3 sentences: why this work exists, and which epic/RFC/ADR it belongs to. Link to it — never copy-paste its content.>
+
+## Description
+
+<What to build or change. Describe the outcome, not the implementation steps, and state scope explicitly — what is in and what is out.>
+
+## Acceptance criteria
+
+- [ ] <Specific, independently verifiable criterion — e.g. "given X, the API returns Y">
+- [ ] <...>
+
+## Technical notes
+
+<Links to relevant code, agreed schemas, architectural decisions, or upstream constraints. A pointer, not a design document — decisions that need more space belong in an ADR or RFC.>
+
+## Testing strategy
+
+<Optional. Only when testing needs are non-obvious or a level was agreed — unit, integration, contract, E2E. Omit when team defaults apply.>
+
+## Monitoring strategy
+
+<Optional. Only when the change adds metrics, alerts, log events, dashboards, or a phased rollout. Omit when there is no meaningful observability footprint.>
+
+## Notes
+
+<Optional. Genuinely useful details with no other home. If you reach for this often, restructure the ticket.>
+```
+
+3. **Review against the checklist.** Work through the verification checklist below before finalising.
 
 ## Red Flags
 
-- **Padding sections to look thorough.** A padded "Context" or "Notes" buries the signal the reader needs.
-- **Copy-pasting epic or RFC content.** Duplicated content drifts; link to the source instead.
-- **Implementation steps in Description.** The ticket describes the outcome; the implementer chooses the how.
-- **Acceptance criteria that cannot be verified.** "Works correctly" and "is tested" are not criteria.
+- Writing implementation steps into the description — describe the outcome, not the how.
+- Acceptance criteria that cannot be verified: "works correctly", "is tested".
+- Copy-pasting context instead of linking to the epic, RFC, or ADR.
+- Padding sections with filler to look complete — a short, accurate ticket beats a padded one.
+- Omitting a required section without recording why.
 
 ## Common Rationalizations
 
 | Rationalization | Rebuttal |
 |---|---|
-| "The more detail, the better" | More words mean more noise. Every sentence must earn its place. |
-| "I'll paste the conversation so nothing is lost" | The reader needs the decisions, not the journey. |
-| "It's a small ticket — skip the review" | Small tickets are where the signal is most easily buried. Apply the same checklist. |
-| "The team convention is to include this section" | Sections exist to communicate, not to satisfy a template. Omit when they add nothing. |
+| "The engineer will figure it out" | Skilled engineers can — but questions are a blocked ticket. The ticket must stand alone. |
+| "More detail is safer" | Detail only helps if it informs the implementer. Every extra sentence is noise to skim. |
+| "We will verify acceptance criteria in review" | Unverifiable criteria cannot be checked. Write given/outcome pairs instead. |
+| "We will discuss the details in standup" | The ticket is the record. If it cannot stand alone, the discussion is lost. |
 
-## Template
+## Philosophy / rationale
 
-```markdown
-## Context
-
-<1–3 sentences: why this work exists and what larger initiative it is part of.
-Link to the epic, RFC, ADR, or prior ticket — do not duplicate their content.>
-
-## Description
-
-<What needs to be built or changed. Describe the outcome, not the implementation
-steps. Be specific about scope — what is in and what is explicitly out.>
-
-## Acceptance criteria
-
-- [ ] <Specific, verifiable criterion>
-- [ ] <Specific, verifiable criterion>
-
-## Technical notes
-
-<Links to relevant code, agreed schemas, or architectural decisions the
-implementer should know. This is a pointer, not a design document — decisions
-that need more space belong in an ADR or RFC.>
-
-## Testing strategy
-
-<Optional. Include only when this change has non-obvious testing requirements
-or a specific testing agreement was reached.>
-
-## Monitoring strategy
-
-<Optional. Include only when the change has a non-obvious observability
-footprint: new metrics, alerts, log events, dashboards, or a phased rollout.>
-
-## Notes
-
-<Optional. Anything genuinely useful that fits nowhere else. If you reach
-here often, the ticket probably needs restructuring.>
-```
-
-## Section guidance
-
-| Section | Job | Rule |
-|---|---|---|
-| Context | Explain why | One to three sentences; link, never copy-paste. |
-| Description | State what, not how | Name scope boundaries explicitly ("does not include X"). |
-| Acceptance criteria | Be independently verifiable | "Given X, the API returns Y"; avoid "works correctly". |
-| Technical notes | Point, don't design | A tricky location, an agreed schema, an upstream constraint. Not a tutorial, not undecided decisions. |
-| Testing strategy | Flag unusual needs | Omit when the team's default testing conventions apply. |
-| Monitoring strategy | Flag observability needs | Omit when the change has no meaningful production footprint. |
-| Notes | Catch-all | Frequent use means the ticket needs restructuring. |
+- **Write for clarity, not coverage.** A ticket is not a specification. One well-chosen sentence beats three that say the same thing.
+- **Describe the outcome, not the implementation.** The ticket owns the what and why; the implementer owns the how.
+- **A ticket must stand alone.** Link, don't copy — readers who need the full rationale should open the linked document, not a paraphrase.
 
 ## Cross-skill references
 
 | When you need… | Use this skill |
 |---|---|
-| Implementation tasks for the ralph/bd loop | `create-task` |
-| A product requirements document | `write-a-prd` |
-| Early-stage idea capture | `record-idea` |
+| Tone, structure, and concision for human-facing writing | `style-comms` |
+| A requirements document that precedes the ticket | `write-a-prd` |
 
 ## Examples
 
-See `EXAMPLES.md` for before/after rewrites of vague acceptance criteria and padded Context sections.
+### Vague vs verifiable acceptance criteria
+
+| Instead of… | Write… |
+|---|---|
+| "The export feature works" | "Given exports enabled, selecting 'Export CSV' downloads `<account>-export-<date>.csv`" |
+| "Adds tests for the new endpoint" | "POST /v1/orders returns 201 with the created order for valid input and 422 with field errors for schema violations" |
+
+### Context that links vs context that copies
+
+| Instead of… | Write… |
+|---|---|
+| Four paragraphs paraphrasing the ADR | "Follows ADR-014 (token refresh). This ticket adds only the retry path — see ADR link." |
 
 ## Verification checklist
 
-- [ ] A skilled engineer could start immediately with no follow-up questions
-- [ ] Every sentence earns its place — nothing pads
-- [ ] Acceptance criteria are specific and verifiable, not vague
-- [ ] Technical notes point at the right things without over-prescribing the solution
-- [ ] Epic/RFC content is linked, not copy-pasted
-- [ ] Testing and monitoring sections included only when they add information
+- [ ] Context explains why the work exists; the reader needs no other tab open
+- [ ] Description states the outcome, not implementation steps, and defines scope
+- [ ] Acceptance criteria are independently verifiable — no "works correctly" or "is tested"
+- [ ] Technical notes link to code or schemas without prescribing the solution
+- [ ] Testing/Monitoring/Notes present only when they add non-obvious information
+- [ ] Every sentence passes the "does this add information?" test
+- [ ] A skilled engineer can start immediately with zero follow-up questions

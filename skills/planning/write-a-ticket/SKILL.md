@@ -1,6 +1,7 @@
 ---
 name: write-a-ticket
 description: Write a well-structured ticket for an external issue tracker (e.g. Jira) that an engineer can act on without follow-up questions. Use when asked to "write a ticket", "file this in Jira", or "create a work item" — not for creating implementation tasks in a ralph/bd loop.
+argument-hint: "The work to ticket: goal, epic/initiative, constraints, or paste a draft"
 ---
 
 # Write a Ticket

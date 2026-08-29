@@ -50,6 +50,8 @@ After approval, update files following the quality principles below. Verify comm
 6. **Drift-resistant and non-duplicative** — stable concepts (directory purposes) over file lists; reference other docs, do not restate them.
 7. **Progressive disclosure, sparse and maintained** — path-specific detail moves into scoped files or `docs/`; every line must earn its place.
 
+See [REFERENCE.md](REFERENCE.md) for templates, examples, and detailed section guidance.
+
 ## Red Flags
 
 - **Fixing findings during the audit.** The propose gate exists because the user knows which imperfections are intentional.

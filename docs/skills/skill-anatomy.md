@@ -137,23 +137,26 @@ disable-model-invocation: false
 ## Workflow
 
 1. Gather required context and validate scope boundaries.
-2. Execute deterministic steps in order, recording key decisions.
-3. Produce the required output artifact or terminal response.
+2. Reject early with the reason when validation fails; otherwise continue.
+3. Execute deterministic steps in order, recording key decisions.
+4. Produce the required output artifact or terminal response.
 
 Workflow at a glance (include only when the flow branches):
 
-    [Trigger] --> [Gather context] --> [Validate scope]
-                                          |
-                                     (invalid)
-                                          v
-                                    [Reject early]
-                                          |
-                                      (valid)
-                                          v
-                                [Run deterministic steps]
-                                          |
-                                          v
-                                  [Produce output artifact]
+              [Trigger]
+                  |
+                  v
+          [Gather context]
+                  |
+                  v
+          [Validate scope] --(invalid)--> [Reject early]
+                  |
+              (valid)
+                  v
+      [Run deterministic steps]
+                  |
+                  v
+      [Produce output artifact]
 
 ## Red Flags
 

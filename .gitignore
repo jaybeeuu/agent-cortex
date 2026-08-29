@@ -6,6 +6,7 @@
 .dolt/
 *.db
 .beads-credential-key
+/.beads.gate.lock
 .agent-cortex/*
 !.agent-cortex/working-docs/
 !.agent-cortex/ralph/ubiquitous-language.md

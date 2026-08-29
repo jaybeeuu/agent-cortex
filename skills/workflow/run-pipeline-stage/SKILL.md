@@ -1,120 +1,63 @@
 ---
 name: run-pipeline-stage
-description: Execute a single pipeline stage for a task. Use when you want to work through beads inline, pick up a specific stage bead, or work without the full ralph parallel orchestrator.
+description: Execute a single pipeline stage for a bead (code, verify, review, document) via its playbook and dispatch rules, reporting the outcome in a fixed REPORT shape. Use when you want to "work through beads inline", "pick up a specific stage bead", or run one stage "without the full ralph orchestrator".
 ---
 
 # Run Pipeline Stage
 
-Execute a single pipeline stage. Stage beads (`code`, `verify`, `review`, `document`) are created by the `create-task` skill from the pipeline definition in `skills/planning/create-task/pipeline.json`; this skill handles executing one at a time.
+Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `stage:fix`) are created by the `create-task` skill from the pipeline definition in `skills/planning/create-task/pipeline.json`. This skill executes one stage at a time and reports the outcome.
 
-## Quick Start
+## When to use
 
-1. Run `bd prime` and hold the output for your own context. Subagents you spawn can run `bd prime` themselves if they need project context.
-2. If no bead is specified, run `bd ready` and ask the user which to work on.
-3. Claim the bead with `bd update <id> --claim`.
-4. Read the bead's `stage:*` label to determine which stage to execute.
-5. Load the universal stage runner prompt from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`.
-6. Populate `<stage>` (from the bead's `stage:*` label), and follow `skills/workflow/run-pipeline-stage/playbooks/<stage>.md` for stage-specific behavior before spawning a subagent.
+- "Work through beads inline" instead of running a full ralph fleet.
+- "Pick up a specific stage bead" and execute it to a REPORT.
+- Re-run a stage after a `stage:fix` chore completes.
+- Follow a stage's playbook discipline with the right stage skills — tests, style, security, documentation.
 
-## Progress Report
+## When NOT to use
 
-To generate a Markdown snapshot of all bead status (Mermaid dependency graph, active work table, completed list), run:
+- Running many beads concurrently — that is the `ralph` skill.
+- Creating or planning beads — use `create-task` or `plan`.
+- Exploratory bead bookkeeping without a stage — that is `bd-tool`.
 
-```bash
-# workspace must be the absolute path of the project — never . or $(pwd)
-workspace="/absolute/path/to/project"
-pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace"
-```
+## Workflow
 
-To typecheck or test the scripts package:
-
-```bash
-pnpm --prefix skills/workflow/run-pipeline-stage/scripts typecheck
-pnpm --prefix skills/workflow/run-pipeline-stage/scripts test
-```
-
-The data-fetch layer (`parseBdList` / `parseBdShow`) is kept separate from the renderer so the output format can be swapped without re-fetching.
-
-## Progress Logging
-
-When running inside the ralph orchestrator, subagents must write structured progress lines to `.agent-cortex/ralph/ralph-{bead-id}.log` (appending) so ralph can surface live updates. The bead ID and log file path are provided in each prompt.
-
-**Format** — one entry per line:
-```
-[ISO-timestamp] [bead-id] [stage] message
-```
-
-**When to log:**
-- Stage start: `[...] [abc-123] [code] Stage started`
-- Stage transitions: `[...] [abc-123] [code→verify] Stage complete`, `[...] [abc-123] [verify→review] PASS`, `[...] [abc-123] [verify→fix] FAIL`
-- Key events only:
-  - Test results: `Tests: 12 passed, 0 failed`
-  - Lint result: `Lint: PASS` or `Lint: FAIL — <brief reason>`
-  - Build errors: `Build failed: <brief reason>`
-  - Security scan result: `Security scan: PASS` or `Security scan: FAIL — <finding>`
-  - Any significant blocker or decision
-
-**How to write a log line:**
-```bash
-mkdir -p .agent-cortex/ralph && echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [bead-id] [stage] message" >> .agent-cortex/ralph/ralph-bead-id.log
-```
-
-Do not log every file read or minor action — only transitions and key events.
-
-## Pipeline
-
-The canonical pipeline is defined in `skills/planning/create-task/pipeline.json`. Current stages:
-
-| Stage | Notes |
-|-------|-------|
-| **code** | Implement the task using a test-driven approach |
-| **verify** | Run the project's test and lint commands and report the outcome |
-| **review** | Review the implementation for security, correctness, and alignment with task requirements |
-| **document** | Review changes and update documentation if key decisions, behaviour changes, or constraints were introduced |
-
-The fix loop (on verify or review failure) is controlled by `maxFixRounds` in `pipeline.json`.
-
-### Stage Transitions
-
-Before dispatching a subagent for any stage, run these two commands (replacing `<id>` and `<stage>` with the bead ID and the stage about to start):
+1. Run `bd prime` and hold the output; subagents can run it themselves if they need context.
+2. If no bead was specified, run `bd ready` and ask the user which to work on.
+3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth.
+4. Read the bead's `stage:*` label — it names the stage to execute.
+5. Load the universal stage-runner prompt (`skills/workflow/run-pipeline-stage/prompts/stage-runner.md`), populate `<stage>`, and read the matching playbook (`skills/workflow/run-pipeline-stage/playbooks/<stage>.md`) for stage-specific rules.
+6. Tag the stage and regenerate the progress doc so pairing sessions stay current:
 
 ```bash
 bd tag <id> stage:<stage>
 # workspace must be the absolute path of the worktree — never . or $(pwd)
 workspace="/absolute/path/to/worktree"
-mkdir -p "$workspace/.agent-cortex/ralph"
 pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
 ```
 
-This tags the bead with its current stage (beads are the source of truth for stage progress) and regenerates the progress doc so any inline pairing session stays current.
+7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}} and end the prompt with the REPORT contract below.
+8. Route the REPORT through the Dispatch Rules: advance to the next stage, create a feedback bead, or close the parent.
+
+Each step leaves observable state — a claimed bead, a `stage:` tag, a regenerated progress doc, and a REPORT that drives the next action.
 
 ## Dispatch Rules
 
-| Stage completed | Condition | Next action |
-|-----------------|-----------|-------------|
-| `code` | — | Run **verify** stage |
-| `verify` | `OUTCOME: SUCCESS` | Run **review** stage |
+| Stage complete | Condition | Next action |
+|---|---|---|
+| `code` | — | Run **verify** |
+| `verify` | `OUTCOME: SUCCESS` | Run **review** |
 | `verify` | `OUTCOME: BLOCKED` | Create a `stage:fix` chore (see _Feedback Beads_) |
-| `review` | `OUTCOME: SUCCESS` | Run **document** stage |
-| `review` | `OUTCOME: BLOCKED` and fixRounds < maxFixRounds | Create a `stage:fix` chore (see _Feedback Beads_); increment fixRounds |
-| `review` | `OUTCOME: BLOCKED` and fixRounds ≥ maxFixRounds | `bd update <parent-id> --status blocked --notes "max fix rounds reached"` — record for shutdown |
+| `review` | `OUTCOME: SUCCESS` | Run **document** |
+| `review` | `OUTCOME: BLOCKED` and fixRounds < maxFixRounds | Create a `stage:fix` chore; increment fixRounds |
+| `review` | `OUTCOME: BLOCKED` and fixRounds ≥ maxFixRounds | `bd update <parent-id> --status blocked --notes "max fix rounds reached"`; record for shutdown |
 | `document` | — | `bd close <id>` — done |
 
-`maxFixRounds` is read from `skills/planning/create-task/pipeline.json` (`maxFixRounds` field, currently `4`).
-
-### Fix loop flow
-
-When a `stage:fix` chore completes, the next stage depends on which stage triggered the fix:
-- **Fix after verify failure** → re-run **verify**
-- **Fix after review failure** → re-run **review**
-
-The orchestrator (ralph or inline agent) tracks fix rounds and re-dispatches the original stage after the fix chore completes.
+`maxFixRounds` is read from `skills/planning/create-task/pipeline.json` (currently `4`). A fix chore re-runs the stage that failed — fix after verify → verify; fix after review → review.
 
 ## Feedback Beads
 
-When a stage reports a failure or rejection, the orchestrator creates a new chore bead whose description contains the feedback. This keeps feedback durable and visible, and makes the orchestrator's dispatch path uniform — it just picks up whatever `bd ready` returns.
-
-**Create the bead:**
+On stage failure, create a chore bead whose description carries the feedback so the orchestrator's dispatch path stays uniform — it just picks up whatever `bd ready` returns:
 
 ```bash
 new_id=$(bd create "[<parent-id>] <title>" --type chore \
@@ -124,23 +67,37 @@ bd tag $new_id workflow:ralph
 bd dep add $new_id <parent-id> --type parent-child
 ```
 
-| Triggering outcome | Suggested title | Next stage tag | Feedback content to put in description |
+| Triggering outcome | Suggested title | Next stage tag | Description content |
 |---|---|---|---|
 | `OUTCOME: BLOCKED` from verify | `Fix: verify failures` | `stage:code` | Full BLOCKING_ISSUES list |
 | `OUTCOME: BLOCKED` from review | `Fix: reviewer feedback` | `stage:fix` | Full BLOCKING_ISSUES list |
 
-After creating the feedback bead, do **not** dispatch a new agent immediately — the bead will appear in `bd ready` on the next cycle and be dispatched through the normal scheduling path. The stage that consumed the feedback from the REPORT is now finished; its agent result has been processed.
+Do not dispatch a new agent right after creating the feedback bead — it appears in `bd ready` on the next cycle and flows through the normal scheduling path.
+
+## Progress Logging
+
+Inside the ralph orchestrator, write one structured line per transition or key event to `.agent-cortex/ralph/ralph-{bead-id}.log`:
+
+```
+[ISO-timestamp] [bead-id] [stage] message
+```
+
+Log stage starts and completes, test/lint/build/security results, blockers, and decisions — not file reads or minor actions.
+
+```bash
+mkdir -p .agent-cortex/ralph && echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [bead-id] [stage] message" >> .agent-cortex/ralph/ralph-bead-id.log
+```
 
 ## Report Format
 
-Every subagent prompt **must** end with this instruction:
+Every subagent prompt must end with the REPORT instruction:
 
 > End your response with a `---REPORT---` block in exactly this format:
 > ```
 > ---REPORT---
 > BEAD_ID: <id>
 > STAGE_COMPLETED: <code|verify|review|document>
-> SUMMARY: <2–3 sentence summary of what was done>
+> SUMMARY: <2-3 sentence summary of what was done>
 > FILES_CHANGED: <comma-separated list, or "none">
 > OUTCOME: <SUCCESS|BLOCKED>
 > BLOCKING_ISSUES:                              ← only if OUTCOME is BLOCKED
@@ -148,4 +105,45 @@ Every subagent prompt **must** end with this instruction:
 > ---
 > ```
 
-Subagents report facts. **Do not ask subagents to suggest or predict the next step.**
+Subagents report facts — do not ask them to suggest or predict the next step.
+
+## Red Flags
+
+- Dispatching a subagent before tagging the stage — beads are the only source of truth for stage progress.
+- Composing a subagent prompt without the REPORT contract — the output cannot be routed.
+- Creating a feedback bead and then dispatching anyway — bypasses the fix-round accounting and parent-child dependency graph.
+- Skipping the playbook "because the stage is simple" — playbooks carry the per-stage discipline the pipeline relies on.
+
+## Common Rationalizations
+
+| "The stage is small — I'll just run it directly" | The stage skills and playbook keep output conformant; skipping them produces work that loops back as a fix chore. |
+| "I'll dispatch the fix right away — faster than a chore bead" | Feedback beads keep dispatch uniform and durable; direct re-dispatch breaks fix-round accounting and the dependency graph. |
+| "The stage is obvious from the prompt — no tag needed" | Beads are the source of truth; prompt drift desynchronises the progress doc, the log, and downstream dispatch. |
+
+## Cross-skill references
+
+- `create-task` owns `pipeline.json` — stages, `maxFixRounds`, and the stage templates.
+- `bd-tool` covers bead mechanics beyond the commands in this skill.
+- `ralph` runs many stage beads concurrently and consumes this skill's log and REPORT contracts.
+- Playbooks delegate to stage skills: `tdd`/`style-code`/`style-tests` (code), `review-security` (review), `style-documentation` (document).
+
+## Examples
+
+- Input: a `stage:verify` bead reporting `OUTCOME: BLOCKED` with two failing tests → Output: a `Fix: verify failures` chore tagged `stage:code` whose description lists both failures; verify closes and the chore is picked up on the next `bd ready` cycle.
+- Input: a `stage:document` bead reporting `OUTCOME: SUCCESS` → Output: the parent bead is closed with `bd close <id>` and that task's pipeline ends.
+
+## Philosophy / rationale
+
+- Beads hold all orchestration state — there is no separate state file to drift out of sync.
+- Subagents return facts in one fixed REPORT shape so routing stays mechanical across stages and harnesses.
+- Feedback as beads, not direct re-dispatches, puts every agent on a single scheduling path and keeps every decision visible in the dependency graph.
+
+## Verification checklist
+
+- [ ] Bead claimed (`bd update <id> --claim`) before any executor works it.
+- [ ] `bd tag <id> stage:<stage>` run and progress doc regenerated before dispatch.
+- [ ] Correct playbook read and followed for the stage; stage skills invoked where the playbook says.
+- [ ] Composed prompt ends with the complete REPORT contract block.
+- [ ] Progress log lines written for every stage transition and key result.
+- [ ] REPORT routed per the Dispatch Rules — next stage, feedback bead, or `bd close <id>`.
+- [ ] Feedback beads carry the full BLOCKING_ISSUES content and the parent-child dependency.

@@ -1,6 +1,6 @@
-# Fleet — Reference
+# Ralph — Reference
 
-Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL.md) for the top-level event loop.
+Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL.md) for the top-level event loop; this file holds the per-procedure detail that would overflow the main skill file.
 
 ---
 
@@ -188,15 +188,17 @@ When `bd list --status=in_progress --type=chore` returns no results AND `bd read
 | File | Purpose |
 |------|---------|
 | `.agent-cortex/ralph/progress.md` | Human-readable snapshot. Regenerate: `workspace="/abs/path"; pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"`. `workspace` must be an **absolute** path — never `.` or `$(pwd)`. **Never hand-edit.** |
+| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the poll-timer shellId (Copilot) and the in-flight agent-ID→bead mapping. Shape: `{ "timerShellId": null, "inflight": [ { "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. Initialise at startup with `{ "timerShellId": null, "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
 | `.agent-cortex/ralph/ralph-*.log` | Per-bead log files written by subagents (e.g. `.agent-cortex/ralph/ralph-abc-123.log`). |
 
-All orchestration state is derived from beads:
+All task state is derived from beads; `state.json` holds only runtime bookkeeping:
 
 | Question | How to answer |
 |----------|---------------|
 | What is in-flight? | `bd list --status=in_progress --type=chore` |
 | What is ready? | `bd ready` — filter for chores with `stage:*` labels |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
+| Which agent-ID maps to which bead? | `inflight` entries in `.agent-cortex/ralph/state.json` |
 | How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task. Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. |
 | Which features are review-gated? | Find open child task beads labelled `lifecycle:feature-pr` and `implementation-type:hitl` |
 | Which epics are review-gated? | `bd list -l awaiting-epic-pr-merge` |

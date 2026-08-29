@@ -144,6 +144,12 @@ describe('parseListLine', () => {
     assert.deepEqual(result, { id: 'proj-eee', status: 'deferred', title: 'Deferred task' });
   });
 
+  it('parses current bd list format without the priority marker column', () => {
+    // Current bd emits `{STATUS} {ID} P{N} {TITLE}`; the `●` before P{N} is legacy.
+    const result = parseListLine('◐ proj-bbb P2 Second task');
+    assert.deepEqual(result, { id: 'proj-bbb', status: 'in_progress', title: 'Second task' });
+  });
+
   it('returns null for separator/summary lines', () => {
     assert.equal(parseListLine('---'), null);
     assert.equal(parseListLine('Total: 5 issues'), null);
@@ -680,7 +686,7 @@ describe('fetchBeads', () => {
 // ─── Behavior 11: plugin session-start hook wiring ────────────────────────────
 
 describe('plugin session-start hook wiring', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..');
+  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
 
   it('declares a hooks config path in plugin.json', () => {
     const pluginJsonRaw = readFileSync(join(repoRoot, 'plugin.json'), 'utf8');
@@ -706,7 +712,7 @@ describe('plugin session-start hook wiring', () => {
 // ─── Behavior 12: skill anatomy documentation contracts ───────────────────────
 
 describe('skill anatomy documentation contracts', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..');
+  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
 
   it('includes the canonical skill anatomy doc', () => {
     const anatomyDoc = readFileSync(join(repoRoot, 'docs', 'skills', 'skill-anatomy.md'), 'utf8');
@@ -724,7 +730,7 @@ describe('skill anatomy documentation contracts', () => {
 // ─── Behavior 13: skill anatomy expanded documentation requirements ────────────
 
 describe('skill anatomy expanded documentation requirements', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..');
+  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
 
   it('documents required facets for each optional section', () => {
     const anatomyDoc = readFileSync(join(repoRoot, 'docs', 'skills', 'skill-anatomy.md'), 'utf8');
@@ -749,7 +755,7 @@ describe('skill anatomy expanded documentation requirements', () => {
 // ─── Behavior 15: research doc promotion/linking contracts ─────────────────────
 
 describe('research doc promotion/linking contracts', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..');
+  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
 
   it('links each research doc from docs/inspirations.md and marks each as promoted', () => {
     const inspirationsDoc = readFileSync(join(repoRoot, 'docs', 'inspirations.md'), 'utf8');

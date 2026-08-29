@@ -47,7 +47,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 
 On each completion notification (background agent finished, or the poll timer fired):
 
-1. Poll that bead's log for new lines — `tail -n +<nextLine> .agent-cortex/ralph/ralph-<bead-id>.log` — and post only new key events (stage transitions, test/lint results), never empty updates.
+1. Poll that parent's log for new lines — `tail -n +<nextLine> .agent-cortex/ralph/ralph-<parent-id>.log` (logs are keyed by parent bead ID, so every stage of a feature shares one file) — and post only new key events (stage transitions, test/lint results), never empty updates.
 2. Read the completed agent's output with {{TOOL:read_agent}} and parse its `---REPORT---` block for `BEAD_ID`, `STAGE_COMPLETED`, and the outcome.
 3. Close the chore bead: `bd close <bead-id>`.
 4. Advance the parent per the dispatch table:
@@ -68,15 +68,15 @@ On each completion notification (background agent finished, or the poll timer fi
 
 ### 3. Branching and review model
 
-- Each epic runs on `epic/<epic-id>`, based on `origin/main` — never local `main`.
-- Each AFK parent task runs on `feature/<parent-id>`, based from its epic branch, in the dedicated worktree `.agent-cortex/worktrees/<parent-id>`.
-- Feature PR gate: `feature/<parent-id>` → `epic/<epic-id>`. Epic PR gate: `epic/<epic-id>` → `main`.
+- **Single-feature epics** (exactly one feature task child — count with `bd children <epic-id>`, excluding chores): no epic branch. `feature/<parent-id>` is based directly on `origin/main`, its feature PR targets `main`, and no epic PR is opened.
+- **Multi-feature epics** (two or more feature task children): the epic runs on `epic/<epic-id>`, based on `origin/main` — never local `main`. Each AFK parent task runs on `feature/<parent-id>`, based from its epic branch, in the dedicated worktree `.agent-cortex/worktrees/<parent-id>`.
+- Feature PR gate: `feature/<parent-id>` → `epic/<epic-id>` (or → `main` for single-feature epics). Epic PR gate: `epic/<epic-id>` → `main`.
 - Branch/worktree setup and the PR commands live in REFERENCE.md (_Feature branches and worktrees_, _Feature PR gate_).
 
 ### 4. HITL pause and shutdown
 
-- **HITL Pause** — when no chores are in-flight, none ready, and HITL gate beads are pending: regenerate `progress.md`, open/update epic PRs to `main` and tag each epic `awaiting-epic-pr-merge`, run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
-- **Shutdown** — when all work is complete: regenerate `progress.md`, open/update epic PRs to `main` and tag them, run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
+- **HITL Pause** — when no chores are in-flight, none ready, and HITL gate beads are pending: regenerate `progress.md`, open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
+- **Shutdown** — when all work is complete: regenerate `progress.md`, open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
 
 ## Red Flags
 

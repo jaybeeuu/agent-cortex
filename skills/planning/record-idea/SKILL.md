@@ -1,62 +1,79 @@
 ---
 name: record-idea
-description: Capture early-stage ideas into a structured backlog record, including a high-level validity check before implementation planning. Use when the user shares a new idea that is not ready to build yet and wants it written to the ideas backlog.
+description: Capture an early-stage idea into a structured backlog record with a short interview and validity check before any implementation planning. Use when the user says "capture this idea", "file this under ideas", or shares an idea that is "not ready to build".
 ---
 
 # Record Idea
 
-Capture a not-ready idea into `docs/ideas` after a short, high-level interview that pressure-tests the concept.
+Capture an idea that is not implementation-ready into `docs/ideas/`, pressure-testing it with a short high-level interview so the backlog stores a direction, not a slogan.
+
+## When to use
+
+- The user shares a new idea and wants it written down without scoping it yet ("capture this idea", "file this under ideas", "get this out of my head").
+- A discussion surfaces an idea that should not be planned today.
+- Asked to "add this to the ideas backlog" or "record an idea".
+
+## When NOT to use
+
+- The idea is ready to build and needs a requirements document — run `write-a-prd` instead.
+- The user wants an executable task created now — run `create-task` instead.
+- The idea needs an end-to-end feature plan — run `plan` instead.
 
 ## Workflow
 
-1. **Interview at high level (one question at a time)**
-   - Why might it be useful? Who benefits and what improves?
-   - How might we do it? Sketch the rough approach — no implementation detail.
-   - When should we think about it? Are there triggers, dependencies, or timing signals?
-   - What priority does this feel like relative to current work?
-2. **Pressure-test briefly**
-   - Challenge weak points (scope, feasibility, opportunity cost).
-   - Keep discussion strategic; do not drift into implementation detail.
-3. **Choose record shape**
-   - **Simple idea**: `docs/ideas/<idea-name>.md`
-   - **Complex idea**: `docs/ideas/<idea-name>/<idea-name>.md` with optional supporting docs in the same folder.
-4. **Create the record file**
-   - Run:
-     ```bash
-     bash skills/record-idea/scripts/new-idea.sh --title "<idea title>" [--complex]
-     ```
-5. **Write the idea record**
-   - Fill the scaffold with concise content from the interview.
-   - Keep it decision-oriented and easy to scan later.
+1. **Interview at a high level, one question at a time.** Ask what problem it solves and who benefits, how it might be done (rough approach only — no implementation detail), what would make it timely (triggers, dependencies, timing signals), and what priority it feels like relative to current work. Keep this short — it is a capture step, not a requirements session.
 
-## Idea Record Template
+2. **Pressure-test briefly.** Challenge weak points such as scope, feasibility, and opportunity cost. The goal is a validity signal for the backlog, not a polished pitch.
 
-```md
-# Idea: <title>
+3. **Choose the record shape.**
+   - Simple idea: a single file `docs/ideas/<idea-name>.md`.
+   - Complex idea: a folder `docs/ideas/<idea-name>/<idea-name>.md` with supporting docs alongside.
 
-## Status
-Backlog idea (not implementation-ready)
+4. **Create the record file.** Run this skill's `scripts/new-idea.sh` helper with {{TOOL:bash}}:
 
-## Why it might be useful
-<Who benefits and what improves?>
+   ```bash
+   bash <skill-scripts>/new-idea.sh --title "<idea title>" [--complex]
+   ```
 
-## How we might do it
-<Rough approach — no implementation detail>
+   Resolve `<skill-scripts>` as the absolute path to this skill's own `scripts/` directory — it sits next to this `SKILL.md`, and the install location varies by harness, so do not hardcode a repo path. The script generates the scaffold, prints the file path, and errors if the file already exists or the title normalises to an empty slug.
 
-## When to think about it
-<Triggers, dependencies, or timing signals that would make this timely>
+5. **Fill the scaffold.** Write concise, decision-oriented content from the interview into every section — see `FORMAT.md` for the section list. Leave no `TODO`: the validity check specifically needs evidence, the riskiest assumption, and what would invalidate the idea.
 
-## Priority
-<Relative priority and reasoning>
+6. **Report back.** Return the file path, a 2–3 sentence summary of the recorded idea, and the suggested priority with its likely timing signal.
 
-## Notes
-<Anything worth keeping for future prioritisation/review>
-```
+## Red Flags
 
-## Output
+- Drifting into implementation detail during the interview — the record captures a direction, not a design.
+- Skipping the pressure-test because the idea sounds good — weak points are cheapest to find here.
+- Leaving scaffold `TODO`s unfilled — an incomplete validity check is no check at all.
 
-Return:
+## Common Rationalizations
 
-1. The file path created.
-2. A 2–3 sentence summary of the recorded idea.
-3. The suggested priority and when it might become timely.
+| Rationalization | Rebuttal |
+|---|---|
+| "It's just an idea — write it down, don't interview me" | The two-minute interview is what makes the row reusable later; without it you store a slogan, not an idea. |
+| "The user already knows what they want" | Knowing the direction is not the same as pressure-testing it. The validity check exists to catch what enthusiasm hides. |
+
+## Philosophy / rationale
+
+- **Capture before it becomes plan-shaped.** Scoping too early forces decisions the idea has not earned yet; a backlog note keeps the option open at minimal cost. The validity check is what stops the backlog from filling with confident, doomed ideas.
+
+## Cross-skill references
+
+- When an idea passes its validity check and becomes implementation-ready, run `write-a-prd` to scope it properly.
+- For a full feature pipeline from idea to task breakdown, run `plan`.
+
+## Examples
+
+Input: "I keep accidentally committing secrets — capture that idea."
+Output: `docs/ideas/secret-scanning-gate.md` — a filled idea record with a validity check, priority, and next validation step. See `FORMAT.md` for the scaffold sections.
+
+## Verification checklist
+
+- [ ] Interview covered who benefits, rough approach, timing, and priority.
+- [ ] Idea was pressure-tested; weak points were challenged.
+- [ ] Record file exists at `docs/ideas/<slug>.md` (script printed the path).
+- [ ] Every scaffold section is filled — no `TODO` left in the record.
+- [ ] Validity check records evidence, the riskiest assumption, and what would invalidate the idea.
+- [ ] Record contains no implementation detail.
+- [ ] Report returned the file path, summary, and suggested priority.

@@ -58,9 +58,9 @@ Both repos follow the same two-part format: capability sentence + `"Use when..."
 > "Disciplined diagnosis loop for hard bugs and performance regressions. Reproduce → minimise → hypothesise → instrument → fix → regression-test. Use when user says 'diagnose this' / 'debug this', reports a bug, says something is broken/throwing/failing, or describes a performance regression."
 
 **agent-cortex example** (vaguer triggers):
-> "Create a bead, classify it, and if AFK expand it into pipeline stage child beads plus a HITL PR gate task. Use when creating a new task that should be tracked and moved through implementation and human review gates."
+> "Create a task bead, classify it as AFK or HITL, and if AFK expand it into pipeline stage chores plus a HITL PR gate. Use when starting tracked work with implementation and review gates — 'create a task for this', 'track this end-to-end', or 'get this into the ralph pipeline'."
 
-The agent-cortex description describes internal mechanics rather than what the user is trying to accomplish.
+The agent-cortex description leads with internal mechanics ("task bead", "AFK", "HITL") rather than what the user is trying to accomplish — the quoted triggers were added in a later refactor, but the jargon remains.
 
 ---
 
@@ -180,7 +180,7 @@ Move to Phase 2 only when both boxes are checked.
 
 **Evidence**: Anthropic Building Effective Agents: *"Think of this as writing a great docstring for a junior developer on your team."* For agents, descriptions are the only routing signal. FLAN (Wei et al., ICLR 2022) showed instruction-tuned models generalise from natural language task descriptions — use the vocabulary a user would *actually speak*, not internal system jargon. Anthropic tool use note: `"Use when"` language *actively counteracts* the model's default tendency to solve problems without invoking tools.
 
-**Current state**: some agent-cortex descriptions describe internal mechanics rather than user intent. E.g., `create-task`: *"Use when creating a new task that should be tracked and moved through implementation and human review gates"* — references internal workflow terms a user wouldn't say.
+**Current state**: some agent-cortex descriptions describe internal mechanics rather than user intent. E.g., `create-task`: *"Use when starting tracked work with implementation and review gates — 'create a task for this', 'track this end-to-end', or 'get this into the ralph pipeline'."* — rewritten to add quoted user triggers (per this rec), though it still leans on internal jargon like "ralph pipeline" a user wouldn't say.
 
 **Recommendation**: Rewrite descriptions to lead with user-vocabulary triggers. Include 2–4 quoted phrases or scenario patterns a user might say:
 

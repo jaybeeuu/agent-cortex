@@ -1,41 +1,41 @@
 ---
 name: ralph
-description: "Run all pending beads end-to-end using parallel subagents with review gates: initialise, dispatch up to 5 concurrent pipeline-stage chores, open and report PRs immediately, then wait for merges before continuing. Use when running the full task backlog with human approval points."
+description: "Run all pending beads end-to-end with up to 5 concurrent pipeline-stage chores in dedicated worktrees, opening review-gated PRs immediately and pausing for human merges. Use when you want to \"run the backlog\", \"run all beads\", or \"run ralph\" with human approval gates."
 ---
 
-# Fleet
+# Ralph
 
-Parallel task orchestration: find ready beads, dispatch them as background subagents, process each outcome through the pipeline (code → verify → review → document, with fix loops on failure), then open review-gated PRs before considering feature work complete.
+Ralph is a parallel orchestration loop. It advances AFK task beads through pipeline-stage chores (`code` → `verify` → `review` → `document`), dispatching each stage as a background subagent in the feature's worktree, then opens review-gated feature and epic PRs and pauses for human merges. Ralph never writes code itself — it dispatches, tracks, and reports.
 
-Orchestration state is derived entirely from beads — there is no separate state file. In-flight work is tracked as chore beads with status `in_progress`. Ready work is discovered via `bd ready`. Pipeline configuration lives in `skills/planning/create-task/pipeline.json`. Stage runner prompt templates live in `skills/workflow/run-pipeline-stage/prompts/` and playbooks in `skills/workflow/run-pipeline-stage/playbooks/`.
+State model: task state lives in beads (ready/in_progress via `bd`); the only local file is `.agent-cortex/ralph/state.json`, holding the poll-timer shellId and the agent-ID→bead mapping. Pipeline configuration comes from `skills/planning/create-task/pipeline.json`, and stage execution belongs to the `run-pipeline-stage` skill.
 
-## Branching and Review Model
+## When to use
 
-1. **Epic integration branch**: each epic runs on `epic/<epic-id>` (base: `origin/main`, never local `main`).
-2. **Feature branch per parent bead**: each AFK parent task runs on `feature/<parent-task-id>`, based from its epic branch. This branch is treated as the **agent branch** for HITL PRs.
-3. **Dedicated worktree per parent bead**: each feature branch uses `.agent-cortex/worktrees/<parent-task-id>`.
-4. **Feature PR gate**: each feature has a child HITL task bead (`lifecycle:feature-pr`) created by `create-task`. When `document` completes, open/update PR `feature/<parent-task-id> -> epic/<epic-id>` (agent-branch → feature branch), report the PR URL immediately, then wait for the HITL PR gate bead to be closed by a human.
-5. **Epic PR gate**: when an epic's feature beads are complete, open/update a PR `epic/<epic-id> -> main` and pause until merged.
+- "Run the backlog", "run all beads", "run ralph", "run everything pending".
+- A planning session has produced classified, unblocked AFK task beads and you want autonomous execution with human review gates.
+- You want the full pipeline (implement → verify → review → document) orchestrated concurrently, with fix loops on failure.
 
-See [REFERENCE.md](./REFERENCE.md) for detailed procedures: dispatching, fix loop, log polling, and shutdown.
+## When NOT to use
 
----
+- Working a single bead or stage inline — use the `run-pipeline-stage` skill instead.
+- Interactive planning, PRDs, or scoping — use the `plan` skill instead.
+- Running as a background or delegated subagent — ralph must be the interactive foreground agent, or it cannot receive completion notifications.
 
-## Initialization
+## Workflow
 
-Run once at startup:
+### 1. Initialize (run once at startup)
 
-1. Run `bd prime`. Hold the full output verbatim in memory — forward it unchanged to every subagent.
+1. Run `bd prime` and hold the output verbatim in memory.
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
-3. Ensure Ralph's workspace directory exists: `mkdir -p .agent-cortex/ralph`.
-4. Read `skills/planning/create-task/pipeline.json` and hold it in memory — you need `maxFixRounds` for the fix loop.
-5. Run `bd ready` to get the initial list of available beads.
-6. For each available bead:
+3. Create the workspace: `mkdir -p .agent-cortex/ralph`.
+4. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "timerShellId": null, "inflight": [] }`.
+5. Read `skills/planning/create-task/pipeline.json` and hold it in memory — you need its `maxFixRounds` for the fix loop.
+6. Run `bd ready` and classify each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
-   - **Task or other type without an `implementation-type:*` label**: unexpected here — classification is a planning-stage concern already applied by `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note for the shutdown summary.
-   - **Task labelled `implementation-type:hitl`**: skip — record the bead ID for the **Pending Human Action** summary at shutdown.
-7. For each ready chore bead (up to 5), **dispatch** it (see _Dispatching a chore bead_ in REFERENCE.md). Chores for a parent bead must run from that parent's worktree.
-8. **If** any chore beads were dispatched in step 7, start the **poll timer** (Copilot only): run `sleep 120` as a background bash process and hold its shellId in memory. PI has no timer — keep a `wait_for_agents` call outstanding over every in-flight agent ID instead (see the Event Loop note). **Otherwise**, if HITL gate beads are pending (check `bd list -l lifecycle:feature-pr -l implementation-type:hitl` and `bd list -l awaiting-epic-pr-merge`), proceed to **HITL Pause** (see REFERENCE.md) immediately.
+   - **Task or other type without an `implementation-type:*` label**: unexpected here — classification happens at planning time via `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note it for the shutdown summary.
+   - **Task labelled `implementation-type:hitl`**: skip — record the ID for the Pending Human Action summary at shutdown.
+7. For each ready chore bead (up to 5), dispatch it from its parent's feature worktree (see _Dispatching a chore bead_ in REFERENCE.md — create branches/worktrees first).
+8. Hand over to your harness's completion-detection mechanism: Copilot keeps a `sleep 120` poll timer running in the background; PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no chore was dispatched and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md).
 9. Regenerate `.agent-cortex/ralph/progress.md`:
    ```bash
    # workspace must be the absolute path you cd'd into — never . or $(pwd)
@@ -43,63 +43,77 @@ Run once at startup:
    pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
    ```
 
----
+### 2. Event loop
 
-## Event Loop
+On each completion notification (background agent finished, or the poll timer fired):
 
-After initialization, wait for background agents or the poll timer to complete. Completion detection is harness-specific: the `sleep 120` poll timer described below is the **Copilot** mechanism. **PI** replaces it with the blocking `wait_for_agents` tool — it returns as soon as any in-flight agent finishes, so each return plays the role of a poll-timer tick with its completed-agent result attached; there is no timer to start or kill on PI. On each completion notification:
-
-### Poll timer completed
-
-1. **Poll all in-flight bead logs** (see _Log polling_ in REFERENCE.md).
-2. Regenerate `.agent-cortex/ralph/progress.md`.
-3. **HITL pause check**: if `bd list --status=in_progress --type=chore` returns empty AND `bd ready` has no `stage:*` chore beads AND HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see REFERENCE.md) — do **not** restart the timer.
-4. **Otherwise**: restart the timer: run `sleep 120` as a new background bash process, hold its shellId in memory.
-
-### Background agent completed
-
-1. **Poll that bead's log** to flush any final lines.
-2. **Read** the completed agent's full output with {{TOOL:read_agent}} (on PI the completed result arrives in the `wait_for_agents` response; read_agent remains a fallback for a specific result).
-3. **Identify the bead**: parse the `---REPORT---` block for `BEAD_ID` and `STAGE_COMPLETED`.
-4. **Close** the chore bead: `bd close <bead-id>`.
-5. **Handle stage outcome**:
+1. Poll that parent's log for new lines — `tail -n +<nextLine> .agent-cortex/ralph/ralph-<parent-id>.log` (logs are keyed by parent bead ID, so every stage of a feature shares one file) — and post only new key events (stage transitions, test/lint results), never empty updates.
+2. Read the completed agent's output with {{TOOL:read_agent}} and parse its `---REPORT---` block for `BEAD_ID`, `STAGE_COMPLETED`, and the outcome.
+3. Close the chore bead: `bd close <bead-id>`.
+4. Advance the parent per the dispatch table:
 
    | Stage completed | Condition | Next action |
    |-----------------|-----------|-------------|
-   | `code` | — | Closing the code chore unblocks the verify chore. |
-   | `fix` | — | Closing the fix chore unblocks the verify chore. |
-   | `verify` | `VERIFY_OUTCOME: PASS` | Closing the verify chore unblocks the review chore. |
-   | `verify` | `VERIFY_OUTCOME: FAIL` | Run the **fix loop** (see REFERENCE.md). |
-   | `review` | `REVIEW_OUTCOME: APPROVED` | Closing the review chore unblocks the document chore. |
-   | `review` | `REVIEW_OUTCOME: CHANGES_REQUESTED` | Run the **fix loop** (see REFERENCE.md). |
-   | `document` | — | Open/update feature PR immediately (`feature/<parent-id> -> epic/<epic-id>`), report the PR URL, then update the child HITL PR gate bead (`lifecycle:feature-pr`) with the PR URL/status. Wait for human to close that HITL bead after merge, then close the parent task bead. |
+   | `code` | — | Closing the code chore unblocks the verify chore |
+   | `fix` | — | Closing the fix chore unblocks the verify chore |
+   | `verify` | `VERIFY_OUTCOME: PASS` | Closing the verify chore unblocks the review chore |
+   | `verify` | `VERIFY_OUTCOME: FAIL` | Run the fix loop (REFERENCE.md) |
+   | `review` | `REVIEW_OUTCOME: APPROVED` | Closing the review chore unblocks the document chore |
+   | `review` | `REVIEW_OUTCOME: CHANGES_REQUESTED` | Run the fix loop (REFERENCE.md) |
+   | `document` | — | Open/update the feature PR now (`feature/<parent-id>` → its base branch), report the URL, and update the child HITL gate bead (`lifecycle:feature-pr`). Wait for a human to close that bead after merge, then `bd close <parent-id>` |
 
-6. **Check for newly ready beads**: run `bd ready` and inspect results:
-    - **Chore beads with `stage:*` label**: dispatch if in-flight count (from `bd list --status=in_progress --type=chore`) is < 5.
-    - **Task beads without `implementation-type:*` label**: unexpected here — classification happens at planning time via `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note for shutdown.
-   - If any feature PR gate bead (`lifecycle:feature-pr`, `implementation-type:hitl`) is open, do **not** schedule new parent features. Keep working only already in-flight chores.
-7. **Check shutdown or pause**: if `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels:
-   - If HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see REFERENCE.md).
-   - Otherwise, proceed to **Shutdown** (see REFERENCE.md).
-8. Regenerate `.agent-cortex/ralph/progress.md`.
+5. Run `bd ready` and dispatch new ready `stage:*` chore beads while the in-flight count (`bd list --status=in_progress --type=chore`) is under 5. Do not schedule new parent features while any `lifecycle:feature-pr` HITL gate bead is open.
+6. If no chores are in-flight and `bd ready` returns no `stage:*` chores, proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
+7. Regenerate `.agent-cortex/ralph/progress.md`.
 
----
+### 3. Branching and review model
 
-## Constraints
+- **Single-feature epics** (exactly one feature task child — count with `bd children <epic-id>`, excluding chores): no epic branch. `feature/<parent-id>` is based directly on `origin/main`, its feature PR targets `main`, and no epic PR is opened.
+- **Multi-feature epics** (two or more feature task children): the epic runs on `epic/<epic-id>`, based on `origin/main` — never local `main`. Each AFK parent task runs on `feature/<parent-id>`, based from its epic branch, in the dedicated worktree `.agent-cortex/worktrees/<parent-id>`.
+- Feature PR gate: `feature/<parent-id>` → `epic/<epic-id>` (or → `main` for single-feature epics). Epic PR gate: `epic/<epic-id>` → `main`.
+- Branch/worktree setup and the PR commands live in REFERENCE.md (_Feature branches and worktrees_, _Feature PR gate_).
 
-- **Always** run in **foreground** (interactive) mode. If you find yourself executing as a background task, immediately surface a warning to the user and ask them to re-run you in foreground mode.
-- **Never** write, edit, or create source code or documentation yourself.
-- **Never** edit bead task files directly — only use `bd` commands.
-- **ALWAYS call the {{TOOL:task}} tool to spawn subagents** — never use {{TOOL:bash}}, never run stages inline, never use any other tool. This is your only spawning mechanism.
-- **Always** derive orchestration state from beads — do not maintain a separate state file.
-- **Always** include the full `bd prime` output verbatim in every {{TOOL:task}} tool prompt.
-- **Always** keep the poll timer running (Copilot) — restart it immediately after it fires — **unless** the HITL pause condition is met (no chores in-flight, no `stage:*` chores ready, HITL gate beads pending), in which case proceed to **HITL Pause** (see REFERENCE.md) and stop instead. On PI there is no timer to keep alive — always keep one `wait_for_agents` call outstanding while agents are in-flight.
-- **Never** post empty poll updates to chat — only surface new log content.
-- **Max 5** tasks in-flight at once.
-- **Max fix rounds** per task as defined by `maxFixRounds` in `skills/planning/create-task/pipeline.json`.
-- **Always** execute chore subagents from the parent feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
-- **Never** auto-merge PRs. Merges are human-controlled.
-- **Only continue past a feature review gate after the feature PR HITL task bead is closed by a human (after merge into the epic branch).**
-- **Only continue past an epic review gate after the epic PR is merged into `main`.**
-- **When a feature hits the HITL PR gate, push and open the PR immediately and report the URL — do not wait for explicit approval to push or create the PR.**
-- **Always** bump the patch version in `plugin.json` as part of any commit that changes agent or skill files.
+### 4. HITL pause and shutdown
+
+- **HITL Pause** — when no chores are in-flight, none ready, and HITL gate beads are pending: regenerate `progress.md`, open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
+- **Shutdown** — when all work is complete: regenerate `progress.md`, open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
+
+## Red Flags
+
+- Running as a background or delegated subagent instead of the interactive foreground agent.
+- Spawning a stage runner via {{TOOL:bash}} or running a stage inline instead of {{TOOL:task}}.
+- Editing bead files directly instead of using `bd` commands.
+- Auto-merging a PR, or continuing past a feature/epic gate before a human merge.
+
+## Common Rationalizations
+
+| Rationalization | Rebuttal |
+|---|---|
+| "I'll just run this one stage inline" | An orchestrator that executes stages stops being an orchestrator — the review gates exist to catch exactly that shortcut. |
+| "One more task in flight won't hurt" | The 5-task cap bounds log polling, state bookkeeping, and PR sequencing; exceeding it loses track of in-flight work. |
+| "The review passed, so I can merge" | Feature and epic PR merges are human-controlled; the gate exists so a person sees every change. |
+
+## Philosophy / rationale
+
+- Orchestration state derives from beads so a crash loses nothing but an in-memory ID mapping: `state.json` holds only the poll-timer shellId and the agent-ID→bead mapping, never task state.
+- Classification happens up-front at planning time (`create-task`), so the loop can trust `bd ready` instead of re-interpreting each bead's intent.
+- Human review gates are non-negotiable because agent-authored changes still need a person to merge them.
+
+## Phase-gate checklists
+
+- [ ] Init complete: `bd prime` held, gitignore entries present, workspace and state.json created, pipeline.json read, first `bd ready` classified, first chores dispatched.
+- [ ] Event loop handed off: completion-detection mechanism running (or HITL Pause/Shutdown started) and `progress.md` regenerated.
+
+## Cross-skill references
+
+- The `run-pipeline-stage` skill owns the stage-runner prompt, per-stage playbooks, the `---REPORT---` format, and fix-loop feedback beads — read it before dispatching any stage.
+- The `create-task` skill owns `pipeline.json` and creates the `lifecycle:feature-pr` HITL gate beads.
+- Do not invoke `classify-bead` from this loop — classification was already applied at planning time.
+
+## Verification checklist
+
+- [ ] Init ran once with observable results: `state.json` exists, `bd ready` was parsed, and the first chore beads are claimed.
+- [ ] Every stage runner was spawned with {{TOOL:task}} from the parent's feature worktree, with the `---REPORT---` instruction in its prompt.
+- [ ] In-flight count never exceeded 5, and fix loops respect `maxFixRounds` from `pipeline.json`.
+- [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.
+- [ ] `bd dolt push` and a final `progress.md` regeneration ran before HITL Pause/Shutdown, and the chat received no empty poll updates.

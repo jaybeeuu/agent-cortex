@@ -219,7 +219,7 @@ argument-hint: "Describe the bug or paste the error message"
 
 ### Rec 10 — Fix prd-to-epics Missing SKILL.md
 
-**Current state**: `skills/prd-to-epics/` directory exists in the repo but has no `SKILL.md`. It cannot be invoked.
+**Current state**: Resolved in #16 — the broken `skills/prd-to-epics/` directory was removed; epic/task decomposition is consolidated into the `prd-to-tasks` skill (see CHANGELOG 1.0.0).
 
 **Recommendation**: Either write the missing `SKILL.md` or remove the directory. This is a straightforward bug.
 

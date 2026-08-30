@@ -70,7 +70,7 @@ bd dep add <feature-or-task-id> <planning-gate-id>   # feature/task depends on p
 
 Do not close planning gates in bulk. Only close a gate after the user explicitly confirms that exact feature/task is ready to implement; leave all unconfirmed gates open and blocking.
 
-After creating each bead, invoke **classify-bead** to ensure it has an `implementation-type` label before handing off.
+Before handing off, ensure every bead created in this step carries an `implementation-type` label — check `bd label list <id>` yourself. Do not spawn `classify-bead` here: planning gates were tagged inline above and `create-task` classifies its beads internally. Only invoke it for a bead that genuinely lacks both the label and a `## Type` field.
 
 Tag every bead created in this step with `workflow:ralph`:
 

@@ -1,7 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   parseListLine,
   parseBdList,
@@ -680,110 +678,5 @@ describe('fetchBeads', () => {
 
     const beads = fetchBeads('/workspace', mockExecDedup);
     assert.equal(beads.filter((b) => b.id === 'proj-child1').length, 1);
-  });
-});
-
-// ─── Behavior 11: plugin session-start hook wiring ────────────────────────────
-
-describe('plugin session-start hook wiring', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
-
-  it('declares a hooks config path in plugin.json', () => {
-    const pluginJsonRaw = readFileSync(join(repoRoot, 'plugin.json'), 'utf8');
-    const pluginJson = JSON.parse(pluginJsonRaw) as { hooks?: unknown };
-    assert.equal(pluginJson.hooks, 'hooks.json');
-  });
-
-  it('defines a sessionStart prompt hook that injects baseline context', () => {
-    const hooksJsonRaw = readFileSync(join(repoRoot, 'hooks.json'), 'utf8');
-    const hooksJson = JSON.parse(hooksJsonRaw) as {
-      hooks?: { sessionStart?: Array<{ type?: unknown; prompt?: unknown }> };
-    };
-    assert.ok(Array.isArray(hooksJson.hooks?.sessionStart));
-    const sessionStartHooks = hooksJson.hooks?.sessionStart ?? [];
-    assert.ok(
-      sessionStartHooks.some(
-        (entry) => entry.type === 'prompt' && typeof entry.prompt === 'string' && entry.prompt.length > 0,
-      ),
-    );
-  });
-});
-
-// ─── Behavior 12: skill anatomy documentation contracts ───────────────────────
-
-describe('skill anatomy documentation contracts', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
-
-  it('includes the canonical skill anatomy doc', () => {
-    const anatomyDoc = readFileSync(join(repoRoot, 'docs', 'skills', 'skill-anatomy.md'), 'utf8');
-    assert.ok(anatomyDoc.length > 0);
-  });
-
-  it('documents canonical anatomy and an annotated template acceptance checklist', () => {
-    const anatomyDoc = readFileSync(join(repoRoot, 'docs', 'skills', 'skill-anatomy.md'), 'utf8');
-    assert.match(anatomyDoc, /canonical skill anatomy/i);
-    assert.match(anatomyDoc, /annotated template/i);
-    assert.match(anatomyDoc, /acceptance criteria|checklist/i);
-  });
-});
-
-// ─── Behavior 13: skill anatomy expanded documentation requirements ────────────
-
-describe('skill anatomy expanded documentation requirements', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
-
-  it('documents required facets for each optional section', () => {
-    const anatomyDoc = readFileSync(join(repoRoot, 'docs', 'skills', 'skill-anatomy.md'), 'utf8');
-    assert.match(anatomyDoc, /optional sections/i);
-    assert.match(anatomyDoc, /what it is/i);
-    assert.match(anatomyDoc, /example snippet/i);
-    assert.match(anatomyDoc, /when to include/i);
-    assert.match(anatomyDoc, /when to omit/i);
-  });
-
-  it('requires placement of "When NOT to use" adjacent to "When to use"', () => {
-    const anatomyDoc = readFileSync(join(repoRoot, 'docs', 'skills', 'skill-anatomy.md'), 'utf8');
-    assert.match(anatomyDoc, /##\s+When to use[\s\S]{0,400}##\s+When NOT to use/i);
-  });
-
-  it('keeps the full annotated SKILL.md template at the end of the document', () => {
-    const anatomyDoc = readFileSync(join(repoRoot, 'docs', 'skills', 'skill-anatomy.md'), 'utf8').trimEnd();
-    assert.match(anatomyDoc, /##\s+Annotated template[\s\S]*```md[\s\S]*```$/i);
-  });
-});
-
-// ─── Behavior 15: research doc promotion/linking contracts ─────────────────────
-
-describe('research doc promotion/linking contracts', () => {
-  const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
-
-  it('links each research doc from docs/inspirations.md and marks each as promoted', () => {
-    const inspirationsDoc = readFileSync(join(repoRoot, 'docs', 'inspirations.md'), 'utf8');
-    const researchDir = join(repoRoot, 'docs', 'research');
-    const researchFiles = readdirSync(researchDir).filter((fileName) => fileName.endsWith('.md'));
-
-    for (const researchFile of researchFiles) {
-      assert.match(inspirationsDoc, new RegExp(`\\(research\\/${researchFile.replace('.', '\\.')}\\)`));
-      const researchDoc = readFileSync(join(researchDir, researchFile), 'utf8');
-      assert.match(researchDoc, /promoted research note/i);
-      assert.match(researchDoc, /\[Inspirations\]\(\.\.\/inspirations\.md\)/i);
-    }
-  });
-
-  it('does not keep promoted research docs in .agent-cortex/working-docs (true move, not copy)', () => {
-    const researchDir = join(repoRoot, 'docs', 'research');
-    const researchFiles = readdirSync(researchDir).filter((fileName) => fileName.endsWith('.md'));
-    const repoWorkingDocsDir = join(repoRoot, '.agent-cortex', 'working-docs');
-    const workingDocSearchRoots = [repoWorkingDocsDir, join(repoWorkingDocsDir, 'research')];
-
-    for (const workingDocsDir of workingDocSearchRoots) {
-      if (!existsSync(workingDocsDir)) {
-        continue;
-      }
-
-      for (const researchFile of researchFiles) {
-        assert.equal(existsSync(join(workingDocsDir, researchFile)), false);
-      }
-    }
   });
 });

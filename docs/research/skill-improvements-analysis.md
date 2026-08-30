@@ -110,7 +110,7 @@ REFERENCE.md" — keeping SKILL.md as the primary working document rather than g
 | Verification checklists | Planned |
 | Concrete examples | Planned |
 | Reconsider 100-line limit | Done (raised to 150) |
-| ASCII workflow diagrams | Not yet |
+| ASCII workflow diagrams | Done (ASCII-only style guide in skill-anatomy.md) |
 | Cross-references between skills | Planned |
 | Consistent skeleton template | Partially adopted |
 

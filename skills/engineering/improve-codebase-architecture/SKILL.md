@@ -1,81 +1,99 @@
 ---
 name: improve-codebase-architecture
-description: Explore a codebase to find opportunities for architectural improvement, focusing on making the codebase more testable by deepening shallow modules. Use when user wants to improve architecture, find refactoring opportunities, consolidate tightly-coupled modules, or make a codebase more AI-navigable.
+description: Explore a codebase to surface architectural friction and turn it into module-deepening refactors that improve testability and AI-navigability. Use when the user wants to improve the architecture, find refactoring opportunities, consolidate tightly-coupled modules, or says a codebase is hard to navigate.
 ---
 
 # Improve Codebase Architecture
 
-Explore a codebase like an AI would, surface architectural friction, discover opportunities for improving testability, and propose module-deepening refactors as beads.
+Explore a codebase the way an AI would, surface where understanding requires bouncing between many small files, and propose module-deepening refactors as executable beads.
 
-A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a small interface hiding a large implementation. Deep modules are more testable, more AI-navigable, and let you test at the boundary instead of inside.
+A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a small interface hiding a large implementation. Deep modules are more testable, more AI-navigable, and testable at the boundary instead of inside the seams.
 
-## Process
+## When to use
 
-### 1. Explore the codebase
+- The user wants to improve the architecture or find refactoring opportunities.
+- The user asks to consolidate tightly-coupled modules or "make this more testable".
+- The user says a codebase is "hard to navigate" or hard for AI to work with.
 
-Explore the codebase using your available tools ({{TOOL:bash}}, {{TOOL:rg}}, {{TOOL:view}}, {{TOOL:glob}}). Navigate organically and note where you experience friction:
+## When NOT to use
 
-- Where does understanding one concept require bouncing between many small files?
-- Where are modules so shallow that the interface is nearly as complex as the implementation?
-- Where have pure functions been extracted just for testability, but the real bugs hide in how they're called?
-- Where do tightly-coupled modules create integration risk in the seams between them?
-- Which parts of the codebase are untested, or hard to test?
+- The refactor target is decided and only an implementation plan is missing — run `request-refactor-plan` instead.
+- The task is comparing two specific options with trade-offs — run `technical-direction` instead.
+- The user wants interface shapes for one known module — run `design-an-interface` instead.
+- The work is a new feature needing scoping — run `plan` or `write-a-prd` instead.
 
-The friction you encounter IS the signal.
+## Workflow
 
-### 2. Present candidates
+1. **Explore the codebase.** Navigate with {{TOOL:bash}}, {{TOOL:rg}}, {{TOOL:view}}, and {{TOOL:glob}}, and note where you experience friction: concepts spread across many small files, interfaces nearly as complex as their implementations, pure functions extracted for testability while bugs hide in their call sites, tight coupling creating integration risk, or untested hard-to-test areas. The friction you encounter is the signal — record it as you go.
 
-Present a numbered list of deepening opportunities. For each candidate, show:
+2. **Present candidates.** Give a numbered list of deepening opportunities. For each, show the cluster of modules involved, why they are coupled (shared types, call patterns, co-ownership of a concept), the dependency category (see [REFERENCE.md](REFERENCE.md)), and the test impact. Do not propose interfaces yet — ask "Which of these would you like to explore?"
 
-- **Cluster**: Which modules/concepts are involved
-- **Why they're coupled**: Shared types, call patterns, co-ownership of a concept
-- **Dependency category**: See [REFERENCE.md](REFERENCE.md) for the four categories
-- **Test impact**: What existing tests would be replaced by boundary tests
+3. **User picks a candidate.**
 
-Do NOT propose interfaces yet. Ask the user: "Which of these would you like to explore?"
+4. **Frame the problem space.** Before designing anything, write a user-facing frame for the chosen candidate: the constraints any new interface must satisfy, the dependencies it must rely on, and a rough illustrative code sketch. A sketch is not a proposal — it grounds the constraints. Show the frame and proceed immediately; the user reads it while you design.
 
-### 3. User picks a candidate
+5. **Design multiple interfaces.** Cycle through radically different constraints, writing each design out fully before the next:
 
-### 4. Frame the problem space
+   1. **Minimal** — aim for 1-3 entry points; what complexity hides behind a small surface?
+   2. **Flexible** — open for future use cases and extension.
+   3. **Caller-optimised** — make the most common calling pattern trivial.
+   4. **Ports & adapters** (if cross-boundary deps) — isolate side effects from pure logic.
 
-Before spawning sub-agents, write a user-facing explanation of the problem space for the chosen candidate:
+   For each design, output the interface signature, a usage example, the complexity it hides, the dependency strategy (see [REFERENCE.md](REFERENCE.md)), and its trade-offs. Present designs sequentially, then compare them in prose and give your own recommendation — propose a hybrid where elements combine well. The user wants a strong read, not a menu.
 
-- The constraints any new interface would need to satisfy
-- The dependencies it would need to rely on
-- A rough illustrative code sketch to make the constraints concrete — this is not a proposal, just a way to ground the constraints
+6. **User picks an interface** (or accepts the recommendation).
 
-Show this to the user, then immediately proceed to Step 5. The user reads and thinks about the problem while the sub-agents work in parallel.
+7. **Create the refactor bead.** Run the `create-task` skill with a concise title, the description from the template in [REFERENCE.md](REFERENCE.md), and priority P2. Always use `create-task` — never `bd create` directly — because it classifies the bead and expands AFK work into pipeline stages ralph can execute. Do not ask the user to review before creating; share the bead ID.
 
-### 5. Design multiple interfaces
+## Red Flags
 
-Design multiple radically different interfaces for the deepened module yourself, cycling through different constraints. For each design, write out the complete interface and evaluate it before moving to the next:
+- Red flag: proposing an interface during candidate presentation — it biases which problem space the user picks.
+- Red flag: skipping the problem-space frame to save a step — designs without stated constraints drift.
+- Red flag: designing a single interface — the first design is rarely the strongest ("Design It Twice").
+- Red flag: filing the bead with `bd create` instead of `create-task` — the pipeline expansion is skipped.
+- Red flag: judging designs by implementation effort — a deeper interface often looks harder to build.
 
-1. **Minimal interface** — aim for 1-3 entry points max. What complexity can you hide behind a small surface area?
-2. **Flexible interface** — support many use cases and extension. How do you make it open for future needs?
-3. **Caller-optimised** — make the most common calling pattern trivial. What does the primary caller look like?
-4. **Ports & adapters** (if cross-boundary deps) — isolate side effects from pure logic.
+## Common Rationalizations
 
-For each design, output:
+| Rationalization | Rebuttal |
+|---|---|
+| "I already know the best interface" | The first design is rarely the best. Generating alternatives is where the comparison insight comes from. |
+| "The candidates are obvious — list them quickly" | The presentation is what lets the user pick deliberately; short-circuiting it forces a guess. |
+| "The problem space is clear enough — skip the frame" | An unframed design session produces interfaces that satisfy imagined constraints. |
+| "It's one task — `bd create` is fine" | `create-task` classifies the bead and expands pipeline stages; bypassing it strands the work for ralph. |
 
-1. Interface signature (types, methods, params)
-2. Usage example showing how callers use it
-3. What complexity it hides internally
-4. Dependency strategy (how deps are handled — see [REFERENCE.md](REFERENCE.md))
-5. Trade-offs
+## Philosophy / rationale
 
-The `design-an-interface` skill provides a structured approach for this step — invoke it if you want a guided parallel-design flow with sub-agents.
+- **Deep modules beat shallow ones.** A small interface hiding real complexity is easier to learn, test, and navigate; a shallow module forces callers to know as much as the implementation does.
+- **An AI's navigation friction is the signal.** Wherever exploration requires bouncing between files, a missing seam or a shallow module is hiding — the explorer's pain maps directly to where a deep module is needed.
+- **Replace, don't layer tests.** Once boundary tests exist at the deepened interface, the old shallow-module tests are waste — tests should assert observable outcomes through the public interface, not internal state.
+- **Candidate-first, interface-later.** Interfaces proposed before the user picks a problem space pre-commit the exploration to a shape they did not choose.
 
-Present designs sequentially, then compare them in prose.
+## Phase-gate checklists
 
-After comparing, give your own recommendation: which design you think is strongest and why. If elements from different designs would combine well, propose a hybrid. Be opinionated — the user wants a strong read, not just a menu.
+- [ ] Phase 1 complete: exploration done and candidates presented without proposing interfaces
+- [ ] Phase 2 complete: problem space framed and shown to the user before any design work
+- [ ] Phase 3 complete: at least two radically different designs presented and compared, with a recommendation given
+- [ ] Phase 4 complete: refactor bead created via `create-task` and the bead ID reported
 
-### 6. User picks an interface (or accepts recommendation)
+## Cross-skill references
 
-### 7. Create refactor bead
+- Run `design-an-interface` at step 5 for a guided parallel sub-agent design flow.
+- Run `create-task` at step 7 to file the refactor bead.
+- Run `grill-with-docs` when the deepened module's terminology is unsettled — interface names should match the ubiquitous language.
 
-Invoke the `create-task` skill, passing:
-- **title**: a concise name for the refactor
-- **description**: the bead body using the template in [REFERENCE.md](REFERENCE.md)
-- **priority**: P2
+## Examples
 
-**Always use `create-task`** — never call `bd create` directly for tasks. `create-task` classifies the bead and expands AFK tasks into pipeline stage children that ralph can execute. Do NOT ask the user to review before creating — just create it and share the bead ID.
+Input: "This codebase is hard to navigate — can you make it more testable?"
+Output: numbered deepening candidates (cluster, coupling, dependency category, test impact) → chosen candidate → problem-space frame → at least two interface designs with a recommendation → a P2 refactor bead ID from `create-task`, with the bead description following the template in [REFERENCE.md](REFERENCE.md).
+
+## Verification checklist
+
+- [ ] Friction notes recorded during exploration
+- [ ] Candidates presented with cluster, coupling, dependency category, and test impact — no interfaces proposed
+- [ ] Problem-space frame shown to the user before any design work
+- [ ] At least two radically different designs, each with signature, usage example, hidden complexity, dependency strategy, and trade-offs
+- [ ] Recommendation given in prose, with a hybrid proposed where elements combine well
+- [ ] Refactor bead created via `create-task` at P2 using the REFERENCE.md description template
+- [ ] Bead ID reported and no review gate imposed before creation
+- [ ] No unrelated areas explored or refactors proposed outside the chosen candidate

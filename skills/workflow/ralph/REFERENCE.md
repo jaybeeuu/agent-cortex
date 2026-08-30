@@ -1,6 +1,6 @@
-# Fleet — Reference
+# Ralph — Reference
 
-Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL.md) for the top-level event loop.
+Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL.md) for the top-level event loop; this file holds the per-procedure detail that would overflow the main skill file.
 
 ---
 
@@ -13,11 +13,11 @@ Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL
 5. **Ensure branch + worktree exist for this parent task** (see _Feature branches and worktrees_ below), then note the worktree path — you'll pass it as `cwd` to {{TOOL:task}}.
 6. **Fill in the prompt** — replace placeholders with:
    - Stage from bead label (`stage:<stage>`) for `<stage>`
-   - `bd prime` output (held in memory from initialization)
+   - Chore bead ID and its `bd show` output for the bead specification. Do **not** inject `bd prime` output — the stage runner runs `bd prime` itself if it needs project context
    - Parent task description from `bd show <parent-id>`
    - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
-   - Bead ID and log file path (`.agent-cortex/ralph/ralph-<bead-id>.log`)
+   - Log file path `.agent-cortex/ralph/ralph-<parent-id>.log` — logs are keyed by **parent** bead ID, so every stage chore of a feature appends to the same file
 7. **Call the {{TOOL:task}} tool** with the filled prompt as `prompt` and the worktree path as `cwd`. Store the returned agentId — you need it for step 8 and for log polling.
 8. **Map** the agent ID to the bead ID in memory for lookup on completion.
 
@@ -27,18 +27,20 @@ Detailed procedures for the fleet orchestration workflow. See [SKILL.md](./SKILL
 
 For each parent task bead (`<parent-id>`):
 
-1. Determine the parent epic (`<epic-id>`) from the task's `epic:<epic-id>` label.
-2. Ensure epic branch exists (always based on the latest `origin/main`, never local `main`):
+1. Determine the parent epic (`<epic-id>`) from the task's `epic:<epic-id>` label and count its feature task children (`bd children <epic-id>`, excluding chores). An epic with exactly one feature child is a **single-feature epic**.
+2. **Single-feature epics (1 feature child)**: skip the epic branch entirely. Base `feature/<parent-id>` directly on `origin/main`; its HITL PR targets `main`, and no epic PR is opened later.
+3. **Multi-feature epics (2+ feature children)**: ensure the epic branch exists (always based on the latest `origin/main`, never local `main`):
    ```bash
    git fetch origin
    git rev-parse --verify epic/<epic-id> >/dev/null 2>&1 || git branch epic/<epic-id> origin/main
    ```
-3. Ensure feature worktree exists:
+4. Ensure feature worktree exists (base on `epic/<epic-id>` for multi-feature epics, `origin/main` for single-feature):
    ```bash
-   git worktree add .agent-cortex/worktrees/<parent-id> -b feature/<parent-id> epic/<epic-id>
+   # <base> is epic/<epic-id> for multi-feature epics, origin/main for single-feature
+   git worktree add .agent-cortex/worktrees/<parent-id> -b feature/<parent-id> <base>
    ```
    If `.agent-cortex/worktrees/<parent-id>` already exists, reuse it.
-4. All chores for this parent run in `.agent-cortex/worktrees/<parent-id>`. The `feature/<parent-id>` branch is the agent branch for HITL PRs.
+5. All chores for this parent run in `.agent-cortex/worktrees/<parent-id>`. The `feature/<parent-id>` branch is the agent branch for HITL PRs.
 
 ---
 
@@ -47,9 +49,10 @@ For each parent task bead (`<parent-id>`):
 When the `document` chore for a parent task completes:
 
 1. Close the `document` chore.
-2. Create or update a feature PR immediately from the agent branch to the feature branch (`feature/<parent-id>` into `epic/<epic-id>`):
+2. Create or update a feature PR immediately from the agent branch to the feature branch (`feature/<parent-id>` into `epic/<epic-id>`; into `main` for single-feature epics):
    ```bash
-   gh pr create --base epic/<epic-id> --head feature/<parent-id> --title "[<parent-id>] <task-title>" --body "<summary>"
+   # <base> is epic/<epic-id> for multi-feature epics, main for single-feature
+   gh pr create --base <base> --head feature/<parent-id> --title "[<parent-id>] <task-title>" --body "<summary>"
    ```
    If an open PR already exists, update it instead of creating a duplicate.
 3. Report the PR URL in chat as soon as it is created.
@@ -98,9 +101,9 @@ When a verify or review stage fails:
 Run whenever polling is triggered (timer or agent completion):
 
 1. **Query in-flight beads**: `bd list --status=in_progress --type=chore`. Extract each bead's ID and title.
-2. For each in-flight bead, read new lines from its log file (track the next unread line number per bead in memory, starting at 1):
+2. For each in-flight bead, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file. Track the next unread line number per parent in memory, starting at 1:
    ```bash
-   tail -n +<lastLine> .agent-cortex/ralph/ralph-<bead-id>.log 2>/dev/null
+   tail -n +<lastLine> .agent-cortex/ralph/ralph-<parent-id>.log 2>/dev/null
    ```
 3. For each bead that has new lines:
    - **Post a chat summary** of new key events (stage transitions and notable events — not every line verbatim):
@@ -119,7 +122,7 @@ Run whenever polling is triggered (timer or agent completion):
 Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
 
 1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main:
+2. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main (skip single-feature epics — their feature branch PRs already target `main`):
    ```bash
    gh pr create --base main --head epic/<epic-id> --title "[<epic-id>] Merge epic into main" --body "<epic summary>"
    ```
@@ -155,7 +158,7 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
 When `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels:
 
 1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each epic whose feature beads are all closed, open/update an epic PR to main:
+2. For each **multi-feature** epic whose feature beads are all closed, open/update an epic PR to main (skip single-feature epics — no epic branch exists):
    ```bash
    gh pr create --base main --head epic/<epic-id> --title "[<epic-id>] Merge epic into main" --body "<epic summary>"
    ```
@@ -188,15 +191,17 @@ When `bd list --status=in_progress --type=chore` returns no results AND `bd read
 | File | Purpose |
 |------|---------|
 | `.agent-cortex/ralph/progress.md` | Human-readable snapshot. Regenerate: `workspace="/abs/path"; pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"`. `workspace` must be an **absolute** path — never `.` or `$(pwd)`. **Never hand-edit.** |
-| `.agent-cortex/ralph/ralph-*.log` | Per-bead log files written by subagents (e.g. `.agent-cortex/ralph/ralph-abc-123.log`). |
+| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the poll-timer shellId (Copilot) and the in-flight agent-ID→bead mapping. Shape: `{ "timerShellId": null, "inflight": [ { "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. Initialise at startup with `{ "timerShellId": null, "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
+| `.agent-cortex/ralph/ralph-*.log` | Per-parent log files written by subagents — every stage chore of a feature appends to `.agent-cortex/ralph/ralph-<parent-id>.log` (e.g. `ralph-abc-123.log`). |
 
-All orchestration state is derived from beads:
+All task state is derived from beads; `state.json` holds only runtime bookkeeping:
 
 | Question | How to answer |
 |----------|---------------|
 | What is in-flight? | `bd list --status=in_progress --type=chore` |
 | What is ready? | `bd ready` — filter for chores with `stage:*` labels |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
+| Which agent-ID maps to which bead? | `inflight` entries in `.agent-cortex/ralph/state.json` |
 | How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task. Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. |
 | Which features are review-gated? | Find open child task beads labelled `lifecycle:feature-pr` and `implementation-type:hitl` |
 | Which epics are review-gated? | `bd list -l awaiting-epic-pr-merge` |

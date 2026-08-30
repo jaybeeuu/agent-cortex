@@ -1,6 +1,6 @@
 packages:
   - "."
-  - "skills/*/scripts"
+  - "skills/**/scripts"
   - "extensions/*"
 allowBuilds:
   '@google/genai': false

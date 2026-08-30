@@ -57,6 +57,23 @@ For each optional section, define **what it is**, include an **example snippet**
 | `Phase-gate checklists` | Mid-workflow gates that must pass before proceeding | `- [ ] Phase 1 complete: baseline tests captured.` | Multi-phase workflows (3+ distinct phases) | Linear single-phase tasks |
 | `Cross-skill references` | Explicit delegation to another skill for a real sub-task | `- Run \\`review-security\\` before committing.` | Another skill owns a sub-domain better than restating it | Self-contained skills |
 | `Examples` | Full worked sample of expected outcome/output | `- Input: ... Output: ...` | Any non-trivial output contract | Trivially self-evident skills |
+| `Workflow diagrams` | Inline ASCII diagram showing step flow and decision points | Fenced block of `[Box]`, `|`, `-`, `>`, `v` arrows, e.g. `[Start] --> [Validate] --> [Run]` | Multi-step or branching workflows where a glanceable flow improves comprehension | Simple linear workflows already clear from numbered steps |
+
+## Workflow diagram style guide
+
+When a skill includes a workflow diagram, follow these rules so it renders
+reliably in any CLI:
+
+- **ASCII only** — never Mermaid, images, or unicode box-drawing characters.
+  Keep to `|`, `-`, `>`, `+`, and `v`.
+- **Fenced block** — wrap the diagram in a fenced code block so monospace is
+  preserved.
+- **At most 80 characters per line** — narrow enough for terminal-width readers.
+- **Short box labels** — imperative verbs or nouns (e.g. `[Validate scope]`),
+  never full sentences.
+- **Read left-to-right, top-down** — prefer one branch level over dense joins.
+- **Mirror the numbered workflow** — the diagram is a glanceable summary of the
+  `## Workflow` steps, never a source of truth that contradicts them.
 
 ## Section ordering
 
@@ -92,6 +109,7 @@ A skill passes anatomy review when:
 - [ ] Tool references use `{{TOOL:name}}` tokens, not hardcoded tool names.
 - [ ] Required sections exist and follow canonical ordering.
 - [ ] Optional sections (if present) include what/when/example guidance.
+- [ ] Workflow diagrams (if present) are ASCII-only and follow the workflow diagram style guide.
 - [ ] Verification checklist contains concrete, machine-checkable items.
 - [ ] Supporting docs are split by purpose when `SKILL.md` would exceed ~150 lines.
 
@@ -119,8 +137,26 @@ disable-model-invocation: false
 ## Workflow
 
 1. Gather required context and validate scope boundaries.
-2. Execute deterministic steps in order, recording key decisions.
-3. Produce the required output artifact or terminal response.
+2. Reject early with the reason when validation fails; otherwise continue.
+3. Execute deterministic steps in order, recording key decisions.
+4. Produce the required output artifact or terminal response.
+
+Workflow at a glance (include only when the flow branches):
+
+              [Trigger]
+                  |
+                  v
+          [Gather context]
+                  |
+                  v
+          [Validate scope] --(invalid)--> [Reject early]
+                  |
+              (valid)
+                  v
+      [Run deterministic steps]
+                  |
+                  v
+      [Produce output artifact]
 
 ## Red Flags
 

@@ -3,72 +3,73 @@ name: write-a-prd
 description: Create a PRD through user interview, codebase exploration, and module design, then file as a bead. Use when user wants to write a PRD, create a product requirements document, or plan a new feature.
 ---
 
-This skill will be invoked when the user wants to create a PRD. You may skip steps if you don't consider them necessary.
+# Write a PRD
 
-1. Ask the user for a long, detailed description of the problem they want to solve and any potential ideas for solutions.
+## When to use
 
-2. Explore the repo to verify their assertions and understand the current state of the codebase.
+- The user asks to "write a PRD", wants a "product requirements document", or says "plan a new feature".
+- A feature idea needs a written specification before implementation starts.
+- You need a durable record of the problem, solution, user stories, and key decisions.
 
-3. Interview the user relentlessly about every aspect of this plan until you reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one.
+## When NOT to use
 
-4. Sketch out the major modules you will need to build or modify to complete the implementation. Actively look for opportunities to extract deep modules that can be tested in isolation.
+- The idea is not ready to build yet — use `record-idea` to capture it to the backlog.
+- The output targets a human team's external tracker — use `write-a-ticket`.
+- A PRD already exists and needs breaking into tasks — use `prd-to-tasks`.
+- The scope is a refactor needing a safe incremental plan — use `request-refactor-plan`.
 
-A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes.
+## Workflow
 
-Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
+1. **Gather the problem statement.** Ask the user for a long, detailed description of the problem and any potential solution ideas. Ask one question at a time.
+2. **Explore the codebase.** Verify the user's assertions against the repo's current state. Explore instead of asking when the answer lives in code.
+3. **Interview relentlessly.** Walk down each branch of the design tree, resolving dependencies between decisions one by one, until the user's understanding and yours are identical. Every open question at this point becomes ambiguity in the PRD.
+4. **Sketch the modules.** List the major modules to build or modify, actively looking for deep modules — ones that encapsulate rich behaviour behind a simple, stable interface testable in isolation. Confirm the list with the user, plus which modules they want tests written for.
+5. **Write the PRD.** Render the template in `FORMAT.md` (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Make the user-story list extremely extensive so it covers all aspects of the feature.
+6. **File the bead.** Create the epic with `bd create "<title>" --type epic --priority P1 --body-file -`, piping the rendered PRD to stdin, then run `classify-bead` (as a subagent, per its invocation instructions) to label it AFK or HITL.
 
-5. Once you have a complete understanding of the problem and solution, use the template below to write the PRD. Create a bead for it using `bd create` with type `epic` and priority P1, passing the rendered PRD template as the description.
+Run the steps in order. Skip a step only when the user confirms it is unnecessary (e.g. the codebase is already explored).
 
-<prd-template>
+## Red Flags
 
-## Problem Statement
+- Red flag: writing the PRD while an interview branch is still unresolved — each unanswered branch becomes a guess in the spec.
+- Red flag: accepting user assertions about the codebase without verifying them in the repo.
+- Red flag: a thin user-story list — a handful of stories usually means aspects of the feature were never discussed.
 
-The problem that the user is facing, from the user's perspective.
+## Common Rationalizations
 
-## Solution
+| Rationalization | Rebuttal |
+|---|---|
+| "I have enough context — the user is impatient" | Impatience is a signal to keep questions short, not to skip them. Unresolved branches surface later as rework. |
+| "The feature is simple, a few stories are enough" | An extensive story list is how hidden aspects of the feature surface; thin stories mean thin scope coverage. |
+| "I know this codebase, no need to explore" | Verification in the repo is cheap; a wrong assumption becomes a wrong PRD. |
 
-The solution to the problem, from the user's perspective.
+## Philosophy / rationale
 
-## User Stories
+- The PRD is the contract between intent and implementation; its quality caps everything downstream, so exhaust the interview before writing.
+- Deep modules beat shallow ones — in code and in the PRD's implementation decisions. Interfaces worth stating are stable ones.
 
-A LONG, numbered list of user stories. Each user story should be in the format of:
+## Phase-gate checklist
 
-1. As an <actor>, I want a <feature>, so that <benefit>
+- [ ] Gate 1 — shared understanding: every design-tree branch resolved and the user confirms the summary.
+- [ ] Gate 2 — modules agreed: the module list and test expectations match the user's model of the solution.
+- [ ] Gate 3 — PRD filed: the epic bead contains the rendered template and carries an implementation-type label.
 
-<user-story-example>
-1. As a mobile bank customer, I want to see balance on my accounts, so that I can make better informed decisions about my spending
-</user-story-example>
+## Cross-skill references
 
-This list of user stories should be extremely extensive and cover all aspects of the feature.
+- Use `record-idea` when the idea is not yet ready to build.
+- Use `write-a-ticket` when the spec targets an external tracker rather than a bead.
+- Run `prd-to-tasks` on the filed epic to break the PRD into an executable backlog.
+- Run `classify-bead` on the new epic — the repo labels every new bead AFK or HITL.
 
-## Implementation Decisions
+## Examples
 
-A list of implementation decisions that were made. This can include:
+Input: "Write a PRD for adding scheduled exports to the reporting feature"
+Output: an epic bead whose description is the rendered PRD — problem, solution, extensive user stories, implementation and testing decisions, out-of-scope items, and further notes.
 
-- The modules that will be built/modified
-- The interfaces of those modules that will be modified
-- Technical clarifications from the developer
-- Architectural decisions
-- Schema changes
-- API contracts
-- Specific interactions
+## Verification checklist
 
-Do NOT include specific file paths or code snippets. They may end up being outdated very quickly.
-
-## Testing Decisions
-
-A list of testing decisions that were made. Include:
-
-- A description of what makes a good test (only test external behavior, not implementation details)
-- Which modules will be tested
-- Prior art for the tests (i.e. similar types of tests in the codebase)
-
-## Out of Scope
-
-A description of the things that are out of scope for this PRD.
-
-## Further Notes
-
-Any further notes about the feature.
-
-</prd-template>
+- [ ] Template in `FORMAT.md` rendered fully, with no placeholder sections.
+- [ ] Every user story follows "As an <actor>, I want <feature>, so that <benefit>".
+- [ ] Codebase assertions verified against the repo before writing.
+- [ ] Implementation Decisions contains no file paths or code snippets.
+- [ ] Epic bead filed with type `epic`, priority P1, the rendered PRD as description, and an implementation-type label applied.

@@ -142,6 +142,12 @@ describe('parseListLine', () => {
     assert.deepEqual(result, { id: 'proj-eee', status: 'deferred', title: 'Deferred task' });
   });
 
+  it('parses current bd list format without the priority marker column', () => {
+    // Current bd emits `{STATUS} {ID} P{N} {TITLE}`; the `●` before P{N} is legacy.
+    const result = parseListLine('◐ proj-bbb P2 Second task');
+    assert.deepEqual(result, { id: 'proj-bbb', status: 'in_progress', title: 'Second task' });
+  });
+
   it('returns null for separator/summary lines', () => {
     assert.equal(parseListLine('---'), null);
     assert.equal(parseListLine('Total: 5 issues'), null);

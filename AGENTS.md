@@ -34,6 +34,9 @@ agent-cortex/
 │       └── index.ts       # Extension entrypoint
 ├── hooks/                # Canonical Claude Code hooks (hooks.json + scripts — see docs/claude-hooks.md)
 │   └── claude/           #   generated into the plugin's hooks.json + hooks/ by bin/installers/claude.mjs
+├── claude-extras/        # Hand-authored Claude plugin extras (no committed claude/ output)
+│   ├── .mcp.json         # MCP servers (context7, github) — copied into installs
+│   └── scripts/          # statusline-command.sh — copied into installs (executable)
 └── package.json          # PI package manifest (pi: { extensions, skills })
 ```
 

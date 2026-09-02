@@ -47,21 +47,34 @@ if (parsed.command === "install") {
   process.stdout.write(`Installing agent-cortex for "${parsed.harness}" harness…\n`);
 
   // claude is the first wired harness: a plain `agent-cortex install claude`
-  // regenerates the plugin subtree from the canonical sources (agents/,
-  // agents-native/, skills/, hooks/claude/) via the shared installClaude
-  // generator AND registers it with Claude Code (marketplace add → install →
-  // update) — `pnpm build:claude` is the generate-only alias of this
-  // invocation (it passes `--output claude`), so there is no separate
-  // build-time code path and CI drift-checks never touch ~/.claude.
+  // materialises the plugin into the home install root (~/.agent-cortex/claude)
+  // with copied, token-substituted skills, writes the marketplace manifest at
+  // ~/.agent-cortex/.claude-plugin/marketplace.json, and registers it with
+  // Claude Code (marketplace add → install → update); `--output <dir>` is the
+  // generate-only form (tests/CI validation), and there is no committed claude/
+  // subtree in the repo anymore.
   if (parsed.harness === "claude") {
     // Avoid loading the installer on the help/summary paths and for other harnesses.
     const { installClaude, registerClaude } = await import("./installers/claude.mjs");
     try {
-      installClaude({ output: parsed.output, dryRun: parsed.dryRun });
+      const result = installClaude({
+        dryRun: parsed.dryRun ?? false,
+        warn: () => {}, // warnings surface once via result.warnings
+        ...(parsed.output ? { output: parsed.output } : {}),
+      });
+      for (const warning of result.warnings) {
+        process.stdout.write(`  ⚠ ${warning}\n`);
+      }
       // Runtime registration happens only for the plain install — `--output`
       // keeps generating only (documented in --help).
       if (parsed.output === undefined) {
-        registerClaude({ dryRun: parsed.dryRun });
+        registerClaude({
+          root: result.marketplaceRoot,
+          manifest: result.marketplaceManifest,
+          pluginVersion: result.pluginVersion,
+          dryRun: parsed.dryRun ?? false,
+          requireRegister: parsed.requireRegister ?? false,
+        });
       }
       process.exit(0);
     } catch (err) {

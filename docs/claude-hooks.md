@@ -2,8 +2,8 @@
 
 The pi extensions in `extensions/` were audited for Claude Code equivalents.
 Implemented ports live in `hooks/claude/hooks.json` (copied verbatim into the
-generated plugin as `claude/hooks.json`); support scripts live in
-`hooks/claude/scripts/` and are bundled into `claude/hooks/scripts/` by
+materialised plugin as its `hooks.json`); support scripts live in
+`hooks/claude/scripts/` and are bundled into the plugin's `hooks/scripts/` by
 `bin/installers/claude.mjs` (referenced from hooks.json via `$CLAUDE_PLUGIN_ROOT`).
 
 Claude Code's hook model differs from PI's: hooks are shell commands fed a JSON
@@ -100,7 +100,7 @@ for little signal. Rejected; Claude Code ships its own usage analytics
 ## `subagent/` → Reject (native)
 
 pi's `subagent` tool spawns isolated `pi --mode json` processes. Claude Code has
-native subagents — the plugin already ships `claude/agents/*.md` (including
+native subagents — the plugin already ships `~/.agent-cortex/claude/agents/*.md` (including
 `ralph`, `plan`, `strategy`, `ralph-plan`) executed via the built-in Agent/Task
 tools with per-session context isolation — so a hook-based workaround would be
 strictly worse.

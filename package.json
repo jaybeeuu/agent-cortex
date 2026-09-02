@@ -18,10 +18,9 @@
     "lint": "pnpm typecheck",
     "test": "node --test test/*.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build:claude": "node bin/agent-cortex.mjs install claude --output claude",
     "build:copilot": "node scripts/build-copilot-agents.mjs",
     "changeset": "changeset",
-    "version-packages": "changeset version && bash scripts/sync-plugin-version.sh && pnpm build:claude && pnpm build:copilot",
+    "version-packages": "changeset version && bash scripts/sync-plugin-version.sh && pnpm build:copilot",
     "publish-package": "TARBALL=$(pnpm pack | tail -n 1) && npm publish \"$TARBALL\" --provenance --access public",
     "release": "changeset publish",
     "postinstall": "bash scripts/install-instructions.sh"

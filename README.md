@@ -38,7 +38,7 @@ agent-cortex/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
 │       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
-│       └── claude.mjs        # install-time generator — agent-cortex install claude (pnpm build:claude aliases it)
+│       └── claude.mjs        # install-time generator + Claude Code registrar (pnpm build:claude = generate-only --output form)
 ├── scripts/
 │   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
 └── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
@@ -62,9 +62,11 @@ The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are 
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
 The `claude/` subtree is **generated** by the install-time generator
-(`bin/installers/claude.mjs`) — `pnpm build:claude` is a pure alias of
-`agent-cortex install claude`, so there is no separate build-time code path, and the
-committed subtree can never diverge from a real install. CI regenerates it and checks
+(`bin/installers/claude.mjs`). A plain `agent-cortex install claude` regenerates the
+subtree AND registers it with Claude Code by driving the `claude plugin` CLI (marketplace
+add → install → marketplace update → plugin update). `pnpm build:claude` is the pure,
+generate-only alias — it passes `--output claude`, so CI and release drift-checks never
+spawn the claude CLI or touch `~/.claude`. CI regenerates it and checks
 it is never stale:
 
 - **Skills** stay single-source — `claude/skills/<name>` are symlinks into the grouped
@@ -193,14 +195,14 @@ change the sources:
 
 ```sh
 pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
-pnpm build:claude    # or: node bin/agent-cortex.mjs install claude (same generator)
+pnpm build:claude    # or: node bin/agent-cortex.mjs install claude --output claude (generate-only)
 # or the install-time entry (same generator, less typing):
 node bin/agent-cortex.mjs install copilot          # regenerates agents/*.agent.md in place
 node bin/agent-cortex.mjs install copilot --dry-run       # plan only, no writes
 node bin/agent-cortex.mjs install copilot --output /tmp/x # preview the flat files elsewhere
-node bin/agent-cortex.mjs install claude           # regenerates ./claude in place
-node bin/agent-cortex.mjs install claude --dry-run       # plan only, no writes
-node bin/agent-cortex.mjs install claude --output /tmp/x # write the subtree elsewhere
+node bin/agent-cortex.mjs install claude           # regenerates ./claude AND registers it with Claude Code
+node bin/agent-cortex.mjs install claude --dry-run       # plan generation + registration, no writes/spawns
+node bin/agent-cortex.mjs install claude --output /tmp/x # generate only — no registration
 ```
 
 #### Try it for one session
@@ -217,8 +219,20 @@ claude --plugin-dir /path/to/agent-cortex/claude plugin details agent-cortex
 #### Install persistently (recommended)
 
 The repo ships a marketplace manifest (`.claude-plugin/marketplace.json`) that exposes the
-`claude/` subtree. Register it by **absolute path** (a bare `.` is rejected — use an absolute
-path or a `./`-prefixed one), then install:
+`claude/` subtree. A plain `agent-cortex install claude` does both halves in one step: it
+regenerates `claude/` and registers the plugin with Claude Code by driving the `claude
+plugin` CLI (marketplace add → install → marketplace update → plugin update), pointing it
+at this checkout's manifest. This requires the `claude` plugin CLI (Claude Code v2+):
+
+```sh
+git clone https://github.com/jaybeeuu/agent-cortex   # first time (or git pull to update)
+agent-cortex install claude                          # regenerate + register (user scope)
+```
+
+`--dry-run` prints the full plan without spawning the claude CLI or writing anything;
+`--output <dir>` regenerates only, with no registration. The equivalent manual registration
+(e.g. on a Claude Code build without the plugin CLI) adds the checkout by **absolute path**
+(a bare `.` is rejected):
 
 ```sh
 claude plugin marketplace add /path/to/agent-cortex
@@ -232,15 +246,17 @@ flag, and Ralph is just `claude --agent agent-cortex:ralph`.
 
 #### Update
 
-The marketplace source is your local checkout, so after pulling changes you must rebuild the
-`claude/` subtree and refresh the plugin:
+The marketplace source is your local checkout, so after pulling changes re-run the installer —
+it rebuilds the `claude/` subtree and refreshes the registered plugin (marketplace update →
+plugin update) in one step:
 
 ```sh
 git pull
-pnpm build:claude                          # alias of agent-cortex install claude
-claude plugin marketplace update jaybeeuu
-claude plugin update agent-cortex          # restart Claude Code to apply
+agent-cortex install claude                # rebuild + refresh (restart Claude Code to apply)
 ```
+
+`pnpm build:claude` only regenerates the subtree (no registration), so on its own it won't
+refresh an installed plugin.
 
 #### Uninstall
 
@@ -300,7 +316,9 @@ per-harness frontmatter/sections, auto-composed by `scripts/build-copilot-agents
 the install-time generator `bin/installers/claude.mjs`), `agents-native/*.md` (Claude-only
 agents like `ralph` — the canonical bodies the installer copies verbatim), `skills/**`,
 `hooks/claude/hooks.json` (hook config), and `package.json` (plugin
-version) — then run `pnpm build:claude` (an alias of `agent-cortex install claude`). Never hand-edit
+version) — then run `pnpm build:claude` (the generate-only alias of `agent-cortex install
+claude --output claude`; run the plain install instead if you also want the plugin
+re-registered with Claude Code). Never hand-edit
 anything under `claude/` except the hand-authored `claude/.mcp.json` and `claude/scripts/`
 files, or the generated `agents/*.agent.md` files, `claude/agents/`, `claude/skills/`,
 `claude/.claude-plugin/plugin.json`, and `claude/hooks.json`. CI runs

@@ -11,7 +11,6 @@ import {
   mkdtempSync,
   mkdirSync,
   writeFileSync,
-  chmodSync,
   rmSync,
   readFileSync,
   readdirSync,
@@ -24,6 +23,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 import { installClaude } from "../bin/installers/claude.mjs";
+import { makeFakeClaude, registrationActions } from "./helpers/fake-claude.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -45,18 +45,6 @@ function runCli(args, env = {}) {
 
 function makeTmp() {
   return mkdtempSync(join(tmpdir(), "agent-cortex-installer-"));
-}
-
-/** A fake `claude` binary that records every argv line to log. */
-function makeFakeClaude(dir) {
-  const bin = join(dir, "claude");
-  const log = join(dir, "calls.log");
-  writeFileSync(
-    bin,
-    ["#!/bin/sh", `echo "$*" >> "${log}"`, "exit 0"].join("\n") + "\n",
-  );
-  chmodSync(bin, 0o755);
-  return { bin, log };
 }
 
 /** Deterministic snapshot of a generated tree: kind, and for files/symlinks
@@ -299,16 +287,65 @@ describe("install claude", () => {
       },
     ]);
 
-    // registration drove the claude plugin CLI against the home install root
+    // registration drove the claude plugin CLI against the home install root:
+    // fresh state → marketplace add + plugin install (state queries and the
+    // availability probe are not registration actions).
     const calls = readFileSync(fake.log, "utf-8").trim().split("\n");
-    const registration = calls.filter((c) => !c.startsWith("plugin --help"));
-    assert.deepEqual(registration, [
+    assert.deepEqual(registrationActions(calls), [
       `plugin marketplace add ${join(fakeHome, ".agent-cortex")}`,
       "plugin install agent-cortex@jaybeeuu -y",
-      "plugin marketplace update jaybeeuu",
-      "plugin update agent-cortex -y",
     ]);
     assert.ok(stdout.includes("Registering plugin"), "CLI reports registration");
+  });
+
+  it("re-running a plain install is the update path: no marketplace re-add, no double-install", async () => {
+    const fakeHome = makeTmp();
+    const fakeBin = makeTmp();
+    const fake = makeFakeClaude(fakeBin);
+    const env = { HOME: fakeHome, PATH: `${fakeBin}:${process.env.PATH}` };
+    const allCalls = () => readFileSync(fake.log, "utf-8").trim().split("\n").filter(Boolean);
+
+    const first = await runCli(["install", "claude"], env);
+    assert.equal(first.exitCode, 0);
+    assert.deepEqual(registrationActions(allCalls()), [
+      `plugin marketplace add ${join(fakeHome, ".agent-cortex")}`,
+      "plugin install agent-cortex@jaybeeuu -y",
+    ]);
+    const run1End = allCalls().length;
+
+    // Second run: marketplace registered, plugin at the materialised version →
+    // marketplace update only — the documented no-op update path.
+    const second = await runCli(["install", "claude"], env);
+    assert.equal(second.exitCode, 0);
+    assert.deepEqual(registrationActions(allCalls().slice(run1End)), [
+      "plugin marketplace update jaybeeuu",
+    ]);
+
+    // Across both runs the marketplace was added exactly once and the plugin
+    // installed exactly once (idempotent — no re-add, no double-install).
+    const all = registrationActions(allCalls());
+    assert.equal(all.filter((c) => c.startsWith("plugin marketplace add")).length, 1);
+    assert.equal(all.filter((c) => c === "plugin install agent-cortex@jaybeeuu -y").length, 1);
+  });
+
+  it("warns with manual commands when the claude CLI is missing; --require-register fails the run", async () => {
+    const fakeHome = makeTmp();
+    const env = { HOME: fakeHome, PATH: "/nonexistent" };
+
+    // Default: warn-only — the plugin is materialised, exit 0, manual
+    // registration commands printed for the user to run.
+    const warned = await runCli(["install", "claude"], env);
+    assert.equal(warned.exitCode, 0, "missing claude CLI is warn-only by default");
+    assert.match(warned.stderr, /NOT registered/);
+    assert.match(warned.stderr, /claude plugin marketplace add /);
+    assert.match(warned.stderr, /claude plugin install agent-cortex@jaybeeuu -y/);
+    // The plugin itself is still materialised into the fake home.
+    assert.ok(existsSync(join(fakeHome, ".agent-cortex", "claude", "skills", "tdd", "SKILL.md")));
+
+    // --require-register escalates the same failure to a non-zero exit.
+    const required = await runCli(["install", "claude", "--require-register"], env);
+    assert.equal(required.exitCode, 1);
+    assert.match(required.stderr, /require-register/);
   });
 
   it("plain --dry-run prints the home target and copied-skill plan without writing", async () => {

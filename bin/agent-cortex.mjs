@@ -71,7 +71,9 @@ if (parsed.command === "install") {
         registerClaude({
           root: result.marketplaceRoot,
           manifest: result.marketplaceManifest,
+          pluginVersion: result.pluginVersion,
           dryRun: parsed.dryRun ?? false,
+          requireRegister: parsed.requireRegister ?? false,
         });
       }
       process.exit(0);

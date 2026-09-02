@@ -171,6 +171,43 @@ describe("install claude", () => {
     assert.equal(await readFile(join(out, "scripts", "statusline-command.sh"), "utf-8"), statusline);
   });
 
+  it("preserves hand-authored extras when the output IS the canonical subtree (build:claude)", async () => {
+    // `pnpm build:claude` regenerates INTO root/claude — the canonical store
+    // the extras are read from. The write-phase cleanup must not delete
+    // .mcp.json/scripts/ before they are read back, or regeneration silently
+    // destroys the committed extras at source.
+    const root = await makeTmp();
+    const claude = join(root, "claude");
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ name: "agent-cortex", version: "1.2.3", license: "MIT" }),
+    );
+    await writeFile(
+      join(root, "token-map.json"),
+      JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+    );
+    await mkdir(join(root, "agents"));
+    await mkdir(join(root, "skills"));
+    await mkdir(join(claude, "scripts"), { recursive: true });
+    await writeFile(join(claude, ".mcp.json"), JSON.stringify({ mcpServers: {} }, null, 2) + "\n");
+    await writeFile(join(claude, "scripts", "statusline-command.sh"), "#!/bin/sh\necho status\n");
+    await chmod(join(claude, "scripts", "statusline-command.sh"), 0o755);
+
+    const result = await installClaude({ root, output: claude });
+
+    assert.deepEqual(result.handAuthored, [".mcp.json", "scripts/statusline-command.sh"]);
+    assert.ok(await pathExists(join(claude, ".mcp.json")), ".mcp.json survives regeneration of the canonical subtree");
+    assert.ok(
+      await pathExists(join(claude, "scripts", "statusline-command.sh")),
+      "scripts/statusline-command.sh survives regeneration of the canonical subtree",
+    );
+    assert.equal(
+      (await stat(join(claude, "scripts", "statusline-command.sh"))).mode & 0o111,
+      0o111,
+      "executable bit survives regeneration of the canonical subtree",
+    );
+  });
+
   it("generates plugin.json tracking the package version and referencing hooks.json", async () => {
     const out = await makeTmp();
     await runCli(["install", "claude", "--output", out]);

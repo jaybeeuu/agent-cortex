@@ -54,7 +54,7 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir, chmod } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -281,18 +281,23 @@ async function buildHookFiles(root) {
 /**
  * Hand-authored extras the plugin needs that the generators don't produce:
  * the repo's committed claude/ subtree stays the canonical store for
- * .mcp.json and scripts/, and the installer copies them into the output.
- * The old flow left them "untouched" in place; materialising to a fresh
- * home dir requires shipping them.
+ * .mcp.json and scripts/, and the installer ships them to the output.
+ * Content is captured at read time (not path-referenced): build:claude
+ * regenerates INTO that same subtree, so the write-phase cleanup must be
+ * able to clear the output dir without destroying what was just read.
  */
 async function buildHandAuthored(root) {
   const items = [];
   const srcClaude = join(root, "claude");
-  if (await isFile(join(srcClaude, ".mcp.json"))) items.push({ rel: ".mcp.json", src: join(srcClaude, ".mcp.json") });
+  if (await isFile(join(srcClaude, ".mcp.json"))) {
+    const mcp = join(srcClaude, ".mcp.json");
+    items.push({ rel: ".mcp.json", content: await readFile(mcp), mode: (await stat(mcp)).mode & 0o777 });
+  }
   const scriptsDir = join(srcClaude, "scripts");
   if (await isDirectory(scriptsDir)) {
     for (const file of (await readdir(scriptsDir)).sort(byName)) {
-      if (await isFile(join(scriptsDir, file))) items.push({ rel: join("scripts", file), src: join(scriptsDir, file) });
+      const src = join(scriptsDir, file);
+      if (await isFile(src)) items.push({ rel: join("scripts", file), content: await readFile(src), mode: (await stat(src)).mode & 0o777 });
     }
   }
   return items;
@@ -340,19 +345,16 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
 
   const rootPlugin = pluginRoot ?? tokenMap.paths.plugin_root?.[CLAUDE];
 
-  // When generating into the repo's own claude/ subtree (pnpm build:claude),
-  // .mcp.json and scripts/ are the CANONICAL hand-authored extras — not
-  // regenerable output — so they must survive the cleanup below. Any other
-  // output dir gets them copied fresh from the repo subtree (write phase).
-  const inPlace = resolve(out) === resolve(join(root, "claude"));
-  const cleanable = inPlace
-    ? ["agents", "skills", ".claude-plugin", "hooks", "hooks.json"]
-    : ["agents", "skills", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"];
+  // Read hand-authored extras from the canonical subtree BEFORE the cleanup
+  // below: with `--output claude` (build:claude) the output dir IS root/claude,
+  // so clearing it first would destroy .mcp.json/scripts/ at their source and
+  // they'd never ship. They are re-copied fresh in the write phase. In dry-run
+  // nothing is cleaned or written.
+  const cleanable = ["agents", "skills", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"];
+  const handAuthored = await buildHandAuthored(root);
 
   // Regenerate the plugin children (removes stale output from earlier flows,
-  // e.g. old symlinked skills). Must happen BEFORE the build helpers write;
-  // hand-authored extras are re-copied fresh in the write phase. In dry-run
-  // nothing is cleaned or written.
+  // e.g. old symlinked skills). Must happen BEFORE the build helpers write.
   if (!dryRun) {
     for (const child of cleanable) {
       await rm(join(out, child), { recursive: true, force: true });
@@ -368,7 +370,6 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   const hooksSrc = join(root, "hooks", "claude", "hooks.json");
   const hooksJson = (await isFile(hooksSrc)) ? await readFile(hooksSrc, "utf-8") : null;
   const hookFiles = await buildHookFiles(root);
-  const handAuthored = await buildHandAuthored(root);
   const marketplaceManifest = isDefaultInstall ? await buildMarketplaceManifest(root, basename(out)) : null;
 
   const summary = {
@@ -450,13 +451,11 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   }
 
   if (handAuthored.length > 0) {
-    for (const { rel, src } of handAuthored) {
+    for (const { rel, content, mode } of handAuthored) {
       const dest = join(out, rel);
-      // In-place generation (out === repo claude/): the canonical extras already
-      // live at dest — copying onto themselves is a no-op, so skip it.
-      if (resolve(src) === resolve(dest)) continue;
       await mkdir(dirname(dest), { recursive: true });
-      await copyFile(src, dest);
+      await writeFile(dest, content);
+      if (mode !== undefined) await chmod(dest, mode);
     }
     console.log(`Copied hand-authored file(s): ${summary.handAuthored.join(", ")}`);
   }

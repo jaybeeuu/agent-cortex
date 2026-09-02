@@ -50,9 +50,9 @@ if (parsed.command === "install") {
   // materialises the plugin into the home install root (~/.agent-cortex/claude)
   // with copied, token-substituted skills, writes the marketplace manifest at
   // ~/.agent-cortex/.claude-plugin/marketplace.json, and registers it with
-  // Claude Code (marketplace add → install → update) — `pnpm build:claude` is
-  // the generate-only alias (it passes `--output claude`), so CI drift checks
-  // never touch ~/.agent-cortex.
+  // Claude Code (marketplace add → install → update); `--output <dir>` is the
+  // generate-only form (tests/CI validation), and there is no committed claude/
+  // subtree in the repo anymore.
   if (parsed.harness === "claude") {
     // Avoid loading the installer on the help/summary paths and for other harnesses.
     const { installClaude, registerClaude } = await import("./installers/claude.mjs");

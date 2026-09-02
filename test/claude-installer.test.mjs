@@ -1,12 +1,13 @@
 // Tests for `agent-cortex install claude` runtime registration: after
-// materialising the claude/ subtree, the plain install registers the plugin
-// with Claude Code by driving the `claude plugin` CLI. Registration is
+// materialising the plugin into the home install root, the plain install
+// registers the plugin with Claude Code by driving the `claude plugin` CLI.
+// Registration is
 // idempotent by STATE, not by exit code: `marketplace list --json` decides
 // add-vs-update and `plugin list --json` decides install-vs-update against the
 // materialised version. The real CLI is a genuine external system (and its
 // home config must never be touched), so these tests drive the stateful fake
-// from test/helpers/fake-claude.mjs; the real repo's marketplace.json supplies
-// the manifest for the checkout-level test.
+// from test/helpers/fake-claude.mjs; fixture manifests (makeMarketplaceRoot)
+// stand in for the home install root's generated marketplace manifest.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -273,22 +274,6 @@ describe("registerClaude", () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
       rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("works against the real repo checkout and its marketplace manifest", () => {
-    const tmp = makeTmp();
-    const fake = makeFakeClaude(tmp);
-    try {
-      const result = registerClaude({ root: ROOT, claudeBin: fake.bin });
-      assert.equal(result.marketplace, "jaybeeuu");
-      assert.equal(result.plugin, "agent-cortex");
-      assert.deepEqual(actionsSince(fake.log), [
-        `plugin marketplace add ${ROOT}`,
-        "plugin install agent-cortex@jaybeeuu -y",
-      ]);
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
     }
   });
 });

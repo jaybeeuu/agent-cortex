@@ -2,7 +2,7 @@
 // generator that materialises the Claude Code plugin. The default target is a
 // home-scoped directory (~/.agent-cortex/claude, overridable via HOME for
 // tests); all tests install into mkdtemp dirs — the real ~/.agent-cortex and
-// the repo's committed claude/ subtree are never touched.
+// the repo's canonical sources (agents/, skills/, claude-extras/, hooks/claude/) are never touched.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -150,24 +150,24 @@ describe("install claude", () => {
     }
   });
 
-  it("copies hand-authored plugin extras (.mcp.json, scripts/) from the repo subtree", async () => {
+  it("copies hand-authored plugin extras (.mcp.json, scripts/) from the canonical claude-extras/ dir", async () => {
     const out = makeTmp();
     await runCli(["install", "claude", "--output", out]);
 
-    const mcp = readFileSync(join(ROOT, "claude", ".mcp.json"), "utf-8");
+    const mcp = readFileSync(join(ROOT, "claude-extras", ".mcp.json"), "utf-8");
     assert.equal(readFileSync(join(out, ".mcp.json"), "utf-8"), mcp);
 
-    const statusline = readFileSync(join(ROOT, "claude", "scripts", "statusline-command.sh"), "utf-8");
+    const statusline = readFileSync(join(ROOT, "claude-extras", "scripts", "statusline-command.sh"), "utf-8");
     assert.equal(readFileSync(join(out, "scripts", "statusline-command.sh"), "utf-8"), statusline);
   });
 
-  it("preserves hand-authored extras when the output IS the canonical subtree (build:claude)", () => {
-    // `pnpm build:claude` regenerates INTO root/claude — the canonical store
-    // the extras are read from. The write-phase cleanup must not delete
-    // .mcp.json/scripts/ before they are read back, or regeneration silently
-    // destroys the committed extras at source.
+  it("copies hand-authored extras from claude-extras/ with executable bits preserved", () => {
+    // claude-extras/ is the canonical store for .mcp.json and scripts/ (the
+    // committed claude/ subtree is retired); the installer ships them into the
+    // output, keeping the executable bit, and never writes into the store.
     const root = makeTmp();
-    const claude = join(root, "claude");
+    const out = join(root, "out");
+    const extras = join(root, "claude-extras");
     writeFileSync(
       join(root, "package.json"),
       JSON.stringify({ name: "agent-cortex", version: "1.2.3", license: "MIT" }),
@@ -178,24 +178,25 @@ describe("install claude", () => {
     );
     mkdirSync(join(root, "agents"));
     mkdirSync(join(root, "skills"));
-    mkdirSync(join(claude, "scripts"), { recursive: true });
-    writeFileSync(join(claude, ".mcp.json"), JSON.stringify({ mcpServers: {} }, null, 2) + "\n");
-    writeFileSync(join(claude, "scripts", "statusline-command.sh"), "#!/bin/sh\necho status\n");
-    chmodSync(join(claude, "scripts", "statusline-command.sh"), 0o755);
+    mkdirSync(join(extras, "scripts"), { recursive: true });
+    writeFileSync(join(extras, ".mcp.json"), JSON.stringify({ mcpServers: {} }, null, 2) + "\n");
+    writeFileSync(join(extras, "scripts", "statusline-command.sh"), "#!/bin/sh\necho status\n");
+    chmodSync(join(extras, "scripts", "statusline-command.sh"), 0o755);
 
-    const result = installClaude({ root, output: claude });
+    const result = installClaude({ root, output: out });
 
     assert.deepEqual(result.handAuthored, [".mcp.json", "scripts/statusline-command.sh"]);
-    assert.ok(existsSync(join(claude, ".mcp.json")), ".mcp.json survives regeneration of the canonical subtree");
-    assert.ok(
-      existsSync(join(claude, "scripts", "statusline-command.sh")),
-      "scripts/statusline-command.sh survives regeneration of the canonical subtree",
+    assert.equal(
+      readFileSync(join(out, ".mcp.json"), "utf-8"),
+      JSON.stringify({ mcpServers: {} }, null, 2) + "\n",
     );
     assert.equal(
-      statSync(join(claude, "scripts", "statusline-command.sh")).mode & 0o111,
+      statSync(join(out, "scripts", "statusline-command.sh")).mode & 0o111,
       0o111,
-      "executable bit survives regeneration of the canonical subtree",
+      "executable bit survives the copy",
     );
+    // the source store is never written to
+    assert.deepStrictEqual(readdirSync(extras).sort(), [".mcp.json", "scripts"]);
   });
 
   it("generates plugin.json tracking the package version and referencing hooks.json", async () => {
@@ -283,15 +284,16 @@ describe("install claude", () => {
     assert.equal(existsSync(join(out, ".claude-plugin")), false);
   });
 
-  it("leaves the committed claude/ subtree and repo marketplace manifest untouched", async () => {
+  it("leaves the canonical sources untouched (no committed claude/ output)", async () => {
     const out = makeTmp();
-    const beforeSkills = readdirSync(join(ROOT, "claude", "skills")).sort();
-    const beforePlugin = readFileSync(join(ROOT, "claude", ".claude-plugin", "plugin.json"), "utf-8");
-    const beforeMarket = readFileSync(join(ROOT, ".claude-plugin", "marketplace.json"), "utf-8");
+    const beforeExtras = readdirSync(join(ROOT, "claude-extras")).sort();
+    const beforeExtrasScripts = readdirSync(join(ROOT, "claude-extras", "scripts")).sort();
     await runCli(["install", "claude", "--output", out]);
-    assert.deepStrictEqual(readdirSync(join(ROOT, "claude", "skills")).sort(), beforeSkills);
-    assert.equal(readFileSync(join(ROOT, "claude", ".claude-plugin", "plugin.json"), "utf-8"), beforePlugin);
-    assert.equal(readFileSync(join(ROOT, ".claude-plugin", "marketplace.json"), "utf-8"), beforeMarket);
+    // no committed claude/ output remains, and installs never write into the
+    // canonical sources the plugin materialises from
+    assert.equal(existsSync(join(ROOT, "claude")), false);
+    assert.deepStrictEqual(readdirSync(join(ROOT, "claude-extras")).sort(), beforeExtras);
+    assert.deepStrictEqual(readdirSync(join(ROOT, "claude-extras", "scripts")).sort(), beforeExtrasScripts);
   });
 
   it("plain install materialises into ~/.agent-cortex/claude with a marketplace manifest and drives the claude plugin CLI", async () => {
@@ -310,7 +312,7 @@ describe("install claude", () => {
     // hand-authored extras shipped into the home plugin
     assert.equal(
       readFileSync(join(pluginDir, ".mcp.json"), "utf-8"),
-      readFileSync(join(ROOT, "claude", ".mcp.json"), "utf-8"),
+      readFileSync(join(ROOT, "claude-extras", ".mcp.json"), "utf-8"),
     );
 
     // marketplace manifest at the home root exposes ./claude

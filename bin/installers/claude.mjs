@@ -1,6 +1,8 @@
 // Install-time generator + registrar for the Claude Code plugin. A plain
 // `agent-cortex install claude` MATERIALISES the plugin into a home-scoped
-// directory instead of regenerating the repo's committed claude/ subtree:
+// directory (~/.agent-cortex/claude); there is no committed claude/ output in
+// the repo to regenerate — claude-extras/ and the gitignored $HOME target are
+// the only stores. The materialised plugin is:
 //
 //   <output>/.claude-plugin/plugin.json     plugin manifest (version tracks the
 //                                           package — never stale)
@@ -18,9 +20,9 @@
 //                                           never reaches Claude
 //   <output>/hooks.json + hooks/<scripts>   from hooks/claude/ (support files
 //                                           referenced via ${CLAUDE_PLUGIN_ROOT})
-//   <output>/.mcp.json + scripts/           hand-authored extras copied from the
-//                                           repo claude/ subtree (kept committed
-//                                           there as the canonical store)
+//   <output>/.mcp.json + scripts/           hand-authored extras copied from
+//                                           claude-extras/ (the canonical
+//                                           store)
 //
 // Default output is ~/.agent-cortex/claude (the home install root
 // ~/.agent-cortex doubles as the marketplace root — the installer writes
@@ -39,10 +41,6 @@
 //                               generates only — no manifest, no registration
 //   node bin/agent-cortex.mjs install claude --dry-run
 //                               plans generation + registration without writing
-//
-// `pnpm build:claude` runs the CLI with `--output claude` (generate-only), so
-// the committed subtree can still be regenerated for CI drift checks; the
-// release pipeline owns retiring the committed subtree (see docs/release).
 //
 // Registration is idempotent by state, not by exit code: `claude plugin
 // marketplace list --json` decides add-vs-update and `claude plugin list
@@ -231,10 +229,10 @@ function buildPluginJson(root) {
 
 /**
  * Marketplace manifest exposing the plugin at <marketplaceRoot>/<basename>.
- * Lives at `<marketplaceRoot>/.claude-plugin/marketplace.json`, mirroring the
- * repo's own committed marketplace layout, so `claude plugin marketplace add
- * ~/.agent-cortex` resolves ./claude relative to the manifest's directory.
- * The default shape matches the committed repo manifest byte-for-byte.
+ * Lives at `<marketplaceRoot>/.claude-plugin/marketplace.json` (the home
+ * install root ~/.agent-cortex doubles as the marketplace root), so `claude
+ * plugin marketplace add ~/.agent-cortex` resolves ./claude relative to the
+ * manifest's directory.
  */
 function buildMarketplaceManifest(root, outputName) {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
@@ -275,19 +273,19 @@ function buildHookFiles(root) {
 
 /**
  * Hand-authored extras the plugin needs that the generators don't produce:
- * the repo's committed claude/ subtree stays the canonical store for
- * .mcp.json and scripts/, and the installer ships them to the output.
- * Content is captured at read time (not path-referenced): build:claude
- * regenerates INTO that same subtree, so the write-phase cleanup must be
- * able to clear the output dir without destroying what was just read.
+ * the repo's claude-extras/ dir is the canonical store for .mcp.json and
+ * scripts/, and the installer ships them to the output. Content is captured
+ * at read time (not path-referenced) so the write-phase cleanup of the
+ * output dir can never destroy the sources (outputs normally go to
+ * ~/.agent-cortex/claude or a tmp dir, never into claude-extras/).
  */
 function buildHandAuthored(root) {
   const items = [];
-  const srcClaude = join(root, "claude");
-  if (isFile(join(srcClaude, ".mcp.json"))) {
-    items.push({ rel: ".mcp.json", content: readFileSync(join(srcClaude, ".mcp.json")), mode: statSync(join(srcClaude, ".mcp.json")).mode & 0o777 });
+  const srcExtras = join(root, "claude-extras");
+  if (isFile(join(srcExtras, ".mcp.json"))) {
+    items.push({ rel: ".mcp.json", content: readFileSync(join(srcExtras, ".mcp.json")), mode: statSync(join(srcExtras, ".mcp.json")).mode & 0o777 });
   }
-  const scriptsDir = join(srcClaude, "scripts");
+  const scriptsDir = join(srcExtras, "scripts");
   if (isDirectory(scriptsDir)) {
     for (const file of readdirSync(scriptsDir).sort(byName)) {
       const src = join(scriptsDir, file);
@@ -339,11 +337,11 @@ export function installClaude({ root = REPO_ROOT, output, dryRun = false, plugin
 
   const rootPlugin = pluginRoot ?? tokenMap.paths.plugin_root?.[CLAUDE];
 
-  // Read hand-authored extras from the canonical subtree BEFORE the cleanup
-  // below: with `--output claude` (build:claude) the output dir IS root/claude,
-  // so clearing it first would destroy .mcp.json/scripts/ at their source and
-  // they'd never ship. They are re-copied fresh in the write phase. In dry-run
-  // nothing is cleaned or written.
+  // Read hand-authored extras from the canonical claude-extras/ dir BEFORE
+  // the cleanup below (defensive: the output is normally ~/.agent-cortex/claude
+  // or a tmp dir, never claude-extras/, but clearing the output first would
+  // still destroy sources if they ever collided). They are re-copied fresh in
+  // the write phase. In dry-run nothing is cleaned or written.
   const handAuthored = buildHandAuthored(root);
 
   // Regenerate the plugin children (removes stale output from earlier flows,
@@ -396,7 +394,7 @@ export function installClaude({ root = REPO_ROOT, output, dryRun = false, plugin
     if (summary.hookFiles.length)
       console.log(`  hook scripts: ${summary.hookFiles.join(", ")} (bundled into ${join(out, "hooks")}/)`);
     if (summary.handAuthored.length)
-      console.log(`  hand-authored files: ${summary.handAuthored.join(", ")} (copied from repo claude/)`);
+      console.log(`  hand-authored files: ${summary.handAuthored.join(", ")} (copied from repo claude-extras/)`);
     return summary;
   }
 

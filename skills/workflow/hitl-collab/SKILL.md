@@ -80,7 +80,7 @@ Needs sign-off on the API contract change.
 - [ ] Contract change approved by reviewer
 ## Manual steps
 1. `pnpm install && pnpm test`
-2. `pnpm build:claude && git diff --stat claude/`
+2. `agent-cortex install claude --dry-run`   # materialiser smoke check (CI runs the full structural check)
 ## Verification checklist
 - [ ] Tests pass locally
 - [ ] Generated output up to date

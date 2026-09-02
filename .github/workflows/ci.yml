@@ -146,7 +146,7 @@ jobs:
         run: pnpm test
 
   claude-plugin-check:
-    name: Claude plugin check
+    name: Claude plugin materialiser check
     needs: setup
     runs-on: ubuntu-latest
     steps:
@@ -175,16 +175,48 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `pnpm build:claude` is an alias of `agent-cortex install claude` (both run
-      # bin/installers/claude.mjs), so this drift check proves the committed subtree
-      # equals the installer's output — stale output or hand-edits to generated
-      # files fail the build. The subtree stays committed because the marketplace
-      # install flow reads it straight from the working tree (fresh clone installs
-      # as-is).
-      - name: Check generated Claude plugin is up to date
+      # The claude/ subtree is retired — the installer is the only generator
+      # (plain `agent-cortex install claude` materialises ~/.agent-cortex/claude;
+      # `--output <dir>` is generate-only for tests). There is no committed
+      # output to diff, so this job validates the materialiser itself: it must
+      # produce a complete, structural plugin (generated + hand-authored pieces),
+      # no symlinks, no literal {{TOOL:/{{PATH:/{{SECTION: tokens, and a
+      # plugin.json version tracking the package — exactly what a real install
+      # would ship.
+      - name: Materialise the Claude plugin and run structural checks
         run: |
-          pnpm build:claude
-          git diff --exit-code claude/agents/ claude/skills/ claude/.claude-plugin/plugin.json claude/hooks.json claude/hooks/
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/claude-plugin-check"
+          node bin/agent-cortex.mjs install claude --output "$OUT"
+
+          # structure: generated + hand-authored pieces all present
+          test -f "$OUT/.claude-plugin/plugin.json"
+          test -f "$OUT/agents/plan.md"
+          test -f "$OUT/agents/ralph.md"
+          test -f "$OUT/skills/tdd/SKILL.md"
+          test -f "$OUT/hooks.json"
+          test -f "$OUT/hooks/scripts/notify.mjs"
+          test -f "$OUT/.mcp.json"
+          test -f "$OUT/scripts/statusline-command.sh"
+
+          # flat-copy guarantee: no symlinks in the materialised tree
+          if [ -n "$(find "$OUT" -type l)" ]; then
+            echo "::error::symlinks found in materialised Claude plugin"
+            exit 1
+          fi
+
+          # token substitution: no literal tokens survive materialisation
+          TOKENS=$(grep -rlE '\{\{(TOOL|PATH|SECTION):' "$OUT" || true)
+          if [ -n "$TOKENS" ]; then
+            echo "::error::literal substitution tokens in materialised Claude plugin:"
+            echo "$TOKENS"
+            exit 1
+          fi
+
+          # plugin version tracks the package (never stale)
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PLUGIN_VERSION=$(node -p "require('$OUT/.claude-plugin/plugin.json').version")
+          test "$PKG_VERSION" = "$PLUGIN_VERSION"
 
       - name: Check generated Copilot agent files are up to date
         run: |
@@ -239,10 +271,11 @@ jobs:
           # the string is split by argStringToArray on whitespace (single quotes
           # survive literally), so each must be a single unquoted command token
           # that runs a pnpm script. version-packages bumps versions, syncs
-          # plugin.json, THEN regenerates the committed generated output
-          # (build:claude writes claude/.claude-plugin/plugin.json with the NEW
-          # version, build:copilot re-derives agents/*.agent.md) before the action
-          # commits, so the Version Packages PR always passes the drift gates.
+          # plugin.json, THEN regenerates the committed Copilot output
+          # (build:copilot re-derives agents/*.agent.md; the Claude plugin is
+          # materialised at install time with the package version, so nothing
+          # committed needs regenerating) before the action commits, so the
+          # Version Packages PR always passes the drift gates.
           version: pnpm version-packages
           publish: pnpm publish-package
           commit: "chore: version packages"

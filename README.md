@@ -38,17 +38,17 @@ agent-cortex/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
 │       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
-│       └── claude.mjs        # install-time generator + Claude Code registrar (pnpm build:claude = generate-only --output form)
+│       └── claude.mjs        # materialises ~/.agent-cortex/claude + registers with Claude Code (pnpm build:claude = generate-only --output form)
 ├── scripts/
 │   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
-└── claude/                   # Self-contained Claude Code plugin (GENERATED — do not hand-edit)
+└── claude/                   # Committed plugin mirror — canonical store for hand-authored extras; regenerated via pnpm build:claude (a plain install materialises ~/.agent-cortex/claude instead)
     ├── .claude-plugin/
     │   └── plugin.json
-    ├── .mcp.json             #  MCP servers (context7, github) — hand-authored
+    ├── .mcp.json             #  MCP servers (context7, github) — hand-authored (copied into installs)
     ├── hooks.json            #  SessionStart + Notification hooks — generated from hooks/claude/
     ├── hooks/                #  hook scripts (e.g. scripts/notify.mjs) — generated from hooks/claude/
     ├── agents/               #  composed from agents/<name>/claude/ + copied from agents-native/
-    └── skills/               #  symlinks to the grouped skills/ dirs (29 skills)
+    └── skills/               #  flat copies of skills/<group>/<name>/ (29 skills, token-substituted)
 ```
 
 The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
@@ -61,17 +61,19 @@ install-time and build-time output can never diverge) and committed so Copilot C
 The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
-The `claude/` subtree is **generated** by the install-time generator
-(`bin/installers/claude.mjs`). A plain `agent-cortex install claude` regenerates the
-subtree AND registers it with Claude Code by driving the `claude plugin` CLI (marketplace
-add → install → marketplace update → plugin update). `pnpm build:claude` is the pure,
-generate-only alias — it passes `--output claude`, so CI and release drift-checks never
-spawn the claude CLI or touch `~/.claude`. CI regenerates it and checks
-it is never stale:
+The Claude plugin is **materialised** at install time by `bin/installers/claude.mjs`. A
+plain `agent-cortex install claude` copies the plugin into the home install root
+(`~/.agent-cortex/claude`), writes a marketplace manifest at
+`~/.agent-cortex/.claude-plugin/marketplace.json` exposing it, and registers it with
+Claude Code by driving the `claude plugin` CLI (marketplace add → install → marketplace
+update → plugin update). `pnpm build:claude` is the pure, generate-only alias — it passes
+`--output claude`, so CI and release drift-checks never spawn the claude CLI or touch
+`~/.agent-cortex`. CI regenerates the committed mirror and checks it is never stale:
 
-- **Skills** stay single-source — `claude/skills/<name>` are symlinks into the grouped
-  `skills/<group>/<name>` dirs (Claude discovers skills only one level deep, so the
-  grouping is flattened via links, not copies).
+- **Skills** stay single-source — the installer copies each `skills/<group>/<name>/` dir
+  flat into `skills/<name>/` (Claude discovers skills only one level deep) with
+  `{{TOOL:...}}` / `{{PATH:...}}` tokens substituted against token-map.json's claude
+  column — no symlinks, so literal tokens never reach Claude.
 - **Agents** can't be shared files (the frontmatter formats differ), so `claude/agents/*.md`
   are composed from the canonical `agents/<name>/` directories' `claude/` harness dirs
   (frontmatter.json + section files), exactly like the Copilot flats are composed from their
@@ -81,12 +83,13 @@ it is never stale:
   copied verbatim into `claude/agents/`. `ralph` is one: it is reimplemented for Claude around
   background workers + an independent review gate (the Copilot Ralph's `task`/`read_agent`
   poll loop has no Claude equivalent), so it can't be mechanically converted.
-- **Manifests** are generated too: `claude/.claude-plugin/plugin.json` (its `version` tracks
-  `package.json`, so it never goes stale) and `claude/hooks.json` (copied from the canonical
+- **Manifests** are generated too: the plugin's `.claude-plugin/plugin.json` (its `version`
+  tracks `package.json`, so it never goes stale) and `hooks.json` (copied from the canonical
   `hooks/claude/hooks.json` source), plus any support files under `hooks/claude/` bundled into
-  `claude/hooks/` so hook commands can reach them via `$CLAUDE_PLUGIN_ROOT`. `claude/.mcp.json`
-  and `claude/scripts/` stay hand-authored. See `docs/claude-hooks.md` for the extension→hook
-  mapping and the rejections (auto-name, skill-stats, subagent, agent-modes).
+  the plugin's `hooks/` so hook commands can reach them via `$CLAUDE_PLUGIN_ROOT`. Hand-authored
+  extras — `.mcp.json` and `scripts/` — are copied into every install from the committed
+  `claude/` subtree, which stays their canonical store. See `docs/claude-hooks.md` for the
+  extension→hook mapping and the rejections (auto-name, skill-stats, subagent, agent-modes).
 
 Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
 `hooks/claude/`, `package.json`), never anything under `claude/` or the generated
@@ -185,27 +188,34 @@ copilot plugin install ./agent-cortex
 
 ### Claude Code plugin (separate)
 
-The Claude plugin is the self-contained `claude/` subtree (manifest at
-`claude/.claude-plugin/plugin.json`), containing **4 agents** (`strategy`, `plan`,
-`ralph-plan`, `ralph`), **29 skills**, `SessionStart` + `Notification` hooks, and 2 MCP servers.
+A plain `agent-cortex install claude` **materialises** the plugin into the home install
+root `~/.agent-cortex/claude` — **4 agents** (`strategy`, `plan`, `ralph-plan`, `ralph`),
+**29 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
+symlinks), `SessionStart` + `Notification` hooks, and 2 MCP servers — writes a marketplace
+manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude`, and
+registers it with Claude Code. The committed `claude/` subtree remains the generate-only
+mirror: rebuilt via `pnpm build:claude` (i.e. `install claude --output claude`) for the CI
+drift gate, and the canonical store for hand-authored extras (`.mcp.json`, `scripts/`), which
+every install copies.
 
-`claude/` is committed (the marketplace install flow reads it straight from the working
-tree, so a fresh clone installs as-is), and rebuilt via the install-time generator if you
-change the sources:
+Generate or re-generate from source:
 
 ```sh
 pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
-pnpm build:claude    # or: node bin/agent-cortex.mjs install claude --output claude (generate-only)
+pnpm build:claude    # or: node bin/agent-cortex.mjs install claude --output claude (generates ./claude only)
 # or the install-time entry (same generator, less typing):
 node bin/agent-cortex.mjs install copilot          # regenerates agents/*.agent.md in place
 node bin/agent-cortex.mjs install copilot --dry-run       # plan only, no writes
 node bin/agent-cortex.mjs install copilot --output /tmp/x # preview the flat files elsewhere
-node bin/agent-cortex.mjs install claude           # regenerates ./claude AND registers it with Claude Code
+node bin/agent-cortex.mjs install claude           # materialises ~/.agent-cortex/claude + marketplace manifest AND registers it with Claude Code
 node bin/agent-cortex.mjs install claude --dry-run       # plan generation + registration, no writes/spawns
-node bin/agent-cortex.mjs install claude --output /tmp/x # generate only — no registration
+node bin/agent-cortex.mjs install claude --output /tmp/x # generate only — no marketplace manifest, no registration
+# note: the plain claude install writes ~/.agent-cortex; only --output regenerates the committed ./claude mirror
 ```
 
 #### Try it for one session
+
+This loads the committed `claude/` mirror directly — no install needed.
 
 ```sh
 claude --plugin-dir /path/to/agent-cortex/claude
@@ -218,24 +228,25 @@ claude --plugin-dir /path/to/agent-cortex/claude plugin details agent-cortex
 
 #### Install persistently (recommended)
 
-The repo ships a marketplace manifest (`.claude-plugin/marketplace.json`) that exposes the
-`claude/` subtree. A plain `agent-cortex install claude` does both halves in one step: it
-regenerates `claude/` and registers the plugin with Claude Code by driving the `claude
-plugin` CLI (marketplace add → install → marketplace update → plugin update), pointing it
-at this checkout's manifest. This requires the `claude` plugin CLI (Claude Code v2+):
+The plain install does both halves in one step: it materialises the plugin into
+`~/.agent-cortex/claude`, writes `~/.agent-cortex/.claude-plugin/marketplace.json` (the
+home install root doubles as the marketplace root — the manifest exposes `./claude`), and
+registers it with Claude Code by driving the `claude plugin` CLI (marketplace add → install
+→ marketplace update → plugin update) against that root. This requires the `claude` plugin
+CLI (Claude Code v2+):
 
 ```sh
-git clone https://github.com/jaybeeuu/agent-cortex   # first time (or git pull to update)
-agent-cortex install claude                          # regenerate + register (user scope)
+agent-cortex install claude                          # materialise + register (user scope)
 ```
 
 `--dry-run` prints the full plan without spawning the claude CLI or writing anything;
-`--output <dir>` regenerates only, with no registration. The equivalent manual registration
-(e.g. on a Claude Code build without the plugin CLI) adds the checkout by **absolute path**
-(a bare `.` is rejected):
+`--output <dir>` generates only, with no marketplace manifest and no registration. The
+equivalent manual registration (e.g. on a Claude Code build without the plugin CLI) adds a
+marketplace root by **absolute path** (a bare `.` is rejected) — the repo checkout works
+too, since it ships the same manifest exposing `./claude`:
 
 ```sh
-claude plugin marketplace add /path/to/agent-cortex
+claude plugin marketplace add /path/to/agent-cortex   # or ~/.agent-cortex after a plain install
 claude plugin install agent-cortex@jaybeeuu          # every session (user scope)
 # or, for this project only:
 claude plugin install agent-cortex@jaybeeuu --scope local
@@ -246,17 +257,17 @@ flag, and Ralph is just `claude --agent agent-cortex:ralph`.
 
 #### Update
 
-The marketplace source is your local checkout, so after pulling changes re-run the installer —
-it rebuilds the `claude/` subtree and refreshes the registered plugin (marketplace update →
-plugin update) in one step:
+The plain install re-materialises from the current sources, so after pulling changes
+re-run it — it refreshes the materialised plugin and the registered plugin (marketplace
+update → plugin update) in one step:
 
 ```sh
 git pull
-agent-cortex install claude                # rebuild + refresh (restart Claude Code to apply)
+agent-cortex install claude                # re-materialise + refresh (restart Claude Code to apply)
 ```
 
-`pnpm build:claude` only regenerates the subtree (no registration), so on its own it won't
-refresh an installed plugin.
+`pnpm build:claude` only regenerates the committed `claude/` mirror (no registration, no
+home install), so on its own it won't refresh an installed plugin.
 
 #### Uninstall
 

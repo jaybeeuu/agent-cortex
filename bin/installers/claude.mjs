@@ -54,7 +54,7 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync, chmodSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -276,18 +276,22 @@ function buildHookFiles(root) {
 /**
  * Hand-authored extras the plugin needs that the generators don't produce:
  * the repo's committed claude/ subtree stays the canonical store for
- * .mcp.json and scripts/, and the installer copies them into the output.
- * The old flow left them "untouched" in place; materialising to a fresh
- * home dir requires shipping them.
+ * .mcp.json and scripts/, and the installer ships them to the output.
+ * Content is captured at read time (not path-referenced): build:claude
+ * regenerates INTO that same subtree, so the write-phase cleanup must be
+ * able to clear the output dir without destroying what was just read.
  */
 function buildHandAuthored(root) {
   const items = [];
   const srcClaude = join(root, "claude");
-  if (isFile(join(srcClaude, ".mcp.json"))) items.push({ rel: ".mcp.json", src: join(srcClaude, ".mcp.json") });
+  if (isFile(join(srcClaude, ".mcp.json"))) {
+    items.push({ rel: ".mcp.json", content: readFileSync(join(srcClaude, ".mcp.json")), mode: statSync(join(srcClaude, ".mcp.json")).mode & 0o777 });
+  }
   const scriptsDir = join(srcClaude, "scripts");
   if (isDirectory(scriptsDir)) {
     for (const file of readdirSync(scriptsDir).sort(byName)) {
-      if (isFile(join(scriptsDir, file))) items.push({ rel: join("scripts", file), src: join(scriptsDir, file) });
+      const src = join(scriptsDir, file);
+      if (isFile(src)) items.push({ rel: join("scripts", file), content: readFileSync(src), mode: statSync(src).mode & 0o777 });
     }
   }
   return items;
@@ -335,10 +339,15 @@ export function installClaude({ root = REPO_ROOT, output, dryRun = false, plugin
 
   const rootPlugin = pluginRoot ?? tokenMap.paths.plugin_root?.[CLAUDE];
 
-  // Regenerate the plugin children (removes stale output from earlier flows,
-  // e.g. old symlinked skills). Must happen BEFORE the build helpers write;
-  // hand-authored extras are re-copied fresh in the write phase. In dry-run
+  // Read hand-authored extras from the canonical subtree BEFORE the cleanup
+  // below: with `--output claude` (build:claude) the output dir IS root/claude,
+  // so clearing it first would destroy .mcp.json/scripts/ at their source and
+  // they'd never ship. They are re-copied fresh in the write phase. In dry-run
   // nothing is cleaned or written.
+  const handAuthored = buildHandAuthored(root);
+
+  // Regenerate the plugin children (removes stale output from earlier flows,
+  // e.g. old symlinked skills). Must happen BEFORE the build helpers write.
   if (!dryRun) {
     for (const child of ["agents", "skills", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"]) {
       rmSync(join(out, child), { recursive: true, force: true });
@@ -354,7 +363,6 @@ export function installClaude({ root = REPO_ROOT, output, dryRun = false, plugin
   const hooksSrc = join(root, "hooks", "claude", "hooks.json");
   const hooksJson = isFile(hooksSrc) ? readFileSync(hooksSrc, "utf-8") : null;
   const hookFiles = buildHookFiles(root);
-  const handAuthored = buildHandAuthored(root);
   const marketplaceManifest = isDefaultInstall ? buildMarketplaceManifest(root, basename(out)) : null;
 
   const summary = {
@@ -436,10 +444,11 @@ export function installClaude({ root = REPO_ROOT, output, dryRun = false, plugin
   }
 
   if (handAuthored.length > 0) {
-    for (const { rel, src } of handAuthored) {
+    for (const { rel, content, mode } of handAuthored) {
       const dest = join(out, rel);
       mkdirSync(dirname(dest), { recursive: true });
-      copyFileSync(src, dest);
+      writeFileSync(dest, content);
+      if (mode !== undefined) chmodSync(dest, mode);
     }
     console.log(`Copied hand-authored file(s): ${summary.handAuthored.join(", ")}`);
   }

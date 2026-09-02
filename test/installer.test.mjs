@@ -18,6 +18,7 @@ import {
   lstatSync,
   readlinkSync,
   existsSync,
+  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -158,6 +159,43 @@ describe("install claude", () => {
 
     const statusline = readFileSync(join(ROOT, "claude", "scripts", "statusline-command.sh"), "utf-8");
     assert.equal(readFileSync(join(out, "scripts", "statusline-command.sh"), "utf-8"), statusline);
+  });
+
+  it("preserves hand-authored extras when the output IS the canonical subtree (build:claude)", () => {
+    // `pnpm build:claude` regenerates INTO root/claude — the canonical store
+    // the extras are read from. The write-phase cleanup must not delete
+    // .mcp.json/scripts/ before they are read back, or regeneration silently
+    // destroys the committed extras at source.
+    const root = makeTmp();
+    const claude = join(root, "claude");
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ name: "agent-cortex", version: "1.2.3", license: "MIT" }),
+    );
+    writeFileSync(
+      join(root, "token-map.json"),
+      JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+    );
+    mkdirSync(join(root, "agents"));
+    mkdirSync(join(root, "skills"));
+    mkdirSync(join(claude, "scripts"), { recursive: true });
+    writeFileSync(join(claude, ".mcp.json"), JSON.stringify({ mcpServers: {} }, null, 2) + "\n");
+    writeFileSync(join(claude, "scripts", "statusline-command.sh"), "#!/bin/sh\necho status\n");
+    chmodSync(join(claude, "scripts", "statusline-command.sh"), 0o755);
+
+    const result = installClaude({ root, output: claude });
+
+    assert.deepEqual(result.handAuthored, [".mcp.json", "scripts/statusline-command.sh"]);
+    assert.ok(existsSync(join(claude, ".mcp.json")), ".mcp.json survives regeneration of the canonical subtree");
+    assert.ok(
+      existsSync(join(claude, "scripts", "statusline-command.sh")),
+      "scripts/statusline-command.sh survives regeneration of the canonical subtree",
+    );
+    assert.equal(
+      statSync(join(claude, "scripts", "statusline-command.sh")).mode & 0o111,
+      0o111,
+      "executable bit survives regeneration of the canonical subtree",
+    );
   });
 
   it("generates plugin.json tracking the package version and referencing hooks.json", async () => {

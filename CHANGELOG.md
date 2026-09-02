@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.39.0
+
+### Minor Changes
+
+- 5d4159f: Handoff documents now end with a `## Starter prompt` section: a ready-to-paste first-message prompt pointing the next session at the handoff doc by absolute path and the artifacts it references, telling it to read those before acting, asking it to clean up any provisional artifacts unless the handoff says otherwise, and staying under ~150 words.
+- 5351ae9: agent-cortex install claude now fully installs agent-cortex into Claude Code: it regenerates the claude/ subtree and registers it with the Claude Code runtime via the claude plugin CLI (--dry-run prints the plan without writing; --output <dir> generates only).
+
+### Patch Changes
+
+- adb5f84: Add optional ASCII workflow diagram guidance (inclusion rules, style guide, template example) to the skill anatomy and reference it from write-a-skill
+- 5d4159f: Fix create-chores to resolve `bd` via PATH by default instead of a machine-specific hardcoded path. The BD_PATH env override is retained for machines where bd is not on PATH.
+- 3e8b6e7: Refactor the `hitl-collab` skill to the canonical anatomy template: added When to use / When NOT to use boundaries, Red Flags, Common Rationalizations, a worked handoff-doc example, and a verification checklist; switched bead updates to `--append-notes` so existing notes are preserved.
+- b33d9ef: Refactor the improve-codebase-architecture skill to the anatomy template: add when-to-use / when-not-to-use boundaries, red flags, common rationalizations, philosophy, phase-gate checklists, cross-skill references, a worked example, and a verification checklist.
+- da1e3dd: Add `bd dep add` line to the init-beads skill's embedded AGENTS.md quick-reference template so it matches the repo template and stops re-propagating the drift
+- 358509f: Prune stale doc-contract prose assertions from the run-pipeline-stage progress test; re-enable the skills-script test suites in the pnpm workspace so they actually run in CI.
+- 32b33ac: Refactor the record-idea skill to the anatomy template: add when-to-use boundaries, red flags, rationale, and a verification checklist; move the idea-record scaffold to FORMAT.md to match the generator script.
+- 662cea5: Refactor the `classify-bead` skill to the anatomy template: adds when-not-to-use boundaries, red flags, common rationalizations, philosophy, and a verification checklist.
+- bb01fd6: Refactor create-task skill to the anatomy template: adds When to use / When NOT to use, Red Flags, Common Rationalizations, verification checklist, and moves the bead-property contract detail to REFERENCE.md. No behavioural change — the create-chores script invocation contract is preserved exactly.
+- 876e5cc: Refactor design-an-interface skill to the anatomy template: adds When to use, When NOT to use, verification checklist, phase gates, and rationalization sections while keeping the parallel sub-agent design workflow intact
+- 00c4238: Refactor grill-with-docs to the anatomy template: add when-to-use boundaries, numbered workflow, red flags, common rationalizations, examples, and a verification checklist; consolidate the previously-dangling CONTEXT.md/ADR format links into REFERENCE.md.
+- fd5f787: Refactor init-beads skill to the anatomy template: adds When to use / When NOT to use, Red Flags, Common Rationalizations, Cross-skill references, Examples, and a verification checklist. No behavioural change — the `bd init --quiet --stealth` invocation, install-method preference order, and AGENTS.md quick-reference block are preserved exactly.
+- 608fb58: Refactor maintain-agent-docs skill to the canonical anatomy template: added When NOT to use, Philosophy, Red Flags, Common Rationalizations, Phase-gate checklist, Cross-skill references, Examples, and a concrete Verification checklist; tightened the description to the two-sentence format with quoted trigger phrases.
+- 027431c: Refactor the `prd-to-tasks` skill to the canonical anatomy template: condensed the 5-phase workflow, moved the epic/task body templates into `REFERENCE.md`, added Examples and Phase-gate checklists, and aligned section ordering and voice with `docs/skills/skill-anatomy.md`.
+- e80246a: Refactor the ralph skill to the canonical skill anatomy: add When to use / When NOT to use, Red Flags, Common Rationalizations, Philosophy, phase-gate checklists, cross-skill references, and a verification checklist; align the skill docs with the ralph agent definition (state.json for poll-timer and agent-ID→bead bookkeeping, parent-keyed stage log files, stage runners self-serving `bd prime`, and the single-feature-epic one-hop branching shortcut).
+- d917afb: Refactor request-refactor-plan SKILL.md to the anatomy template; move the refactor plan template into FORMAT.md.
+- d6d33ec: Refactor technical-direction skill to the canonical anatomy template, adding when-to-use/not-to-use boundaries, red flags, common rationalizations, cross-skill references, an examples section, and a verification checklist. The decision-memo template moves to FORMAT.md.
+- 67a668f: Refactor the write-a-prd skill to the anatomy template: adds when-to-use/when-not-to-use boundaries, red flags, common rationalizations, phase gates, cross-skill references, an example, and a verification checklist; the PRD template moves to FORMAT.md.
+- bedd373: Refactor the write-a-ticket skill to the canonical anatomy template: added when-to-use and when-not-to-use boundaries, red flags, common rationalizations, philosophy, cross-skill references, worked examples, and a verification checklist. The ticket template and per-section guidance are preserved.
+- fd95ffe: Refactor run-pipeline-stage SKILL.md to the canonical anatomy template: add `When to use`, `When NOT to use`, `Workflow`, `Red Flags`, `Common Rationalizations`, `Cross-skill references`, `Examples`, `Philosophy / rationale`, and a `Verification checklist`; add quoted trigger phrases to the description; tokenize subagent dispatch as {{TOOL:task}}. No behavioural change to the stage pipeline — all playbooks, prompts, dispatch rules, and path references are preserved.
+
 ## 1.38.1
 
 ### Patch Changes

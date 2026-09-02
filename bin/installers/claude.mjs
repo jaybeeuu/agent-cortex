@@ -44,6 +44,14 @@
 // the committed subtree can still be regenerated for CI drift checks; the
 // release pipeline owns retiring the committed subtree (see docs/release).
 //
+// Registration is idempotent by state, not by exit code: `claude plugin
+// marketplace list --json` decides add-vs-update and `claude plugin list
+// --json` decides install-vs-update against the materialised version — a
+// re-run is the update path, and a repeat install at the same version is a
+// true no-op. If the `claude` CLI is missing or predates the plugin subcommand
+// (v2+), the installer warns and prints the manual registration commands,
+// exiting non-zero only with --require-register.
+//
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
 import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir } from "node:fs/promises";
@@ -368,6 +376,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     marketplaceRoot,
     manifestPath,
     marketplaceManifest,
+    pluginVersion: JSON.parse(pluginJson).version,
     agents: agents.files.map((f) => f.file.replace(/\.md$/, "")),
     natives: natives.map((f) => f.file.replace(/\.md$/, "")),
     skills: { names: skills.names, md: skills.md, files: skills.files, dir: skillOut },
@@ -454,7 +463,6 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
 
   return summary;
 }
-
 // ─── Claude Code registration ────────────────────────────────────────────────
 
 // The `claude` CLI on PATH. Overridable in tests via the claudeBin option.
@@ -475,8 +483,7 @@ function parseMarketplaceManifest(manifest, label) {
 
 /**
  * Read the marketplace manifest that exposes the plugin at install root
- * (<root>/.claude-plugin/marketplace.json); returns the marketplace and
- * plugin names that `claude plugin` commands address.
+ * (<root>/.claude-plugin/marketplace.json).
  */
 async function readMarketplaceManifest(root) {
   const manifestPath = join(root, ".claude-plugin", "marketplace.json");
@@ -489,7 +496,24 @@ async function readMarketplaceManifest(root) {
         `"agent-cortex install claude" registers the plugin by pointing Claude Code at the install root`,
     );
   }
-  return parseMarketplaceManifest(manifest, manifestPath);
+  return { manifest, path: manifestPath };
+}
+
+/**
+ * Version of the materialised plugin (<root>/<source>/.claude-plugin/plugin.json,
+ * where <source> is the marketplace manifest's plugin source) — the signature a
+ * directory-source marketplace exposes to `claude plugin`. Read when the version
+ * is not passed explicitly; undefined when it cannot be determined.
+ */
+async function readMaterialisedPluginVersion(root, manifest) {
+  const source = manifest.plugins?.[0]?.source;
+  if (typeof source !== "string") return undefined;
+  const pluginDir = source.startsWith(".") ? join(root, source) : resolve(source);
+  try {
+    return JSON.parse(await readFile(join(pluginDir, ".claude-plugin", "plugin.json"), "utf-8")).version;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Run one claude plugin command, inheriting its output; rejects on failure. */
@@ -534,60 +558,167 @@ function probePluginSupport(claudeBin) {
   });
 }
 
+/** Run a claude plugin command capturing stdout; null when the command fails. */
+function queryClaudeCommand(claudeBin, args) {
+  const label = `${claudeBin} ${args.join(" ")}`;
+  return new Promise((resolve, reject) => {
+    const child = spawn(claudeBin, args, { stdio: ["ignore", "pipe", "ignore"] });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.on("error", (err) => reject(new Error(`failed to run "${label}": ${err.message}`)));
+    child.on("exit", (code) => {
+      if (code !== 0) resolve(null);
+      else resolve(stdout);
+    });
+  });
+}
+
+/**
+ * Whether `claude plugin marketplace list` already registers `marketplace`.
+ * Unparseable output counts as not-registered: the fallback `marketplace add`
+ * is itself idempotent (the CLI reports "already on disk", exit 0).
+ */
+async function marketplaceRegistered(claudeBin, marketplace) {
+  const out = await queryClaudeCommand(claudeBin, ["plugin", "marketplace", "list", "--json"]);
+  if (out == null) return false;
+  try {
+    const entries = JSON.parse(out.trim());
+    return Array.isArray(entries) && entries.some((entry) => entry?.name === marketplace);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Installed version of `pluginId` per `claude plugin list --json`; null when
+ * not installed or the output is unreadable (the caller falls back to the
+ * idempotent `plugin install`).
+ */
+async function installedPluginVersion(claudeBin, pluginId) {
+  const out = await queryClaudeCommand(claudeBin, ["plugin", "list", "--json"]);
+  if (out == null) return null;
+  try {
+    const entries = JSON.parse(out.trim());
+    const entry = Array.isArray(entries) ? entries.find((e) => e?.id === pluginId) : undefined;
+    return typeof entry?.version === "string" ? entry.version : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Register the materialised plugin with Claude Code by driving the `claude
- * plugin` CLI against the home install root as the marketplace source:
+ * plugin` CLI against the home install root as the marketplace source.
+ * Idempotent by STATE, not by exit code (the CLI exits 0 on re-add /
+ * re-install, saying "already on disk"/"already installed"):
  *
- *   1. `claude plugin marketplace add <root>`        (idempotent: already on disk)
- *   2. `claude plugin install <plugin>@<market> -y`  (idempotent: already installed)
- *   3. `claude plugin marketplace update <market>`   (re-validate the directory source)
- *   4. `claude plugin update <plugin> -y`            (refresh the cache on version bumps)
+ *   `claude plugin marketplace list --json`  → add the marketplace when
+ *     missing, otherwise `marketplace update` refreshes the directory source
+ *     (a re-run is the documented UPDATE path)
+ *   `claude plugin list --json`               → `plugin install` when not
+ *     installed, `plugin update` when the materialised version is newer,
+ *     nothing when the installed version already matches (a repeat install is
+ *     a true no-op)
  *
- * The manifest (name + plugin id) is read from <root>/.claude-plugin/
- * marketplace.json unless passed explicitly via `manifest` — installClaude
- * hands its generated manifest through so --dry-run never needs the file on
- * disk. Requires a Claude Code binary whose `plugin` subcommand exists (v2+);
- * older CLIs treat the args as a chat prompt, so support is probed first. In
- * --dry-run mode nothing is spawned — the commands are reported as a plan.
+ * Both reads degrade gracefully: unparseable output just runs the idempotent
+ * add/install (whose non-zero exits surface as genuine failures). The manifest
+ * and the materialised version come from <root>/.claude-plugin/marketplace.json
+ * and the plugin source's plugin.json unless passed explicitly via
+ * `manifest`/`pluginVersion` (installClaude hands both through so --dry-run
+ * never needs files on disk).
+ *
+ * When the `claude` CLI is unusable (missing on PATH, or a build predating the
+ * plugin subcommand), the installer warns loudly and prints the exact commands
+ * to complete registration manually, exiting non-zero only when
+ * `requireRegister` is set — the default is warn-only because the plugin is
+ * already materialised by then; the file side of the install succeeded.
  *
  * @param {object} options
- * @param {string} [options.root]        Marketplace root carrying .claude-plugin/marketplace.json
- *                                       (defaults to the repo containing this module)
- * @param {string} [options.claudeBin]   The `claude` executable (default: `claude` from PATH)
- * @param {boolean} [options.dryRun]     Plan and report without running or writing
- * @param {object} [options.manifest]    Pre-parsed marketplace manifest (skips the file read)
- * @returns {{ marketplace: string, plugin: string, commands: string[][], dryRun: boolean }}
+ * @param {string} [options.root]            Marketplace root carrying .claude-plugin/…
+ *                                           (defaults to the repo containing this module)
+ * @param {string} [options.claudeBin]       The `claude` executable (default: `claude` from PATH)
+ * @param {boolean} [options.dryRun]         Plan and report without running or writing
+ * @param {object} [options.manifest]        Pre-parsed marketplace manifest (skips the file read)
+ * @param {string} [options.pluginVersion]   Materialised plugin version (default: read from plugin.json)
+ * @param {boolean} [options.requireRegister] Exit non-zero when registration cannot run
+ * @param {(msg: string) => void} [options.warn] Warning sink (default: console.warn)
+ * @returns {{ marketplace: string, plugin: string, commands: string[][],
+ *             dryRun: boolean, registered: boolean, skipped: string[] }}
  */
-export async function registerClaude({ root = PACKAGE_ROOT, claudeBin = DEFAULT_CLAUDE_BIN, dryRun = false, manifest } = {}) {
-  const { marketplace, plugin } =
-    manifest !== undefined
-      ? parseMarketplaceManifest(manifest, "generated manifest")
-      : await readMarketplaceManifest(root);
+export async function registerClaude({
+  root = PACKAGE_ROOT,
+  claudeBin = DEFAULT_CLAUDE_BIN,
+  dryRun = false,
+  manifest,
+  pluginVersion,
+  requireRegister = false,
+  warn = DEFAULT_WARN,
+} = {}) {
+  const { manifest: manifestObj, path: manifestPath } =
+    manifest !== undefined ? { manifest, path: null } : await readMarketplaceManifest(root);
+  const { marketplace, plugin } = parseMarketplaceManifest(manifestObj, manifestPath ?? "generated manifest");
   const pluginId = `${plugin}@${marketplace}`;
-  const commands = [
-    ["plugin", "marketplace", "add", resolve(root)],
-    ["plugin", "install", pluginId, "-y"],
-    ["plugin", "marketplace", "update", marketplace],
-    ["plugin", "update", plugin, "-y"],
-  ];
+  const version = pluginVersion ?? (await readMaterialisedPluginVersion(root, manifestObj));
+  const home = resolve(root);
 
-  const summary = { marketplace, plugin, commands, dryRun };
+  const summary = { marketplace, plugin, commands: [], dryRun, registered: true, skipped: [] };
   console.log(`Registering plugin "${pluginId}" with Claude Code (via ${claudeBin})…`);
 
+  const manualCommands = [
+    `${claudeBin} plugin marketplace add ${home}`,
+    `${claudeBin} plugin install ${pluginId} -y`,
+  ];
+
   if (dryRun) {
-    for (const args of commands) console.log(`  would run: ${claudeBin} ${args.join(" ")}`);
+    console.log("  would query: claude plugin marketplace list --json   (add vs marketplace update by state)");
+    console.log("  would query: claude plugin list --json               (install vs plugin update by version)");
+    console.log(`  would run: ${manualCommands[0]}  (or "${claudeBin} plugin marketplace update ${marketplace}" when already registered)`);
+    console.log(`  would run: ${manualCommands[1]}  (or "${claudeBin} plugin update ${plugin}" when a newer version is materialised)`);
     console.log("(dry-run — no Claude Code state written)");
     return summary;
   }
 
-  // Older Claude Code builds treat `claude plugin …` as a chat prompt; reject
-  // them up-front instead of letting the registration appear to succeed.
+  // Reject unusable CLIs up-front instead of letting registration appear to
+  // succeed: older Claude Code builds treat `claude plugin …` as a chat prompt.
   const probe = await probePluginSupport(claudeBin);
   if (!probe.ok) {
-    throw new Error(probe.message);
+    warn(
+      `Claude Code CLI "${claudeBin}" ${probe.message} — the plugin is materialised but NOT registered with Claude Code. ` +
+        `Complete registration manually with:\n` +
+        manualCommands.map((c) => `  ${c}`).join("\n"),
+    );
+    if (requireRegister) {
+      throw new Error(
+        `registration required (--require-register) but the Claude Code CLI cannot drive it — run the commands above and re-run`,
+      );
+    }
+    summary.registered = false;
+    return summary;
   }
 
-  for (const args of commands) {
+  // Decide the sequence from the live state; unreadable state falls back to
+  // the idempotent add/install (which the CLI itself short-circuits).
+  const marketPresent = await marketplaceRegistered(claudeBin, marketplace);
+  const installed = await installedPluginVersion(claudeBin, pluginId);
+
+  if (marketPresent) {
+    summary.commands.push(["plugin", "marketplace", "update", marketplace]);
+  } else {
+    summary.commands.push(["plugin", "marketplace", "add", home]);
+  }
+
+  if (installed == null) {
+    summary.commands.push(["plugin", "install", pluginId, "-y"]);
+  } else if (version != null && installed === version) {
+    summary.skipped.push(`plugin install ${pluginId} — already installed at ${installed}`);
+    summary.skipped.push(`plugin update ${plugin} — installed version matches the materialised version`);
+  } else {
+    summary.skipped.push(`plugin install ${pluginId} — already installed (updating ${installed} → ${version ?? "materialised"})`);
+    summary.commands.push(["plugin", "update", plugin, "-y"]);
+  }
+
+  for (const args of summary.commands) {
     console.log(`  ${claudeBin} ${args.join(" ")}`);
     await runClaudeCommand(claudeBin, args);
   }

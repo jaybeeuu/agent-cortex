@@ -1,19 +1,24 @@
-// Install-time generator for the Claude Code plugin subtree — the ONLY code path
-// for producing claude/ from the canonical sources. There is no build-time
-// generator: the package script `pnpm build:claude` is a pure alias of the CLI
-// (`node bin/agent-cortex.mjs install claude`), so regenerating the committed
-// subtree and installing the plugin run exactly the same code:
+// Install-time generator + registrar for the Claude Code plugin. Producing
+// claude/ from the canonical sources is the ONLY code path — there is no
+// separate build-time generator: the package script `pnpm build:claude` runs
+// the same command as the CLI with `--output` (`node bin/agent-cortex.mjs
+// install claude --output claude`), so the committed subtree and installer
+// output can never diverge:
 //
-//   node bin/agent-cortex.mjs install claude   `pnpm build:claude` (regenerates
-//                              the committed claude/ subtree in place; `--output
-//                              <dir>` targets another dir, `--dry-run` plans
-//                              without writing)
+//   node bin/agent-cortex.mjs install claude        regenerates claude/ in place
+//                               AND registers the plugin with Claude Code via
+//                               the `claude plugin` CLI (marketplace add →
+//                               install → marketplace update → plugin update)
+//   node bin/agent-cortex.mjs install claude --output <dir>
+//                               generates only — no runtime registration
+//   node bin/agent-cortex.mjs install claude --dry-run
+//                               plans generation + registration without writing
 //
-// claude/ stays committed (not gitignored): the marketplace install flow
-// (`claude plugin marketplace add <repo>` → `claude plugin install
-// agent-cortex@jaybeeuu`) reads the subtree straight from the working tree, so a
-// fresh clone installs as-is with no generation step. CI regenerates it via the
-// same installer and runs `git diff --exit-code claude/...` — byte-for-byte
+// claude/ stays committed (not gitignored): registration points Claude Code's
+// marketplace at this checkout (`.claude-plugin/marketplace.json` exposes
+// ./claude), so the plugin content is the working tree and a fresh clone
+// installs as-is with no generation step. CI regenerates claude/ via
+// `--output` and runs `git diff --exit-code claude/...` — byte-for-byte
 // validation that the committed output equals installer output, catching stale
 // output and hand-edits to generated files alike.
 //
@@ -39,7 +44,8 @@
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, symlinkSync, statSync, existsSync, readdirSync } from "node:fs";
-import { join, dirname, relative } from "node:path";
+import { spawnSync } from "node:child_process";
+import { join, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { composeAgent } from "../../scripts/lib/compose-agent.mjs";
 
@@ -258,5 +264,113 @@ export function installClaude({ root = DEFAULT_ROOT, output, dryRun = false } = 
     console.log(`Skipped hooks.json — ${hooksSrc} not found (existing file left untouched)`);
   }
 
+  return summary;
+}
+
+// ─── Claude Code registration ────────────────────────────────────────────────
+
+// The `claude` CLI on PATH. Overridable in tests via the claudeBin option.
+const DEFAULT_CLAUDE_BIN = "claude";
+
+/**
+ * Read the marketplace manifest that exposes this checkout's claude/ subtree
+ * (`.claude-plugin/marketplace.json`); returns the marketplace and plugin
+ * names that `claude plugin` commands address. Registration is only possible
+ * from a checkout carrying the manifest.
+ */
+function readMarketplaceManifest(root) {
+  const manifestPath = join(root, ".claude-plugin", "marketplace.json");
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  } catch (err) {
+    throw new Error(
+      `no Claude marketplace manifest at ${manifestPath} (${err.message}) — ` +
+        `"agent-cortex install claude" registers the plugin by pointing Claude Code at this checkout`,
+    );
+  }
+  const marketplace = manifest.name;
+  const plugin = manifest.plugins?.[0]?.name;
+  if (typeof marketplace !== "string" || typeof plugin !== "string") {
+    throw new Error(
+      `unparsable marketplace manifest at ${manifestPath}: expected { name, plugins: [{ name }] }`,
+    );
+  }
+  return { marketplace, plugin };
+}
+
+/** Run one claude plugin command, inheriting its output; throws on failure. */
+function runClaudeCommand(claudeBin, args) {
+  const label = `${claudeBin} ${args.join(" ")}`;
+  const result = spawnSync(claudeBin, args, { stdio: "inherit" });
+  if (result.error) {
+    throw new Error(`failed to run "${label}": ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`"${label}" exited ${result.status}`);
+  }
+}
+
+/**
+ * Register the freshly generated claude/ subtree with Claude Code by driving
+ * the `claude plugin` CLI against this checkout as the marketplace source:
+ *
+ *   1. `claude plugin marketplace add <root>`        (idempotent: already on disk)
+ *   2. `claude plugin install <plugin>@<market> -y`  (idempotent: already installed)
+ *   3. `claude plugin marketplace update <market>`   (re-validate the directory source)
+ *   4. `claude plugin update <plugin> -y`            (refresh the cache on version bumps)
+ *
+ * Requires a Claude Code binary whose `plugin` subcommand exists (v2+); older
+ * CLIs treat the args as a chat prompt, so support is probed first. In
+ * --dry-run mode nothing is spawned — the commands are reported as a plan.
+ *
+ * @param {object} options
+ * @param {string} [options.root]      Checkout root carrying .claude-plugin/marketplace.json
+ *                                     (defaults to the repo containing this module)
+ * @param {string} [options.claudeBin] The `claude` executable (default: `claude` from PATH)
+ * @param {boolean} [options.dryRun]   Plan and report without running or writing
+ * @returns {{ marketplace: string, plugin: string, commands: string[][], dryRun: boolean }}
+ */
+export function registerClaude({ root = DEFAULT_ROOT, claudeBin = DEFAULT_CLAUDE_BIN, dryRun = false } = {}) {
+  const { marketplace, plugin } = readMarketplaceManifest(root);
+  const pluginId = `${plugin}@${marketplace}`;
+  const commands = [
+    ["plugin", "marketplace", "add", resolve(root)],
+    ["plugin", "install", pluginId, "-y"],
+    ["plugin", "marketplace", "update", marketplace],
+    ["plugin", "update", plugin, "-y"],
+  ];
+
+  const summary = { marketplace, plugin, commands, dryRun };
+  console.log(`Registering plugin "${pluginId}" with Claude Code (via ${claudeBin})…`);
+
+  if (dryRun) {
+    for (const args of commands) console.log(`  would run: ${claudeBin} ${args.join(" ")}`);
+    console.log("(dry-run — no Claude Code state written)");
+    return summary;
+  }
+
+  // Older Claude Code builds treat `claude plugin …` as a chat prompt; reject
+  // them up-front instead of letting the registration appear to succeed.
+  const probe = spawnSync(claudeBin, ["plugin", "--help"], { stdio: "ignore" });
+  if (probe.error) {
+    throw new Error(
+      `cannot run "${claudeBin}" (${probe.error.message}) — is Claude Code installed and on PATH?`,
+    );
+  }
+  if (probe.status !== 0) {
+    throw new Error(
+      `"${claudeBin}" lacks the "plugin" subcommand — its Claude Code build predates plugin support; ` +
+        `update to a build with the plugin CLI (v2+), e.g. "pnpm add -g @anthropic-ai/claude-code@latest", and re-run`,
+    );
+  }
+
+  for (const args of commands) {
+    console.log(`  ${claudeBin} ${args.join(" ")}`);
+    runClaudeCommand(claudeBin, args);
+  }
+  console.log(
+    `Installed — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,
+  );
   return summary;
 }

@@ -46,15 +46,23 @@ if (parsed.command === "install") {
 
   process.stdout.write(`Installing agent-cortex for "${parsed.harness}" harness…\n`);
 
-  // claude is the first wired harness: generates the plugin subtree from the
-  // canonical sources (agents/, agents-native/, skills/, hooks/claude/) via the
-  // shared installClaude generator — `pnpm build:claude` is an alias of this
-  // invocation, so there is no separate build-time code path.
+  // claude is the first wired harness: a plain `agent-cortex install claude`
+  // regenerates the plugin subtree from the canonical sources (agents/,
+  // agents-native/, skills/, hooks/claude/) via the shared installClaude
+  // generator AND registers it with Claude Code (marketplace add → install →
+  // update) — `pnpm build:claude` is the generate-only alias of this
+  // invocation (it passes `--output claude`), so there is no separate
+  // build-time code path and CI drift-checks never touch ~/.claude.
   if (parsed.harness === "claude") {
     // Avoid loading the installer on the help/summary paths and for other harnesses.
-    const { installClaude } = await import("./installers/claude.mjs");
+    const { installClaude, registerClaude } = await import("./installers/claude.mjs");
     try {
       installClaude({ output: parsed.output, dryRun: parsed.dryRun });
+      // Runtime registration happens only for the plain install — `--output`
+      // keeps generating only (documented in --help).
+      if (parsed.output === undefined) {
+        registerClaude({ dryRun: parsed.dryRun });
+      }
       process.exit(0);
     } catch (err) {
       process.stderr.write(`Install failed: ${err.message}\n`);

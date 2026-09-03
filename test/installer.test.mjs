@@ -332,8 +332,8 @@ describe("install claude", () => {
         join(fixture, "token-map.json"),
         JSON.stringify({ name: "fixture", version: 99, tools: {}, paths: {} }),
       );
-      assert.throws(
-        () => installClaude({ root: fixture, output: join(fixture, "out") }),
+      await assert.rejects(
+        installClaude({ root: fixture, output: join(fixture, "out") }),
         /version 99/,
       );
       assert.equal(existsSync(join(fixture, "out")), false, "nothing written when the contract is rejected");

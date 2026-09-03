@@ -46,7 +46,7 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, statSync, existsSync, readdirSync } from "node:fs";
+import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -83,17 +83,17 @@ const SKILL_EXCLUDE = new Set(["ralph", "run-pipeline-stage"]);
 
 const NAME_PREFIX = "agent-cortex:";
 
-function isFile(p) {
+async function isFile(p) {
   try {
-    return statSync(p).isFile();
+    return (await stat(p)).isFile();
   } catch {
     return false;
   }
 }
 
-function isDirectory(p) {
+async function isDirectory(p) {
   try {
-    return statSync(p).isDirectory();
+    return (await stat(p)).isDirectory();
   } catch {
     return false;
   }
@@ -104,15 +104,17 @@ function byName(a, b) {
 }
 
 /** Compose agents from agents/<name>/; DEFERed agents come from agents-native/ instead. */
-function buildAgents(root) {
+async function buildAgents(root) {
   const files = [];
   const skipped = [];
-  const entries = readdirSync(join(root, "agents"), { withFileTypes: true }).sort((a, b) => byName(a.name, b.name));
+  const entries = (await readdir(join(root, "agents"), { withFileTypes: true })).sort((a, b) =>
+    byName(a.name, b.name),
+  );
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const dir = join(root, "agents", entry.name);
-    if (!isFile(join(dir, "agent.md")) || !isFile(join(dir, "claude", "frontmatter.json"))) continue;
+    if (!(await isFile(join(dir, "agent.md"))) || !(await isFile(join(dir, "claude", "frontmatter.json")))) continue;
 
     if (DEFER.has(entry.name)) {
       skipped.push(entry.name);
@@ -134,11 +136,12 @@ function buildAgents(root) {
 }
 
 /** Copy hand-authored Claude-native agents into agents/ verbatim. */
-function buildNatives(root, nativeSrc) {
+async function buildNatives(root, nativeSrc) {
   const files = [];
-  if (!existsSync(nativeSrc)) return files;
-  for (const file of readdirSync(nativeSrc).filter((f) => f.endsWith(".md")).sort(byName)) {
-    files.push({ file, content: readFileSync(join(nativeSrc, file), "utf-8") });
+  if (!(await isDirectory(nativeSrc))) return files;
+  const names = (await readdir(nativeSrc)).filter((f) => f.endsWith(".md")).sort(byName);
+  for (const file of names) {
+    files.push({ file, content: await readFile(join(nativeSrc, file), "utf-8") });
   }
   return files;
 }
@@ -150,7 +153,7 @@ function buildNatives(root, nativeSrc) {
  * column (the same materialisation as bin/installers/pi.mjs: no symlinks, so
  * literal {{TOOL:...}}/{{PATH:...}} never survives; non-.md files verbatim).
  */
-function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn }) {
+async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn }) {
   const seen = new Map();
   const transform = (content) =>
     substituteTokens(content, CLAUDE, tokenMap, { dropNullTools: true, pluginRoot, resolveRelativePaths: true, warn });
@@ -158,19 +161,19 @@ function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn }) {
   const names = [];
   let md = 0;
   let files = 0;
-  for (const group of readdirSync(join(root, "skills")).sort(byName)) {
+  for (const group of (await readdir(join(root, "skills"))).sort(byName)) {
     const groupDir = join(root, "skills", group);
-    if (!isDirectory(groupDir)) continue;
-    for (const name of readdirSync(groupDir).sort(byName)) {
+    if (!(await isDirectory(groupDir))) continue;
+    for (const name of (await readdir(groupDir)).sort(byName)) {
       const skillDir = join(groupDir, name);
-      if (!isFile(join(skillDir, "SKILL.md"))) continue;
+      if (!(await isFile(join(skillDir, "SKILL.md")))) continue;
       if (SKILL_EXCLUDE.has(name)) continue;
       if (seen.has(name)) {
         throw new Error(`duplicate skill name "${name}" (${seen.get(name)} and ${group}) — names must be unique when flattened`);
       }
       seen.set(name, group);
       names.push(name);
-      const stats = copyTree(skillDir, join(skillOut, name), transform, dryRun);
+      const stats = await copyTree(skillDir, join(skillOut, name), transform, dryRun);
       md += stats.md;
       files += stats.files;
     }
@@ -179,31 +182,31 @@ function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn }) {
 }
 
 /** Recursively copy a tree; transform .md file contents, copy everything else verbatim. */
-function copyTree(src, dest, transform, dryRun) {
+async function copyTree(src, dest, transform, dryRun) {
   let md = 0;
   let files = 0;
-  for (const entry of readdirSync(src, { withFileTypes: true })) {
+  for (const entry of await readdir(src, { withFileTypes: true })) {
     const from = join(src, entry.name);
     const to = join(dest, entry.name);
     if (entry.isDirectory()) {
-      const stats = copyTree(from, to, transform, dryRun);
+      const stats = await copyTree(from, to, transform, dryRun);
       md += stats.md;
       files += stats.files;
     } else if (entry.isFile()) {
       files += 1;
       if (entry.name.endsWith(".md")) md += 1;
       if (dryRun) continue;
-      mkdirSync(dest, { recursive: true });
-      if (entry.name.endsWith(".md")) writeFileSync(to, transform(readFileSync(from, "utf-8")));
-      else copyFileSync(from, to);
+      await mkdir(dest, { recursive: true });
+      if (entry.name.endsWith(".md")) await writeFile(to, transform(await readFile(from, "utf-8")));
+      else await copyFile(from, to);
     }
   }
   return { md, files };
 }
 
 /** plugin.json manifest; version tracks the package so it can never go stale. */
-function buildPluginJson(root) {
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
+async function buildPluginJson(root) {
+  const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
   return (
     JSON.stringify(
       {
@@ -228,8 +231,8 @@ function buildPluginJson(root) {
  * ~/.agent-cortex` resolves ./claude relative to the manifest's directory.
  * The default shape matches the committed repo manifest byte-for-byte.
  */
-function buildMarketplaceManifest(root, outputName) {
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
+async function buildMarketplaceManifest(root, outputName) {
+  const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
   return {
     name: "jaybeeuu",
     owner: { name: "jaybeeuu" },
@@ -249,19 +252,21 @@ function buildMarketplaceManifest(root, outputName) {
  * hooks/ so hook commands can reference them via ${CLAUDE_PLUGIN_ROOT}.
  * hooks.json itself is special-cased to the plugin root (hooks.json).
  */
-function buildHookFiles(root) {
+async function buildHookFiles(root) {
   const files = [];
   const srcDir = join(root, "hooks", "claude");
-  if (!existsSync(srcDir)) return files;
-  const walk = (dir, rel) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => byName(a.name, b.name))) {
+  if (!(await isDirectory(srcDir))) return files;
+  const walk = async (dir, rel) => {
+    const entries = await readdir(dir, { withFileTypes: true });
+    entries.sort((a, b) => byName(a.name, b.name));
+    for (const entry of entries) {
       const full = join(dir, entry.name);
-      if (entry.isDirectory()) walk(full, join(rel, entry.name));
+      if (entry.isDirectory()) await walk(full, join(rel, entry.name));
       else if (entry.name !== "hooks.json")
-        files.push({ rel: join(rel, entry.name), content: readFileSync(full, "utf-8") });
+        files.push({ rel: join(rel, entry.name), content: await readFile(full, "utf-8") });
     }
   };
-  walk(srcDir, "");
+  await walk(srcDir, "");
   return files;
 }
 
@@ -272,14 +277,14 @@ function buildHookFiles(root) {
  * The old flow left them "untouched" in place; materialising to a fresh
  * home dir requires shipping them.
  */
-function buildHandAuthored(root) {
+async function buildHandAuthored(root) {
   const items = [];
   const srcClaude = join(root, "claude");
-  if (isFile(join(srcClaude, ".mcp.json"))) items.push({ rel: ".mcp.json", src: join(srcClaude, ".mcp.json") });
+  if (await isFile(join(srcClaude, ".mcp.json"))) items.push({ rel: ".mcp.json", src: join(srcClaude, ".mcp.json") });
   const scriptsDir = join(srcClaude, "scripts");
-  if (isDirectory(scriptsDir)) {
-    for (const file of readdirSync(scriptsDir).sort(byName)) {
-      if (isFile(join(scriptsDir, file))) items.push({ rel: join("scripts", file), src: join(scriptsDir, file) });
+  if (await isDirectory(scriptsDir)) {
+    for (const file of (await readdir(scriptsDir)).sort(byName)) {
+      if (await isFile(join(scriptsDir, file))) items.push({ rel: join("scripts", file), src: join(scriptsDir, file) });
     }
   }
   return items;
@@ -304,7 +309,7 @@ function buildHandAuthored(root) {
  *             hooks: boolean, hookFiles: string[], handAuthored: string[],
  *             warnings: string[], dryRun: boolean }}
  */
-export function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, warn = DEFAULT_WARN } = {}) {
+export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, warn = DEFAULT_WARN } = {}) {
   const tokenMap = loadTokenMap(root);
   if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
     throw new Error(
@@ -333,21 +338,21 @@ export function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, plu
   // nothing is cleaned or written.
   if (!dryRun) {
     for (const child of ["agents", "skills", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"]) {
-      rmSync(join(out, child), { recursive: true, force: true });
+      await rm(join(out, child), { recursive: true, force: true });
     }
-    mkdirSync(out, { recursive: true });
+    await mkdir(out, { recursive: true });
   }
 
-  const agents = buildAgents(root);
-  const natives = buildNatives(root, join(root, "agents-native"));
+  const agents = await buildAgents(root);
+  const natives = await buildNatives(root, join(root, "agents-native"));
   const skillOut = join(out, "skills");
-  const skills = buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
-  const pluginJson = buildPluginJson(root);
+  const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
+  const pluginJson = await buildPluginJson(root);
   const hooksSrc = join(root, "hooks", "claude", "hooks.json");
-  const hooksJson = isFile(hooksSrc) ? readFileSync(hooksSrc, "utf-8") : null;
-  const hookFiles = buildHookFiles(root);
-  const handAuthored = buildHandAuthored(root);
-  const marketplaceManifest = isDefaultInstall ? buildMarketplaceManifest(root, basename(out)) : null;
+  const hooksJson = (await isFile(hooksSrc)) ? await readFile(hooksSrc, "utf-8") : null;
+  const hookFiles = await buildHookFiles(root);
+  const handAuthored = await buildHandAuthored(root);
+  const marketplaceManifest = isDefaultInstall ? await buildMarketplaceManifest(root, basename(out)) : null;
 
   const summary = {
     output: out,
@@ -385,40 +390,40 @@ export function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, plu
 
   // Write phase — the cleanup before buildSkills already cleared stale children.
   const agentOut = join(out, "agents");
-  mkdirSync(agentOut, { recursive: true });
+  await mkdir(agentOut, { recursive: true });
   for (const { file, content } of [...agents.files, ...natives]) {
-    writeFileSync(join(agentOut, file), content);
+    await writeFile(join(agentOut, file), content);
   }
   console.log(`Generated ${summary.agents.length} Claude agent(s): ${summary.agents.join(", ")}`);
   if (summary.natives.length) console.log(`Copied ${summary.natives.length} native Claude agent(s): ${summary.natives.join(", ")}`);
 
-  mkdirSync(skillOut, { recursive: true });
+  await mkdir(skillOut, { recursive: true });
   console.log(
     `Copied ${summary.skills.names.length} skill(s) → ${skillOut}/<name>/ (token-substituted, no symlinks)`,
   );
 
-  mkdirSync(join(out, ".claude-plugin"), { recursive: true });
-  writeFileSync(join(out, ".claude-plugin", "plugin.json"), pluginJson);
+  await mkdir(join(out, ".claude-plugin"), { recursive: true });
+  await writeFile(join(out, ".claude-plugin", "plugin.json"), pluginJson);
   console.log(`Wrote ${join(out, ".claude-plugin", "plugin.json")}`);
 
   if (isDefaultInstall && manifestPath && marketplaceManifest) {
     const manifestDir = dirname(manifestPath);
-    mkdirSync(manifestDir, { recursive: true });
-    writeFileSync(manifestPath, JSON.stringify(marketplaceManifest, null, 2) + "\n");
+    await mkdir(manifestDir, { recursive: true });
+    await writeFile(manifestPath, JSON.stringify(marketplaceManifest, null, 2) + "\n");
     console.log(`Wrote ${manifestPath} (plugin agent-cortex @ ./${basename(out)})`);
   }
 
   if (summary.hooks) {
-    writeFileSync(join(out, "hooks.json"), hooksJson);
+    await writeFile(join(out, "hooks.json"), hooksJson);
     console.log(`Wrote ${join(out, "hooks.json")} (from ${hooksSrc})`);
 
     if (hookFiles.length > 0) {
       const hookOut = join(out, "hooks");
-      mkdirSync(hookOut, { recursive: true });
+      await mkdir(hookOut, { recursive: true });
       for (const { rel, content } of hookFiles) {
         const dest = join(hookOut, rel);
-        mkdirSync(dirname(dest), { recursive: true });
-        writeFileSync(dest, content);
+        await mkdir(dirname(dest), { recursive: true });
+        await writeFile(dest, content);
       }
       console.log(`Bundled ${hookFiles.length} hook support file(s) into ${hookOut}`);
     }
@@ -429,8 +434,8 @@ export function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, plu
   if (handAuthored.length > 0) {
     for (const { rel, src } of handAuthored) {
       const dest = join(out, rel);
-      mkdirSync(dirname(dest), { recursive: true });
-      copyFileSync(src, dest);
+      await mkdir(dirname(dest), { recursive: true });
+      await copyFile(src, dest);
     }
     console.log(`Copied hand-authored file(s): ${summary.handAuthored.join(", ")}`);
   }
@@ -461,11 +466,11 @@ function parseMarketplaceManifest(manifest, label) {
  * (<root>/.claude-plugin/marketplace.json); returns the marketplace and
  * plugin names that `claude plugin` commands address.
  */
-function readMarketplaceManifest(root) {
+async function readMarketplaceManifest(root) {
   const manifestPath = join(root, ".claude-plugin", "marketplace.json");
   let manifest;
   try {
-    manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
   } catch (err) {
     throw new Error(
       `no Claude marketplace manifest at ${manifestPath} (${err.message}) — ` +
@@ -511,11 +516,11 @@ function runClaudeCommand(claudeBin, args) {
  * @param {object} [options.manifest]    Pre-parsed marketplace manifest (skips the file read)
  * @returns {{ marketplace: string, plugin: string, commands: string[][], dryRun: boolean }}
  */
-export function registerClaude({ root = PACKAGE_ROOT, claudeBin = DEFAULT_CLAUDE_BIN, dryRun = false, manifest } = {}) {
+export async function registerClaude({ root = PACKAGE_ROOT, claudeBin = DEFAULT_CLAUDE_BIN, dryRun = false, manifest } = {}) {
   const { marketplace, plugin } =
     manifest !== undefined
       ? parseMarketplaceManifest(manifest, "generated manifest")
-      : readMarketplaceManifest(root);
+      : await readMarketplaceManifest(root);
   const pluginId = `${plugin}@${marketplace}`;
   const commands = [
     ["plugin", "marketplace", "add", resolve(root)],

@@ -57,7 +57,7 @@ if (parsed.command === "install") {
     // Avoid loading the installer on the help/summary paths and for other harnesses.
     const { installClaude, registerClaude } = await import("./installers/claude.mjs");
     try {
-      const result = installClaude({
+      const result = await installClaude({
         dryRun: parsed.dryRun ?? false,
         warn: () => {}, // warnings surface once via result.warnings
         ...(parsed.output ? { output: parsed.output } : {}),
@@ -68,7 +68,7 @@ if (parsed.command === "install") {
       // Runtime registration happens only for the plain install — `--output`
       // keeps generating only (documented in --help).
       if (parsed.output === undefined) {
-        registerClaude({
+        await registerClaude({
           root: result.marketplaceRoot,
           manifest: result.marketplaceManifest,
           dryRun: parsed.dryRun ?? false,

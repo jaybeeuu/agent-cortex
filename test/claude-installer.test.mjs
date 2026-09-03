@@ -79,12 +79,12 @@ function makeMarketplaceRoot({ name = "jaybeeuu", plugin = "agent-cortex" } = {}
 // ─── registerClaude ──────────────────────────────────────────────────────────
 
 describe("registerClaude", () => {
-  it("drives claude plugin marketplace add → install → marketplace update → plugin update", () => {
+  it("drives claude plugin marketplace add → install → marketplace update → plugin update", async () => {
     const tmp = makeTmp();
     const root = makeMarketplaceRoot();
     const fake = makeFakeClaude(tmp);
     try {
-      const result = registerClaude({ root, claudeBin: fake.bin });
+      const result = await registerClaude({ root, claudeBin: fake.bin });
       assert.equal(result.marketplace, "jaybeeuu");
       assert.equal(result.plugin, "agent-cortex");
       assert.equal(result.dryRun, false);
@@ -105,12 +105,12 @@ describe("registerClaude", () => {
     }
   });
 
-  it("derives marketplace and plugin names from the manifest", () => {
+  it("derives marketplace and plugin names from the manifest", async () => {
     const tmp = makeTmp();
     const root = makeMarketplaceRoot({ name: "scratchmkt", plugin: "scratchplug" });
     const fake = makeFakeClaude(tmp);
     try {
-      const result = registerClaude({ root, claudeBin: fake.bin });
+      const result = await registerClaude({ root, claudeBin: fake.bin });
       assert.equal(result.marketplace, "scratchmkt");
       assert.equal(result.plugin, "scratchplug");
       const calls = readFileSync(fake.log, "utf-8").trim().split("\n");
@@ -123,12 +123,12 @@ describe("registerClaude", () => {
     }
   });
 
-  it("--dry-run plans the commands without spawning claude at all", () => {
+  it("--dry-run plans the commands without spawning claude at all", async () => {
     const tmp = makeTmp();
     const root = makeMarketplaceRoot();
     const fake = makeFakeClaude(tmp);
     try {
-      const result = registerClaude({ root, claudeBin: fake.bin, dryRun: true });
+      const result = await registerClaude({ root, claudeBin: fake.bin, dryRun: true });
       assert.equal(result.dryRun, true);
       assert.deepEqual(
         result.commands,
@@ -147,10 +147,10 @@ describe("registerClaude", () => {
     }
   });
 
-  it("defaults the claude binary to `claude` from PATH (dry-run only — no spawn)", () => {
+  it("defaults the claude binary to `claude` from PATH (dry-run only — no spawn)", async () => {
     const root = makeMarketplaceRoot();
     try {
-      const result = registerClaude({ root, dryRun: true });
+      const result = await registerClaude({ root, dryRun: true });
       assert.equal(result.commands.length, 4);
       assert.ok(result.commands[0][0] === "plugin");
     } finally {
@@ -158,13 +158,13 @@ describe("registerClaude", () => {
     }
   });
 
-  it("fails with upgrade guidance when the claude binary lacks the plugin subcommand", () => {
+  it("fails with upgrade guidance when the claude binary lacks the plugin subcommand", async () => {
     const tmp = makeTmp();
     const root = makeMarketplaceRoot();
     const fake = makeFakeClaude(tmp, { failWhen: "plugin --help" });
     try {
-      assert.throws(
-        () => registerClaude({ root, claudeBin: fake.bin }),
+      await assert.rejects(
+        registerClaude({ root, claudeBin: fake.bin }),
         /plugin.*subcommand.*update/i,
       );
     } finally {
@@ -173,13 +173,13 @@ describe("registerClaude", () => {
     }
   });
 
-  it("fails, naming the failing command, when a claude plugin command errors", () => {
+  it("fails, naming the failing command, when a claude plugin command errors", async () => {
     const tmp = makeTmp();
     const root = makeMarketplaceRoot();
     const fake = makeFakeClaude(tmp, { failWhen: "plugin install" });
     try {
-      assert.throws(
-        () => registerClaude({ root, claudeBin: fake.bin }),
+      await assert.rejects(
+        registerClaude({ root, claudeBin: fake.bin }),
         /claude plugin install agent-cortex@jaybeeuu -y/,
       );
     } finally {
@@ -188,13 +188,13 @@ describe("registerClaude", () => {
     }
   });
 
-  it("fails when the checkout has no marketplace manifest", () => {
+  it("fails when the checkout has no marketplace manifest", async () => {
     const tmp = makeTmp();
     const root = mkdtempSync(join(tmpdir(), "agent-cortex-no-market-"));
     const fake = makeFakeClaude(tmp);
     try {
-      assert.throws(
-        () => registerClaude({ root, claudeBin: fake.bin }),
+      await assert.rejects(
+        registerClaude({ root, claudeBin: fake.bin }),
         /marketplace\.json/,
       );
       // The failed manifest read happens before any claude invocation.
@@ -205,11 +205,11 @@ describe("registerClaude", () => {
     }
   });
 
-  it("works against the real repo checkout and its marketplace manifest", () => {
+  it("works against the real repo checkout and its marketplace manifest", async () => {
     const tmp = makeTmp();
     const fake = makeFakeClaude(tmp);
     try {
-      const result = registerClaude({ root: ROOT, claudeBin: fake.bin });
+      const result = await registerClaude({ root: ROOT, claudeBin: fake.bin });
       assert.equal(result.marketplace, "jaybeeuu");
       assert.equal(result.plugin, "agent-cortex");
       const calls = readFileSync(fake.log, "utf-8").trim().split("\n");

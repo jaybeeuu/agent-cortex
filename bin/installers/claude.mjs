@@ -121,7 +121,7 @@ async function buildAgents(root) {
       continue;
     }
 
-    const fm = composeAgent(root, entry.name, CLAUDE);
+    const fm = await composeAgent(root, entry.name, CLAUDE);
     const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
     const header =
       `---\n` +
@@ -310,7 +310,7 @@ async function buildHandAuthored(root) {
  *             warnings: string[], dryRun: boolean }}
  */
 export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, warn = DEFAULT_WARN } = {}) {
-  const tokenMap = loadTokenMap(root);
+  const tokenMap = await loadTokenMap(root);
   if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
     throw new Error(
       `token-map.json version ${tokenMap.version} is newer than the contract version ${CONTRACT_VERSION} this installer implements — upgrade agent-cortex`,

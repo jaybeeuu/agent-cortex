@@ -30,7 +30,7 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
+import { writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { composeAgent } from "../../scripts/lib/compose-agent.mjs";
@@ -38,9 +38,17 @@ import { composeAgent } from "../../scripts/lib/compose-agent.mjs";
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = join(MODULE_DIR, "..", "..");
 
-function isDirectory(p) {
+async function isDirectory(p) {
   try {
-    return statSync(p).isDirectory();
+    return (await stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function isFile(p) {
+  try {
+    return (await stat(p)).isFile();
   } catch {
     return false;
   }
@@ -71,19 +79,21 @@ function frontmatterYaml(name, fm) {
 }
 
 /** Compose agents from agents/<name>/; every composable dir must ship a copilot harness. */
-function buildAgents(root) {
+async function buildAgents(root) {
   const files = [];
-  const entries = readdirSync(join(root, "agents"), { withFileTypes: true }).sort((a, b) => byName(a.name, b.name));
+  const entries = (await readdir(join(root, "agents"), { withFileTypes: true })).sort((a, b) =>
+    byName(a.name, b.name),
+  );
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue; // skip generated *.agent.md flat files and README
     const dir = join(root, "agents", entry.name);
-    if (!existsSync(join(dir, "agent.md"))) continue; // not a composable agent dir
-    if (!isDirectory(join(dir, "copilot")) || !existsSync(join(dir, "copilot", "frontmatter.json"))) {
+    if (!(await isFile(join(dir, "agent.md")))) continue; // not a composable agent dir
+    if (!(await isDirectory(join(dir, "copilot"))) || !(await isFile(join(dir, "copilot", "frontmatter.json")))) {
       throw new Error(`agent "${entry.name}": composable directory without copilot/frontmatter.json — define the copilot harness or exclude the agent`);
     }
 
-    const fm = composeAgent(root, entry.name, "copilot");
+    const fm = await composeAgent(root, entry.name, "copilot");
     files.push({
       name: entry.name,
       file: `${entry.name}.agent.md`,
@@ -105,9 +115,9 @@ function buildAgents(root) {
  * @param {boolean} [options.dryRun] Plan and report without writing anything.
  * @returns {{ output: string, agents: string[], dryRun: boolean }}
  */
-export function installCopilot({ root = DEFAULT_ROOT, output, dryRun = false } = {}) {
+export async function installCopilot({ root = DEFAULT_ROOT, output, dryRun = false } = {}) {
   const out = output ?? join(root, "agents");
-  const files = buildAgents(root);
+  const files = await buildAgents(root);
   const summary = {
     output: out,
     agents: files.map((f) => f.name),
@@ -120,9 +130,9 @@ export function installCopilot({ root = DEFAULT_ROOT, output, dryRun = false } =
     return summary;
   }
 
-  mkdirSync(out, { recursive: true });
+  await mkdir(out, { recursive: true });
   for (const { file, content } of files) {
-    writeFileSync(join(out, file), content);
+    await writeFile(join(out, file), content);
   }
   console.log(`Generated ${files.length} Copilot agent file(s): ${summary.agents.join(", ")}`);
   return summary;

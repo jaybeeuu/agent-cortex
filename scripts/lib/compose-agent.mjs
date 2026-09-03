@@ -29,8 +29,18 @@
 //
 // Zero dependencies so it runs on the CI Node (20) and local Node alike.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+
+/** True when a path exists (stat succeeds). */
+async function pathExists(p) {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Token substitution ──────────────────────────────────────────────────────
 
@@ -92,22 +102,30 @@ export function substituteTokens(content, harness, tokenMap, options = {}) {
  * @param {string} harness Harness id: "copilot" | "claude" | "pi"
  * @returns {{ name: string, description: string, tools: string[], model?: string, argumentHint?: string, body: string }}
  */
-export function composeAgent(root, name, harness, options = {}) {
+export async function composeAgent(root, name, harness, options = {}) {
   const { dropNullTools = false, pluginRoot, resolveRelativePaths = false, warn = noop } = options;
   const agentDir = join(root, "agents", name);
-  const frontmatter = parseFrontmatter(join(agentDir, harness, "frontmatter.json"), name, harness);
-  const tokenMap = loadTokenMap(root);
+  const frontmatter = await parseFrontmatter(join(agentDir, harness, "frontmatter.json"), name, harness);
+  const tokenMap = await loadTokenMap(root);
 
-  let body = readFileSync(join(agentDir, "agent.md"), "utf-8");
+  let body = await readFile(join(agentDir, "agent.md"), "utf-8");
 
-  // 1. {{SECTION:name}} → <harness>/<name>.md (may itself contain TOOL/PATH tokens)
-  body = body.replace(/\{\{SECTION:([^}]+)\}\}/g, (_token, section) => {
+  // 1. {{SECTION:name}} → <harness>/<name>.md (may itself contain TOOL/PATH
+  //    tokens). Single pass over the original body — inserted section content
+  //    is never rescanned (same semantics as the sync replace()).
+  const sectionRe = /\{\{SECTION:([^}]+)\}\}/g;
+  let out = "";
+  let last = 0;
+  for (let m = sectionRe.exec(body); m; m = sectionRe.exec(body)) {
+    const section = m[1];
     const sectionPath = join(agentDir, harness, `${section}.md`);
-    if (!existsSync(sectionPath)) {
+    if (!(await pathExists(sectionPath))) {
       throw new Error(`agent "${name}": missing section "${section}" for harness "${harness}" (${sectionPath})`);
     }
-    return readFileSync(sectionPath, "utf-8").trim();
-  });
+    out += body.slice(last, m.index) + (await readFile(sectionPath, "utf-8")).trim();
+    last = m.index + m[0].length;
+  }
+  body = out + body.slice(last);
 
   // 2. + 3. TOOL/PATH substitution (contextualised for error messages)
   body = substituteTokens(body, harness, tokenMap, {
@@ -127,8 +145,8 @@ const REQUIRED_FIELDS = ["name", "description", "tools"];
 const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
 
 /** Parse and schema-check a harness frontmatter.json (strict, per agents/README.md). */
-function parseFrontmatter(path, name, harness) {
-  const raw = readFileSync(path, "utf-8");
+async function parseFrontmatter(path, name, harness) {
+  const raw = await readFile(path, "utf-8");
   let fm;
   try {
     fm = JSON.parse(raw);
@@ -225,11 +243,11 @@ export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}
 // ─── Token map ───────────────────────────────────────────────────────────────
 
 /** Load token-map.json from the package root; missing/incomplete maps hard-fail. */
-export function loadTokenMap(root) {
+export async function loadTokenMap(root) {
   const path = join(root, "token-map.json");
   let raw;
   try {
-    raw = readFileSync(path, "utf-8");
+    raw = await readFile(path, "utf-8");
   } catch {
     throw new Error(`missing ${path} — the composer requires token-map.json`);
   }

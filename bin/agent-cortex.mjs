@@ -30,7 +30,7 @@ if (parsed.command === "install") {
 
   if (parsed.harness === "pi") {
     try {
-      const result = installPi({
+      const result = await installPi({
         dryRun: parsed.dryRun ?? false,
         warn: () => {}, // warnings surface once in the printed summary
         ...(parsed.output ? { output: parsed.output } : {}),
@@ -87,7 +87,7 @@ if (parsed.command === "install") {
   if (parsed.harness === "copilot") {
     const { installCopilot } = await import("./installers/copilot.mjs");
     try {
-      installCopilot({ output: parsed.output, dryRun: parsed.dryRun });
+      await installCopilot({ output: parsed.output, dryRun: parsed.dryRun });
       process.exit(0);
     } catch (err) {
       process.stderr.write(`Install failed: ${err.message}\n`);

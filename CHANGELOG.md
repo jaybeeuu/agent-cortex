@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.39.1
+
+### Patch Changes
+
+- fcb16d7: Fix grill-with-docs failing to load: quote the front-matter description so skill parsers accept it.
+
 ## 1.39.0
 
 ### Minor Changes

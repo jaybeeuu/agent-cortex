@@ -65,8 +65,11 @@ The Claude plugin is **materialised** at install time by `bin/installers/claude.
 plain `agent-cortex install claude` copies the plugin into the home install root
 (`~/.agent-cortex/claude`), writes a marketplace manifest at
 `~/.agent-cortex/.claude-plugin/marketplace.json` exposing it, and registers it with
-Claude Code by driving the `claude plugin` CLI (marketplace add → install → marketplace
-update → plugin update). `pnpm build:claude` is the pure, generate-only alias — it passes
+Claude Code by driving the `claude plugin` CLI — state-checked and idempotent (a fresh
+install adds the marketplace + installs the plugin; a re-run updates what state says is
+out of date; a repeat install at the same version is a no-op; a missing or pre-v2 CLI
+warns and prints the manual registration commands instead of failing). `pnpm build:claude`
+is the pure, generate-only alias — it passes
 `--output claude`, so CI and release drift-checks never spawn the claude CLI or touch
 `~/.agent-cortex`. CI regenerates the committed mirror and checks it is never stale:
 
@@ -207,8 +210,9 @@ pnpm build:claude    # or: node bin/agent-cortex.mjs install claude --output cla
 node bin/agent-cortex.mjs install copilot          # regenerates agents/*.agent.md in place
 node bin/agent-cortex.mjs install copilot --dry-run       # plan only, no writes
 node bin/agent-cortex.mjs install copilot --output /tmp/x # preview the flat files elsewhere
-node bin/agent-cortex.mjs install claude           # materialises ~/.agent-cortex/claude + marketplace manifest AND registers it with Claude Code
+node bin/agent-cortex.mjs install claude           # materialises ~/.agent-cortex/claude + marketplace manifest AND registers it with Claude Code (user scope, idempotent)
 node bin/agent-cortex.mjs install claude --dry-run       # plan generation + registration, no writes/spawns
+node bin/agent-cortex.mjs install claude --require-register  # fail (non-zero exit) when the claude CLI can't drive registration
 node bin/agent-cortex.mjs install claude --output /tmp/x # generate only — no marketplace manifest, no registration
 # note: the plain claude install writes ~/.agent-cortex; only --output regenerates the committed ./claude mirror
 ```
@@ -231,19 +235,28 @@ claude --plugin-dir /path/to/agent-cortex/claude plugin details agent-cortex
 The plain install does both halves in one step: it materialises the plugin into
 `~/.agent-cortex/claude`, writes `~/.agent-cortex/.claude-plugin/marketplace.json` (the
 home install root doubles as the marketplace root — the manifest exposes `./claude`), and
-registers it with Claude Code by driving the `claude plugin` CLI (marketplace add → install
-→ marketplace update → plugin update) against that root. This requires the `claude` plugin
-CLI (Claude Code v2+):
+registers it with Claude Code by driving the `claude plugin` CLI against that root at
+**user scope** (the `claude plugin install` default, so the plugin is available in every
+session — the recommended persistent flow). Registration is idempotent by state, not by
+exit code: `claude plugin marketplace list --json` picks add-vs-update and
+`claude plugin list --json` picks install-vs-update against the materialised version. A
+fresh install adds the marketplace and installs the plugin; a re-run is the update path
+(`marketplace update`, plus `plugin update` only when a newer version is materialised); a
+repeat install at the same version is a true no-op. It requires the `claude` plugin CLI
+(Claude Code v2+): with a missing or pre-v2 CLI the installer warns and prints the manual
+commands below, exiting 0 — `--require-register` makes registration mandatory and fails
+non-zero when it can't run:
 
 ```sh
-agent-cortex install claude                          # materialise + register (user scope)
+agent-cortex install claude                          # materialise + register (user scope, idempotent)
+agent-cortex install claude --require-register       # register or fail the install
 ```
 
 `--dry-run` prints the full plan without spawning the claude CLI or writing anything;
 `--output <dir>` generates only, with no marketplace manifest and no registration. The
-equivalent manual registration (e.g. on a Claude Code build without the plugin CLI) adds a
-marketplace root by **absolute path** (a bare `.` is rejected) — the repo checkout works
-too, since it ships the same manifest exposing `./claude`:
+equivalent manual registration adds a marketplace root by **absolute path** (a bare `.` is
+rejected) — the repo checkout works too, since it ships the same manifest exposing
+`./claude`:
 
 ```sh
 claude plugin marketplace add /path/to/agent-cortex   # or ~/.agent-cortex after a plain install
@@ -258,13 +271,19 @@ flag, and Ralph is just `claude --agent agent-cortex:ralph`.
 #### Update
 
 The plain install re-materialises from the current sources, so after pulling changes
-re-run it — it refreshes the materialised plugin and the registered plugin (marketplace
-update → plugin update) in one step:
+re-run it — it refreshes the materialised plugin and re-registers whatever the installed
+state says is out of date (`marketplace update`, plus `plugin update` only when a newer
+version is materialised; a repeat install at the same version is a no-op) in one step:
 
 ```sh
 git pull
 agent-cortex install claude                # re-materialise + refresh (restart Claude Code to apply)
 ```
+
+Registration matches the marketplace by **name**, not path: a marketplace previously added
+from a different root (e.g. a repo checkout via the manual flow) is refreshed in place
+rather than re-pointed at the fresh home install. Re-point it with
+`claude plugin marketplace remove jaybeeuu` and re-run the install.
 
 `pnpm build:claude` only regenerates the committed `claude/` mirror (no registration, no
 home install), so on its own it won't refresh an installed plugin.

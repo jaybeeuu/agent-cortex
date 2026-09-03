@@ -332,12 +332,21 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
 
   const rootPlugin = pluginRoot ?? tokenMap.paths.plugin_root?.[CLAUDE];
 
+  // When generating into the repo's own claude/ subtree (pnpm build:claude),
+  // .mcp.json and scripts/ are the CANONICAL hand-authored extras — not
+  // regenerable output — so they must survive the cleanup below. Any other
+  // output dir gets them copied fresh from the repo subtree (write phase).
+  const inPlace = resolve(out) === resolve(join(root, "claude"));
+  const cleanable = inPlace
+    ? ["agents", "skills", ".claude-plugin", "hooks", "hooks.json"]
+    : ["agents", "skills", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"];
+
   // Regenerate the plugin children (removes stale output from earlier flows,
   // e.g. old symlinked skills). Must happen BEFORE the build helpers write;
   // hand-authored extras are re-copied fresh in the write phase. In dry-run
   // nothing is cleaned or written.
   if (!dryRun) {
-    for (const child of ["agents", "skills", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"]) {
+    for (const child of cleanable) {
       await rm(join(out, child), { recursive: true, force: true });
     }
     await mkdir(out, { recursive: true });
@@ -434,6 +443,9 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   if (handAuthored.length > 0) {
     for (const { rel, src } of handAuthored) {
       const dest = join(out, rel);
+      // In-place generation (out === repo claude/): the canonical extras already
+      // live at dest — copying onto themselves is a no-op, so skip it.
+      if (resolve(src) === resolve(dest)) continue;
       await mkdir(dirname(dest), { recursive: true });
       await copyFile(src, dest);
     }

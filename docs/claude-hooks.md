@@ -2,8 +2,8 @@
 
 The pi extensions in `extensions/` were audited for Claude Code equivalents.
 Implemented ports live in `hooks/claude/hooks.json` (copied verbatim into the
-generated plugin as `claude/hooks.json`); support scripts live in
-`hooks/claude/scripts/` and are bundled into `claude/hooks/scripts/` by
+materialised plugin as its `hooks.json`); support scripts live in
+`hooks/claude/scripts/` and are bundled into the plugin's `hooks/scripts/` by
 `bin/installers/claude.mjs` (referenced from hooks.json via `$CLAUDE_PLUGIN_ROOT`).
 
 Claude Code's hook model differs from PI's: hooks are shell commands fed a JSON

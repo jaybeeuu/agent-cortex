@@ -5,7 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm, readFile, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
@@ -14,6 +14,16 @@ import { installCopilot } from "../bin/installers/copilot.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const CLI_PATH = join(ROOT, "bin", "agent-cortex.mjs");
+
+/** True when a path exists (stat succeeds). */
+async function pathExists(p) {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function runCli(args) {
   return new Promise((resolve) => {
@@ -43,28 +53,28 @@ function tokenMap() {
   };
 }
 
-function makeFixture() {
-  const root = mkdtempSync(join(tmpdir(), "copilot-installer-"));
+async function makeFixture() {
+  const root = await mkdtemp(join(tmpdir(), "copilot-installer-"));
   return {
     root,
     output: join(root, "generated"),
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: async () => rm(root, { recursive: true, force: true }),
   };
 }
 
-function writeFixture(fx, relPath, content) {
+async function writeFixture(fx, relPath, content) {
   const p = join(fx.root, relPath);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, content);
+  await mkdir(dirname(p), { recursive: true });
+  await writeFile(p, content);
 }
 
 /** Seed a minimal but realistic package tree (agents + token-map). */
-function seedCopilotPackage(fx, opts = {}) {
+async function seedCopilotPackage(fx, opts = {}) {
   const { agents = {} } = opts;
-  writeFixture(fx, "token-map.json", JSON.stringify(tokenMap()));
+  await writeFixture(fx, "token-map.json", JSON.stringify(tokenMap()));
   for (const [name, def] of Object.entries(agents)) {
-    writeFixture(fx, `agents/${name}/agent.md`, def.body ?? `# ${name}\nBody of ${name}.`);
-    writeFixture(
+    await writeFixture(fx, `agents/${name}/agent.md`, def.body ?? `# ${name}\nBody of ${name}.`);
+    await writeFixture(
       fx,
       `agents/${name}/copilot/frontmatter.json`,
       JSON.stringify(
@@ -77,34 +87,34 @@ function seedCopilotPackage(fx, opts = {}) {
       ),
     );
     for (const [section, content] of Object.entries(def.sections ?? {})) {
-      writeFixture(fx, `agents/${name}/copilot/${section}.md`, content);
+      await writeFixture(fx, `agents/${name}/copilot/${section}.md`, content);
     }
   }
 }
 
 /** Deterministic snapshot of a directory: relative paths + byte content. */
-function snapshot(dir) {
+async function snapshot(dir) {
   const entries = [];
-  const walk = (p) => {
-    for (const e of readdirSync(p, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  const walk = async (p) => {
+    for (const e of (await readdir(p, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       const full = join(p, e.name);
       if (e.isDirectory()) {
         entries.push([e.name, "dir"]);
-        walk(full);
-      } else entries.push([e.name, "file", readFileSync(full, "utf-8")]);
+        await walk(full);
+      } else entries.push([e.name, "file", await readFile(full, "utf-8")]);
     }
   };
-  walk(dir);
+  await walk(dir);
   return entries;
 }
 
 // ─── Agent composition ───────────────────────────────────────────────────────
 
 describe("installCopilot — agent composition", () => {
-  it("writes one flat <name>.agent.md per composable agent dir with copilot frontmatter and no leftover tokens", () => {
-    const fx = makeFixture();
+  it("writes one flat <name>.agent.md per composable agent dir with copilot frontmatter and no leftover tokens", async () => {
+    const fx = await makeFixture();
     try {
-      seedCopilotPackage(fx, {
+      await seedCopilotPackage(fx, {
         agents: {
           alpha: {
             body: "# alpha\nUse {{TOOL:view}} to read.\n{{SECTION:polling}}\nRead {{PATH:agents_dir}}.",
@@ -119,11 +129,11 @@ describe("installCopilot — agent composition", () => {
         },
       });
 
-      const result = installCopilot({ root: fx.root, output: fx.output });
+      const result = await installCopilot({ root: fx.root, output: fx.output });
 
       const file = join(fx.output, "alpha.agent.md");
-      assert.ok(existsSync(file), "flat agent file written");
-      const content = readFileSync(file, "utf-8");
+      assert.ok(await pathExists(file), "flat agent file written");
+      const content = await readFile(file, "utf-8");
       assert.ok(content.startsWith("---\n"), "yaml frontmatter");
       assert.ok(content.includes("# GENERATED from agents/alpha/ by scripts/build-copilot-agents.mjs — DO NOT EDIT."));
       // Committed flat-file field order: description, name, tools (YAML array), argument-hint.
@@ -138,64 +148,64 @@ describe("installCopilot — agent composition", () => {
       assert.deepEqual(result.agents, ["alpha"]);
       assert.equal(result.output, fx.output);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("skips non-composable entries in agents/ and never clobbers composable sources", () => {
-    const fx = makeFixture();
+  it("skips non-composable entries in agents/ and never clobbers composable sources", async () => {
+    const fx = await makeFixture();
     try {
-      seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      writeFixture(fx, "agents/README.md", "# agents dir docs\n");
+      await seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await writeFixture(fx, "agents/README.md", "# agents dir docs\n");
 
-      const result = installCopilot({ root: fx.root, output: fx.output });
+      const result = await installCopilot({ root: fx.root, output: fx.output });
 
-      assert.deepEqual(readdirSync(fx.output).sort(), ["alpha.agent.md"], "no README, no subdirectories written");
+      assert.deepEqual((await readdir(fx.output)).sort(), ["alpha.agent.md"], "no README, no subdirectories written");
       assert.deepEqual(result.agents, ["alpha"]);
       // The composable source dir next to the generated file stays untouched.
-      assert.ok(existsSync(join(fx.root, "agents", "alpha", "agent.md")), "composable source preserved");
-      assert.ok(existsSync(join(fx.root, "agents", "alpha", "copilot", "frontmatter.json")), "harness dir preserved");
+      assert.ok(await pathExists(join(fx.root, "agents", "alpha", "agent.md")), "composable source preserved");
+      assert.ok(await pathExists(join(fx.root, "agents", "alpha", "copilot", "frontmatter.json")), "harness dir preserved");
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("throws when a composable dir lacks copilot/frontmatter.json", () => {
-    const fx = makeFixture();
+  it("throws when a composable dir lacks copilot/frontmatter.json", async () => {
+    const fx = await makeFixture();
     try {
-      seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      rmSync(join(fx.root, "agents", "alpha", "copilot"), { recursive: true, force: true });
-      assert.throws(
-        () => installCopilot({ root: fx.root, output: fx.output }),
+      await seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await rm(join(fx.root, "agents", "alpha", "copilot"), { recursive: true, force: true });
+      await assert.rejects(
+        installCopilot({ root: fx.root, output: fx.output }),
         /without copilot\/frontmatter\.json/,
       );
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("defaults to the plugin-scanned agents/ dir of the package root (plugin.json \"agents\": \"agents/\")", () => {
-    const fx = makeFixture();
+  it("defaults to the plugin-scanned agents/ dir of the package root (plugin.json \"agents\": \"agents/\")", async () => {
+    const fx = await makeFixture();
     try {
-      seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
 
-      const result = installCopilot({ root: fx.root });
+      const result = await installCopilot({ root: fx.root });
 
       assert.equal(result.output, join(fx.root, "agents"), "default output is the dir plugin.json scans");
-      assert.ok(existsSync(join(fx.root, "agents", "alpha.agent.md")), "flat file lands next to the composable dir");
-      assert.ok(existsSync(join(fx.root, "agents", "alpha", "agent.md")), "composable source untouched");
+      assert.ok(await pathExists(join(fx.root, "agents", "alpha.agent.md")), "flat file lands next to the composable dir");
+      assert.ok(await pathExists(join(fx.root, "agents", "alpha", "agent.md")), "composable source untouched");
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("throws on an unknown tool token", () => {
-    const fx = makeFixture();
+  it("throws on an unknown tool token", async () => {
+    const fx = await makeFixture();
     try {
-      seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha\nUse {{TOOL:nope}} now." } } });
-      assert.throws(() => installCopilot({ root: fx.root, output: fx.output }), /unknown tool token {{TOOL:nope}}/);
+      await seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha\nUse {{TOOL:nope}} now." } } });
+      await assert.rejects(installCopilot({ root: fx.root, output: fx.output }), /unknown tool token {{TOOL:nope}}/);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 });
@@ -203,37 +213,37 @@ describe("installCopilot — agent composition", () => {
 // ─── Output / dry-run ────────────────────────────────────────────────────────
 
 describe("installCopilot — output & dry-run", () => {
-  it("dry-run reports the plan without writing anything", () => {
-    const fx = makeFixture();
+  it("dry-run reports the plan without writing anything", async () => {
+    const fx = await makeFixture();
     try {
-      seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await seedCopilotPackage(fx, { agents: { alpha: { body: "# alpha" } } });
 
-      const result = installCopilot({ root: fx.root, output: fx.output, dryRun: true });
+      const result = await installCopilot({ root: fx.root, output: fx.output, dryRun: true });
 
       assert.equal(result.dryRun, true);
-      assert.equal(existsSync(fx.output), false, "no output dir created in dry-run");
+      assert.equal(await pathExists(fx.output), false, "no output dir created in dry-run");
       assert.deepEqual(result.agents, ["alpha"], "planned files still reported");
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("is deterministic across repeated installs into the same output", () => {
-    const fx = makeFixture();
+  it("is deterministic across repeated installs into the same output", async () => {
+    const fx = await makeFixture();
     try {
-      seedCopilotPackage(fx, {
+      await seedCopilotPackage(fx, {
         agents: {
           alpha: { body: "# alpha\n{{SECTION:polling}}", sections: { polling: "Poll with {{TOOL:task}}." } },
           beta: { body: "# beta" },
         },
       });
 
-      installCopilot({ root: fx.root, output: fx.output });
-      const first = snapshot(fx.output);
-      installCopilot({ root: fx.root, output: fx.output });
-      assert.deepEqual(snapshot(fx.output), first);
+      await installCopilot({ root: fx.root, output: fx.output });
+      const first = await snapshot(fx.output);
+      await installCopilot({ root: fx.root, output: fx.output });
+      assert.deepEqual(await snapshot(fx.output), first);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 });
@@ -241,19 +251,19 @@ describe("installCopilot — output & dry-run", () => {
 // ─── Integration against the real repo ───────────────────────────────────────
 
 describe("installCopilot — real repo integration", () => {
-  it("regenerates byte-identical copies of the committed agents/*.agent.md files", () => {
-    const fx = makeFixture();
+  it("regenerates byte-identical copies of the committed agents/*.agent.md files", async () => {
+    const fx = await makeFixture();
     try {
-      const result = installCopilot({ root: ROOT, output: fx.output });
+      const result = await installCopilot({ root: ROOT, output: fx.output });
 
       assert.deepEqual(result.agents.sort(), ["plan", "ralph", "ralph-plan", "strategy"]);
       for (const name of result.agents) {
-        const generated = readFileSync(join(fx.output, `${name}.agent.md`), "utf-8");
-        const committed = readFileSync(join(ROOT, "agents", `${name}.agent.md`), "utf-8");
+        const generated = await readFile(join(fx.output, `${name}.agent.md`), "utf-8");
+        const committed = await readFile(join(ROOT, "agents", `${name}.agent.md`), "utf-8");
         assert.equal(generated, committed, `${name}.agent.md must match the committed flat file (CI drift check)`);
       }
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 });
@@ -262,37 +272,37 @@ describe("installCopilot — real repo integration", () => {
 
 describe("CLI integration", () => {
   it("exits 0 for install copilot --output <tmp> and writes the flat files", async () => {
-    const fx = makeFixture();
+    const fx = await makeFixture();
     try {
       const { exitCode, stdout } = await runCli(["install", "copilot", "--output", fx.output]);
       assert.equal(exitCode, 0);
       assert.ok(stdout.includes("copilot"), "prints the harness name");
       assert.ok(stdout.includes("Generated"), "prints the generation summary");
-      assert.ok(existsSync(join(fx.output, "ralph.agent.md")), "agent files written");
-      assert.ok(existsSync(join(fx.output, "plan.agent.md")));
+      assert.ok(await pathExists(join(fx.output, "ralph.agent.md")), "agent files written");
+      assert.ok(await pathExists(join(fx.output, "plan.agent.md")));
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
   it("exits 0 for install copilot --dry-run and writes nothing", async () => {
-    const fx = makeFixture();
+    const fx = await makeFixture();
     try {
       const { exitCode, stdout } = await runCli(["install", "copilot", "--output", fx.output, "--dry-run"]);
       assert.equal(exitCode, 0);
       assert.ok(/dry-run/i.test(stdout));
-      assert.equal(existsSync(fx.output), false, "no files written in dry-run");
+      assert.equal(await pathExists(fx.output), false, "no files written in dry-run");
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
   it("exits 0 for install copilot (default output) without touching committed files", async () => {
-    const before = readFileSync(join(ROOT, "agents", "ralph.agent.md"), "utf-8");
+    const before = await readFile(join(ROOT, "agents", "ralph.agent.md"), "utf-8");
     const { exitCode } = await runCli(["install", "copilot"]);
     assert.equal(exitCode, 0);
     // Default output regenerates the shared agents/ dir in place — output must
     // stay byte-identical to what is committed.
-    assert.equal(readFileSync(join(ROOT, "agents", "ralph.agent.md"), "utf-8"), before);
+    assert.equal(await readFile(join(ROOT, "agents", "ralph.agent.md"), "utf-8"), before);
   });
 });

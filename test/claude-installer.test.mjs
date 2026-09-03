@@ -1,71 +1,70 @@
 // Tests for `agent-cortex install claude` runtime registration: after
-// regenerating the claude/ subtree, the plain install registers the plugin
-// with Claude Code by driving the `claude plugin` CLI (marketplace add →
-// install → marketplace update → plugin update). The real CLI is a genuine
-// external system, so these tests drive a fake `claudeBin` script that records
-// every invocation; the real repo's marketplace.json supplies the manifest.
+// materialising the claude/ subtree, the plain install registers the plugin
+// with Claude Code by driving the `claude plugin` CLI. Registration is
+// idempotent by STATE, not by exit code: `marketplace list --json` decides
+// add-vs-update and `plugin list --json` decides install-vs-update against the
+// materialised version. The real CLI is a genuine external system (and its
+// home config must never be touched), so these tests drive the stateful fake
+// from test/helpers/fake-claude.mjs; the real repo's marketplace.json supplies
+// the manifest for the checkout-level test.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import {
-  mkdtempSync,
-  mkdirSync,
-  writeFileSync,
-  rmSync,
-  readFileSync,
-  chmodSync,
-  existsSync,
-} from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { registerClaude } from "../bin/installers/claude.mjs";
+import { makeFakeClaude, registrationActions } from "./helpers/fake-claude.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const CLI_PATH = join(ROOT, "bin", "agent-cortex.mjs");
 
-function runCli(args) {
+function runCli(args, env = {}) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [CLI_PATH, ...args], (error, stdout, stderr) => {
-      resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr });
-    });
+    execFile(
+      process.execPath,
+      [CLI_PATH, ...args],
+      { env: { ...process.env, ...env } },
+      (error, stdout, stderr) => {
+        resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr });
+      },
+    );
   });
 }
 
-// ─── Fake claude CLI ─────────────────────────────────────────────────────────
-
-/**
- * A fake `claude` binary recording every argv line to `log` (one line per
- * invocation, space-joined). Set `failWhen` to a substring: any invocation
- * whose argv contains it exits 1. Exits 0 otherwise.
- */
-function makeFakeClaude(dir, { failWhen = null } = {}) {
-  const bin = join(dir, "claude");
-  const log = join(dir, "calls.log");
-  const script = [
-    "#!/bin/sh",
-    `echo "$*" >> "${log}"`,
-    ...(failWhen
-      ? [`if printf '%s' "$*" | grep -q -- "${failWhen}"; then exit 1; fi`]
-      : []),
-    "exit 0",
-  ].join("\n");
-  writeFileSync(bin, `${script}\n`);
-  chmodSync(bin, 0o755);
-  return { bin, log };
+/** True when a path exists (stat succeeds). */
+async function pathExists(p) {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function makeTmp() {
-  return mkdtempSync(join(tmpdir(), "agent-cortex-claude-installer-"));
+  return mkdtemp(join(tmpdir(), "agent-cortex-claude-installer-"));
 }
 
-/** A minimal marketplace tree (as seen in the real repo) at a scratch path. */
-function makeMarketplaceRoot({ name = "jaybeeuu", plugin = "agent-cortex" } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "agent-cortex-marketplace-"));
-  mkdirSync(join(root, ".claude-plugin"), { recursive: true });
-  writeFileSync(
+async function callLines(log) {
+  return (await readFile(log, "utf-8")).trim().split("\n").filter(Boolean);
+}
+
+/** Registration actions logged at/after line `since` (0 = whole log). */
+async function actionsSince(log, since = 0) {
+  return registrationActions((await callLines(log)).slice(since));
+}
+
+/** A minimal marketplace tree (as seen at the real install root): the
+ * marketplace manifest exposing ./claude plus the materialised plugin.json the
+ * fake reads for the installed version. */
+async function makeMarketplaceRoot({ name = "jaybeeuu", plugin = "agent-cortex", version = "1.0.0" } = {}) {
+  const root = await mkdtemp(join(tmpdir(), "agent-cortex-marketplace-"));
+  await mkdir(join(root, ".claude-plugin"), { recursive: true });
+  await writeFile(
     join(root, ".claude-plugin", "marketplace.json"),
     JSON.stringify({
       name,
@@ -73,150 +72,226 @@ function makeMarketplaceRoot({ name = "jaybeeuu", plugin = "agent-cortex" } = {}
       plugins: [{ name: plugin, source: "./claude", description: "test plugin" }],
     }),
   );
+  await mkdir(join(root, "claude", ".claude-plugin"), { recursive: true });
+  await writeFile(
+    join(root, "claude", ".claude-plugin", "plugin.json"),
+    JSON.stringify({ name: plugin, version, description: "test plugin" }),
+  );
   return root;
 }
 
 // ─── registerClaude ──────────────────────────────────────────────────────────
 
 describe("registerClaude", () => {
-  it("drives claude plugin marketplace add → install → marketplace update → plugin update", () => {
-    const tmp = makeTmp();
-    const root = makeMarketplaceRoot();
-    const fake = makeFakeClaude(tmp);
+  it("drives marketplace add → install on a fresh registration, skipping the market update/plugin update no-ops", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp);
     try {
-      const result = registerClaude({ root, claudeBin: fake.bin });
+      const result = await registerClaude({ root, claudeBin: fake.bin });
       assert.equal(result.marketplace, "jaybeeuu");
       assert.equal(result.plugin, "agent-cortex");
       assert.equal(result.dryRun, false);
-
-      const calls = readFileSync(fake.log, "utf-8").trim().split("\n");
-      // The availability probe (`plugin --help`) is a spawn, but the registration
-      // surface is the four commands below — assert those, in order.
-      const registration = calls.filter((c) => !c.startsWith("plugin --help"));
-      assert.deepEqual(registration, [
+      assert.equal(result.registered, true);
+      assert.deepEqual(result.commands, [
+        ["plugin", "marketplace", "add", root],
+        ["plugin", "install", "agent-cortex@jaybeeuu", "-y"],
+      ]);
+      // The availability probe (`plugin --help`) and the state queries
+      // (`marketplace list --json`, `plugin list --json`) are not actions.
+      assert.deepEqual(await actionsSince(fake.log), [
         `plugin marketplace add ${root}`,
         "plugin install agent-cortex@jaybeeuu -y",
+      ]);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("derives marketplace and plugin names from the manifest", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot({ name: "scratchmkt", plugin: "scratchplug" });
+    const fake = await makeFakeClaude(tmp);
+    try {
+      const result = await registerClaude({ root, claudeBin: fake.bin });
+      assert.equal(result.marketplace, "scratchmkt");
+      assert.equal(result.plugin, "scratchplug");
+      const actions = await actionsSince(fake.log);
+      assert.ok(actions.some((c) => c === "plugin install scratchplug@scratchmkt -y"));
+      // Fresh registration has no update commands.
+      assert.ok(!actions.some((c) => c.startsWith("plugin update")));
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("re-running at the same materialised version is the update path: marketplace update only, no re-add or double-install", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp);
+    try {
+      await registerClaude({ root, claudeBin: fake.bin });
+      assert.deepEqual(await actionsSince(fake.log), [
+        `plugin marketplace add ${root}`,
+        "plugin install agent-cortex@jaybeeuu -y",
+      ]);
+      const run1End = (await callLines(fake.log)).length;
+
+      const second = await registerClaude({ root, claudeBin: fake.bin });
+      assert.equal(second.registered, true);
+      // Second run: the marketplace is present so only the update path runs;
+      // the plugin is already at the materialised version so nothing installs.
+      assert.deepEqual(await actionsSince(fake.log, run1End), ["plugin marketplace update jaybeeuu"]);
+      assert.ok(second.skipped.some((s) => s.includes("already installed")));
+
+      // Across both runs the marketplace was added exactly once and the
+      // plugin installed exactly once.
+      const all = await actionsSince(fake.log);
+      assert.equal(all.filter((c) => c.startsWith("plugin marketplace add")).length, 1);
+      assert.equal(all.filter((c) => c === "plugin install agent-cortex@jaybeeuu -y").length, 1);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("runs plugin update when a newer version is materialised, refreshing the installed version", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot({ version: "1.0.0" });
+    const fake = await makeFakeClaude(tmp);
+    try {
+      await registerClaude({ root, claudeBin: fake.bin });
+      assert.deepEqual(await actionsSince(fake.log), [
+        `plugin marketplace add ${root}`,
+        "plugin install agent-cortex@jaybeeuu -y",
+      ]);
+      const run1End = (await callLines(fake.log)).length;
+
+      // A new version is materialised into the source the marketplace exposes.
+      await writeFile(
+        join(root, "claude", ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "agent-cortex", version: "2.0.0", description: "test plugin" }),
+      );
+
+      const updated = await registerClaude({ root, claudeBin: fake.bin });
+      assert.deepEqual(await actionsSince(fake.log, run1End), [
         "plugin marketplace update jaybeeuu",
         "plugin update agent-cortex -y",
       ]);
+      assert.ok(updated.skipped.some((s) => s.includes("already installed")));
+      const state = JSON.parse(await readFile(fake.state, "utf-8"));
+      assert.equal(state.installed[0].version, "2.0.0", "plugin update refreshed the installed version");
+
+      // At the new version another run is back to update-path-only.
+      const run2End = (await callLines(fake.log)).length;
+      await registerClaude({ root, claudeBin: fake.bin });
+      assert.deepEqual(await actionsSince(fake.log, run2End), ["plugin marketplace update jaybeeuu"]);
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("derives marketplace and plugin names from the manifest", () => {
-    const tmp = makeTmp();
-    const root = makeMarketplaceRoot({ name: "scratchmkt", plugin: "scratchplug" });
-    const fake = makeFakeClaude(tmp);
+  it("--dry-run plans the commands without spawning claude at all", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp);
     try {
-      const result = registerClaude({ root, claudeBin: fake.bin });
-      assert.equal(result.marketplace, "scratchmkt");
-      assert.equal(result.plugin, "scratchplug");
-      const calls = readFileSync(fake.log, "utf-8").trim().split("\n");
-      const registration = calls.filter((c) => !c.startsWith("plugin --help"));
-      assert.ok(registration.some((c) => c === "plugin install scratchplug@scratchmkt -y"));
-      assert.ok(registration.some((c) => c === "plugin update scratchplug -y"));
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("--dry-run plans the commands without spawning claude at all", () => {
-    const tmp = makeTmp();
-    const root = makeMarketplaceRoot();
-    const fake = makeFakeClaude(tmp);
-    try {
-      const result = registerClaude({ root, claudeBin: fake.bin, dryRun: true });
+      const result = await registerClaude({ root, claudeBin: fake.bin, dryRun: true });
       assert.equal(result.dryRun, true);
-      assert.deepEqual(
-        result.commands,
-        [
-          ["plugin", "marketplace", "add", root],
-          ["plugin", "install", "agent-cortex@jaybeeuu", "-y"],
-          ["plugin", "marketplace", "update", "jaybeeuu"],
-          ["plugin", "update", "agent-cortex", "-y"],
-        ],
-      );
+      assert.equal(result.registered, true);
+      // Dry-run cannot know live state without spawning — no commands decided.
+      assert.deepEqual(result.commands, []);
       // No registration spawns happened at all in dry-run mode.
-      assert.equal(existsSync(fake.log), false);
+      assert.equal(await pathExists(fake.log), false);
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("defaults the claude binary to `claude` from PATH (dry-run only — no spawn)", () => {
-    const root = makeMarketplaceRoot();
+  it("defaults the claude binary to `claude` from PATH (dry-run only — no spawn)", async () => {
+    const root = await makeMarketplaceRoot();
     try {
-      const result = registerClaude({ root, dryRun: true });
-      assert.equal(result.commands.length, 4);
-      assert.ok(result.commands[0][0] === "plugin");
+      const result = await registerClaude({ root, dryRun: true });
+      assert.equal(result.marketplace, "jaybeeuu");
+      assert.equal(result.plugin, "agent-cortex");
+      assert.equal(result.dryRun, true);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("fails with upgrade guidance when the claude binary lacks the plugin subcommand", () => {
-    const tmp = makeTmp();
-    const root = makeMarketplaceRoot();
-    const fake = makeFakeClaude(tmp, { failWhen: "plugin --help" });
+  it("warns with manual commands when the claude binary lacks the plugin subcommand; --require-register fails the run", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp, { failWhen: "plugin --help" });
     try {
-      assert.throws(
-        () => registerClaude({ root, claudeBin: fake.bin }),
-        /plugin.*subcommand.*update/i,
+      const warnings = [];
+      const result = await registerClaude({ root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
+      assert.equal(result.registered, false);
+      const manual = warnings.join("\n");
+      assert.match(manual, /NOT registered/);
+      assert.match(manual, new RegExp(`claude plugin marketplace add ${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+      assert.match(manual, /claude plugin install agent-cortex@jaybeeuu -y/);
+
+      await assert.rejects(
+        registerClaude({ root, claudeBin: fake.bin, requireRegister: true }),
+        /require-register/,
       );
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("fails, naming the failing command, when a claude plugin command errors", () => {
-    const tmp = makeTmp();
-    const root = makeMarketplaceRoot();
-    const fake = makeFakeClaude(tmp, { failWhen: "plugin install" });
+  it("fails, naming the failing command, when a claude plugin command errors", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp, { failWhen: "plugin install" });
     try {
-      assert.throws(
-        () => registerClaude({ root, claudeBin: fake.bin }),
+      await assert.rejects(
+        registerClaude({ root, claudeBin: fake.bin }),
         /claude plugin install agent-cortex@jaybeeuu -y/,
       );
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("fails when the checkout has no marketplace manifest", () => {
-    const tmp = makeTmp();
-    const root = mkdtempSync(join(tmpdir(), "agent-cortex-no-market-"));
-    const fake = makeFakeClaude(tmp);
+  it("fails when the checkout has no marketplace manifest", async () => {
+    const tmp = await makeTmp();
+    const root = await mkdtemp(join(tmpdir(), "agent-cortex-no-market-"));
+    const fake = await makeFakeClaude(tmp);
     try {
-      assert.throws(
-        () => registerClaude({ root, claudeBin: fake.bin }),
+      await assert.rejects(
+        registerClaude({ root, claudeBin: fake.bin }),
         /marketplace\.json/,
       );
       // The failed manifest read happens before any claude invocation.
-      assert.equal(existsSync(fake.log), false);
+      assert.equal(await pathExists(fake.log), false);
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("works against the real repo checkout and its marketplace manifest", () => {
-    const tmp = makeTmp();
-    const fake = makeFakeClaude(tmp);
+  it("works against the real repo checkout and its marketplace manifest", async () => {
+    const tmp = await makeTmp();
+    const fake = await makeFakeClaude(tmp);
     try {
-      const result = registerClaude({ root: ROOT, claudeBin: fake.bin });
+      const result = await registerClaude({ root: ROOT, claudeBin: fake.bin });
       assert.equal(result.marketplace, "jaybeeuu");
       assert.equal(result.plugin, "agent-cortex");
-      const calls = readFileSync(fake.log, "utf-8").trim().split("\n");
-      const registration = calls.filter((c) => !c.startsWith("plugin --help"));
-      assert.equal(registration.length, 4);
+      assert.deepEqual(await actionsSince(fake.log), [
+        `plugin marketplace add ${ROOT}`,
+        "plugin install agent-cortex@jaybeeuu -y",
+      ]);
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      await rm(tmp, { recursive: true, force: true });
     }
   });
 });
@@ -229,20 +304,20 @@ describe("install claude CLI: registration", () => {
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes("would run: claude plugin marketplace add"));
     assert.ok(stdout.includes("claude plugin install agent-cortex@jaybeeuu"));
-    assert.ok(stdout.includes("claude plugin marketplace update jaybeeuu"));
-    assert.ok(stdout.includes("claude plugin update agent-cortex"));
+    assert.ok(stdout.includes("plugin marketplace update"));
+    assert.ok(stdout.includes("plugin update agent-cortex"));
     assert.ok(/dry-run/i.test(stdout));
   });
 
   it("--output <dir> generates only — no registration plan is printed", async () => {
-    const out = mkdtempSync(join(tmpdir(), "agent-cortex-cli-out-"));
+    const out = await mkdtemp(join(tmpdir(), "agent-cortex-cli-out-"));
     try {
       const { exitCode, stdout } = await runCli(["install", "claude", "--output", out]);
       assert.equal(exitCode, 0);
       assert.doesNotMatch(stdout, /claude plugin/);
       assert.ok(stdout.includes("Generated"));
     } finally {
-      rmSync(out, { recursive: true, force: true });
+      await rm(out, { recursive: true, force: true });
     }
   });
 });

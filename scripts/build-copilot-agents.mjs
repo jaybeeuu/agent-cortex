@@ -27,4 +27,4 @@ import { installCopilot } from "../bin/installers/copilot.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-installCopilot({ root: ROOT, output: join(ROOT, "agents") });
+await installCopilot({ root: ROOT, output: join(ROOT, "agents") });

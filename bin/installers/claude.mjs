@@ -47,7 +47,7 @@
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
 import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -480,16 +480,46 @@ async function readMarketplaceManifest(root) {
   return parseMarketplaceManifest(manifest, manifestPath);
 }
 
-/** Run one claude plugin command, inheriting its output; throws on failure. */
+/** Run one claude plugin command, inheriting its output; rejects on failure. */
 function runClaudeCommand(claudeBin, args) {
   const label = `${claudeBin} ${args.join(" ")}`;
-  const result = spawnSync(claudeBin, args, { stdio: "inherit" });
-  if (result.error) {
-    throw new Error(`failed to run "${label}": ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    throw new Error(`"${label}" exited ${result.status}`);
-  }
+  return new Promise((resolve, reject) => {
+    const child = spawn(claudeBin, args, { stdio: "inherit" });
+    child.on("error", (err) => reject(new Error(`failed to run "${label}": ${err.message}`)));
+    child.on("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else if (code !== null) reject(new Error(`"${label}" exited ${code}`));
+      else reject(new Error(`"${label}" was terminated by ${signal}`));
+    });
+  });
+}
+
+/**
+ * Probe whether `claudeBin` supports the plugin CLI by running
+ * `claude plugin --help` with output suppressed. Resolves `{ ok: true }` when
+ * it exits 0, otherwise `{ ok: false, message }` naming the failure (missing
+ * binary vs missing subcommand) so registration can give targeted guidance.
+ */
+function probePluginSupport(claudeBin) {
+  return new Promise((resolve) => {
+    const child = spawn(claudeBin, ["plugin", "--help"], { stdio: "ignore" });
+    child.on("error", (err) =>
+      resolve({
+        ok: false,
+        message: `cannot run "${claudeBin}" (${err.message}) — is Claude Code installed and on PATH?`,
+      }),
+    );
+    child.on("exit", (code) => {
+      if (code === 0) resolve({ ok: true });
+      else
+        resolve({
+          ok: false,
+          message:
+            `"${claudeBin}" lacks the "plugin" subcommand — its Claude Code build predates plugin support; ` +
+            `update to a build with the plugin CLI (v2+), e.g. "pnpm add -g @anthropic-ai/claude-code@latest", and re-run`,
+        });
+    });
+  });
 }
 
 /**
@@ -540,22 +570,14 @@ export async function registerClaude({ root = PACKAGE_ROOT, claudeBin = DEFAULT_
 
   // Older Claude Code builds treat `claude plugin …` as a chat prompt; reject
   // them up-front instead of letting the registration appear to succeed.
-  const probe = spawnSync(claudeBin, ["plugin", "--help"], { stdio: "ignore" });
-  if (probe.error) {
-    throw new Error(
-      `cannot run "${claudeBin}" (${probe.error.message}) — is Claude Code installed and on PATH?`,
-    );
-  }
-  if (probe.status !== 0) {
-    throw new Error(
-      `"${claudeBin}" lacks the "plugin" subcommand — its Claude Code build predates plugin support; ` +
-        `update to a build with the plugin CLI (v2+), e.g. "pnpm add -g @anthropic-ai/claude-code@latest", and re-run`,
-    );
+  const probe = await probePluginSupport(claudeBin);
+  if (!probe.ok) {
+    throw new Error(probe.message);
   }
 
   for (const args of commands) {
     console.log(`  ${claudeBin} ${args.join(" ")}`);
-    runClaudeCommand(claudeBin, args);
+    await runClaudeCommand(claudeBin, args);
   }
   console.log(
     `Installed — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,

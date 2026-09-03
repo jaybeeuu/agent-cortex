@@ -47,6 +47,13 @@ See the `style-versioning` skill for the full workflow.
 
 Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
+## Coding Conventions
+
+- **Never block the main thread**: no `*Sync` functions (`readFileSync`, `spawnSync`, …).
+  Tooling code in `bin/`, `scripts/`, `lib/`, `hooks/`, and `test/` must be async —
+  enforced by `scripts/check-no-sync.mjs` (runs via `pnpm lint`). Skill-owned
+  scripts (`skills/*/scripts`) and `extensions/` are the remaining sync surfaces.
+
 ## Skill Conventions
 
 - `SKILL.md` must include a YAML front-matter block with `name` and `description`.

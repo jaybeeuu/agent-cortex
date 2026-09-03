@@ -15,7 +15,8 @@
   },
   "scripts": {
     "build": "echo 'Build complete — no compilation needed for PI package'",
-    "lint": "pnpm typecheck",
+    "lint": "pnpm typecheck && pnpm check:sync",
+    "check:sync": "node scripts/check-no-sync.mjs",
     "test": "node --test test/*.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "build:claude": "node bin/agent-cortex.mjs install claude --output claude",

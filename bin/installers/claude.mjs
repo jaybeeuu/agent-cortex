@@ -54,7 +54,7 @@ import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(MODULE_DIR, "..", "..");
+const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
 
 // Home-scoped plugin install root. The parent dir (~/.agent-cortex) is the
 // marketplace root: it carries .claude-plugin/marketplace.json exposing
@@ -304,7 +304,7 @@ function buildHandAuthored(root) {
  *             hooks: boolean, hookFiles: string[], handAuthored: string[],
  *             warnings: string[], dryRun: boolean }}
  */
-export function installClaude({ root = REPO_ROOT, output, dryRun = false, pluginRoot, warn = DEFAULT_WARN } = {}) {
+export function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, warn = DEFAULT_WARN } = {}) {
   const tokenMap = loadTokenMap(root);
   if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
     throw new Error(
@@ -511,7 +511,7 @@ function runClaudeCommand(claudeBin, args) {
  * @param {object} [options.manifest]    Pre-parsed marketplace manifest (skips the file read)
  * @returns {{ marketplace: string, plugin: string, commands: string[][], dryRun: boolean }}
  */
-export function registerClaude({ root = REPO_ROOT, claudeBin = DEFAULT_CLAUDE_BIN, dryRun = false, manifest } = {}) {
+export function registerClaude({ root = PACKAGE_ROOT, claudeBin = DEFAULT_CLAUDE_BIN, dryRun = false, manifest } = {}) {
   const { marketplace, plugin } =
     manifest !== undefined
       ? parseMarketplaceManifest(manifest, "generated manifest")

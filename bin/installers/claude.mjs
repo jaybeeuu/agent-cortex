@@ -213,8 +213,7 @@ async function copyTree(src, dest, transform, dryRun) {
 }
 
 /** plugin.json manifest; version tracks the package so it can never go stale. */
-async function buildPluginJson(root) {
-  const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
+async function buildPluginJson(root, pkg) {
   return (
     JSON.stringify(
       {
@@ -239,8 +238,7 @@ async function buildPluginJson(root) {
  * ~/.agent-cortex` resolves ./claude relative to the manifest's directory.
  * The default shape matches the committed repo manifest byte-for-byte.
  */
-async function buildMarketplaceManifest(root, outputName) {
-  const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
+async function buildMarketplaceManifest(root, pkg, outputName) {
   return {
     name: "jaybeeuu",
     owner: { name: "jaybeeuu" },
@@ -366,18 +364,19 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   const natives = await buildNatives(root, join(root, "agents-native"));
   const skillOut = join(out, "skills");
   const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
-  const pluginJson = await buildPluginJson(root);
+  const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
+  const pluginJson = await buildPluginJson(root, pkg);
   const hooksSrc = join(root, "hooks", "claude", "hooks.json");
   const hooksJson = (await isFile(hooksSrc)) ? await readFile(hooksSrc, "utf-8") : null;
   const hookFiles = await buildHookFiles(root);
-  const marketplaceManifest = isDefaultInstall ? await buildMarketplaceManifest(root, basename(out)) : null;
+  const marketplaceManifest = isDefaultInstall ? await buildMarketplaceManifest(root, pkg, basename(out)) : null;
 
   const summary = {
     output: out,
     marketplaceRoot,
     manifestPath,
     marketplaceManifest,
-    pluginVersion: JSON.parse(pluginJson).version,
+    pluginVersion: pkg.version,
     agents: agents.files.map((f) => f.file.replace(/\.md$/, "")),
     natives: natives.map((f) => f.file.replace(/\.md$/, "")),
     skills: { names: skills.names, md: skills.md, files: skills.files, dir: skillOut },
@@ -395,7 +394,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     console.log(`  agents: ${summary.agents.join(", ")}`);
     if (summary.natives.length) console.log(`  native agents: ${summary.natives.join(", ")}`);
     console.log(`  skills: ${summary.skills.names.length} copied → ${skillOut}/<name>/ (token-substituted)`);
-    console.log(`  .claude-plugin/plugin.json (version ${JSON.parse(pluginJson).version})`);
+    console.log(`  .claude-plugin/plugin.json (version ${pkg.version})`);
     if (isDefaultInstall && manifestPath) {
       console.log(`  marketplace manifest → ${manifestPath} (plugin agent-cortex @ ./${basename(out)})`);
     }

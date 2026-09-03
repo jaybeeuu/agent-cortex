@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm, readFile, readdir, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,16 @@ import { installPi } from "../bin/installers/pi.mjs";
 // Real repo root — used by the integration smoke test to prove the installer
 // works against the canonical sources (agents/, skills/, token-map.json).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** True when a path exists (stat succeeds). */
+async function pathExists(p) {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -37,29 +47,29 @@ function tokenMap(extra = {}) {
   };
 }
 
-function makeFixture() {
-  const root = mkdtempSync(join(tmpdir(), "pi-installer-"));
+async function makeFixture() {
+  const root = await mkdtemp(join(tmpdir(), "pi-installer-"));
   const output = join(root, "out");
   return {
     root,
     output,
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: async () => rm(root, { recursive: true, force: true }),
   };
 }
 
-function writeFixture(fx, relPath, content) {
+async function writeFixture(fx, relPath, content) {
   const p = join(fx.root, relPath);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, content);
+  await mkdir(dirname(p), { recursive: true });
+  await writeFile(p, content);
 }
 
 /** Seed a minimal but realistic package tree (agents + token-map + skills). */
-function seedPackage(fx, opts = {}) {
+async function seedPackage(fx, opts = {}) {
   const { agents = {}, skills = {}, tokenMap: map, version } = opts;
-  writeFixture(fx, "token-map.json", JSON.stringify(map ?? tokenMap(version ? { version } : {})));
+  await writeFixture(fx, "token-map.json", JSON.stringify(map ?? tokenMap(version ? { version } : {})));
   for (const [name, def] of Object.entries(agents)) {
-    writeFixture(fx, `agents/${name}/agent.md`, def.body ?? `# ${name}\nBody of ${name}.`);
-    writeFixture(
+    await writeFixture(fx, `agents/${name}/agent.md`, def.body ?? `# ${name}\nBody of ${name}.`);
+    await writeFixture(
       fx,
       `agents/${name}/pi/frontmatter.json`,
       JSON.stringify(
@@ -72,20 +82,20 @@ function seedPackage(fx, opts = {}) {
       ),
     );
     for (const [section, content] of Object.entries(def.sections ?? {})) {
-      writeFixture(fx, `agents/${name}/pi/${section}.md`, content);
+      await writeFixture(fx, `agents/${name}/pi/${section}.md`, content);
     }
   }
   for (const [path, content] of Object.entries(skills)) {
-    writeFixture(fx, `skills/${path}`, content);
+    await writeFixture(fx, `skills/${path}`, content);
   }
 }
 
-function listFiles(dir) {
-  if (!existsSync(dir)) return [];
+async function listFiles(dir) {
+  if (!(await pathExists(dir))) return [];
   const out = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...listFiles(p).map((f) => join(entry.name, f)));
+    if (entry.isDirectory()) out.push(...(await listFiles(p)).map((f) => join(entry.name, f)));
     else out.push(entry.name);
   }
   return out;
@@ -94,10 +104,10 @@ function listFiles(dir) {
 // ─── Agent composition ───────────────────────────────────────────────────────
 
 describe("installPi — agent composition", () => {
-  it("writes one .agent.md per composable agent dir with pi frontmatter and no leftover tokens", () => {
-    const fx = makeFixture();
+  it("writes one .agent.md per composable agent dir with pi frontmatter and no leftover tokens", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, {
+      await seedPackage(fx, {
         agents: {
           alpha: {
             body: "# alpha\nUse {{TOOL:view}} to read.\n{{SECTION:polling}}\nRead {{PATH:skills_dir}}.",
@@ -112,11 +122,11 @@ describe("installPi — agent composition", () => {
         },
       });
 
-      const result = installPi({ root: fx.root, output: fx.output });
+      const result = await installPi({ root: fx.root, output: fx.output });
 
       const file = join(fx.output, "agents", "alpha.agent.md");
-      assert.ok(existsSync(file), "agent file written");
-      const content = readFileSync(file, "utf-8");
+      assert.ok(await pathExists(file), "agent file written");
+      const content = await readFile(file, "utf-8");
       assert.ok(content.startsWith("---\n"), "yaml frontmatter");
       assert.match(content, /name: "agent-cortex:alpha"/);
       assert.match(content, /description: "Reads things\."/);
@@ -128,55 +138,55 @@ describe("installPi — agent composition", () => {
       assert.equal(result.agents.length, 1);
       assert.deepEqual(result.agents[0], { name: "alpha", filePath: file });
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("drops null-mapped tool tokens in prose and reports a warning", () => {
-    const fx = makeFixture();
+  it("drops null-mapped tool tokens in prose and reports a warning", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, {
+      await seedPackage(fx, {
         agents: {
           alpha: { body: "# alpha\nAsk the user with {{TOOL:ask_user}}, then use {{TOOL:bash}}." },
         },
       });
 
-      const result = installPi({ root: fx.root, output: fx.output });
-      const content = readFileSync(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
+      const result = await installPi({ root: fx.root, output: fx.output });
+      const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
 
       assert.ok(!content.includes("ask_user"), "null-mapped token dropped from prose");
       assert.ok(content.includes("use bash"), "mapped token substituted");
       assert.ok(!/{{/.test(content));
       assert.ok(result.warnings.some((w) => w.includes("{{TOOL:ask_user}}")), "drop reported as warning");
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("throws on an unknown tool token", () => {
-    const fx = makeFixture();
+  it("throws on an unknown tool token", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, { agents: { alpha: { body: "# alpha\nUse {{TOOL:nope}} now." } } });
-      assert.throws(() => installPi({ root: fx.root, output: fx.output }), /unknown tool token {{TOOL:nope}}/);
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha\nUse {{TOOL:nope}} now." } } });
+      await assert.rejects(installPi({ root: fx.root, output: fx.output }), /unknown tool token {{TOOL:nope}}/);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("throws when a section file referenced by {{SECTION:...}} is missing", () => {
-    const fx = makeFixture();
+  it("throws when a section file referenced by {{SECTION:...}} is missing", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, { agents: { alpha: { body: "# alpha\n{{SECTION:missing}}" } } });
-      assert.throws(() => installPi({ root: fx.root, output: fx.output }), /missing section "missing"/);
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha\n{{SECTION:missing}}" } } });
+      await assert.rejects(installPi({ root: fx.root, output: fx.output }), /missing section "missing"/);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("resolves named and relative {{PATH:...}} tokens against the plugin root", () => {
-    const fx = makeFixture();
+  it("resolves named and relative {{PATH:...}} tokens against the plugin root", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, {
+      await seedPackage(fx, {
         agents: {
           alpha: {
             body: "# alpha\nNamed: {{PATH:skills_dir}}\nRelative: {{PATH:skills/x/SKILL.md}}",
@@ -184,8 +194,8 @@ describe("installPi — agent composition", () => {
         },
       });
 
-      const result = installPi({ root: fx.root, output: fx.output });
-      const content = readFileSync(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
+      const result = await installPi({ root: fx.root, output: fx.output });
+      const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
 
       assert.ok(
         content.includes("Named: ~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills"),
@@ -197,38 +207,38 @@ describe("installPi — agent composition", () => {
       );
       assert.equal(result.warnings.length, 0);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("honours the --plugin-root override for path resolution", () => {
-    const fx = makeFixture();
+  it("honours the --plugin-root override for path resolution", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, {
+      await seedPackage(fx, {
         agents: {
           alpha: { body: "# alpha\n{{PATH:skills/x/SKILL.md}}" },
         },
       });
 
       const pluginRoot = join(fx.root, "checkout");
-      installPi({ root: fx.root, output: fx.output, pluginRoot });
-      const content = readFileSync(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
+      await installPi({ root: fx.root, output: fx.output, pluginRoot });
+      const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
       assert.ok(content.includes(join(pluginRoot, "skills", "x", "SKILL.md")), "plugin root override used");
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("rejects token-map.json versions newer than the implemented contract", () => {
-    const fx = makeFixture();
+  it("rejects token-map.json versions newer than the implemented contract", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, {
+      await seedPackage(fx, {
         version: 99,
         agents: { alpha: { body: "# alpha" } },
       });
-      assert.throws(() => installPi({ root: fx.root, output: fx.output }), /version 99/);
+      await assert.rejects(installPi({ root: fx.root, output: fx.output }), /version 99/);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 });
@@ -236,10 +246,10 @@ describe("installPi — agent composition", () => {
 // ─── Skills ──────────────────────────────────────────────────────────────────
 
 describe("installPi — skills", () => {
-  it("copies skills into <output>/skills preserving the grouped layout with substituted tokens", () => {
-    const fx = makeFixture();
+  it("copies skills into <output>/skills preserving the grouped layout with substituted tokens", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, {
+      await seedPackage(fx, {
         agents: { alpha: { body: "# alpha" } },
         skills: {
           "engineering/echo/SKILL.md":
@@ -248,11 +258,11 @@ describe("installPi — skills", () => {
         },
       });
 
-      installPi({ root: fx.root, output: fx.output });
+      await installPi({ root: fx.root, output: fx.output });
 
       const skillFile = join(fx.output, "skills", "engineering", "echo", "SKILL.md");
-      assert.ok(existsSync(skillFile), "skill copied");
-      const content = readFileSync(skillFile, "utf-8");
+      assert.ok(await pathExists(skillFile), "skill copied");
+      const content = await readFile(skillFile, "utf-8");
       assert.ok(content.includes("description: Echoes read."), "token substituted in skill frontmatter");
       assert.ok(content.includes("Use read to read and  for help."), "null-mapped {{TOOL:skill}} dropped");
       assert.ok(
@@ -263,10 +273,10 @@ describe("installPi — skills", () => {
       );
       assert.ok(!/{{/.test(content), "no literal tokens remain in skill");
 
-      const script = readFileSync(join(fx.output, "skills", "engineering", "echo", "scripts", "run.sh"), "utf-8");
+      const script = await readFile(join(fx.output, "skills", "engineering", "echo", "scripts", "run.sh"), "utf-8");
       assert.equal(script, "#!/bin/sh\necho hi\n", "non-md files copied verbatim");
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 });
@@ -274,37 +284,37 @@ describe("installPi — skills", () => {
 // ─── Output / dry-run ────────────────────────────────────────────────────────
 
 describe("installPi — output & dry-run", () => {
-  it("dry-run writes nothing but reports the planned output", () => {
-    const fx = makeFixture();
+  it("dry-run writes nothing but reports the planned output", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, {
+      await seedPackage(fx, {
         agents: { alpha: { body: "# alpha" } },
         skills: { "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nBody." },
       });
 
-      const result = installPi({ root: fx.root, output: fx.output, dryRun: true });
+      const result = await installPi({ root: fx.root, output: fx.output, dryRun: true });
 
       assert.equal(result.dryRun, true);
-      assert.equal(listFiles(fx.output).length, 0, "no files written in dry-run");
+      assert.equal((await listFiles(fx.output)).length, 0, "no files written in dry-run");
       assert.equal(result.agents.length, 1);
       assert.equal(result.agents[0].name, "alpha");
       assert.equal(result.skills.skills, 1);
       // Planned paths are still reported so the user can see what would happen.
       assert.ok(result.agents[0].filePath.startsWith(fx.output));
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("creates the output directory hierarchy when needed", () => {
-    const fx = makeFixture();
+  it("creates the output directory hierarchy when needed", async () => {
+    const fx = await makeFixture();
     try {
-      seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
       const deep = join(fx.output, "nested", "deep");
-      installPi({ root: fx.root, output: deep });
-      assert.ok(existsSync(join(deep, "agents", "alpha.agent.md")));
+      await installPi({ root: fx.root, output: deep });
+      assert.ok(await pathExists(join(deep, "agents", "alpha.agent.md")));
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 });
@@ -312,16 +322,16 @@ describe("installPi — output & dry-run", () => {
 // ─── Integration against the real repo ───────────────────────────────────────
 
 describe("installPi — real repo integration", () => {
-  it("installs every canonical agent with pi tool names and no leftover tokens", () => {
-    const fx = makeFixture();
+  it("installs every canonical agent with pi tool names and no leftover tokens", async () => {
+    const fx = await makeFixture();
     try {
-      const result = installPi({ root: REPO_ROOT, output: fx.output });
+      const result = await installPi({ root: REPO_ROOT, output: fx.output });
 
       const names = result.agents.map((a) => a.name).sort();
       assert.deepEqual(names, ["plan", "ralph", "ralph-plan", "strategy"]);
 
       // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents"]
-      const ralph = readFileSync(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
+      const ralph = await readFile(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
       assert.match(ralph, /name: "agent-cortex:ralph"/);
       assert.match(ralph, /tools: "bash read grep find task read_agent wait_for_agents"/);
       assert.ok(ralph.includes("## Spawning subagents (PI)"), "{{SECTION:polling}} composed from pi/polling.md");
@@ -329,7 +339,7 @@ describe("installPi — real repo integration", () => {
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");
 
       // plan body carries the relative {{PATH:...}} resolved against the plugin root
-      const plan = readFileSync(join(fx.output, "agents", "plan.agent.md"), "utf-8");
+      const plan = await readFile(join(fx.output, "agents", "plan.agent.md"), "utf-8");
       assert.match(plan, /tools: "bash read edit write grep find task read_agent"/);
       assert.ok(
         plan.includes("~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills/workflow/plan/SKILL.md"),
@@ -337,7 +347,7 @@ describe("installPi — real repo integration", () => {
       );
 
       // ralph-plan prose {{TOOL:ask_user}} is dropped (null for pi)
-      const ralphPlan = readFileSync(join(fx.output, "agents", "ralph-plan.agent.md"), "utf-8");
+      const ralphPlan = await readFile(join(fx.output, "agents", "ralph-plan.agent.md"), "utf-8");
       assert.ok(!ralphPlan.includes("ask_user"), "null-mapped tool omitted from ralph-plan body");
       assert.ok(
         result.warnings.some((w) => w.includes("ask_user")),
@@ -345,27 +355,27 @@ describe("installPi — real repo integration", () => {
       );
 
       // strategy: web_fetch → fetch_content; ask_user/skill omitted
-      const strategy = readFileSync(join(fx.output, "agents", "strategy.agent.md"), "utf-8");
+      const strategy = await readFile(join(fx.output, "agents", "strategy.agent.md"), "utf-8");
       assert.match(strategy, /tools: "bash read grep find fetch_content edit write"/);
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 
-  it("substitutes tokens in every installed skill markdown", () => {
-    const fx = makeFixture();
+  it("substitutes tokens in every installed skill markdown", async () => {
+    const fx = await makeFixture();
     try {
-      const result = installPi({ root: REPO_ROOT, output: fx.output });
+      const result = await installPi({ root: REPO_ROOT, output: fx.output });
       assert.ok(result.skills.skills > 20, `expected the full skill tree, got ${result.skills.skills}`);
 
-      const files = listFiles(join(fx.output, "skills")).filter((f) => f.endsWith(".md"));
+      const files = (await listFiles(join(fx.output, "skills"))).filter((f) => f.endsWith(".md"));
       assert.ok(files.length > 0);
       for (const f of files) {
-        const content = readFileSync(join(fx.output, "skills", f), "utf-8");
+        const content = await readFile(join(fx.output, "skills", f), "utf-8");
         assert.ok(!/{{/.test(content), `no literal tokens in skill ${f}`);
       }
     } finally {
-      fx.cleanup();
+      await fx.cleanup();
     }
   });
 });

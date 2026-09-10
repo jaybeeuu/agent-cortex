@@ -48,7 +48,9 @@ rather than inventing a dotted form:
   harness. Source of truth for the copilot → claude half is `token-map.json`'s own claude
   column, consumed by `bin/installers/claude.mjs` (the install-time generator — PR #91, #92); the pi column is grounded
   in pi's documented built-in tool surface (`read`, `bash`, `edit`, `write`, `grep`, `find`,
-  `ls`) plus `task` / `read_agent` / `wait_for_agents` subagent tools.
+  `ls`) plus `ask_questions` — pi's native structured-questions tool, mapped from
+  `ask_user` — and `task` / `read_agent` / `wait_for_agents` subagent tools; `skill` maps
+  to `read` (skills load by reading the listed SKILL.md path).
 - **`paths`** — `plugin_root`, `agents_dir`, and `skills_dir`. These are the install-time
   variables that differ per harness. `plugin_root` is the anchor; the other two resolve
   relative to it (`{base, relative}` specs) so a harness only overrides the single root it
@@ -83,8 +85,10 @@ The pi install-time installer (`bin/installers/pi.mjs`) follows the strict contr
 One consumer deviates deliberately: the pi `agent-modes` extension reads the map at
 **runtime** (not install time) to compose agent prompts from the composable agents
 format. For it, an unmapped tool name passes through unchanged — it may be a
-native PI tool — while a mapped-null tool (`ask_user`, `skill`) is omitted with a
-warning. See `extensions/agent-modes/README.md`.
+native PI tool — while a mapped-null tool is omitted with a warning. The pi column
+currently maps every canonical tool (`ask_user` → `ask_questions`, `skill` → `read`),
+so the warn-and-omit path applies only to future null entries. See
+`extensions/agent-modes/README.md`.
 
 ### 4. Token substitution contract
 

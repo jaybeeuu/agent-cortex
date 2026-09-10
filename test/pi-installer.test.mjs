@@ -328,25 +328,31 @@ describe("installPi — real repo integration", () => {
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");
 
-      // plan body carries the relative {{PATH:...}} resolved against the plugin root
+      // plan body carries the relative {{PATH:...}} resolved against the plugin root.
+      // Tool list preserves authoring order (composer translateToolList, unlike the
+      // runtime agent-modes translateTools which sorts): ask_user → ask_questions,
+      // skill → read (last position).
       const plan = readFileSync(join(fx.output, "agents", "plan.agent.md"), "utf-8");
-      assert.match(plan, /tools: "bash read edit write grep find task read_agent"/);
+      assert.match(plan, /tools: "bash read edit write grep find ask_questions task read_agent read"/);
       assert.ok(
         plan.includes("~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills/workflow/plan/SKILL.md"),
         "plan PATH token resolved against token-map plugin root",
       );
 
-      // ralph-plan prose {{TOOL:ask_user}} is dropped (null for pi)
+      // ralph-plan prose {{TOOL:ask_user}} now substitutes to ask_questions
       const ralphPlan = readFileSync(join(fx.output, "agents", "ralph-plan.agent.md"), "utf-8");
-      assert.ok(!ralphPlan.includes("ask_user"), "null-mapped tool omitted from ralph-plan body");
+      assert.ok(!ralphPlan.includes("ask_user"), "ask_user never appears in ralph-plan body");
+      assert.ok(ralphPlan.includes("ask_questions"), "{{TOOL:ask_user}} substituted to ask_questions");
       assert.ok(
-        result.warnings.some((w) => w.includes("ask_user")),
-        "ralph-plan null tool dropped with a warning",
+        !result.warnings.some((w) => w.includes("ask_user")),
+        "no null-tool warning for ralph-plan (ask_user now maps to ask_questions)",
       );
 
-      // strategy: web_fetch → fetch_content; ask_user/skill omitted
+      // strategy: web_fetch → fetch_content; ask_user → ask_questions; skill → read
+      // (authoring order preserved: bash, view→read, rg→grep, glob→find, ask_user→
+      // ask_questions, web_fetch→fetch_content, skill→read, edit, create)
       const strategy = readFileSync(join(fx.output, "agents", "strategy.agent.md"), "utf-8");
-      assert.match(strategy, /tools: "bash read grep find fetch_content edit write"/);
+      assert.match(strategy, /tools: "bash read grep find ask_questions fetch_content read edit write"/);
     } finally {
       fx.cleanup();
     }

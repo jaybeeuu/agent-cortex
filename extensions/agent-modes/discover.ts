@@ -120,7 +120,7 @@ function prettifyId(id: string): string {
  * Translate a frontmatter tool list into PI tool names.
  *
  * With token-map.json: canonical keys are translated via the pi column; a null
- * mapping means PI has no equivalent (ask_user, skill) and the entry is omitted;
+ * mapping means PI has no equivalent for that tool and the entry is omitted;
  * a name that is not a canonical key passes through untouched (it may be a
  * native PI tool such as `fetch_content`). Without the map, the built-in
  * COPILOT_TO_PI fallback applies and unknown names pass through.

@@ -48,8 +48,8 @@ rather than inventing a dotted form:
   harness. Source of truth for the copilot → claude half is `token-map.json`'s own claude
   column, consumed by `bin/installers/claude.mjs` (the install-time generator — PR #91, #92); the pi column is grounded
   in pi's documented built-in tool surface (`read`, `bash`, `edit`, `write`, `grep`, `find`,
-  `ls`) plus `ask_questions` — pi's native structured-questions tool, mapped from
-  `ask_user` — and `task` / `read_agent` / `wait_for_agents` subagent tools; `skill` maps
+  `ls`) plus `ask_questions` — added by the pi-questions package (mapped from
+  `ask_user`) — and `task` / `read_agent` / `wait_for_agents` subagent tools; `skill` maps
   to `read` (skills load by reading the listed SKILL.md path).
 - **`paths`** — `plugin_root`, `agents_dir`, and `skills_dir`. These are the install-time
   variables that differ per harness. `plugin_root` is the anchor; the other two resolve

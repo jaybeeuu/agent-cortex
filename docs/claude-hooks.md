@@ -100,7 +100,7 @@ for little signal. Rejected; Claude Code ships its own usage analytics
 ## `subagent/` → Reject (native)
 
 pi's `subagent` tool spawns isolated `pi --mode json` processes. Claude Code has
-native subagents — the plugin already ships `claude/agents/*.md` (including
+native subagents — the plugin already ships `~/.agent-cortex/claude/agents/*.md` (including
 `ralph`, `plan`, `strategy`, `ralph-plan`) executed via the built-in Agent/Task
 tools with per-session context isolation — so a hook-based workaround would be
 strictly worse.

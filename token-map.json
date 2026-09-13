@@ -56,7 +56,7 @@
     "sources": {
       "copilot": "agents/<name>/ composable dirs (canonical) — composed to agents/*.agent.md by scripts/build-copilot-agents.mjs",
       "pi": "agents/<name>/ composable dirs (canonical) — composed at runtime by the agent-modes extension",
-      "claude": "agents/<name>/ composable dirs (canonical) — composed by bin/installers/claude.mjs (install-time generator; pnpm build:claude aliases it), plus agents-native/*.md for deferred agents"
+      "claude": "agents/<name>/ composable dirs (canonical) — composed by bin/installers/claude.mjs (install-time generator, the only generator — the repo commits no claude/ output), plus agents-native/*.md for deferred agents"
     }
   },
   "notes": {
@@ -70,7 +70,8 @@
       "wait_for_agents": "PI-only blocking wait over background subagent runs (the task tool): returns the results of completed agents and STILL RUNNING for the rest. Copilot has no equivalent tool (its task + read_agent poll loop stays) and Claude's Task delivers results inline with no wait step — both null."
     },
     "paths": {
-      "pi": "plugin_root defaults to the npm-package install layout (~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex). Local-checkout installs (pi/settings.json packages entry referencing a local src path) or symlinked installs differ — installers must compute plugin_root from the actual resolution and can override it."
+      "pi": "plugin_root defaults to the npm-package install layout (~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex). Local-checkout installs (pi/settings.json packages entry referencing a local src path) or symlinked installs differ — installers must compute plugin_root from the actual resolution and can override it.",
+      "claude": "plugin_root stays ${CLAUDE_PLUGIN_ROOT} (env var) for the materialised plugin — never a literal ~/.agent-cortex/claude. Claude Code copies marketplace-installed plugins (including local directory sources like ~/.agent-cortex/claude) into its own cache and expands the env var per context, so a literal home path in substituted files would break under cache-copy; the installer passes the env form through verbatim."
     },
     "agents": {
       "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in bin/installers/claude.mjs): copilot/pi agents are agent-cortex:<slug>, claude agents are <slug>.",

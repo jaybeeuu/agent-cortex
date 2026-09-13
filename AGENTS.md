@@ -34,6 +34,9 @@ agent-cortex/
 │       └── index.ts       # Extension entrypoint
 ├── hooks/                # Canonical Claude Code hooks (hooks.json + scripts — see docs/claude-hooks.md)
 │   └── claude/           #   generated into the plugin's hooks.json + hooks/ by bin/installers/claude.mjs
+├── claude-extras/        # Hand-authored Claude plugin extras (no committed claude/ output)
+│   ├── .mcp.json         # MCP servers (context7, github) — copied into installs
+│   └── scripts/          # statusline-command.sh — copied into installs (executable)
 └── package.json          # PI package manifest (pi: { extensions, skills })
 ```
 
@@ -78,8 +81,9 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `~/.agent-cortex/claude` (skills copied flat with `{{TOOL:...}}`/`{{PATH:...}}` substituted,
   never symlinked), writes the marketplace manifest at
   `~/.agent-cortex/.claude-plugin/marketplace.json`, and registers it with Claude Code via the
-  `claude plugin` CLI; `pnpm build:claude` is the generate-only alias, running
-  `agent-cortex install claude --output claude` against the committed `claude/` mirror; `ralph`
+  `claude plugin` CLI; the repo commits no `claude/` output — hand-authored plugin
+  extras live in `claude-extras/` (`.mcp.json`, `scripts/`), and `--output <dir>` is the
+  generate-only form (tests/CI materialiser checks); `ralph`
   is authored natively in `agents-native/` and copied verbatim; the other agents compose from their
   `claude/` harness dirs).
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill

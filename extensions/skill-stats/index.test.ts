@@ -331,17 +331,18 @@ describe("loadStore / saveStore", () => {
     const file = join(tmpDir, "test-store.json");
     const original = freshStore();
     original.totalTurns = 42;
+    const recentTs = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     original.skills["test-skill"] = {
       loadedCount: 5,
       invokedCount: 2,
       readCount: 3,
-      lastUsed: "2026-06-07T12:00:00.000Z",
+      lastUsed: recentTs,
       byProject: {
         "/project/a": {
           loadedCount: 3,
           invokedCount: 1,
           readCount: 2,
-          lastUsed: "2026-06-07T12:00:00.000Z",
+          lastUsed: recentTs,
         },
       },
     };

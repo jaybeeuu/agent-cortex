@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.40.0
+
+### Minor Changes
+
+- 1b6b8b8: `agent-cortex install claude` now materialises the plugin: home-scoped install into `~/.agent-cortex/claude`, copied (token-substituted, no symlinks) skills, marketplace manifest, and automatic registration with Claude Code. Installer toolchain is fully async (no `*Sync` — never block the main thread), enforced by a `check-no-sync` lint scanner.
+- 65119b8: Map `ask_user` → `ask_questions` (pi-questions package) and `skill` → `read` in the pi column of token-map.json: pi agent modes regain interactive questioning (`ask_questions`) instead of dropping the tool with a startup warning, and skill references resolve to reading their SKILL.md. Notes and docs updated to record that `ask_questions` is provided by the pi-questions package.
+- 1b6b8b8: Retire the committed `claude/` plugin subtree: `agent-cortex install claude` into `~/.agent-cortex/claude` (with automatic marketplace registration) is now the only way to build the Claude Code plugin. Hand-authored extras moved to `claude-extras/`, the `build:claude` script is removed, and CI validates the installer instead of diffing committed output.
+
+### Patch Changes
+
+- fcb16d7: Fix grill-with-docs failing to load: quote the front-matter description so skill parsers accept it.
+
 ## 1.39.0
 
 ### Minor Changes

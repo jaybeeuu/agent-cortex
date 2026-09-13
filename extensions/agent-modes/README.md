@@ -34,8 +34,9 @@ contract:
 1. `{{SECTION:name}}` tokens are replaced with the agent's `pi/<name>.md`.
 2. `{{TOOL:key}}` / `{{PATH:key}}` tokens are substituted against the pi column
    of `token-map.json`, with the plugin root resolved from the actual extension
-   location. Tools without a PI equivalent (`ask_user`, `skill`) are omitted
-   from the tool set.
+   location. Tools map through that column (e.g. `ask_user` → `ask_questions`,
+   `skill` → `read`); a tool with a null mapping — any future one — is omitted
+   from the tool set with a warning.
 
 Flat `agents/*.agent.md` files are parsed as a fallback when an agent has no
 composable directory — they are generated output (scripts/build-copilot-agents.mjs)

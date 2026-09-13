@@ -8,8 +8,9 @@
 // Composition per the token-map.json contract:
 //   1. {{SECTION:name}} is resolved from the agent's pi/<name>.md section file
 //      (shared composer, scripts/lib/compose-agent.mjs).
-//   2. {{TOOL:key}} is substituted with the pi column; a null mapping drops the
-//      token from prose with a warning (pi has no ask_user/skill tool).
+//   2. {{TOOL:key}} is substituted with the pi column (pi maps ask_user →
+//      ask_questions and skill → read); any (future) null pi mapping drops the
+//      token from prose with a warning.
 //   3. {{PATH:key}} named keys resolve through the paths table; bare relative
 //      paths resolve against the plugin root (default: token-map.json's pi value,
 //      overridable with --plugin-root for checkout/symlinked installs).

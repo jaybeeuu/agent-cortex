@@ -137,8 +137,8 @@ describe("discoverAgents (composable source format)", () => {
 
     // {{TOOL:bash}} → bash.
     assert.match(plan.prompt, /Run with bash\./);
-    // {{TOOL:ask_user}} → null for pi — token dropped (dangling prose is the author's
-    // responsibility per token-map.README), not left as literal token syntax.
+    // {{TOOL:ask_user}} → ask_questions (pi's native structured-questions tool).
+    assert.match(plan.prompt, /Ask the user with ask_questions\./);
     assert.doesNotMatch(plan.prompt, /\{\{TOOL:ask_user\}\}/);
     // Relative {{PATH:...}} resolves against the actual package root (dir of agents/).
     assert.match(plan.prompt, new RegExp(`Read the plan skill at ${escapeRegExp(fx.dir)}/skills/workflow/plan/SKILL\\.md\\.`));
@@ -147,7 +147,7 @@ describe("discoverAgents (composable source format)", () => {
     assert.doesNotMatch(plan.prompt, /\{\{/);
   });
 
-  it("drops null-mapped tools (ask_user, skill) from the PI tool set", () => {
+  it("maps ask_user → ask_questions and skill → read into the PI tool set", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "plan", {
       frontmatter: {
@@ -159,8 +159,30 @@ describe("discoverAgents (composable source format)", () => {
 
     const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
     assert.equal(agents.length, 1);
-    // ask_user → null (omitted), skill → null (omitted), web_fetch → fetch_content.
-    assert.deepEqual(agents[0].tools, ["bash", "fetch_content"]);
+    // ask_user → ask_questions, skill → read (pi reads skill files), web_fetch → fetch_content.
+    assert.deepEqual(agents[0].tools, ["ask_questions", "bash", "fetch_content", "read"]);
+  });
+
+  it("warns and omits a tool whose pi mapping is null", () => {
+    const fx = track(makeFixture());
+    const NULL_MAP = {
+      tools: { ask_user: { copilot: "ask_user", claude: "AskUserQuestion", pi: null } },
+      paths: {},
+    } as TokenMap;
+    writeComposableAgent(fx, "plan", {
+      frontmatter: {
+        name: "agent-cortex:plan",
+        description: "Planner",
+        tools: ["ask_user", "bash"],
+      },
+    });
+
+    const agents = discoverAgents(fx.agentsDir, NULL_MAP);
+    assert.equal(agents.length, 1);
+    // With a null pi column the entry is omitted (and warned about), per the contract.
+    // (bash survives so the result is observable — an all-dropped list would be
+    // normalised to DEFAULT_TOOLS, which is "no restriction", not the omit result.)
+    assert.deepEqual(agents[0].tools, ["bash"]);
   });
 
   it("uses the built-in fallback map when token-map.json is unavailable", () => {
@@ -230,8 +252,9 @@ describe("loadTokenMap", () => {
   it("reads the real token-map.json at the package root", () => {
     assert.ok(REAL_TOKEN_MAP);
     assert.equal(typeof REAL_TOKEN_MAP?.tools?.bash?.pi, "string");
-    // ask_user has no PI equivalent per the contract — must stay null.
-    assert.equal(REAL_TOKEN_MAP?.tools?.ask_user?.pi, null);
+    // ask_user → ask_questions (pi's native structured-questions tool); skill → read.
+    assert.equal(REAL_TOKEN_MAP?.tools?.ask_user?.pi, "ask_questions");
+    assert.equal(REAL_TOKEN_MAP?.tools?.skill?.pi, "read");
     assert.ok(REAL_TOKEN_MAP?.paths?.agents_dir);
   });
 });

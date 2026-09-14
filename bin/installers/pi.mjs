@@ -19,9 +19,15 @@
 // Skill markdown files get the same TOOL/PATH substitution so pi never serves
 // literal token syntax; other skill files are copied verbatim.
 //
-// Skills install into ~/.pi/agent/skills (pi's user-global skill dir), which pi
-// loads before package skills, so the substituted copies shadow the raw package
-// skills of the same name (pi dedupes by name, user wins).
+// Skills install into ~/.pi/agent/skills (pi's user-global skill dir), which is
+// the sole pi skill source: the checkout's raw package skills are not loaded
+// locally because pi/settings.json registers agent-cortex with an object-form
+// packages filter { source, "skills": [] } (extensions stay enabled). The
+// filter exists so pi never sees the raw, un-substituted package skills and
+// reports a name collision per skill (pi warns on collisions, user dir wins).
+// Consumers who install the npm package without that filter still rely on pi's
+// shadowing order (user dir loads before package skills). Re-run this installer
+// after any skill edit so the substituted copy in the user dir stays in sync.
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 

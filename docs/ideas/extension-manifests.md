@@ -1,7 +1,8 @@
 # Idea: extension-manifests
 
 ## Status
-Backlog idea (not implementation-ready)
+Partially implemented — the pi-harness slice shipped (see "What shipped"); the
+Claude/Copilot manifest and the prune TUI remain backlog.
 
 ## Created
 2026-08-25
@@ -40,6 +41,24 @@ Key decisions from the interview:
 
 agent-cortex's own bundled extensions (auto-discovered via `pi install`, e.g. `skill-stats`)
 are deliberately excluded from the manifests — only third-party extensions are declared.
+
+## What shipped (2026-09-18)
+
+The pi half of the problem is solved without a new manifest file: the packages agent-cortex
+needs are declared in the **existing** package manifest at `package.json` → `pi.packages`, and
+`agent-cortex install pi` provisions them through the `pi` CLI into the pi user scope
+(`lib/pi-packages.mjs`). Reusing the shipped manifest beat introducing a parallel per-harness
+manifest file, which would have duplicated a declaration agent-cortex already publishes.
+
+Three properties are deliberate and should survive future changes: provisioning is
+**idempotent** (a package both declared in `~/.pi/agent/settings.json` and present in the pi npm
+store is skipped), **degrades gracefully** (a missing `pi` CLI or a failed install warns and the
+agent install still succeeds), and is **opt-out** via `--no-provision` — automatically off for the
+`--output` generate-only form, and never run on `--dry-run`.
+
+Still unbuilt: the Claude/Copilot manifest and the prune TUI. `pi/settings.json` also lists these
+packages for the symlinked-checkout workflow (where pi auto-installs them); that redundancy is
+intentional until the manifest model is extended to both harnesses.
 
 ## Validity check
 - Evidence we already have: agent-cortex already has an install surface to hang this on

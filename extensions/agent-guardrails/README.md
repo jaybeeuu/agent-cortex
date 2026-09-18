@@ -1,11 +1,11 @@
 # Agent Guardrails
 
-Appends behavioural circuit-breakers to the PI system prompt on every turn.
+Appends behavioural circuit-breakers to the PI system prompt once per user prompt.
 
 This is the first slice of `docs/ideas/improve-pi-system-prompt.md`: the highest-leverage
 token reduction is behavioural, not structural. The extension injects a stable block via
-the `before_agent_start` hook, so the rules stay authoritative for the model without
-rewriting Pi's default prompt.
+the `before_agent_start` hook — which fires once per user prompt, before the agent loop — so
+the rules apply to every turn of the run without rewriting Pi's default prompt.
 
 ## Rules
 

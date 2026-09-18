@@ -80,8 +80,9 @@ session:window.pane title (unavailable to hooks; the plugin title suffices).
 ## `agent-guardrails/` → Reject (pi-only)
 
 pi appends behavioural circuit-breakers (retry limits, check-in triggers,
-atomic-change discipline) to the system prompt on every turn via
-`before_agent_start`. Claude Code has no hook that can modify the system prompt;
+atomic-change discipline) to the system prompt once per user prompt via
+`before_agent_start` — which fires before the agent loop, so the block applies to
+every turn of that run. Claude Code has no hook that can modify the system prompt;
 its nearest surface, `SessionStart` `additionalContext`, injects conversation
 context rather than system instructions. The rules are harness-agnostic prose, so
 a future port could append them to the existing ported SessionStart hook — out of

@@ -83,13 +83,20 @@ if (parsed.command === "install") {
     }
   }
 
-  // copilot regenerates the flat agents/*.agent.md files the Copilot plugin
-  // loads via plugin.json ("agents": "agents/") — the same code path
+  // copilot regenerates the self-contained Copilot plugin subtree
+  // (copilot/plugin.json + agents/ + skills/ + hooks.json) — the same code path
   // `pnpm build:copilot` runs.
   if (parsed.harness === "copilot") {
     const { installCopilot } = await import("./installers/copilot.mjs");
     try {
-      await installCopilot({ output: parsed.output, dryRun: parsed.dryRun });
+      const result = await installCopilot({
+        dryRun: parsed.dryRun ?? false,
+        warn: () => {}, // warnings surface once in the printed summary
+        ...(parsed.output ? { output: parsed.output } : {}),
+      });
+      for (const warning of result.warnings) {
+        process.stdout.write(`  ⚠ ${warning}\n`);
+      }
       process.exit(0);
     } catch (err) {
       process.stderr.write(`Install failed: ${err.message}\n`);

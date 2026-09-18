@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Sync plugin.json version with package.json
-# Called by changesets after versioning to keep them in lockstep
+# Sync plugin.json versions with package.json
+# Called by changesets after versioning to keep them in lockstep.
+# The root manifest and the generated copilot/ subtree manifest both track the
+# package version (pnpm build:copilot regenerates the subtree afterwards, but
+# syncing here keeps the committed files correct even before the build runs).
 
 set -euo pipefail
 
-VERSION=$(node -p "require('./package.json').version")
-
-# Update plugin.json version field
 node -e "
 const fs = require('fs');
-const plugin = JSON.parse(fs.readFileSync('plugin.json', 'utf8'));
-plugin.version = '$VERSION';
-fs.writeFileSync('plugin.json', JSON.stringify(plugin, null, 2) + '\n');
+const version = require('./package.json').version;
+for (const file of ['plugin.json', 'copilot/plugin.json']) {
+  if (!fs.existsSync(file)) continue;
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  manifest.version = version;
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+  console.log('✓ Synced ' + file + ' to version ' + version);
+}
 "
-
-echo "✓ Synced plugin.json to version $VERSION"

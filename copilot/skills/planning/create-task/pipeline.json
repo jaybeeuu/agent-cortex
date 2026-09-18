@@ -1,0 +1,33 @@
+{
+  "maxFixRounds": 4,
+  "stages": [
+    {
+      "id": "code",
+      "title": "Code",
+      "description": "Implement the task using a test-driven approach.",
+      "template": "templates/code.md",
+      "dependsOn": []
+    },
+    {
+      "id": "verify",
+      "title": "Verify",
+      "description": "Run the project's test and lint commands and report the outcome.",
+      "template": "templates/verify.md",
+      "dependsOn": ["code"]
+    },
+    {
+      "id": "review",
+      "title": "Review",
+      "description": "Review the implementation for security, correctness, and alignment with task requirements.",
+      "template": "templates/review.md",
+      "dependsOn": ["verify"]
+    },
+    {
+      "id": "document",
+      "title": "Document",
+      "description": "Review changes and update documentation if key decisions, behaviour changes, or constraints were introduced.",
+      "template": "templates/document.md",
+      "dependsOn": ["review"]
+    }
+  ]
+}

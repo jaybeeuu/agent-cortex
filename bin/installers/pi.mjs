@@ -31,11 +31,12 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, copyFile, readdir, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
+import { copyTree } from "../../scripts/lib/copy-tree.mjs";
 
 const PI = "pi";
 
@@ -179,28 +180,4 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
     }
   }
   return { skills, md, files, dir: skillsDir };
-}
-
-/** Recursively copy a tree; transform .md file contents, copy everything else verbatim. */
-async function copyTree(src, dest, transform, dryRun) {
-  let md = 0;
-  let files = 0;
-  const entries = await readdir(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const from = join(src, entry.name);
-    const to = join(dest, entry.name);
-    if (entry.isDirectory()) {
-      const stats = await copyTree(from, to, transform, dryRun);
-      md += stats.md;
-      files += stats.files;
-    } else if (entry.isFile()) {
-      files += 1;
-      if (entry.name.endsWith(".md")) md += 1;
-      if (dryRun) continue;
-      await mkdir(dest, { recursive: true });
-      if (entry.name.endsWith(".md")) await writeFile(to, transform(await readFile(from, "utf-8")));
-      else await copyFile(from, to);
-    }
-  }
-  return { md, files };
 }

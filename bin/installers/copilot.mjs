@@ -1,42 +1,63 @@
-// Install-time generator for the Copilot CLI flat agent files (agents/*.agent.md).
-// This is the single code path for producing those files from the canonical
-// composable sources — both entry points below call installCopilot(), so
-// install-time and build-time output can never diverge:
+// Install-time generator for the self-contained Copilot CLI plugin subtree
+// (copilot/). This is the single code path for producing that subtree — both
+// entry points below call installCopilot(), so install-time and build-time
+// output can never diverge:
 //
-//   - bin/agent-cortex.mjs          `agent-cortex install copilot` (install-time;
-//                                   `--output <dir>` overrides the target,
-//                                   `--dry-run` plans without writing)
-//   - scripts/build-copilot-agents.mjs  `pnpm build:copilot` (dev/CI: regenerates
-//                                   the committed agents/*.agent.md files in place)
+//   - bin/agent-cortex.mjs             `agent-cortex install copilot`
+//                                      (install-time; `--output <dir>` overrides
+//                                      the target, `--dry-run` plans without
+//                                      writing)
+//   - scripts/build-copilot-agents.mjs `pnpm build:copilot` (dev/CI: regenerates
+//                                      the committed copilot/ subtree in place)
 //
-// Output lands in <root>/agents/ (the default `output`) because that is the
-// directory the Copilot plugin actually loads: plugin.json declares
-// "agents": "agents/", which scans for *.agent.md files. The generated flat
-// files therefore share the agents/ directory with the canonical composable
-// dirs they are composed from (agents/<name>/) — only flat *.agent.md files are
-// written, nothing is deleted, so a generated file can never clobber a
-// composable source. `--output` exists for the same preview/test contract as the
-// claude and pi installers: point it at a scratch dir and inspect the output.
+// Output lands in <root>/copilot/ (the default `output`) — a self-contained
+// plugin directory a checkout can load directly:
 //
-//   agents/<name>.agent.md    composed from agents/<name>/agent.md +
-//                             agents/<name>/copilot/frontmatter.json +
-//                             agents/<name>/copilot/<section>.md ({{SECTION:...}}),
-//                             with {{TOOL:...}}/{{PATH:...}} substituted against
-//                             the copilot column of token-map.json.
+//   copilot/plugin.json            Copilot plugin manifest: the root
+//                                  plugin.json shape with agents/skills pointed
+//                                  at the subtree (./agents, ./skills), the
+//                                  version tracking package.json, and the
+//                                  package-only `bin` entry dropped.
+//   copilot/agents/<name>.agent.md composed from agents/<name>/agent.md +
+//                                  agents/<name>/copilot/frontmatter.json +
+//                                  agents/<name>/copilot/<section>.md
+//                                  ({{SECTION:...}}), with {{TOOL:...}}/
+//                                  {{PATH:...}} substituted against the copilot
+//                                  column of token-map.json.
+//   copilot/skills/<group>/<name>/ Copilot-compatible skill tree: each source
+//                                  skills/<group>/<name>/ copied with .md files
+//                                  token-substituted (copilot column; null-mapped
+//                                  tools dropped with a warning per the prose
+//                                  rule) and other files verbatim. Groups are
+//                                  preserved — Copilot discovers skills
+//                                  recursively.
+//   copilot/hooks.json             copied from the root hooks.json (the
+//                                  manifest's "hooks" target) so the subtree is
+//                                  complete.
 //
-// The flat files stay committed and CI drift-checks them (build:copilot +
-// git diff --exit-code -- 'agents/*.agent.md'), so a fresh clone (or a direct
-// path plugin install) ships the plugin read-ready.
+// The whole subtree is generated — never hand-edit it. The tree is regenerated
+// wholesale on every run (stale children removed first) and committed, and CI
+// drift-checks it (`pnpm build:copilot` + `git diff --exit-code -- copilot/`).
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { writeFile, mkdir, readdir, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, readdir, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { composeAgent } from "../../scripts/lib/compose-agent.mjs";
+import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
+import { copyTree } from "../../scripts/lib/copy-tree.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_ROOT = join(MODULE_DIR, "..", "..");
+const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
+
+const COPILOT = "copilot";
+
+// The token-map contract version this installer implements (token-map.json
+// "version" field). A higher map version is rejected: the contract must be
+// extended before this installer can trust it.
+const CONTRACT_VERSION = 1;
+
+const DEFAULT_WARN = (msg) => console.warn(`[copilot-installer] ${msg}`);
 
 async function isDirectory(p) {
   try {
@@ -60,8 +81,8 @@ function byName(a, b) {
 
 /**
  * Serialise the flat-file YAML frontmatter. Field order and names mirror the
- * pre-migration flat sources (description, name, tools, argument-hint) so
- * Copilot CLI sees the same agent metadata. The GENERATED comment references
+ * original pre-migration flat sources (description, name, tools, argument-hint)
+ * so Copilot CLI sees the same agent metadata. The GENERATED comment references
  * scripts/build-copilot-agents.mjs — the committed entry point — so the
  * generated bytes are identical whichever of the two entry points ran.
  */
@@ -81,19 +102,19 @@ function frontmatterYaml(name, fm) {
 /** Compose agents from agents/<name>/; every composable dir must ship a copilot harness. */
 async function buildAgents(root) {
   const files = [];
-  const entries = (await readdir(join(root, "agents"), { withFileTypes: true })).sort((a, b) =>
-    byName(a.name, b.name),
-  );
+  const agentsSrc = join(root, "agents");
+  if (!(await isDirectory(agentsSrc))) return files;
+  const entries = (await readdir(agentsSrc, { withFileTypes: true })).sort((a, b) => byName(a.name, b.name));
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue; // skip generated *.agent.md flat files and README
-    const dir = join(root, "agents", entry.name);
+    if (!entry.isDirectory()) continue; // skip docs and anything that isn't a composable agent dir
+    const dir = join(agentsSrc, entry.name);
     if (!(await isFile(join(dir, "agent.md")))) continue; // not a composable agent dir
     if (!(await isDirectory(join(dir, "copilot"))) || !(await isFile(join(dir, "copilot", "frontmatter.json")))) {
       throw new Error(`agent "${entry.name}": composable directory without copilot/frontmatter.json — define the copilot harness or exclude the agent`);
     }
 
-    const fm = await composeAgent(root, entry.name, "copilot");
+    const fm = await composeAgent(root, entry.name, COPILOT);
     files.push({
       name: entry.name,
       file: `${entry.name}.agent.md`,
@@ -104,36 +125,134 @@ async function buildAgents(root) {
 }
 
 /**
- * Generate the Copilot CLI flat agent files.
+ * Copy the grouped source skills (skills/<group>/<name>/) into the plugin's
+ * skills/<group>/<name>/ tree, preserving the groups Copilot discovers
+ * recursively. .md files are token-substituted against token-map.json's copilot
+ * column; every other file is copied verbatim. Copilot has no equivalent for
+ * some PI-native tools, so null mappings are dropped with a warning (the
+ * token-map prose rule) rather than failing the build.
+ */
+async function buildSkills(root, skillsOut, { dryRun, tokenMap, warn }) {
+  const names = [];
+  let md = 0;
+  let files = 0;
+  const skillsSrc = join(root, "skills");
+  if (!(await isDirectory(skillsSrc))) return { names, md, files, dir: skillsOut };
+
+  for (const group of (await readdir(skillsSrc)).sort(byName)) {
+    const groupDir = join(skillsSrc, group);
+    if (!(await isDirectory(groupDir))) continue;
+    for (const name of (await readdir(groupDir)).sort(byName)) {
+      const skillDir = join(groupDir, name);
+      if (!(await isFile(join(skillDir, "SKILL.md")))) continue;
+      const transform = (content) =>
+        substituteTokens(content, COPILOT, tokenMap, { dropNullTools: true, warn, context: `skill "${name}"` });
+      const stats = await copyTree(skillDir, join(skillsOut, group, name), transform, dryRun);
+      names.push(name);
+      md += stats.md;
+      files += stats.files;
+    }
+  }
+  return { names, md, files, dir: skillsOut };
+}
+
+/**
+ * Copilot plugin manifest for the subtree: the root plugin.json shape with
+ * agents/skills pointed at ./agents and ./skills, the version tracking
+ * package.json so it can never go stale, and the package-only `bin` entry
+ * dropped (the subtree ships no CLI).
+ */
+async function buildPluginJson(root) {
+  const plugin = JSON.parse(await readFile(join(root, "plugin.json"), "utf-8"));
+  const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
+  const manifest = { ...plugin, version: pkg.version, agents: "./agents", skills: "./skills" };
+  delete manifest.bin;
+  return JSON.stringify(manifest, null, 2) + "\n";
+}
+
+/**
+ * Generate the self-contained Copilot CLI plugin subtree.
  *
  * @param {object} options
- * @param {string} [options.root]   Package root (contains agents/, token-map.json, …).
+ * @param {string} [options.root]   Package root (contains agents/, skills/, plugin.json, token-map.json, …).
  *                                  Defaults to the repo containing this module.
- * @param {string} [options.output] Directory to write the flat *.agent.md files into
- *                                  (default: <root>/agents — the dir plugin.json's
- *                                  "agents": "agents/" scans for the plugin).
+ * @param {string} [options.output] Plugin target dir (default: <root>/copilot).
  * @param {boolean} [options.dryRun] Plan and report without writing anything.
- * @returns {{ output: string, agents: string[], dryRun: boolean }}
+ * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
+ * @returns {{ output: string, pluginVersion: string, agents: string[],
+ *             skills: { names: string[], md: number, files: number, dir: string },
+ *             hooks: boolean, warnings: string[], dryRun: boolean }}
  */
-export async function installCopilot({ root = DEFAULT_ROOT, output, dryRun = false } = {}) {
-  const out = output ?? join(root, "agents");
-  const files = await buildAgents(root);
+export async function installCopilot({ root = PACKAGE_ROOT, output, dryRun = false, warn = DEFAULT_WARN } = {}) {
+  const tokenMap = await loadTokenMap(root);
+  if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
+    throw new Error(
+      `token-map.json version ${tokenMap.version} is newer than the contract version ${CONTRACT_VERSION} this installer implements — upgrade agent-cortex`,
+    );
+  }
+
+  const warnings = [];
+  const warnSink = (msg) => {
+    warnings.push(msg);
+    warn(msg);
+  };
+
+  const out = output ?? join(root, "copilot");
+  const agentOut = join(out, "agents");
+  const skillOut = join(out, "skills");
+
+  // Regenerate the plugin children (removes stale output from earlier runs).
+  const cleanable = ["agents", "skills", "plugin.json", "hooks.json"];
+  if (!dryRun) {
+    for (const child of cleanable) {
+      await rm(join(out, child), { recursive: true, force: true });
+    }
+    await mkdir(out, { recursive: true });
+  }
+
+  const agents = await buildAgents(root);
+  const skills = await buildSkills(root, skillOut, { dryRun, tokenMap, warn: warnSink });
+  const pluginJson = await buildPluginJson(root);
+  const hooksSrc = join(root, "hooks.json");
+  const hooksJson = (await isFile(hooksSrc)) ? await readFile(hooksSrc, "utf-8") : null;
+
   const summary = {
     output: out,
-    agents: files.map((f) => f.name),
+    pluginVersion: JSON.parse(pluginJson).version,
+    agents: agents.map((f) => f.name),
+    skills: { names: skills.names, md: skills.md, files: skills.files, dir: skillOut },
+    hooks: hooksJson !== null,
+    warnings,
     dryRun,
   };
 
   if (dryRun) {
-    console.log(`DRY-RUN — would generate into ${out}, no files written:`);
-    console.log(`  agents: ${summary.agents.join(", ")}`);
+    console.log(`DRY-RUN — would generate the Copilot plugin into ${out}, no files written:`);
+    console.log(`  plugin.json (version ${summary.pluginVersion}, agents "./agents", skills "./skills")`);
+    console.log(`  agents → ${agentOut}/<name>.agent.md: ${summary.agents.join(", ")}`);
+    console.log(`  skills → ${skillOut}/<group>/<name>/ (token-substituted): ${summary.skills.names.length} skill(s)`);
+    if (summary.hooks) console.log(`  hooks.json (from ${hooksSrc})`);
     return summary;
   }
 
-  await mkdir(out, { recursive: true });
-  for (const { file, content } of files) {
-    await writeFile(join(out, file), content);
+  await mkdir(agentOut, { recursive: true });
+  for (const { file, content } of agents) {
+    await writeFile(join(agentOut, file), content);
   }
-  console.log(`Generated ${files.length} Copilot agent file(s): ${summary.agents.join(", ")}`);
+  console.log(`Generated ${summary.agents.length} Copilot agent file(s) → ${agentOut}: ${summary.agents.join(", ")}`);
+
+  await mkdir(skillOut, { recursive: true });
+  console.log(`Copied ${summary.skills.names.length} skill(s) → ${skillOut}/<group>/<name>/ (token-substituted)`);
+
+  await writeFile(join(out, "plugin.json"), pluginJson);
+  console.log(`Wrote ${join(out, "plugin.json")} (version ${summary.pluginVersion})`);
+
+  if (summary.hooks) {
+    await writeFile(join(out, "hooks.json"), hooksJson);
+    console.log(`Wrote ${join(out, "hooks.json")} (from ${hooksSrc})`);
+  } else {
+    console.log(`Skipped hooks.json — ${hooksSrc} not found`);
+  }
+
   return summary;
 }

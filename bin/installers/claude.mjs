@@ -52,12 +52,13 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir, chmod } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, stat, readdir, chmod } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
+import { copyTree } from "../../scripts/lib/copy-tree.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
@@ -185,29 +186,6 @@ async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn 
     }
   }
   return { names, md, files, dir: skillOut };
-}
-
-/** Recursively copy a tree; transform .md file contents, copy everything else verbatim. */
-async function copyTree(src, dest, transform, dryRun) {
-  let md = 0;
-  let files = 0;
-  for (const entry of await readdir(src, { withFileTypes: true })) {
-    const from = join(src, entry.name);
-    const to = join(dest, entry.name);
-    if (entry.isDirectory()) {
-      const stats = await copyTree(from, to, transform, dryRun);
-      md += stats.md;
-      files += stats.files;
-    } else if (entry.isFile()) {
-      files += 1;
-      if (entry.name.endsWith(".md")) md += 1;
-      if (dryRun) continue;
-      await mkdir(dest, { recursive: true });
-      if (entry.name.endsWith(".md")) await writeFile(to, transform(await readFile(from, "utf-8")));
-      else await copyFile(from, to);
-    }
-  }
-  return { md, files };
 }
 
 /** plugin.json manifest; version tracks the package so it can never go stale. */

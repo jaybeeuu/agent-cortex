@@ -218,10 +218,28 @@ jobs:
           PLUGIN_VERSION=$(node -p "require('$OUT/.claude-plugin/plugin.json').version")
           test "$PKG_VERSION" = "$PLUGIN_VERSION"
 
-      - name: Check generated Copilot agent files are up to date
+      - name: Validate the generated Copilot plugin subtree
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/copilot-plugin-check"
+          node bin/agent-cortex.mjs install copilot --output "$OUT"
+
+          # structure: every generated piece is present
+          test -f "$OUT/plugin.json"
+          test -f "$OUT/agents/ralph.agent.md"
+          test -f "$OUT/skills/engineering/tdd/SKILL.md"
+          test -f "$OUT/hooks.json"
+
+          # the manifest points at the subtree and tracks the package version
+          node -e "const m = require('$OUT/plugin.json'); if (m.agents !== './agents' || m.skills !== './skills') process.exit(1)"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PLUGIN_VERSION=$(node -p "require('$OUT/plugin.json').version")
+          test "$PKG_VERSION" = "$PLUGIN_VERSION"
+
+      - name: Check the committed Copilot plugin subtree is up to date
         run: |
           pnpm build:copilot
-          git diff --exit-code -- 'agents/*.agent.md'
+          git diff --exit-code -- copilot/
 
   release:
     name: Release
@@ -271,8 +289,8 @@ jobs:
           # the string is split by argStringToArray on whitespace (single quotes
           # survive literally), so each must be a single unquoted command token
           # that runs a pnpm script. version-packages bumps versions, syncs
-          # plugin.json, THEN regenerates the committed Copilot output
-          # (build:copilot re-derives agents/*.agent.md; the Claude plugin is
+          # plugin.json, THEN regenerates the committed Copilot subtree
+          # (build:copilot re-derives copilot/; the Claude plugin is
           # materialised at install time with the package version, so nothing
           # committed needs regenerating) before the action commits, so the
           # Version Packages PR always passes the drift gates.

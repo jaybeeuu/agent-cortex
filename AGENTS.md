@@ -14,9 +14,13 @@ available in the author's coding sessions.
 ```
 agent-cortex/
 ├── package.json           # PI package manifest (pi: { extensions, skills })
-├── plugin.json            # GitHub Copilot plugin manifest — agents, skills, MCP servers
+├── plugin.json            # GitHub Copilot plugin manifest — canonical source for copilot/plugin.json
+├── copilot/               # Self-contained Copilot plugin subtree — GENERATED, never hand-edit
+│   ├── plugin.json        #   root manifest shape (agents/skills → ./agents, ./skills)
+│   ├── agents/*.agent.md  #   composed flat agents
+│   ├── skills/<group>/<name>/   # token-substituted skill copies (groups preserved)
+│   └── hooks.json         #   copied from the root hooks.json
 ├── agents/                # Custom agents — canonical composable <name>/ dirs
-│   ├── *.agent.md         #   generated from <name>/ by scripts/build-copilot-agents.mjs
 │   ├── ralph/             #   composable format — see agents/README.md
 │   ├── plan/              #   "
 │   ├── ralph-plan/        #   "
@@ -72,11 +76,12 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 - Agents live in composable `<name>/` directories under `agents/`: a shared `agent.md` body plus
   per-harness subdirectories `pi/`, `copilot/`, `claude/` (frontmatter.json and optional section
   files) per the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, and `strategy` all use
-  the composable layout. The flat `agents/*.agent.md` files are **generated output** — composed
-  from the canonical directories by the shared `bin/installers/copilot.mjs` code path behind both
-  `agent-cortex install copilot` and `scripts/build-copilot-agents.mjs` (thin wrapper), and
-  committed for Copilot CLI (plugin.json `agents: "agents/"` scans for `*.agent.md`); never edit
-  them by hand. The Claude plugin is materialised by the install-time generator
+  the composable layout. The Copilot plugin is **generated output** — the committed,
+  self-contained `copilot/` subtree (`plugin.json` + `agents/*.agent.md` + token-substituted
+  `skills/` + `hooks.json`) is built from the canonical directories by the shared
+  `bin/installers/copilot.mjs` code path behind both `agent-cortex install copilot` and
+  `scripts/build-copilot-agents.mjs` (thin wrapper); never edit anything under `copilot/` by
+  hand. The Claude plugin is materialised by the install-time generator
   `bin/installers/claude.mjs`: a plain `agent-cortex install claude` copies it into
   `~/.agent-cortex/claude` (skills copied flat with `{{TOOL:...}}`/`{{PATH:...}}` substituted,
   never symlinked), writes the marketplace manifest at

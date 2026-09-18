@@ -8,9 +8,13 @@ pi, and [Claude Code](https://code.claude.com/docs) (as a plugin).
 
 ```
 agent-cortex/
-├── plugin.json               # Copilot plugin manifest
+├── plugin.json               # Copilot plugin manifest — canonical source for copilot/plugin.json
+├── copilot/                  # Self-contained Copilot plugin — GENERATED, never hand-edit (see below)
+│   ├── plugin.json           #   manifest: root shape, version from package.json, agents/skills → ./agents, ./skills
+│   ├── agents/*.agent.md     #   composed flat agents (ralph, ralph-plan, plan, strategy)
+│   ├── skills/<group>/<name>/ #  token-substituted skill copies (groups preserved)
+│   └── hooks.json            #   copied from the root hooks.json
 ├── agents/                   # Canonical agents — composable <name>/ dirs (see agents/README.md)
-│   ├── *.agent.md            #   ralph, ralph-plan, plan, strategy — GENERATED from <name>/ by scripts/build-copilot-agents.mjs
 │   ├── ralph/                #   composable form (shared agent.md + per-harness pi/, copilot/, claude/)
 │   ├── plan/                 #   "
 │   ├── ralph-plan/           #   "
@@ -38,19 +42,20 @@ agent-cortex/
 │       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
 │       └── claude.mjs        # materialises ~/.agent-cortex/claude + registers with Claude Code (--output <dir> = generate-only form)
 ├── scripts/
-│   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
+│   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates the copilot/ subtree)
 └── claude-extras/            # Hand-authored Claude plugin extras (no committed claude/ output)
     ├── .mcp.json             #  MCP servers (context7, github) — copied into installs
     └── scripts/              #  statusline-command.sh — copied into installs (executable)
 ```
 
 The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
-The composable `agents/<name>/` directories are the single source of truth; the flat
-`agents/*.agent.md` files are **generated** by the shared copilot installer
-(`agent-cortex install copilot`, or `scripts/build-copilot-agents.mjs` via
-`pnpm build:copilot` — both run the same `bin/installers/copilot.mjs` code path, so
-install-time and build-time output can never diverge) and committed so Copilot CLI
-(plugin.json `agents: "agents/"`) and pi keep loading the agents — don't hand-edit them.
+The composable `agents/<name>/` directories are the single source of truth. The Copilot
+plugin is **built into the committed, self-contained `copilot/` subtree** by the shared
+copilot installer (`agent-cortex install copilot`, or `scripts/build-copilot-agents.mjs`
+via `pnpm build:copilot` — both run the same `bin/installers/copilot.mjs` code path, so
+install-time and build-time output can never diverge): `copilot/plugin.json` (the root
+manifest shape pointed at `./agents` and `./skills`), the composed flat agents, the
+token-substituted skill tree, and `hooks.json` — don't hand-edit anything under it.
 The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
@@ -90,8 +95,8 @@ materialiser itself — a temp-dir install plus structural checks:
   extension→hook mapping and the rejections (auto-name, skill-stats, subagent, agent-modes).
 
 Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
-`hooks/claude/`, `claude-extras/`, `package.json`), never the generated
-`agents/*.agent.md` files or anything under the materialised `~/.agent-cortex/claude`.
+`hooks.json`, `hooks/claude/`, `claude-extras/`, `package.json`), never the generated
+`copilot/` subtree or anything under the materialised `~/.agent-cortex/claude`.
 
 ## CI
 
@@ -106,9 +111,9 @@ validates the Claude plugin **materialiser** instead of diffing a committed mirr
 it runs `node bin/agent-cortex.mjs install claude --output <tmp dir>` and checks the
 result structurally — `plugin.json` version tracks `package.json`, every generated and
 hand-authored piece is present, no literal `{{TOOL:...}}`/`{{PATH:...}}` tokens survive,
-and no symlinks leak into the copied tree. The Copilot drift check
-(`pnpm build:copilot` + `git diff --exit-code -- 'agents/*.agent.md'`) still guards the
-committed flat agent files.
+and no symlinks leak into the copied tree. The same job validates the generated Copilot
+subtree (`install copilot --output <tmp dir>`) and drift-checks the committed `copilot/`
+output (`pnpm build:copilot` + `git diff --exit-code -- copilot/`).
 
 A separate `changeset-check` job runs only on pull requests and fails any PR that
 touches a versioned path (`extensions/`, `skills/`, `agents/`, `package.json`, or
@@ -183,16 +188,15 @@ Flags:
 
 Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).
 
-### Copilot plugin (separate)
+### Copilot plugin
+
+The Copilot plugin is the committed, self-contained `copilot/` subtree; regenerate it
+with `pnpm build:copilot` after changing agents or skills, then point Copilot CLI at the
+subtree:
 
 ```sh
-copilot plugin install jaybeeuu/agent-cortex
-```
-
-Or install a local checkout:
-
-```sh
-copilot plugin install ./agent-cortex
+pnpm build:copilot            # or: agent-cortex install copilot — regenerates copilot/ in place
+copilot plugin install ./copilot
 ```
 
 ### Claude Code plugin (separate)
@@ -210,10 +214,10 @@ The generate-only `--output <dir>` form is for previewing and CI validation; the
 documented path is the plain install to `~/.agent-cortex/claude`:
 
 ```sh
-pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
-node bin/agent-cortex.mjs install copilot          # regenerates agents/*.agent.md in place
+pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates the committed copilot/ subtree)
+node bin/agent-cortex.mjs install copilot          # regenerates copilot/ in place
 node bin/agent-cortex.mjs install copilot --dry-run       # plan only, no writes
-node bin/agent-cortex.mjs install copilot --output /tmp/x # preview the flat files elsewhere
+node bin/agent-cortex.mjs install copilot --output /tmp/x # build the subtree elsewhere
 node bin/agent-cortex.mjs install claude           # materialises ~/.agent-cortex/claude + marketplace manifest AND registers it with Claude Code (user scope, idempotent)
 node bin/agent-cortex.mjs install claude --dry-run       # plan generation + registration, no writes/spawns
 node bin/agent-cortex.mjs install claude --require-register  # fail (non-zero exit) when the claude CLI can't drive registration
@@ -357,7 +361,7 @@ version — picked up at install time) — then run
 `--output <dir>` generates a preview only). There is no committed
 `claude/` output to hand-edit or regenerate: `~/.agent-cortex/claude` is generated in full
 (`.claude-plugin/plugin.json`, `agents/`, `skills/`, `hooks.json`, `.mcp.json`, `scripts/`)
-so never edit anything under it. The generated `agents/*.agent.md` files are still
-drift-checked by CI (`git diff --exit-code -- 'agents/*.agent.md'`), and CI validates the
+so never edit anything under it. The generated Copilot `copilot/` subtree is still
+drift-checked by CI (`git diff --exit-code -- copilot/`), and CI validates the
 Claude materialiser (structural checks on a temp-dir install) so sources and installer can
 never silently diverge.

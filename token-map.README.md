@@ -14,7 +14,7 @@ decisions behind the map.
 
 | id | Platform | Agent format | Plugin root |
 |---|---|---|---|
-| `copilot` | GitHub Copilot CLI | `agents/<name>/` composable dirs → generated `agents/*.agent.md` | `~/.copilot/installed-plugins/_direct/agent-cortex` |
+| `copilot` | GitHub Copilot CLI | `agents/<name>/` composable dirs → generated `copilot/agents/*.agent.md` + token-substituted `copilot/skills/` | `~/.copilot/installed-plugins/_direct/agent-cortex` |
 | `pi` | pi coding agent | `agents/<name>/` composable dirs (composed at runtime by agent-modes, or installed install-time by `agent-cortex install pi`) | `~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex` |
 | `claude` | Claude Code | `~/.agent-cortex/claude/agents/*.md` (materialised home install) | `${CLAUDE_PLUGIN_ROOT}` (env var) |
 
@@ -114,7 +114,7 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
   subagents`, `Read {{PATH:skills/workflow/plan/SKILL.md}}`.
 - Never embed a harness-specific name in the canonical sources (`agents/<name>/agent.md`,
   `skills/**/SKILL.md`) — that defeats the map. The materialised Claude plugin
-  (`~/.agent-cortex/claude`), the generated `agents/*.agent.md` files, and any installed
+  (`~/.agent-cortex/claude`), the generated `copilot/` subtree, and any installed
   copies are the only places substituted names appear.
 - When you add a new tool to an agent's frontmatter, add a row to `tools` in
   `token-map.json` in the same change — the contract treats unknown tools as errors, so a
@@ -128,7 +128,7 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
   harness token composer (scripts/lib/compose-agent.mjs) resolves `{{TOOL:...}}` /
   `{{PATH:...}}` against the map and `{{SECTION:...}}` from the per-harness section
   files; `bin/installers/copilot.mjs` is the shared generator both `pnpm build:copilot`
-  and `agent-cortex install copilot` run.
+  and `agent-cortex install copilot` run, building the committed `copilot/` subtree.
 - `bin/installers/claude.mjs` — the single Claude generator: plain
   `agent-cortex install claude` materialises the plugin into `~/.agent-cortex/claude`
   with token-substituted skills and registers it with Claude Code; `--output <dir>` is the

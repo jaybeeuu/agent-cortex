@@ -39,9 +39,10 @@ contract:
    from the tool set with a warning.
 
 Flat `agents/*.agent.md` files are parsed as a fallback when an agent has no
-composable directory — they are generated output (scripts/build-copilot-agents.mjs)
-but may exist for non-migrated agents. A composable directory always wins over its
-flat counterpart for the same agent id.
+composable directory. The agent-cortex package ships none of its own — its Copilot
+flats live in the generated `copilot/` subtree — but the fallback remains for any
+install that still does. A composable directory always wins over its flat
+counterpart for the same agent id.
 
 ## Development
 

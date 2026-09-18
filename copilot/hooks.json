@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "prompt",
+        "prompt": "Load AGENTS.md and active beads context before taking action."
+      }
+    ]
+  }
+}

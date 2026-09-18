@@ -54,7 +54,7 @@
       "ralph": ["claude"]
     },
     "sources": {
-      "copilot": "agents/<name>/ composable dirs (canonical) — composed to agents/*.agent.md by scripts/build-copilot-agents.mjs",
+      "copilot": "agents/<name>/ composable dirs (canonical) — composed into the committed copilot/ plugin subtree by scripts/build-copilot-agents.mjs / bin/installers/copilot.mjs",
       "pi": "agents/<name>/ composable dirs (canonical) — composed at runtime by the agent-modes extension",
       "claude": "agents/<name>/ composable dirs (canonical) — composed by bin/installers/claude.mjs (install-time generator, the only generator — the repo commits no claude/ output), plus agents-native/*.md for deferred agents"
     }

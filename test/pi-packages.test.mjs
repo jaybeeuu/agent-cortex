@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -8,6 +8,7 @@ import {
   npmSourceName,
   planPackageInstalls,
   provisionPiPackages,
+  runPiInstall,
 } from "../lib/pi-packages.mjs";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -33,6 +34,32 @@ function recordingRunner({ results = {} } = {}) {
     return results[source] ?? { ok: true, error: null };
   };
   return { runner, calls };
+}
+
+/** Run `fn` with PATH set to `pathValue`, restoring the previous PATH afterwards. */
+async function withPath(pathValue, fn) {
+  const original = process.env.PATH;
+  process.env.PATH = pathValue;
+  try {
+    return await fn();
+  } finally {
+    process.env.PATH = original;
+  }
+}
+
+/** Write an executable `pi` stub with the given shell body; returns its dir and cleanup. */
+async function makePiStub(body) {
+  const dir = await mkdtemp(join(tmpdir(), "pi-stub-"));
+  const file = join(dir, "pi");
+  await writeFile(file, `#!/bin/sh\n${body}\n`);
+  await chmod(file, 0o755);
+  return { dir, cleanup: async () => rm(dir, { recursive: true, force: true }) };
+}
+
+/** A directory with nothing on PATH, so any external command lookup fails. */
+async function makeEmptyPathDir() {
+  const dir = await mkdtemp(join(tmpdir(), "pi-stub-empty-"));
+  return { dir, cleanup: async () => rm(dir, { recursive: true, force: true }) };
 }
 
 // ─── Manifest ────────────────────────────────────────────────────────────────
@@ -113,6 +140,38 @@ describe("planPackageInstalls", () => {
 
 // ─── Provisioning ────────────────────────────────────────────────────────────
 
+describe("runPiInstall", () => {
+  it("degrades to a result when the pi CLI is not on PATH", async () => {
+    const empty = await makeEmptyPathDir();
+    try {
+      const result = await withPath(empty.dir, () => runPiInstall("npm:pi-questions"));
+      assert.deepEqual(result, { ok: false, error: "pi CLI not found on PATH" });
+    } finally {
+      await empty.cleanup();
+    }
+  });
+
+  it("maps a successful pi install to ok", async () => {
+    const stub = await makePiStub("exit 0");
+    try {
+      const result = await withPath(stub.dir, () => runPiInstall("npm:pi-questions"));
+      assert.deepEqual(result, { ok: true, error: null });
+    } finally {
+      await stub.cleanup();
+    }
+  });
+
+  it("maps a failing pi install to its stderr", async () => {
+    const stub = await makePiStub('echo "offline: no registry" >&2\nexit 1');
+    try {
+      const result = await withPath(stub.dir, () => runPiInstall("npm:pi-questions"));
+      assert.deepEqual(result, { ok: false, error: "offline: no registry" });
+    } finally {
+      await stub.cleanup();
+    }
+  });
+});
+
 describe("provisionPiPackages", () => {
   it("installs missing packages and skips the ones already present", async () => {
     const fx = await makePiRoot({ declared: ["npm:pi-questions"], installed: ["pi-questions"] });
@@ -172,6 +231,30 @@ describe("provisionPiPackages", () => {
       assert.deepEqual(result.failed, [{ source: "npm:pi-questions", error: "offline" }]);
       assert.ok(warnings.some((w) => w.includes("npm:pi-questions")), "failure is surfaced as a warning");
     } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("uses the pi CLI runner by default and warns when it is missing", async () => {
+    const fx = await makePiRoot();
+    const empty = await makeEmptyPathDir();
+    try {
+      const warnings = [];
+      const result = await withPath(empty.dir, () =>
+        provisionPiPackages({
+          required: ["npm:pi-questions"],
+          piRoot: fx.root,
+          warn: (msg) => warnings.push(msg),
+        }),
+      );
+
+      assert.deepEqual(result.failed, [{ source: "npm:pi-questions", error: "pi CLI not found on PATH" }]);
+      assert.ok(
+        warnings.some((w) => w.includes("pi CLI not found on PATH")),
+        "missing CLI is surfaced as a warning, not a thrown error",
+      );
+    } finally {
+      await empty.cleanup();
       await fx.cleanup();
     }
   });

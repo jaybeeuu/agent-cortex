@@ -110,8 +110,11 @@ function printPiInstall(result) {
     process.stdout.write(`  ✓ ${agent.name}.agent.md → ${agent.filePath}\n`);
   }
   process.stdout.write(`  ✓ Substituted ${result.skills.md} markdown file(s) across ${result.skills.skills} skill(s) → ${result.skills.dir}\n`);
-  for (const source of result.packages?.installed ?? []) {
-    process.stdout.write(`  ✓ Installed pi package ${source}\n`);
+  // A dry run installs nothing, so report the plan — otherwise the documented
+  // "show what would be installed" contract prints no packages at all.
+  const packages = result.packages ?? { planned: [], installed: [] };
+  for (const source of result.dryRun ? packages.planned : packages.installed) {
+    process.stdout.write(`  ✓ ${result.dryRun ? "Would install" : "Installed"} pi package ${source}\n`);
   }
   for (const warning of result.warnings) {
     process.stdout.write(`  ⚠ ${warning}\n`);

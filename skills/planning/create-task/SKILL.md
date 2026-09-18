@@ -33,15 +33,23 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
    bd dep add <new-id> <parent> --type parent-child
    ```
 
-2. **Check for an existing classification label.** Run `bd label list <id>`. If `implementation-type` is already present, skip step 3 — re-classifying a labelled bead wastes a subagent call.
+2. **Classify deterministically.** Run the `classify-bead` classifier — it resolves an existing label, the legacy `## Type` field, and explicit heuristic signals without a model call, and applies the label itself when it resolves:
 
-3. **Classify the bead.** Delegate to the `classify-bead` skill as a subagent via {{TOOL:task}} — do not classify inline. It returns `AFK` or `HITL` and applies the `implementation-type` label.
+   ```bash
+   # Run from the TARGET project's directory — bd resolves its beads DB from cwd.
+   node <skill-scripts>/../../classify-bead/scripts/classify-bead.mjs <new-id>
+   ```
 
-4. **Branch on classification.**
+   - `"classification": "afk" | "hitl"` → the label is applied; branch on that class in step 3.
+   - `"escalate": true` → delegate to the `classify-bead` skill as a subagent via {{TOOL:task}}; it applies the rubric and tags the bead.
+
+   `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded. Sibling skills sit alongside this skill's directory in every harness, so `../../classify-bead/scripts/` resolves to the classifier.
+
+3. **Branch on classification.**
    - **HITL** — stop here. Report the bead ID and classification to the caller. Do not create pipeline chores: a human drives the work, so the chore tree does not apply.
-   - **AFK** — continue to step 5.
+   - **AFK** — continue to step 4.
 
-5. **Expand into pipeline stage chores.** Run the `create-chores` script, which reads this skill's `pipeline.json` and deterministically creates all stage chores plus the PR gate bead in one shot:
+4. **Expand into pipeline stage chores.** Run the `create-chores` script, which reads this skill's `pipeline.json` and deterministically creates all stage chores plus the PR gate bead in one shot:
 
    ```bash
    # Run from the TARGET project's directory — bd resolves its beads DB from cwd;
@@ -53,12 +61,13 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
    `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path.
 
-6. **Report.** Return the parent bead ID, the classification (`AFK`), and the created child bead IDs from the script output (including `featurePrReview`).
+5. **Report.** Return the parent bead ID, the classification (`AFK`), and the created child bead IDs from the script output (including `featurePrReview`).
 
 ## Red Flags
 
 - **Running the script from the wrong directory.** Chores land in whatever `.beads` tree `bd` resolves from cwd — the target project's root is the only safe cwd.
-- **Classifying inline.** The `classify-bead` rubric is a subagent's job (with a label short-circuit); inlining yours means re-reading bead content and drifting from the rubric.
+- **Spawning the `classify-bead` subagent when the classifier already resolved the bead.** The deterministic script is the short-circuit; a subagent is only for `escalate: true`.
+- **Skipping the classifier and classifying by hand.** The rubric is a subagent's job; a hand-rolled guess drifts from it.
 - **Expanding an HITL bead.** If classification is HITL, stop — creating a chore tree for human-driven work is wrong.
 - **Hardcoding `<skill-scripts>`.** The install path differs per harness (plugin cache, installed-plugins, dev checkout); resolve it at runtime.
 
@@ -66,7 +75,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 | Rationalization | Rebuttal |
 |---|---|
-| "I know this task is AFK — I'll skip the classify-bead call" | Classification is a rubric check against the full bead body; assumptions masked by familiarity cause mislabelled work to hit the wrong queue. |
+| "I know this task is AFK — I'll skip the classifier" | The classifier resolves the label, `## Type`, and explicit signals in one command; skipping it leaves the bead unlabelled or forces a needless subagent. |
 | "I'll create the chores by hand instead of running the script" | The script is the single source of truth for titles, labels, dep chains, and the PR gate. Hand-created chores drift silently. |
 | "The pipeline is overkill for this small task" | If the work is worth tracking at all, the stage chore tree is what lets ralph execute and gate it. Not ready for that? Use `record-idea`. |
 
@@ -77,7 +86,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 ## Cross-skill references
 
-- `classify-bead` — classify the new bead via subagent (step 3).
+- `classify-bead` — deterministic classifier first, rubric subagent only on escalation (step 2).
 
 ## Examples
 
@@ -93,7 +102,7 @@ The full bead-property contract (titles, labels, dependencies per chore and for 
 
 - [ ] Parent bead exists with the correct title, description, and priority.
 - [ ] `parent-child` dependency added when a parent epic was supplied.
-- [ ] `implementation-type` label present on the parent bead (`bd label list <id>`).
+- [ ] `implementation-type` label present on the parent bead (`bd label list <id>`) — resolved by the classifier or, on escalation, the rubric subagent.
 - [ ] HITL path: no pipeline chores created, caller told the classification. AFK path: script ran from the target project's cwd and its JSON contains every stage ID plus `featurePrReview`.
 - [ ] Chore titles/labels/dependencies match the contract (`[<parent-id>] <stage title>`, `stage:<id>`, `parent-child` to parent, `blocks` per `dependsOn`), verified against `REFERENCE.md`.
 - [ ] PR gate task exists with `implementation-type:hitl` + `lifecycle:feature-pr` labels and blocks the final document stage chore.

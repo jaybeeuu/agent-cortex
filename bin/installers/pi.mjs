@@ -36,6 +36,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
+import { loadRequiredPackages, provisionPiPackages } from "../../lib/pi-packages.mjs";
 
 const PI = "pi";
 
@@ -76,8 +77,17 @@ async function isFile(p) {
  * @param {boolean} [options.dryRun]     Compute and report without writing anything
  * @param {string} [options.pluginRoot]  Override plugin_root used for {{PATH:...}}
  *                                       resolution (default: token-map pi value)
+ * @param {boolean} [options.provisionPackages]  Install the third-party pi packages
+ *                                       declared in the package manifest (package.json
+ *                                       pi.packages) into the pi user scope — e.g.
+ *                                       pi-questions (ask_questions) and pi-web-access
+ *                                       (fetch_content). Off by default; `agent-cortex
+ *                                       install pi` turns it on for a real install.
+ * @param {(source: string) => Promise<{ok: boolean, error: string | null}>} [options.runInstall]
+ *                                       Installer for one package source (default: pi install)
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`
  * @returns {{ agents: {name:string, filePath:string}[], skills: {skills:number, md:number, files:number, dir:string},
+ *             packages: {planned:string[], installed:string[], failed:{source:string, error:string}[]} | null,
  *             warnings: string[], dryRun: boolean, agentsDir: string, skillsDir: string }}
  */
 export async function installPi(options = {}) {
@@ -104,7 +114,20 @@ export async function installPi(options = {}) {
   const agents = await installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, warn });
   const skills = await installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn });
 
-  return { agents, skills, warnings, dryRun, agentsDir, skillsDir };
+  // Third-party packages give the composed agents their pi tools (ask_questions
+  // from pi-questions, fetch_content from pi-web-access). They are declared in
+  // the package manifest and only provisioned on a real install.
+  const packages = options.provisionPackages
+    ? await provisionPiPackages({
+        required: await loadRequiredPackages(root),
+        piRoot: output,
+        dryRun,
+        runInstall: options.runInstall,
+        warn,
+      })
+    : null;
+
+  return { agents, skills, packages, warnings, dryRun, agentsDir, skillsDir };
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────

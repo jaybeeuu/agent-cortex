@@ -65,8 +65,11 @@ async function writeFixture(fx, relPath, content) {
 
 /** Seed a minimal but realistic package tree (agents + token-map + skills). */
 async function seedPackage(fx, opts = {}) {
-  const { agents = {}, skills = {}, tokenMap: map, version } = opts;
+  const { agents = {}, skills = {}, tokenMap: map, version, packages } = opts;
   await writeFixture(fx, "token-map.json", JSON.stringify(map ?? tokenMap(version ? { version } : {})));
+  if (packages) {
+    await writeFixture(fx, "package.json", JSON.stringify({ name: "fixture", pi: { packages } }));
+  }
   for (const [name, def] of Object.entries(agents)) {
     await writeFixture(fx, `agents/${name}/agent.md`, def.body ?? `# ${name}\nBody of ${name}.`);
     await writeFixture(
@@ -237,6 +240,105 @@ describe("installPi — agent composition", () => {
         agents: { alpha: { body: "# alpha" } },
       });
       await assert.rejects(installPi({ root: fx.root, output: fx.output }), /version 99/);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Third-party package provisioning ────────────────────────────────────────
+
+describe("installPi — package provisioning", () => {
+  function recordingRunner() {
+    const calls = [];
+    return {
+      calls,
+      runInstall: async (source) => {
+        calls.push(source);
+        return { ok: true, error: null };
+      },
+    };
+  }
+
+  it("does not touch the pi package store unless provisioning is requested", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        packages: ["npm:pi-questions"],
+      });
+      const { calls, runInstall } = recordingRunner();
+
+      const result = await installPi({ root: fx.root, output: fx.output, runInstall });
+
+      assert.deepEqual(calls, []);
+      assert.equal(result.packages, null);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("installs the packages declared in the package manifest when enabled", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        packages: ["npm:pi-questions", "npm:pi-web-access@0.10.7"],
+      });
+      const { calls, runInstall } = recordingRunner();
+
+      const result = await installPi({ root: fx.root, output: fx.output, provisionPackages: true, runInstall });
+
+      assert.deepEqual(calls, ["npm:pi-questions", "npm:pi-web-access@0.10.7"]);
+      assert.deepEqual(result.packages.installed, ["npm:pi-questions", "npm:pi-web-access@0.10.7"]);
+      assert.deepEqual(result.packages.failed, []);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("dry-run reports the package plan without installing", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        packages: ["npm:pi-questions"],
+      });
+      const { calls, runInstall } = recordingRunner();
+
+      const result = await installPi({
+        root: fx.root,
+        output: fx.output,
+        provisionPackages: true,
+        dryRun: true,
+        runInstall,
+      });
+
+      assert.deepEqual(calls, []);
+      assert.deepEqual(result.packages.planned, ["npm:pi-questions"]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("warns but still installs agents when a package install fails", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        packages: ["npm:pi-questions"],
+      });
+
+      const result = await installPi({
+        root: fx.root,
+        output: fx.output,
+        provisionPackages: true,
+        runInstall: async () => ({ ok: false, error: "offline" }),
+      });
+
+      assert.ok(await pathExists(join(fx.output, "agents", "alpha.agent.md")), "agents still installed");
+      assert.deepEqual(result.packages.failed, [{ source: "npm:pi-questions", error: "offline" }]);
+      assert.ok(result.warnings.some((w) => w.includes("npm:pi-questions")), "failure surfaced as a warning");
     } finally {
       await fx.cleanup();
     }

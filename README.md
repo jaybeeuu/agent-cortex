@@ -149,11 +149,18 @@ ln -sf "$PWD/agent-cortex/pi/settings.json" ~/.pi/agent/settings.json
 
 ### Pi package dependencies
 
-These packages are declared in `pi/settings.json` and auto-installed by pi:
+These packages are declared in the package manifest (`package.json` → `pi.packages`) and
+provisioned by `agent-cortex install pi`, so a clean `~/.pi` gets the tools they provide
+without a manual `pi install`. They are also declared in `pi/settings.json` for the
+symlinked-checkout workflow, where pi auto-installs them.
 
 | Package | Version | Purpose |
 |---|---|---|
-| [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis |
+| [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis (`fetch_content`) |
+| [`pi-questions`](https://www.npmjs.com/package/pi-questions) | latest | Structured interactive questions (`ask_questions`) |
+
+Pass `--no-provision` to skip the package install step (e.g. offline machines); a
+missing `pi` CLI or failed install warns and leaves the rest of the install intact.
 
 Desktop notifications are handled by the local `extensions/notify/` extension
 (replaces the former `pi-notify` dependency). It sends an OSC desktop
@@ -180,6 +187,7 @@ Flags:
 | `--dry-run` | Show what would be installed without writing anything |
 | `--output <dir>` | Install into `<dir>/agents` and `<dir>/skills` (default `~/.pi/agent`) |
 | `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
+| `--no-provision` | Skip provisioning the third-party pi packages declared in `package.json` `pi.packages` (default: install them via the `pi` CLI) |
 
 Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).
 

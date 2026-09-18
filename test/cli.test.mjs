@@ -117,6 +117,11 @@ describe("parseArgs", () => {
     assert.deepStrictEqual(result, { command: "install", harness: "pi", pluginRoot: "/tmp/plugin" });
   });
 
+  it("parses --no-provision for install", async () => {
+    const result = parseArgs(["install", "pi", "--no-provision"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "pi", noProvision: true });
+  });
+
   it("combines multiple install options", async () => {
     const result = parseArgs(["install", "pi", "--dry-run", "--output", "/tmp/out", "--plugin-root", "/tmp/plugin"]);
     assert.deepStrictEqual(result, {
@@ -215,7 +220,9 @@ describe("CLI integration", () => {
   });
 
   it("exits 0 for install pi", async () => {
-    const { exitCode, stdout } = await runCli(["install", "pi"]);
+    // --no-provision keeps this hermetic: without it the CLI would install the
+    // third-party packages declared in the package manifest.
+    const { exitCode, stdout } = await runCli(["install", "pi", "--no-provision"]);
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes("pi"));
   });

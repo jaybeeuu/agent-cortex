@@ -25,6 +25,7 @@ agent-cortex/
 │   ├── style/                #  style-code, style-tests, style-comms, style-documentation
 │   └── workflow/             #  ralph, run-pipeline-stage, create-task, …
 ├── extensions/               # pi extensions (pi only)
+│   ├── agent-guardrails/     #   behavioural circuit-breakers in the system prompt
 │   ├── agent-modes/          #   switchable agent modes (reads composable agents/)
 │   ├── skill-stats/
 │   └── notify/
@@ -87,7 +88,7 @@ materialiser itself — a temp-dir install plus structural checks:
   the plugin's `hooks/` so hook commands can reach them via `$CLAUDE_PLUGIN_ROOT`. Hand-authored
   extras — `.mcp.json` and `scripts/` — are copied into every install from the `claude-extras/`
   dir, which is their canonical store. See `docs/claude-hooks.md` for the
-  extension→hook mapping and the rejections (auto-name, skill-stats, subagent, agent-modes).
+  extension→hook mapping and the rejections (auto-name, agent-guardrails, skill-stats, subagent, agent-modes).
 
 Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
 `hooks/claude/`, `claude-extras/`, `package.json`), never the generated
@@ -337,7 +338,7 @@ extension→hook audit.
 #### Not ported / follow-ups
 
 - Only `session-start` and `notify` had Claude equivalents (both ported to hooks); the other
-  pi `extensions/` (auto-name, skill-stats, subagent, agent-modes) have none — the audit and
+  pi `extensions/` (auto-name, agent-guardrails, skill-stats, subagent, agent-modes) have none — the audit and
   rejection rationale live in `docs/claude-hooks.md`.
 - Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume
   after a PR merge (instead of manual re-invocation).

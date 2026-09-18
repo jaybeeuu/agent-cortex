@@ -45,6 +45,11 @@ Anything else escalates. Widening this list trades model calls for
 misclassification risk; only add phrasing that maps directly onto a rubric
 criterion.
 
+Matching is literal, not semantic, and the patterns are not negation-aware —
+"no human approval is required" still matches the HITL tier. The error direction
+is toward HITL, which is visible and correctable, so prefer unambiguous phrasing
+over more patterns.
+
 ## CLI
 
 ```bash
@@ -70,9 +75,11 @@ Reproduce it against the repo's beads DB:
 node <skill-scripts>/classify-bead.mjs --audit --limit 100
 ```
 
-Measured 2026-09-18 on `agent-cortex`: of the 100 most recently created beads,
-80 resolved deterministically (all via an existing label) and 20 would need the
-rubric. That 80% is the share of classifications that skip the model entirely
-when the caller runs the classifier before spawning a subagent. The rate is
-higher on backlogs that were labelled at planning time; freshly created beads
-with neither a label nor a `## Type` field lean on the heuristic tier.
+Measured 2026-09-18 on `agent-cortex`: 78 of the newest 100 beads resolved
+deterministically (77 from an existing label, 1 from a heuristic) and 22 needed
+the rubric. That is the share of classifications that skip the model entirely
+when the caller runs the classifier before spawning a subagent. The sample is
+the newest 100 beads, so the ratio moves as beads are created — re-run the
+command rather than quoting this snapshot. The deterministic rate is higher on
+backlogs labelled at planning time; freshly created beads with neither a label
+nor a `## Type` field lean on the heuristic tier.

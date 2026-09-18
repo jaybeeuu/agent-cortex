@@ -8,4 +8,4 @@ existing `implementation-type` label, the legacy `## Type` field, then conservat
 heuristic signals, and applies the label itself; only beads with no deterministic signal
 escalate to the rubric subagent. `create-task` and `write-a-prd` now run the classifier
 before spawning a subagent, and `--audit` reports the deterministic-vs-rubric split
-(measured 80% deterministic across the 100 most recently created `agent-cortex` beads).
+over recent beads.

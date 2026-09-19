@@ -47,7 +47,9 @@ agent-cortex/
 ## Versioning
 
 Use `pnpm changeset` for all version bumps. Never edit versions manually.
-`package.json`, `plugin.json`, and `CHANGELOG.md` stay in lockstep automatically.
+`package.json`, `plugin.json`, `copilot/plugin.json`, and `CHANGELOG.md` stay in lockstep
+automatically — `scripts/sync-plugin-version.sh` syncs both manifests during
+`pnpm version-packages`.
 See the `style-versioning` skill for the full workflow.
 
 ## Changelog

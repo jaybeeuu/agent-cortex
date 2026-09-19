@@ -144,7 +144,7 @@ When composing the final agent file for a specific harness:
 3. `{{TOOL:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
    canonical tool/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
    `build:copilot` and by `bin/installers/claude.mjs` / `bin/installers/pi.mjs`) resolves them when
-   generating the flat files / installing for claude and pi; pi's `agent-modes` extension does the
+   generating the Copilot subtree / installing for claude and pi; pi's `agent-modes` extension does the
    same at runtime. See the `contract` section of `token-map.json` and
    `token-map.README.md` for the rules.
 
@@ -201,7 +201,8 @@ agents/plan/
 2. Migrate ralph agent first (proves the pattern) — DONE
 3. Migrate plan, ralph-plan, strategy agents — DONE
 4. Update the installer/composer to handle the new format
-5. Remove old `*.agent.md` files — DONE (the flat files are now **generated output**, see below)
+5. Remove old `*.agent.md` files — DONE (root flat files are gone; the generated output
+   now lives in the committed `copilot/` subtree, see below)
 
 All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout and the
 committed, self-contained `copilot/` plugin subtree is built from them:

@@ -123,8 +123,9 @@ the `style-versioning` skill documents the format.
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when
 changesets are pending, then publishes to npm once it lands. The version step runs
-`pnpm version-packages` — bumping `package.json`, syncing `plugin.json`, and
-regenerating the committed Copilot agent files (the Claude plugin is materialised at
+`pnpm version-packages` — bumping `package.json`, syncing both Copilot manifests
+(`plugin.json` and `copilot/plugin.json`, via `scripts/sync-plugin-version.sh`), and
+regenerating the committed `copilot/` subtree (the Claude plugin is materialised at
 install time with the package version, so it has no committed output to regenerate)
 so the drift gates stay green; the
 publish step runs `pnpm publish-package` (pack + provenance publish). Publish

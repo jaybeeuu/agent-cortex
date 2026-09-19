@@ -16,6 +16,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 |---|---|---|
 | `session-start.ts` | `SessionStart` hook commands | **Port** (extended) |
 | `auto-name.ts` | — | **Reject** — built-in |
+| `agent-guardrails/` | — | **Reject** — pi-only (no system-prompt hook) |
 | `notify/` | `Notification` hook + `scripts/notify.mjs` | **Port** |
 | `skill-stats/` | — | **Reject** — no equivalent |
 | `subagent/` | — | **Reject** — native |
@@ -75,6 +76,17 @@ desktop ping on every pause), `auth_success` and `quota_auto_resume_*` (not task
 events), and `elicitation_*` (dialog trivia). Skipped from the pi original: the LLM
 response summary (Claude's notification message is already the summary) and the tmux
 session:window.pane title (unavailable to hooks; the plugin title suffices).
+
+## `agent-guardrails/` → Reject (pi-only)
+
+pi appends behavioural circuit-breakers (retry limits, check-in triggers,
+atomic-change discipline) to the system prompt once per user prompt via
+`before_agent_start` — which fires before the agent loop, so the block applies to
+every turn of that run. Claude Code has no hook that can modify the system prompt;
+its nearest surface, `SessionStart` `additionalContext`, injects conversation
+context rather than system instructions. The rules are harness-agnostic prose, so
+a future port could append them to the existing ported SessionStart hook — out of
+scope for this pi-first slice.
 
 ## `skill-stats/` → Reject (no equivalent)
 

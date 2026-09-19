@@ -25,7 +25,7 @@ description: Create a PRD through user interview, codebase exploration, and modu
 3. **Interview relentlessly.** Walk down each branch of the design tree, resolving dependencies between decisions one by one, until the user's understanding and yours are identical. Every open question at this point becomes ambiguity in the PRD.
 4. **Sketch the modules.** List the major modules to build or modify, actively looking for deep modules — ones that encapsulate rich behaviour behind a simple, stable interface testable in isolation. Confirm the list with the user, plus which modules they want tests written for.
 5. **Write the PRD.** Render the template in `FORMAT.md` (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Make the user-story list extremely extensive so it covers all aspects of the feature.
-6. **File the bead.** Create the epic with `bd create "<title>" --type epic --priority P1 --body-file -`, piping the rendered PRD to stdin, then run `classify-bead` (as a subagent, per its invocation instructions) to label it AFK or HITL.
+6. **File the bead.** Create the epic with `bd create "<title>" --type epic --priority P1 --body-file -`, piping the rendered PRD to stdin, then run the `classify-bead` classifier (`node <this-skill-dir>/../classify-bead/scripts/classify-bead.mjs <epic-id>`, run from the target project's cwd) to label it AFK or HITL. Escalate to the `classify-bead` subagent only when the classifier reports `escalate: true`.
 
 Run the steps in order. Skip a step only when the user confirms it is unnecessary (e.g. the codebase is already explored).
 
@@ -59,7 +59,7 @@ Run the steps in order. Skip a step only when the user confirms it is unnecessar
 - Use `record-idea` when the idea is not yet ready to build.
 - Use `write-a-ticket` when the spec targets an external tracker rather than a bead.
 - Run `prd-to-tasks` on the filed epic to break the PRD into an executable backlog.
-- Run `classify-bead` on the new epic — the repo labels every new bead AFK or HITL.
+- Run the `classify-bead` classifier on the new epic — the repo labels every new bead AFK or HITL. Its `scripts/` directory sits next to this skill's directory in every harness, so `<this-skill-dir>/../classify-bead/scripts/classify-bead.mjs` resolves it. Escalate to its rubric subagent only when the classifier reports `escalate: true`.
 
 ## Examples
 

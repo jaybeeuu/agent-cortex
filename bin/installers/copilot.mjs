@@ -30,29 +30,14 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { writeFile, mkdir, readdir, stat } from "node:fs/promises";
+import { writeFile, mkdir, readdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { composeAgent } from "../../scripts/lib/compose-agent.mjs";
+import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = join(MODULE_DIR, "..", "..");
-
-async function isDirectory(p) {
-  try {
-    return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-async function isFile(p) {
-  try {
-    return (await stat(p)).isFile();
-  } catch {
-    return false;
-  }
-}
 
 function byName(a, b) {
   return a.localeCompare(b);

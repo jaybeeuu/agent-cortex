@@ -130,26 +130,40 @@ are sourced entirely from `main`.
 
 ## Installation
 
-### Symlink as global pi config
+### Pi config files (`settings.json` + `keybindings.json`)
 
-This repo's `pi/settings.json` is symlinked to `~/.pi/agent/settings.json`,
-making it the canonical store for personal pi agent configuration:
+`agent-cortex install pi` materialises `~/.pi/agent/settings.json` and
+`~/.pi/agent/keybindings.json` as real CLI-managed files — the legacy symlinks
+into this repo's `pi/` directory are gone. `pi/settings.json` and
+`pi/keybindings.json` are the committed **templates**; the live files exist only
+on the machine, so re-run the installer after pulling changes.
 
-```sh
-~/.pi/agent/settings.json -> /path/to/agent-cortex/pi/settings.json
-```
+`settings.json` is merged. The template supplies defaults for keys the live file
+lacks, every value already present in the live file wins, and keys the template
+does not know about are preserved — so personal config (and anything pi itself
+wrote) survives re-install. The one key the CLI owns outright is `packages`: it
+is rebuilt from the template with the repo path entry resolved against the live
+settings file.
 
-All `pi install` / `pi remove` commands write to this file, and changes are
-committed to git. On a fresh machine:
+Two consequences follow from that precedence:
 
-```sh
-git clone https://github.com/jaybeeuu/agent-cortex
-ln -sf "$PWD/agent-cortex/pi/settings.json" ~/.pi/agent/settings.json
-```
+- **Template changes to non-`packages` keys never reach an existing install.**
+  Because the live value always wins, editing a default in `pi/settings.json`
+  only affects a fresh install (or a manually deleted live file) — edit the live
+  file to adopt a new default.
+- **`pi install npm:<pkg>` entries do not survive re-install.** `packages` is
+  rebuilt from the template, so any `npm:` package pi added to the live file is
+  dropped on the next `agent-cortex install pi`. Declare long-lived packages in
+  the repo template instead.
+
+An unparseable live `settings.json` is warned about and overwritten.
+`keybindings.json` follows a checksum rule: written from the template, refreshed
+when the template changes, and left untouched once you edit it by hand (delete
+it to re-adopt the template).
 
 ### Pi package dependencies
 
-These packages are declared in `pi/settings.json` and auto-installed by pi:
+These packages are declared in the template `pi/settings.json` and auto-installed by pi:
 
 | Package | Version | Purpose |
 |---|---|---|
@@ -171,6 +185,7 @@ composed agents and token-substituted skills into pi's user scope:
 agent-cortex install pi
 # → ~/.pi/agent/agents/<name>.agent.md (ralph, plan, ralph-plan, strategy)
 # → ~/.pi/agent/skills/  (token-substituted skill tree)
+# → ~/.pi/agent/settings.json + keybindings.json (merged from the repo templates)
 ```
 
 Flags:
@@ -178,7 +193,7 @@ Flags:
 | Flag | Meaning |
 | --- | --- |
 | `--dry-run` | Show what would be installed without writing anything |
-| `--output <dir>` | Install into `<dir>/agents` and `<dir>/skills` (default `~/.pi/agent`) |
+| `--output <dir>` | Install into `<dir>/agents`, `<dir>/skills` and the config files (default `~/.pi/agent`) |
 | `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
 
 Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).

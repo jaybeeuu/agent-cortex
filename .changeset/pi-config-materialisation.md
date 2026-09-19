@@ -1,0 +1,5 @@
+---
+"@jaybeeuu/agent-cortex": minor
+---
+
+`agent-cortex install pi` now materialises the pi config files as real CLI-managed files, replacing the legacy symlinks into the repo's `pi/` directory. `settings.json` is merged — the committed template supplies defaults, values already present (personal config and anything pi wrote) win, and the CLI owns the `packages` list with the repo path entry resolved against the settings file — so personal config survives re-install. `keybindings.json` is written from the template, refreshed when the template changes, and left alone once edited by hand. The generated header lives in a top-level `"//"` key because pi parses both files with a bare `JSON.parse`. `--dry-run` prints the plan (including "would remove symlink …") and `--output <dir>` keeps the generate-only semantics.

@@ -20,15 +20,21 @@ async function pathExists(p) {
   }
 }
 
-function runCli(args) {
+/** Run the CLI; optionally pass a custom env (e.g. a fake HOME). */
+function runCli(args, env = {}) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [CLI_PATH, ...args], (error, stdout, stderr) => {
-      resolve({
-        exitCode: error ? error.code ?? 1 : 0,
-        stdout: stdout,
-        stderr: stderr,
-      });
-    });
+    execFile(
+      process.execPath,
+      [CLI_PATH, ...args],
+      { env: { ...process.env, ...env } },
+      (error, stdout, stderr) => {
+        resolve({
+          exitCode: error ? error.code ?? 1 : 0,
+          stdout: stdout,
+          stderr: stderr,
+        });
+      },
+    );
   });
 }
 
@@ -115,6 +121,11 @@ describe("parseArgs", () => {
   it("parses --plugin-root <dir> for install", async () => {
     const result = parseArgs(["install", "pi", "--plugin-root", "/tmp/plugin"]);
     assert.deepStrictEqual(result, { command: "install", harness: "pi", pluginRoot: "/tmp/plugin" });
+  });
+
+  it("parses --no-provision for install", async () => {
+    const result = parseArgs(["install", "pi", "--no-provision"]);
+    assert.deepStrictEqual(result, { command: "install", harness: "pi", noProvision: true });
   });
 
   it("combines multiple install options", async () => {
@@ -215,7 +226,9 @@ describe("CLI integration", () => {
   });
 
   it("exits 0 for install pi", async () => {
-    const { exitCode, stdout } = await runCli(["install", "pi"]);
+    // --no-provision keeps this hermetic: without it the CLI would install the
+    // third-party packages declared in the package manifest.
+    const { exitCode, stdout } = await runCli(["install", "pi", "--no-provision"]);
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes("pi"));
   });
@@ -243,6 +256,23 @@ describe("CLI integration", () => {
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes("ralph.agent.md"));
     assert.ok(stdout.includes("dry-run"));
+  });
+
+  it("install pi --dry-run lists the pi packages it would install", async () => {
+    // Fake HOME keeps the pi user scope hermetic: both manifest packages are
+    // missing, so the plan contains exactly the declared sources.
+    const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-home-"));
+    try {
+      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { HOME: fakeHome });
+      assert.equal(exitCode, 0);
+      assert.ok(stdout.includes("Would install pi package npm:pi-questions"), "planned pi-questions shown");
+      assert.ok(
+        stdout.includes("Would install pi package npm:pi-web-access@0.10.7"),
+        "planned pi-web-access shown",
+      );
+    } finally {
+      await rm(fakeHome, { recursive: true, force: true });
+    }
   });
 
   it("exits 0 for install pi --output <tmp> and writes agent files", async () => {

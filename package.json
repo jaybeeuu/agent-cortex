@@ -37,6 +37,10 @@
     ],
     "skills": [
       "./skills"
+    ],
+    "packages": [
+      "npm:pi-questions",
+      "npm:pi-web-access@0.10.7"
     ]
   }
 }

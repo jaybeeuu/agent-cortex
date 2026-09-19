@@ -56,6 +56,9 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   Tooling code in `bin/`, `scripts/`, `lib/`, `hooks/`, and `test/` must be async —
   enforced by `scripts/check-no-sync.mjs` (runs via `pnpm lint`). Skill-owned
   scripts (`skills/*/scripts`) and `extensions/` are the remaining sync surfaces.
+- **Share generic tooling helpers in `scripts/lib/`**: tooling code (installers under
+  `bin/installers/`, hooks, other scripts) imports shared utilities from `scripts/lib/`
+  (e.g. `compose-agent.mjs`, `fs.mjs`) rather than redefining them inline.
 
 ## Skill Conventions
 

@@ -5,7 +5,7 @@ description: Classify a bead as AFK or HITL and apply the implementation-type la
 
 # Classify Bead
 
-Determine whether a bead requires human action (HITL) or can be completed autonomously by an agent (AFK), then persist the result as an `implementation-type` label.
+Determine whether a bead requires human action (HITL) or can be completed autonomously by an agent (AFK), then persist the result as an `implementation-type` label. A deterministic classifier settles the common cases; only genuine rubric judgement reaches a model.
 
 ## When to use
 
@@ -21,71 +21,67 @@ Determine whether a bead requires human action (HITL) or can be completed autono
 
 ## Invocation
 
-Run this skill as a background subagent via {{TOOL:task}} so bead content never loads into the calling agent's context. Classification is a rubric lookup, not code generation — a small, cheap model is sufficient. Pass the bead ID and the `bd prime` output; the subagent runs the workflow below and reports back the classification plus the `bd tag` command it applied.
+Run the deterministic classifier first. It resolves the existing label, the legacy `## Type` field, and explicit heuristic signals without a model call:
 
-Only run inline when no task-spawning capability exists in the current environment.
+```bash
+# Run from the TARGET project's directory — bd resolves its beads DB from cwd.
+node <skill-scripts>/classify-bead.mjs <bead-id>
+```
 
-**Callers should check `bd label list <id>` themselves first.** If `implementation-type` is already present, skip spawning this skill entirely — spawning a subagent purely to re-read a label that already exists wastes a full agent call.
+- Output carries `"classification": "afk" | "hitl"` → done. The classifier applied the label; report the classification. Do not spawn a subagent.
+- Output carries `"escalate": true` → no deterministic signal. Spawn this skill as a background subagent via {{TOOL:task}} (a small, cheap model) with the bead ID and the `bd prime` output; the subagent applies the rubric below and tags the bead.
+- `--dry-run` resolves without applying the label. `--audit [--limit <n>]` reports the deterministic-vs-rubric split over recent beads.
+
+`<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path. Only run inline when no task-spawning capability exists in the current environment.
+
+**Callers should run the classifier themselves before spawning this subagent.** If `implementation-type` is already present, or the classifier resolves the bead, there is no subagent call to make.
 
 ## Workflow
 
-1. **Check for an existing label.**
+1. **Check for an existing label.** `bd label list <id>` — `implementation-type:afk` present → **AFK**; `implementation-type:hitl` present → **HITL**. Stop.
 
-   ```bash
-   bd label list <id>
-   ```
+2. **Run the deterministic classifier.** `node <skill-scripts>/classify-bead.mjs <id>`. A resolved classification is already tagged; stop and report it.
 
-   - `implementation-type:afk` present → classification is **AFK**. Stop here.
-   - `implementation-type:hitl` present → classification is **HITL**. Stop here.
+3. **Apply the rubric** — only when the classifier reports `escalate: true`. Read the full bead body:
 
-2. **Check the `## Type` field (back-compat).**
-
-   ```bash
-   bd show <id>
-   ```
-
-   Locate the `## Type` section in the bead body. `HITL` or `AFK` (case-insensitive) determines the classification; continue to step 4. This field predates the label system, so treat it as authoritative when present.
-
-3. **Classify from first principles** — only when neither the label nor the `## Type` field is present. Read the full bead body and apply the rubric:
-
-   **HITL** — the bead requires a human if at least one of the following is true:
+   **HITL** — a human is required if at least one of the following holds:
    - The outcome cannot be verified by an agent (e.g. visual review, stakeholder sign-off, UX judgement call).
    - A manual action only a human can perform is required (e.g. credential setup, secrets management, external service configuration, infrastructure provisioning outside the codebase).
    - A decision must be made that the agent cannot make unilaterally (e.g. architectural choice between equally valid options, regulatory or legal sign-off).
 
-   **AFK** — the agent can implement, verify, and complete the task autonomously, and all acceptance criteria are machine-checkable.
+   **AFK** — otherwise: the agent can implement, verify, and complete the task autonomously, and all acceptance criteria are machine-checkable.
 
-4. **Apply the label.**
-
-   ```bash
-   bd tag <id> implementation-type:afk    # or implementation-type:hitl
-   ```
+4. **Apply the label.** `bd tag <id> implementation-type:afk` (or `:hitl`). The classifier does this for the deterministic tiers; do it yourself only after step 3.
 
 5. **Return the classification.** Report `AFK` or `HITL` so the calling skill or agent can act on it.
 
+Tier precedence (label → `## Type` → heuristics → rubric), the heuristic signal list, the CLI contract, and the measured deterministic split are in `REFERENCE.md`.
+
 ## Red Flags
 
-- Classifying a bead without the caller-side `bd label list` check — you either overwrite a recorded decision or waste an agent spawn re-reading a label that already exists.
+- Classifying a bead without the caller-side `bd label list` check — you either overwrite a recorded decision or waste a call re-reading a label that already exists.
+- Spawning the rubric subagent when the classifier returned a classification — the deterministic tier is the point.
 - Defaulting to HITL for a complex task whose acceptance criteria are machine-checkable — complexity alone is not a criterion.
-- Choosing a class without reading the bead body when neither the label nor `## Type` is present.
+- Choosing a class without reading the bead body when the classifier escalated.
 
 ## Common Rationalizations
 
 | Rationalization | Rebuttal |
-|---|---|
 | "This task is complex, so it must be HITL" | Complexity is not a criterion. HITL applies only when a human is genuinely required to complete or verify. |
 | "I'll mark it HITL to be safe" | HITL consumes scarce human attention. Prefer AFK — ralph's review gates still catch agent mistakes. |
-| "The label is probably already there, I'll skip the check" | One `bd label list` command settles it. Skipping it either overwrites a decision or spawns an agent to re-read a label. |
+| "The label is probably already there, I'll skip the check" | One `bd label list` command settles it, and the classifier checks it too. |
+| "Heuristics are good enough for this one" | The classifier uses conservative, explicit signals only. If it escalated, read the body. |
 
 ## Philosophy / rationale
 
-- Classification gates automation against human attention: AFK beads feed ralph's autonomous pipeline, HITL beads are routed to a person. We prefer AFK because human time is the scarce resource, and later review gates still catch agent mistakes — escalate only when completion or verification genuinely requires a human.
-- The rubric is deterministic, so this skill is a lookup rather than deep reasoning — which is why a cheap subagent suffices and the step 1 early exit exists.
+- Classification gates automation against human attention: AFK beads feed ralph's autonomous pipeline, HITL beads route to a person. Prefer AFK because human time is the scarce resource, and later review gates still catch agent mistakes.
+- The rubric is deterministic, so most classifications are a lookup. The executable encodes that lookup once, and the model is reserved for beads whose evidence is genuinely ambiguous.
 
 ## Verification checklist
 
 - [ ] `bd label list <id>` was checked before any other step.
-- [ ] Classification followed the precedence order: existing label → `## Type` → first-principles rubric.
-- [ ] The full bead body was read before classifying from first principles (step 3).
-- [ ] `bd tag <id> implementation-type:<afk|hitl>` was applied.
+- [ ] The deterministic classifier ran before any rubric subagent.
+- [ ] A rubric subagent ran only when the classifier reported `escalate: true`.
+- [ ] The full bead body was read before classifying from first principles.
+- [ ] `bd tag <id> implementation-type:<afk|hitl>` is present afterwards.
 - [ ] The calling skill or agent received the classification in the report.

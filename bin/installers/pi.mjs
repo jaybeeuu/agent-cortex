@@ -31,12 +31,13 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, copyFile, readdir, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, copyFile, readdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
 import { loadRequiredPackages, provisionPiPackages } from "../../lib/pi-packages.mjs";
+import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 
 const PI = "pi";
 
@@ -49,22 +50,6 @@ const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEFAULT_OUTPUT = join(homedir(), ".pi", "agent");
 
 const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
-
-async function isDirectory(p) {
-  try {
-    return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-async function isFile(p) {
-  try {
-    return (await stat(p)).isFile();
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Install the agent-cortex pi harness into the pi runtime.

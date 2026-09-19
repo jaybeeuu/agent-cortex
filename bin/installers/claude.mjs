@@ -58,6 +58,7 @@ import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
+import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
@@ -88,22 +89,6 @@ const DEFER = new Set(["ralph"]);
 const SKILL_EXCLUDE = new Set(["ralph", "run-pipeline-stage"]);
 
 const NAME_PREFIX = "agent-cortex:";
-
-async function isFile(p) {
-  try {
-    return (await stat(p)).isFile();
-  } catch {
-    return false;
-  }
-}
-
-async function isDirectory(p) {
-  try {
-    return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
 
 function byName(a, b) {
   return a.localeCompare(b);

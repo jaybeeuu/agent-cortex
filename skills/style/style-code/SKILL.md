@@ -24,6 +24,7 @@ description: Defines this project's coding style, conventions, and architectural
 - **Validate at system edges, trust the type system within.** Inbound data from API ingress, deserialisation, or inter-service communication is untrusted until validated. Within application boundaries, trust the type system to enforce correct calls — don't re-validate at every internal module boundary.
 - **Prefer result objects for domain errors; reserve exceptions for emergencies.** Expected failures — validation errors, not-found, conflict — belong in a typed result the caller can handle. Thrown `Error` should signal something genuinely broken: a programming mistake, an invariant violation, or unrecoverable state.
 - **Deep modules beat shallow ones.** A tight public API with complexity hidden behind it is easier to use, test, and change than a flat sprawl of interdependent helpers.
+- **Be a class when you are stateful.** When a module must hold mutable state and expose methods that transform or manage it, model it as a class with public methods and real private fields (`#name`) — not a factory function returning a closure of methods. Native `#private` is enforced at runtime; TypeScript's `private` modifier is compile-time only and erases away. This is orthogonal to the functional guidance elsewhere: small components, explicit props, and hooks still govern UI and pure transforms, but a stateful object is a class, and pretending otherwise is a functional idiom wrapped around an object.
 - **Abstraction must earn its keep, but local helpers are free.** An abstraction extracted into a shared module before its shape is proven nearly always guesses wrong. But extracting a local helper to clarify domain logic is always worthwhile — even at first use. The goal is readable code, not zero duplication.
 
 ## Workflow
@@ -62,6 +63,7 @@ description: Defines this project's coding style, conventions, and architectural
 | "The existing code already does it this way" | Existing patterns may predate this guide. Follow the guide unless changing it would inflate scope beyond the task. |
 | "I'll throw an Error for this validation failure" | Expected domain failures should be typed results the caller can handle. Reserve thrown `Error` for things that are truly broken. |
 | "I'll extract this into a shared util — it might be useful later" | Extract locally first if it clarifies the code. Promote to shared only when at least a third real caller emerges. Guessing the shape before then wastes time and creates coupling. |
+| "A factory closure is more functional/pure" | State is state — a class names it. A closure over mutable state is an object with extra steps: the state is still there, the API is less discoverable, and nothing is gained. Use `#private` fields and public methods. |
 
 ## Cross-skill references
 
@@ -77,27 +79,8 @@ description: Defines this project's coding style, conventions, and architectural
 
 ## Examples
 
-See `REFERENCE.md` for the full set. The most common patterns:
-
-### Types at boundaries
-
-| Instead of… | Write… |
-|---|---|
-| `function handleRequest(raw: any) { ... }` with no validation | `function handleRequest(raw: unknown): HandlerResult { ... }` validated at the ingress boundary |
-| `const user = JSON.parse(raw)` with unchecked cast | `const user = parseUser(JSON.parse(raw))` validated with `parseUser` at the deserialisation edge |
-
-### Naming
-
-| Instead of… | Write… |
-|---|---|
-| `function process(items) { ... }` | `function resolveOverdueAccounts(accounts: Account[]) { ... }` |
-| `interface Config { ... }` | `interface ExportOptions { ... }` |
-
-### Scoping
-
-| Instead of… | Write… |
-|---|---|
-| One commit fixing a bug, renaming a module, and adding an abstraction | One commit per concern, each reviewable on its own |
+See `REFERENCE.md` for the full set — common patterns (types at boundaries, naming,
+scoping) and the stateful-object-vs-factory pair.
 
 ## Verification checklist
 
@@ -109,5 +92,6 @@ See `REFERENCE.md` for the full set. The most common patterns:
 - [ ] Types are co-located with the module that owns them
 - [ ] Modules are split by ownership, not just for reshuffling code
 - [ ] State transitions are explicit and encapsulated behind a clear API
+- [ ] Stateful modules with methods are classes using `#private` fields, not factory closures
 - [ ] Tests and docs updated where behaviour changed
 - [ ] Staged changes scanned with `review-security` before committing

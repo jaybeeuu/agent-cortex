@@ -24,7 +24,7 @@ Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `st
 
 1. Run `bd prime` and hold the output; subagents can run it themselves if they need context.
 2. If no bead was specified, run `bd ready` and ask the user which to work on.
-3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth.
+3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth. Append a stage-start note immediately (see _Milestone Notes_).
 4. Read the bead's `stage:*` label — it names the stage to execute.
 5. Load the universal stage-runner prompt (`skills/workflow/run-pipeline-stage/prompts/stage-runner.md`), populate `<stage>`, and read the matching playbook (`skills/workflow/run-pipeline-stage/playbooks/<stage>.md`) for stage-specific rules.
 6. Tag the stage and regenerate the progress doc so pairing sessions stay current:
@@ -88,6 +88,16 @@ Log stage starts and completes, test/lint/build/security results, blockers, and 
 mkdir -p .agent-cortex/ralph && echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [bead-id] [stage] message" >> .agent-cortex/ralph/ralph-bead-id.log
 ```
 
+## Milestone Notes
+
+The bead's notes are the recovery contract: if a session dies mid-stage, a fresh agent must resume from `bd show <id>` alone. Append a short checkpoint at stage start and at each milestone — never on every tool call.
+
+```bash
+bd update <id> --append-notes "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [<stage>] <what changed / what's next>"
+```
+
+`--append-notes` preserves the trail; plain `--notes` overwrites it. Record the start (stage, worktree, first action), milestones (completed chunks, tests green, files changed), decisions and rejected options, blocks, and discoveries. One or two lines per entry — a scan-friendly checkpoint trail, not a transcript. No new scratch files; beads stay the single source of truth.
+
 ## Report Format
 
 Every subagent prompt must end with the REPORT instruction:
@@ -113,6 +123,7 @@ Subagents report facts — do not ask them to suggest or predict the next step.
 - Composing a subagent prompt without the REPORT contract — the output cannot be routed.
 - Creating a feedback bead and then dispatching anyway — bypasses the fix-round accounting and parent-child dependency graph.
 - Skipping the playbook "because the stage is simple" — playbooks carry the per-stage discipline the pipeline relies on.
+- Leaving bead notes to the end of the stage — a session that dies mid-stage then loses the whole trail.
 
 ## Common Rationalizations
 
@@ -145,5 +156,6 @@ Subagents report facts — do not ask them to suggest or predict the next step.
 - [ ] Correct playbook read and followed for the stage; stage skills invoked where the playbook says.
 - [ ] Composed prompt ends with the complete REPORT contract block.
 - [ ] Progress log lines written for every stage transition and key result.
+- [ ] Milestone notes appended at stage start and each milestone with `--append-notes` (not `--notes`).
 - [ ] REPORT routed per the Dispatch Rules — next stage, feedback bead, or `bd close <id>`.
 - [ ] Feedback beads carry the full BLOCKING_ISSUES content and the parent-child dependency.

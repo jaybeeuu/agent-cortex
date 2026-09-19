@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm, readFile, readdir, stat } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { mkdtemp, mkdir, writeFile, rm, readFile, readdir, stat, lstat, symlink } from "node:fs/promises";
+import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { installPi } from "../bin/installers/pi.mjs";
@@ -63,13 +63,29 @@ async function writeFixture(fx, relPath, content) {
   await writeFile(p, content);
 }
 
-/** Seed a minimal but realistic package tree (agents + token-map + skills). */
+/** Template pi settings the fixture package ships (defaults the installer merges). */
+function defaultPiSettings() {
+  return {
+    packages: [{ source: "../../src/agent-cortex", skills: [] }, "npm:pi-web-access@0.10.7"],
+    defaultModel: "template/model",
+    theme: "dark",
+    tinyModel: { model: "template/tiny", maxNameLength: 40 },
+  };
+}
+
+function defaultPiKeybindings() {
+  return { "tui.input.newLine": ["shift+enter"] };
+}
+
+/** Seed a minimal but realistic package tree (agents + token-map + skills + pi templates). */
 async function seedPackage(fx, opts = {}) {
   const { agents = {}, skills = {}, tokenMap: map, version, packages } = opts;
   await writeFixture(fx, "token-map.json", JSON.stringify(map ?? tokenMap(version ? { version } : {})));
   if (packages) {
     await writeFixture(fx, "package.json", JSON.stringify({ name: "fixture", pi: { packages } }));
   }
+  await writeFixture(fx, "pi/settings.json", JSON.stringify(opts.piSettings ?? defaultPiSettings(), null, 2));
+  await writeFixture(fx, "pi/keybindings.json", JSON.stringify(opts.piKeybindings ?? defaultPiKeybindings(), null, 2));
   for (const [name, def] of Object.entries(agents)) {
     await writeFixture(fx, `agents/${name}/agent.md`, def.body ?? `# ${name}\nBody of ${name}.`);
     await writeFixture(
@@ -415,6 +431,227 @@ describe("installPi — output & dry-run", () => {
       const deep = join(fx.output, "nested", "deep");
       await installPi({ root: fx.root, output: deep });
       assert.ok(await pathExists(join(deep, "agents", "alpha.agent.md")));
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Pi settings.json ────────────────────────────────────────────────────────
+
+describe("installPi — pi settings.json", () => {
+  it("writes a real settings.json with the repo path package and template keys", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      const settingsPath = join(fx.output, "settings.json");
+      assert.equal((await lstat(settingsPath)).isSymbolicLink(), false, "settings.json is a real file");
+      const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
+
+      const repoEntry = settings.packages.find((p) => !(typeof p === "string" ? p : p.source).startsWith("npm:"));
+      assert.deepEqual(repoEntry.skills, [], "repo path package keeps the package filter shape");
+      assert.equal(resolve(dirname(settingsPath), repoEntry.source), fx.root, "repo path package resolves to the package root");
+      assert.ok(settings.packages.includes("npm:pi-web-access@0.10.7"), "template npm deps preserved");
+      assert.equal(settings.defaultModel, "template/model", "template key present");
+      assert.match(settings["//"], /GENERATED from pi\/settings\.json/);
+      assert.equal(result.settings.action, "written");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("preserves personal values and unknown keys while filling template defaults", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await writeFixture(
+        fx,
+        "out/settings.json",
+        JSON.stringify({
+          defaultModel: "personal/model",
+          theme: "light",
+          personalOnly: { nested: true },
+          tinyModel: { model: "personal/tiny" },
+        }),
+      );
+
+      await installPi({ root: fx.root, output: fx.output });
+
+      const settings = JSON.parse(await readFile(join(fx.output, "settings.json"), "utf-8"));
+      assert.equal(settings.defaultModel, "personal/model", "personal value wins over the template default");
+      assert.equal(settings.theme, "light", "personal value wins over the template default");
+      assert.deepEqual(settings.personalOnly, { nested: true }, "unknown key preserved");
+      assert.equal(settings.tinyModel.model, "personal/tiny", "nested personal leaf retained");
+      assert.equal(settings.tinyModel.maxNameLength, 40, "nested template default filled in");
+      assert.ok(
+        settings.packages.some((p) => !(typeof p === "string" ? p : p.source).startsWith("npm:")),
+        "packages stays CLI-managed",
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("replaces a legacy symlink with a real managed file", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await mkdir(fx.output, { recursive: true });
+      await symlink(join(fx.root, "pi", "settings.json"), join(fx.output, "settings.json"));
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(result.settings.action, "removed-symlink");
+      const settingsPath = join(fx.output, "settings.json");
+      assert.equal((await lstat(settingsPath)).isSymbolicLink(), false, "symlink replaced by a real file");
+      const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
+      assert.ok(settings.packages.length > 0, "managed packages written");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("re-running leaves settings.json unchanged", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await installPi({ root: fx.root, output: fx.output });
+      const first = await readFile(join(fx.output, "settings.json"), "utf-8");
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(result.settings.action, "unchanged");
+      assert.equal(await readFile(join(fx.output, "settings.json"), "utf-8"), first);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("dry-run plans the settings write without touching the filesystem", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+
+      const result = await installPi({ root: fx.root, output: fx.output, dryRun: true });
+
+      assert.equal(result.settings.action, "would-write");
+      assert.equal(await pathExists(join(fx.output, "settings.json")), false, "no file written in dry-run");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("dry-run reports would-remove-symlink for a legacy symlink", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await mkdir(fx.output, { recursive: true });
+      const link = join(fx.output, "settings.json");
+      await symlink(join(fx.root, "pi", "settings.json"), link);
+
+      const result = await installPi({ root: fx.root, output: fx.output, dryRun: true });
+
+      assert.equal(result.settings.action, "would-remove-symlink");
+      assert.equal(result.settings.removedSymlink, true);
+      assert.equal((await lstat(link)).isSymbolicLink(), true, "symlink untouched in dry-run");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Pi keybindings.json ─────────────────────────────────────────────────────
+
+describe("installPi — pi keybindings.json", () => {
+  it("writes the template bindings as a real generated file", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      const keybindingsPath = join(fx.output, "keybindings.json");
+      assert.equal((await lstat(keybindingsPath)).isSymbolicLink(), false, "keybindings.json is a real file");
+      const keybindings = JSON.parse(await readFile(keybindingsPath, "utf-8"));
+      assert.deepEqual(keybindings["tui.input.newLine"], ["shift+enter"], "template bindings copied");
+      assert.match(keybindings["//"], /GENERATED from pi\/keybindings\.json/);
+      assert.equal(result.keybindings.action, "written");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("leaves a user-modified keybindings file alone", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await writeFixture(
+        fx,
+        "out/keybindings.json",
+        JSON.stringify({ "tui.input.newLine": ["ctrl+j"] }, null, 2),
+      );
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(result.keybindings.action, "skipped");
+      const keybindings = JSON.parse(await readFile(join(fx.output, "keybindings.json"), "utf-8"));
+      assert.deepEqual(keybindings["tui.input.newLine"], ["ctrl+j"], "user edit preserved");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("refreshes an unmodified install when the template changes", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await installPi({ root: fx.root, output: fx.output });
+      await writeFixture(
+        fx,
+        "pi/keybindings.json",
+        JSON.stringify({ "tui.input.newLine": ["ctrl+j"] }, null, 2),
+      );
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(result.keybindings.action, "written");
+      const keybindings = JSON.parse(await readFile(join(fx.output, "keybindings.json"), "utf-8"));
+      assert.deepEqual(keybindings["tui.input.newLine"], ["ctrl+j"], "updated template applied");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("replaces a legacy symlink with a real file", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await mkdir(fx.output, { recursive: true });
+      await symlink(join(fx.root, "pi", "keybindings.json"), join(fx.output, "keybindings.json"));
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(result.keybindings.action, "removed-symlink");
+      assert.equal((await lstat(join(fx.output, "keybindings.json"))).isSymbolicLink(), false);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("re-running leaves keybindings.json unchanged", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await installPi({ root: fx.root, output: fx.output });
+      const first = await readFile(join(fx.output, "keybindings.json"), "utf-8");
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(result.keybindings.action, "unchanged");
+      assert.equal(await readFile(join(fx.output, "keybindings.json"), "utf-8"), first);
     } finally {
       await fx.cleanup();
     }

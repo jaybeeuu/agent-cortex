@@ -1,6 +1,6 @@
-# Additional Examples
+# Examples
 
-Before/after pairs for style-code patterns. The most common ones first; the rest are
+Before/after pairs for `style-code`. The most common patterns come first; the rest are
 extended pairs for less frequent cases.
 
 ## Common patterns
@@ -29,8 +29,8 @@ extended pairs for less frequent cases.
 
 | Instead of… | Write… |
 |---|---|
-| ```ts // factory closure hiding mutable state function createStepRegistry() { const steps = new Map(); return { register: (name, step) => steps.set(name, step), resolve: (name) => steps.get(name), }; } ``` | ```ts // a class names the state it owns class StepRegistry { #steps = new Map(); register(name: string, step: Step): void { this.#steps.set(name, step); } resolve(name: string): Step \| undefined { return this.#steps.get(name); } } ``` |
-| ```ts class C { private steps = new Map(); } ``` (compile-time only — erases away) | ```ts class C { #steps = new Map(); } ``` (runtime-enforced native private field) |
+| ```ts // factory closure hiding mutable state function createStepRegistry() { const steps = new Map<string, Step>(); return { register: (name, step) => steps.set(name, step), resolve: (name) => steps.get(name), }; } ``` | ```ts // a class names the state it owns class StepRegistry { #steps = new Map<string, Step>(); register(name: string, step: Step): void { this.#steps.set(name, step); } resolve(name: string): Step \| undefined { return this.#steps.get(name); } } ``` |
+| ```ts class C { private steps = new Map<string, Step>(); } ``` (compile-time only — erases away) | ```ts class C { #steps = new Map<string, Step>(); } ``` (runtime-enforced native private field) |
 
 ## Validation and error handling
 

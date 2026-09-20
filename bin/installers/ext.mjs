@@ -7,6 +7,9 @@
 //   pi      → pi install <source>            (npm:, git:, or a raw URL)
 //   claude  → claude plugin install <id> -y  (<plugin>@<marketplace>)
 //
+// The store layout this reads and the runner it spawns live in
+// ./ext-store.mjs, shared with `agent-cortex ext prune`.
+//
 // The install is deliberately conservative:
 //   • Idempotent — a source already present in the harness's local store is
 //     skipped, so a second run installs nothing.
@@ -21,40 +24,14 @@
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
 import { readFile } from "node:fs/promises";
-import { spawn } from "node:child_process";
-import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { manifestFileFor, parseManifest, planInstalls, packageSources } from "../../lib/extension-manifest.mjs";
+import { manifestFileFor, parseManifest, planInstalls } from "../../lib/extension-manifest.mjs";
+import { DEFAULT_PI_STORE, listInstalledExtensions, spawnRunner } from "./ext-store.mjs";
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-// pi writes user-scope installs to ~/.pi/agent/settings.json; the same file the
-// pi installer manages. The committed manifest is the durable declaration.
-const DEFAULT_PI_STORE = join(homedir(), ".pi", "agent", "settings.json");
-
 const DEFAULT_WARN = (msg) => console.warn(`[ext-installer] ${msg}`);
-
-/**
- * Default command runner. Injected in tests so the suite never spawns a real
- * `pi` or `claude`. Resolves `{ code, stdout, error? }` — a spawn failure (for
- * example a missing binary) resolves with `code: null` and `error` set rather
- * than rejecting, so the caller can degrade gracefully per extension.
- *
- * @param {{command: string, args: string[], capture?: boolean}} invocation
- */
-function spawnRunner({ command, args, capture = false }) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: capture ? ["ignore", "pipe", "ignore"] : "inherit" });
-    let stdout = "";
-    if (capture && child.stdout) {
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => (stdout += chunk));
-    }
-    child.on("error", (error) => resolve({ code: null, stdout, error }));
-    child.on("exit", (code) => resolve({ code, stdout }));
-  });
-}
 
 /**
  * Install the extensions declared in a harness manifest.
@@ -87,7 +64,7 @@ export async function installExtensions(options = {}) {
   const piStore = options.piStore ?? DEFAULT_PI_STORE;
 
   const manifest = await readManifest(manifestPath, harness);
-  const installed = new Set(await readInstalled({ harness, piStore, run, warn, claudeBin }));
+  const installed = new Set(await listInstalledExtensions({ harness, piStore, run, warn, claudeBin }));
 
   const plan = [];
   let installedCount = 0;
@@ -134,31 +111,6 @@ async function readManifest(manifestPath, harness) {
   return parseManifest(raw, { path: manifestPath, expectedHarness: harness });
 }
 
-/** Sources already present in the harness's local extension store. */
-async function readInstalled({ harness, piStore, run, warn, claudeBin }) {
-  if (harness === "pi") {
-    const settings = await readJsonObject(piStore, warn);
-    return packageSources(settings.packages);
-  }
-  const out = await run({ command: claudeBin, args: ["plugin", "list", "--json"], capture: true });
-  if (out.code !== 0) {
-    warn(`could not list installed claude plugins${out.error ? ` (${out.error.message})` : ""} — assuming none are installed`);
-    return [];
-  }
-  return parseClaudePluginList(out.stdout);
-}
-
-/** Plugin ids from `claude plugin list --json`; unreadable output counts as none. */
-function parseClaudePluginList(stdout) {
-  try {
-    const entries = JSON.parse(stdout);
-    if (!Array.isArray(entries)) return [];
-    return entries.map((entry) => entry?.id).filter((id) => typeof id === "string" && id !== "");
-  } catch {
-    return [];
-  }
-}
-
 async function installOne({ harness, source, run, piBin, claudeBin }) {
   const invocation =
     harness === "pi"
@@ -169,22 +121,4 @@ async function installOne({ harness, source, run, piBin, claudeBin }) {
   if (out.error) return { ok: false, error: `failed to run "${label}": ${out.error.message}` };
   if (out.code === 0) return { ok: true };
   return { ok: false, error: `"${label}" exited ${out.code}` };
-}
-
-/** Read a JSON object, treating a missing file as `{}` and bad JSON as a warning. */
-async function readJsonObject(filePath, warn) {
-  let raw;
-  try {
-    raw = await readFile(filePath, "utf-8");
-  } catch (err) {
-    if (err.code === "ENOENT") return {};
-    throw err;
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    warn(`${filePath} is not valid JSON — assuming no extensions are installed`);
-    return {};
-  }
 }

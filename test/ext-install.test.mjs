@@ -354,7 +354,7 @@ describe("CLI ext install", () => {
   });
 
   it("exits 1 for an unknown ext subcommand", async () => {
-    const { exitCode, stderr } = await runCli(["ext", "prune"]);
+    const { exitCode, stderr } = await runCli(["ext", "frobnicate"]);
     assert.equal(exitCode, 1);
     assert.ok(stderr.includes("Unknown ext subcommand"));
   });

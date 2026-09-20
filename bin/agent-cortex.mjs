@@ -27,6 +27,28 @@ if (parsed.command === "ext") {
     process.exit(0);
   }
 
+  // `ext prune` defaults to the pi harness — agent-cortex's own home harness —
+  // because the store it lists is per-harness (see --help).
+  if (parsed.subcommand === "prune") {
+    const harness = parsed.harness ?? "pi";
+    const check = validateExtHarness(harness);
+    if (!check.ok) {
+      process.stderr.write(`${check.error}\nRun "agent-cortex --help" for usage.\n`);
+      process.exit(1);
+    }
+
+    const { pruneExtensions } = await import("./installers/ext-prune.mjs");
+    try {
+      const result = await pruneExtensions({ harness, dryRun: parsed.dryRun ?? false });
+      // A failed uninstall is a non-zero exit so scripts can see it; every
+      // selection was still attempted and reported individually.
+      process.exit(result.failed.length > 0 ? 1 : 0);
+    } catch (err) {
+      process.stderr.write(`Extension prune failed: ${err.message}\n`);
+      process.exit(1);
+    }
+  }
+
   // parsed.subcommand === "install" (parseArgs rejects any other subcommand).
   const check = validateExtHarness(parsed.harness);
   if (!check.ok) {

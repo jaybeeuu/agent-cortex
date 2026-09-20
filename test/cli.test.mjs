@@ -159,6 +159,12 @@ describe("buildHelpText", () => {
     assert.ok(text.includes("agent-cortex"));
     assert.ok(text.includes("install"));
   });
+
+  it("documents both ext subcommands", async () => {
+    const text = buildHelpText();
+    assert.ok(text.includes("ext install"));
+    assert.ok(text.includes("ext prune"));
+  });
 });
 
 describe("validateHarness", () => {
@@ -208,9 +214,31 @@ describe("parseArgs — ext", () => {
   });
 
   it("reports an unknown ext subcommand", async () => {
-    const result = parseArgs(["ext", "prune"]);
+    const result = parseArgs(["ext", "frobnicate"]);
     assert.equal(result.command, "ext");
-    assert.ok(result.optionError.includes("prune"));
+    assert.ok(result.optionError.includes("frobnicate"));
+  });
+
+  it("parses ext prune --harness pi", async () => {
+    assert.deepStrictEqual(parseArgs(["ext", "prune", "--harness", "pi"]), {
+      command: "ext",
+      subcommand: "prune",
+      harness: "pi",
+    });
+  });
+
+  it("parses ext prune --dry-run without a harness", async () => {
+    assert.deepStrictEqual(parseArgs(["ext", "prune", "--dry-run"]), {
+      command: "ext",
+      subcommand: "prune",
+      dryRun: true,
+    });
+  });
+
+  it("reports an unknown option for ext prune", async () => {
+    const result = parseArgs(["ext", "prune", "--bogus"]);
+    assert.equal(result.subcommand, "prune");
+    assert.ok(result.optionError.includes("--bogus"));
   });
 
   it("reports an unknown option for ext install", async () => {

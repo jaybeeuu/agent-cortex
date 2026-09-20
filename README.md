@@ -30,12 +30,15 @@ agent-cortex/
 │   └── notify/
 ├── pi/                       # Global pi configuration (see below)
 │   └── settings.json
+├── pi.extensions.json        # committed third-party pi extension manifest (see below)
+├── claude.extensions.json    # committed third-party Claude plugin manifest (see below)
 ├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
 ├── token-map.README.md       # design decisions behind token-map.json
 ├── bin/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
 │       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
+│       ├── ext.mjs           # `agent-cortex ext install` — installs the declared third-party extensions
 │       └── claude.mjs        # materialises ~/.agent-cortex/claude + registers with Claude Code (--output <dir> = generate-only form)
 ├── scripts/
 │   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
@@ -162,13 +165,25 @@ An unparseable live `settings.json` is warned about and overwritten.
 when the template changes, and left untouched once you edit it by hand (delete
 it to re-adopt the template).
 
-### Third-party pi extensions
+### Third-party extensions
 
-Third-party pi packages are declared in the committed `pi.extensions.json`
-manifest — the single source of truth (edit + commit to add or remove one; the
-CLI never writes it). `agent-cortex ext install --harness pi` installs the
-declared packages through `pi install`, skipping any already present and warning
-(without aborting the rest) when one fails; `--dry-run` prints the plan:
+Third-party extensions are declared in committed per-harness manifests — the
+single source of truth for what gets installed (edit + commit to add or remove
+one; `agent-cortex ext install` only reads them and never writes them).
+`pi.extensions.json` holds pi package sources installed through `pi install`;
+`claude.extensions.json` holds Claude Code plugin ids (`<plugin>@<marketplace>`,
+installed through `claude plugin install`) and is empty today. agent-cortex's own
+bundled extensions are deliberately absent — they ride pi package discovery and
+`agent-cortex install claude`.
+
+Installs skip whatever is already present in that harness's local store, so a
+second run installs nothing. A failing extension warns and the rest still run,
+but the command exits non-zero so a partial failure is visible to callers.
+`--dry-run` installs nothing and writes nothing, but still reads the store to
+build the plan — for the claude harness that is a read-only `claude plugin list
+--json`.
+
+The pi harness declares:
 
 | Package | Version | Purpose |
 |---|---|---|

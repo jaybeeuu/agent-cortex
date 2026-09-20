@@ -30,12 +30,15 @@ agent-cortex/
 │   └── notify/
 ├── pi/                       # Global pi configuration (see below)
 │   └── settings.json
+├── pi.extensions.json        # committed third-party pi extension manifest (see below)
+├── claude.extensions.json    # committed third-party Claude plugin manifest (see below)
 ├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
 ├── token-map.README.md       # design decisions behind token-map.json
 ├── bin/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
 │       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
+│       ├── ext.mjs           # `agent-cortex ext install` — installs the declared third-party extensions
 │       └── claude.mjs        # materialises ~/.agent-cortex/claude + registers with Claude Code (--output <dir> = generate-only form)
 ├── scripts/
 │   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
@@ -154,20 +157,45 @@ Two consequences follow from that precedence:
 - **`pi install npm:<pkg>` entries do not survive re-install.** `packages` is
   rebuilt from the template, so any `npm:` package pi added to the live file is
   dropped on the next `agent-cortex install pi`. Declare long-lived packages in
-  the repo template instead.
+  the committed `pi.extensions.json` manifest and re-run
+  `agent-cortex ext install --harness pi` after installing.
 
 An unparseable live `settings.json` is warned about and overwritten.
 `keybindings.json` follows a checksum rule: written from the template, refreshed
 when the template changes, and left untouched once you edit it by hand (delete
 it to re-adopt the template).
 
-### Pi package dependencies
+### Third-party extensions
 
-These packages are declared in the template `pi/settings.json` and auto-installed by pi:
+Third-party extensions are declared in committed per-harness manifests — the
+single source of truth for what gets installed (edit + commit to add or remove
+one; `agent-cortex ext install` only reads them and never writes them).
+`pi.extensions.json` holds pi package sources installed through `pi install`;
+`claude.extensions.json` holds Claude Code plugin ids (`<plugin>@<marketplace>`,
+installed through `claude plugin install`) and is empty today. agent-cortex's own
+bundled extensions are deliberately absent — they ride pi package discovery and
+`agent-cortex install claude`.
+
+Installs skip whatever is already present in that harness's local store, so a
+second run installs nothing. A failing extension warns and the rest still run,
+but the command exits non-zero so a partial failure is visible to callers.
+`--dry-run` installs nothing and writes nothing, but still reads the store to
+build the plan — for the claude harness that is a read-only `claude plugin list
+--json`.
+
+The pi harness declares:
 
 | Package | Version | Purpose |
 |---|---|---|
 | [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis |
+| `@getpipher/vision` | latest | Image/vision analysis tools |
+| `@hypabolic/pi-hypa` | latest | Token-compressing wrappers for shell/read/grep/find/ls output |
+| `context-mode` | latest | Context-mode knowledge-base tools and session hooks |
+| `pi-questions` | latest | `ask_questions` interactive mid-run question tool |
+
+Because `agent-cortex install pi` rebuilds the CLI-managed `packages` list from
+the template, re-run `agent-cortex ext install --harness pi` after installing to
+re-register the declared extensions.
 
 Desktop notifications are handled by the local `extensions/notify/` extension
 (replaces the former `pi-notify` dependency). It sends an OSC desktop

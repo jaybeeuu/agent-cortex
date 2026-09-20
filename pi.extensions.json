@@ -1,0 +1,17 @@
+{
+  "//": "Committed pi extension manifest — the single source of truth for third-party pi packages that `agent-cortex ext install --harness pi` provisions. Add/remove an extension by editing + committing this file (reviewed via the normal PR flow); the CLI never writes it. agent-cortex's OWN bundled extensions are deliberately NOT listed here — they ride pi package discovery (package.json `pi.extensions`).",
+  "harness": "pi",
+  "extensions": [
+    {
+      "source": "npm:pi-web-access@0.10.7",
+      "description": "Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis"
+    },
+    { "source": "npm:@getpipher/vision", "description": "Image/vision analysis tools" },
+    {
+      "source": "npm:@hypabolic/pi-hypa",
+      "description": "Token-compressing wrappers for shell/read/grep/find/ls output (hypa_* tools)"
+    },
+    { "source": "npm:context-mode", "description": "Context-mode knowledge-base tools (ctx_*) and session hooks" },
+    { "source": "npm:pi-questions", "description": "ask_questions interactive mid-run question tool" }
+  ]
+}

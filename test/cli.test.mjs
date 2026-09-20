@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
+import { parseArgs, buildHelpText, validateHarness, validateExtHarness } from "../lib/cli.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = join(__dirname, "..", "bin", "agent-cortex.mjs");
@@ -178,6 +178,70 @@ describe("validateHarness", () => {
     const result = validateHarness("docker");
     assert.equal(result.ok, false);
     assert.ok(result.error.includes("Unknown harness"));
+  });
+});
+
+describe("parseArgs — ext", () => {
+  it("parses ext install --harness pi", async () => {
+    assert.deepStrictEqual(parseArgs(["ext", "install", "--harness", "pi"]), {
+      command: "ext",
+      subcommand: "install",
+      harness: "pi",
+    });
+  });
+
+  it("parses --harness=pi and --dry-run", async () => {
+    assert.deepStrictEqual(parseArgs(["ext", "install", "--harness=claude", "--dry-run"]), {
+      command: "ext",
+      subcommand: "install",
+      harness: "claude",
+      dryRun: true,
+    });
+  });
+
+  it("returns an empty subcommand for ext with no arguments", async () => {
+    assert.deepStrictEqual(parseArgs(["ext"]), { command: "ext", subcommand: null });
+  });
+
+  it("returns an empty subcommand for ext --help", async () => {
+    assert.deepStrictEqual(parseArgs(["ext", "--help"]), { command: "ext", subcommand: null });
+  });
+
+  it("reports an unknown ext subcommand", async () => {
+    const result = parseArgs(["ext", "prune"]);
+    assert.equal(result.command, "ext");
+    assert.ok(result.optionError.includes("prune"));
+  });
+
+  it("reports an unknown option for ext install", async () => {
+    const result = parseArgs(["ext", "install", "--bogus"]);
+    assert.equal(result.command, "ext");
+    assert.equal(result.subcommand, "install");
+    assert.ok(result.optionError.includes("--bogus"));
+  });
+
+  it("reports a missing value for --harness", async () => {
+    const result = parseArgs(["ext", "install", "--harness"]);
+    assert.equal(result.command, "ext");
+    assert.ok(result.optionError.includes("--harness"));
+  });
+});
+
+describe("validateExtHarness", () => {
+  it("accepts the harnesses with committed manifests", async () => {
+    for (const h of ["claude", "pi"]) assert.deepStrictEqual(validateExtHarness(h), { ok: true });
+  });
+
+  it("rejects a missing harness", async () => {
+    const result = validateExtHarness(undefined);
+    assert.equal(result.ok, false);
+    assert.ok(result.error.includes("Missing --harness"));
+  });
+
+  it("rejects an unsupported harness", async () => {
+    const result = validateExtHarness("copilot");
+    assert.equal(result.ok, false);
+    assert.ok(result.error.includes("copilot"));
   });
 });
 

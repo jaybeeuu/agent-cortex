@@ -1,7 +1,8 @@
 # Idea: extension-manifests
 
 ## Status
-Backlog idea (not implementation-ready)
+Install half implemented — committed per-harness manifests + `agent-cortex ext install`
+shipped 2026-09-20 (agnt-ctx-v41b). The prune TUI remains pending (F6).
 
 ## Created
 2026-08-25

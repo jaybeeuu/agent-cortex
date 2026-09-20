@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
+import { parseArgs, buildHelpText, validateHarness, validateExtHarness } from "../lib/cli.mjs";
 import { installPi } from "./installers/pi.mjs";
 
 const argv = process.argv.slice(2);
@@ -14,6 +14,37 @@ if (parsed.command === "help") {
 if (parsed.command === "unknown") {
   process.stderr.write(`Unknown command: ${parsed.name}\nRun "agent-cortex --help" for usage.\n`);
   process.exit(1);
+}
+
+if (parsed.command === "ext") {
+  if (parsed.optionError) {
+    process.stderr.write(`${parsed.optionError}\n`);
+    process.exit(1);
+  }
+
+  if (parsed.subcommand === null) {
+    process.stdout.write(buildHelpText() + "\n");
+    process.exit(0);
+  }
+
+  // parsed.subcommand === "install" (parseArgs rejects any other subcommand).
+  const check = validateExtHarness(parsed.harness);
+  if (!check.ok) {
+    process.stderr.write(`${check.error}\nRun "agent-cortex --help" for usage.\n`);
+    process.exit(1);
+  }
+
+  const { installExtensions } = await import("./installers/ext.mjs");
+  try {
+    const result = await installExtensions({ harness: parsed.harness, dryRun: parsed.dryRun ?? false });
+    printExtInstall(result);
+    // A partial failure is a non-zero exit so callers (CI, scripts) can see it;
+    // every extension was still attempted and reported individually.
+    process.exit(result.failed > 0 ? 1 : 0);
+  } catch (err) {
+    process.stderr.write(`Extension install failed: ${err.message}\n`);
+    process.exit(1);
+  }
 }
 
 if (parsed.command === "install") {
@@ -98,6 +129,28 @@ if (parsed.command === "install") {
   }
 
   process.exit(0);
+}
+
+/** Report the extension install plan: one line per extension plus a summary. */
+function printExtInstall(result) {
+  process.stdout.write(`Installing declared extensions for "${result.harness}" harness…\n`);
+  for (const step of result.plan) {
+    if (step.status === "already-installed") {
+      process.stdout.write(`  · ${step.source} (already installed)\n`);
+    } else if (step.status === "would-install") {
+      process.stdout.write(`  → ${step.source} (would install)\n`);
+    } else if (step.status === "installed") {
+      process.stdout.write(`  ✓ ${step.source}\n`);
+    } else {
+      process.stdout.write(`  ⚠ ${step.source} — ${step.error}\n`);
+    }
+  }
+  process.stdout.write(
+    `  ${result.installed} ${result.dryRun ? "to install" : "installed"}, ${result.skipped} already installed, ${result.failed} failed\n`,
+  );
+  if (result.dryRun) {
+    process.stdout.write("(dry-run — nothing installed)\n");
+  }
 }
 
 function printPiInstall(result) {

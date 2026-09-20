@@ -1,0 +1,5 @@
+{
+  "//": "Committed claude extension manifest — the single source of truth for third-party Claude Code plugins that `agent-cortex ext install --harness claude` provisions. Add/remove a plugin by editing + committing this file (reviewed via the normal PR flow); the CLI never writes it. Entries are `<plugin>@<marketplace>` ids passed to `claude plugin install`. agent-cortex's OWN bundled plugin extras (.mcp.json, scripts/) are deliberately NOT listed here — they ship with `agent-cortex install claude`.",
+  "harness": "claude",
+  "extensions": []
+}

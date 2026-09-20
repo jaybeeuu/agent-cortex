@@ -154,20 +154,33 @@ Two consequences follow from that precedence:
 - **`pi install npm:<pkg>` entries do not survive re-install.** `packages` is
   rebuilt from the template, so any `npm:` package pi added to the live file is
   dropped on the next `agent-cortex install pi`. Declare long-lived packages in
-  the repo template instead.
+  the committed `pi.extensions.json` manifest and re-run
+  `agent-cortex ext install --harness pi` after installing.
 
 An unparseable live `settings.json` is warned about and overwritten.
 `keybindings.json` follows a checksum rule: written from the template, refreshed
 when the template changes, and left untouched once you edit it by hand (delete
 it to re-adopt the template).
 
-### Pi package dependencies
+### Third-party pi extensions
 
-These packages are declared in the template `pi/settings.json` and auto-installed by pi:
+Third-party pi packages are declared in the committed `pi.extensions.json`
+manifest — the single source of truth (edit + commit to add or remove one; the
+CLI never writes it). `agent-cortex ext install --harness pi` installs the
+declared packages through `pi install`, skipping any already present and warning
+(without aborting the rest) when one fails; `--dry-run` prints the plan:
 
 | Package | Version | Purpose |
 |---|---|---|
 | [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis |
+| `@getpipher/vision` | latest | Image/vision analysis tools |
+| `@hypabolic/pi-hypa` | latest | Token-compressing wrappers for shell/read/grep/find/ls output |
+| `context-mode` | latest | Context-mode knowledge-base tools and session hooks |
+| `pi-questions` | latest | `ask_questions` interactive mid-run question tool |
+
+Because `agent-cortex install pi` rebuilds the CLI-managed `packages` list from
+the template, re-run `agent-cortex ext install --harness pi` after installing to
+re-register the declared extensions.
 
 Desktop notifications are handled by the local `extensions/notify/` extension
 (replaces the former `pi-notify` dependency). It sends an OSC desktop

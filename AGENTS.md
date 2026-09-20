@@ -96,6 +96,9 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 - Extensions are auto-discovered when the repo is installed as a PI package via `pi install`.
 - Keep extensions lightweight: no internal LLM calls. Extensions observe events and provide
   commands — they should not add token overhead.
+- Register CLI flags from the extension factory (load time), never from a `session_start`
+  handler: PI matches parsed CLI flags against the extensions loaded at startup, so late
+  registration makes the flag fail with `Unknown option`.
 - Extensions that persist data should write to `~/.pi/agent-cortex/` (global, cross-project)
   and tag records with the project path for per-project slicing.
 - PI extensions with Claude Code equivalents are ported to `hooks/claude/`; the port/reject

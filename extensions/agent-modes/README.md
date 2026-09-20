@@ -46,10 +46,16 @@ flat counterpart for the same agent id.
 ## Development
 
 Discovery and prompt composition live in `discover.ts` (unit-tested against
-fixture directories in `discover.test.ts`); `index.ts` only wires discovery
-into the extension API.
+fixture directories in `discover.test.ts`); `index.ts` wires discovery into the
+extension API and registers `--agent` at load time (`index.test.ts` covers that
+timing and the flag contract).
+
+`--agent` must be registered from the extension factory, not from a
+`session_start` handler: PI matches parsed CLI flags against the extensions
+loaded at startup, so late registration makes `pi --agent <name>` fail with
+`Unknown option: --agent`.
 
 ```bash
-pnpm test        # run discover.test.ts
+pnpm test        # run discover.test.ts and index.test.ts
 pnpm typecheck   # tsc --noEmit
 ```

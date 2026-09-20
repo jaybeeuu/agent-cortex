@@ -37,6 +37,27 @@ interface OriginalState {
 
 const PERSIST_KEY = "agent-modes-state";
 
+// ─── CLI flag ────────────────────────────────────────────────────────────────
+
+/**
+ * Register the `--agent <name>` CLI flag.
+ *
+ * This must run while the extension is loading (i.e. from the factory), not
+ * from a `session_start` handler: PI matches CLI flags against the extensions
+ * loaded at startup, so a flag registered during `session_start` arrives after
+ * the CLI has already been parsed and `pi --agent <name>` fails with
+ * `Unknown option: --agent`.
+ */
+export function registerAgentFlag(
+  pi: Pick<ExtensionAPI, "registerFlag">,
+  agents: AgentDef[],
+): void {
+  pi.registerFlag("agent", {
+    description: `Start in a specific agent mode (${agents.map((a) => a.id).join(", ")})`,
+    type: "string",
+  });
+}
+
 // ─── Extension ───────────────────────────────────────────────────────────────
 
 export default function agentModesExtension(pi: ExtensionAPI): void {
@@ -46,6 +67,8 @@ export default function agentModesExtension(pi: ExtensionAPI): void {
     console.warn("[agent-modes] No agents found. Extension disabled.");
     return;
   }
+
+  registerAgentFlag(pi, agents);
 
   let activeAgentIndex = agents.length; // default mode is beyond the last agent
   let originalState: OriginalState | undefined;
@@ -184,12 +207,6 @@ export default function agentModesExtension(pi: ExtensionAPI): void {
           ctx.ui.notify(`Mode: ${label}`, "info");
         }
       },
-    });
-
-    // --agent CLI flag
-    pi.registerFlag("agent", {
-      description: `Start in a specific agent mode (${agents.map((a) => a.id).join(", ")})`,
-      type: "string",
     });
 
     // inject agent prompt before each agent start

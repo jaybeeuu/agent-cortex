@@ -1,8 +1,13 @@
 # Idea: extension-manifests
 
 ## Status
-Install half implemented — committed per-harness manifests + `agent-cortex ext install`
-shipped 2026-09-20 (agnt-ctx-v41b). The prune TUI remains pending (F6).
+Implemented — committed per-harness manifests + `agent-cortex ext install` shipped
+2026-09-20 (agnt-ctx-v41b), and the local prune TUI (`agent-cortex ext prune`) followed
+the same day (agnt-ctx-17hc). Prune uninstalls through the harness's own CLI and never
+writes the manifests; entries the manifest declares are flagged in the list because
+`ext install` would reinstall them. The interactive TUI turned out to be a numbered
+readline list rather than a third-party TUI — no runtime dependencies, and piped stdin
+drives it for tests and scripts.
 
 ## Created
 2026-08-25
@@ -62,11 +67,13 @@ are deliberately excluded from the manifests — only third-party extensions are
 - Follow the repo's extension conventions where relevant (lightweight, no internal LLM calls).
 - If any local data is persisted (e.g. prune history), write to `~/.pi/agent-cortex/`.
 
-## Next validation step
-Confirm the install surface for each harness: how `pi install <source>` works for the pi side,
-and how Claude/Copilot plugins get installed, plus whether each store can be listed and
-uninstalled programmatically (needed for the prune TUI). Then prototype the manifest + one
-harness's install-on-update path.
+## Outcome
+The store question resolved differently per harness. Claude has a real listing API
+(`claude plugin list --json`); pi does not — its store is the `packages` list in
+`~/.pi/agent/settings.json`, owned by `pi install` / `pi remove` and rebuilt from the
+committed template by `agent-cortex install pi`. Both subcommands share
+`bin/installers/ext-store.mjs` so the listing and the spawning live in one place
+(usage: [`README.md` → Third-party extensions](../README.md#third-party-extensions)).
 
 ## Notes
 Recorded 2026-08-25. The idea was refined during the interview: initially framed as

@@ -5,7 +5,7 @@
 Add `agent-cortex ext prune [--harness pi|claude]`, the local-only uninstall half
 of the extension-manifest workflow. It lists the extensions installed in the
 harness's own store (`~/.pi/agent/settings.json` `packages` for pi, `claude
-plugin list --json` for claude), promotes one per numbered prompt, confirms, and
+plugin list --json` for claude), prompts for one by number, confirms, and
 uninstalls it through that harness's CLI (`pi remove <source>`; `claude plugin
 uninstall <id> -y`) — the list is offered again until it is empty, and the
 command exits non-zero when an uninstall fails. Entries the committed manifest

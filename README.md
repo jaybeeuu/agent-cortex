@@ -39,6 +39,8 @@ agent-cortex/
 │   └── installers/
 │       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
 │       ├── ext.mjs           # `agent-cortex ext install` — installs the declared third-party extensions
+│       ├── ext-prune.mjs     # `agent-cortex ext prune` — uninstalls picked extensions from the local store
+│       ├── ext-store.mjs     # shared store reader + process runner for both ext subcommands
 │       └── claude.mjs        # materialises ~/.agent-cortex/claude + registers with Claude Code (--output <dir> = generate-only form)
 ├── scripts/
 │   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
@@ -196,6 +198,29 @@ The pi harness declares:
 Because `agent-cortex install pi` rebuilds the CLI-managed `packages` list from
 the template, re-run `agent-cortex ext install --harness pi` after installing to
 re-register the declared extensions.
+
+#### Pruning local extensions (`agent-cortex ext prune`)
+
+`ext prune` is the other half of that workflow: an interactive numbered list of
+what is installed in the harness's **local** store — `packages` in
+`~/.pi/agent/settings.json` for pi, `claude plugin list --json` for claude. Pick
+a row, confirm (`n` is the default), and it uninstalls that one extension through
+the harness's own CLI (`pi remove <source>`; `claude plugin uninstall <id> -y`),
+then offers the remaining list again until it is empty or you quit. A failed
+uninstall reports and leaves the entry in the list; the command exits non-zero.
+
+**Prune never touches the committed manifests** — it is local-only, and the
+manifests are only ever changed by an edit + commit. That is what makes the
+intended loop safe: install → try an extension → prune it locally, then decide
+separately whether the manifest should keep declaring it. The trade-off is that
+prune alone does not make a removal stick: entries the manifest still declares
+are flagged in the list (`declared — "ext install" would reinstall it`), because
+the next `agent-cortex ext install` puts them straight back.
+
+`--harness pi|claude` picks the store (default pi). `--dry-run` prints the same
+list and removes nothing. Input is read from stdin rather than the terminal, so
+a piped sequence of answers drives the whole flow and the command exits cleanly
+when the input ends early instead of hanging.
 
 Desktop notifications are handled by the local `extensions/notify/` extension
 (replaces the former `pi-notify` dependency). It sends an OSC desktop

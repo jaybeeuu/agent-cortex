@@ -64,7 +64,10 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 - `SKILL.md` must include a YAML front-matter block with `name` and `description`.
 - `description` must be ≤ 1024 characters. First sentence: what it does. Second: "Use when…".
-- Keep `SKILL.md` under ~100 lines. Overflow into `REFERENCE.md` for rarely-needed detail.
+- Keep `SKILL.md` near the ~150-line target in `docs/skills/skill-anatomy.md`, overflowing into
+  purpose-named support files (`REFERENCE.md`, `EXAMPLES.md`, `FORMAT.md`). `style-tests`
+  deliberately sits at the top of that range rather than splitting — its principles must load
+  automatically with the skill.
 - Add utility scripts to `scripts/` when an operation is deterministic and would otherwise be
   regenerated each time (e.g. install scripts, scanners).
 - Skill names use kebab-case and are grouped by prefix where related (e.g. `review-security`,

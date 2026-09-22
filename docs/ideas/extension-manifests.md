@@ -1,11 +1,11 @@
 # Idea: extension-manifests
 
 ## Status
-Partially implemented — the pi-harness slice shipped (see "What shipped"); the
-Claude/Copilot manifest remains backlog. The prune TUI was built and then **rejected** (see
-"Prune rejected") — the harnesses already own extension package management. The useful
-remainder, a declared-vs-installed diff, is recorded separately in
-[`extension-manifest-diff.md`](extension-manifest-diff.md).
+**Superseded (2026-09-22)** — the bespoke per-harness manifest model was replaced by each
+harness's native dependency fields plus committed settings templates. See the decision memo
+[`docs/technical-direction/harness-config.md`](../technical-direction/harness-config.md). The
+prune TUI was rejected (see "Prune rejected") and the proposed declared-vs-installed diff was
+dropped — `agent-cortex install <harness>` reconciles instead.
 
 ## Created
 2026-08-25
@@ -73,8 +73,9 @@ unmerged and its branch deleted. The harnesses already own extension package man
 wrapper around uninstall added no capability. The implementation's recorded justification that
 "pi does not have a listing API" is **wrong**: `pi list` exists (verified on pi 0.85.1) and lists
 installed packages from user and project settings, so the hand-rolled settings reader duplicated
-it. What is genuinely missing is not an uninstall UI but a **diff** between the declared set and
-the installed set, recorded in [`extension-manifest-diff.md`](extension-manifest-diff.md).
+it. What is genuinely missing is not an uninstall UI but reconciliation between the declared set
+and the installed set — now delivered by materialising the committed settings template at
+install time (see the [harness-config memo](../technical-direction/harness-config.md)).
 
 ## Validity check
 - Evidence we already have: agent-cortex already has an install surface to hang this on
@@ -97,11 +98,10 @@ the installed set, recorded in [`extension-manifest-diff.md`](extension-manifest
 - If any local data is persisted (e.g. prune history), write to `~/.pi/agent-cortex/`.
 
 ## Next validation step
-The store question is answered: both harnesses expose a listing API (`pi list`; `claude plugin
-list --json`), so listing needs no hand-rolled reader. The open question is reliable matching of
-declared sources to installed entries across harnesses — see
-[`extension-manifest-diff.md`](extension-manifest-diff.md), whose first prototype tests exactly
-that.
+None — the direction is settled. The store question is answered (both harnesses expose a listing
+API: `pi list`; `claude plugin list --json`), and the manifest model is superseded by native
+dependency fields plus committed settings templates. See the
+[harness-config memo](../technical-direction/harness-config.md) for the replacement.
 
 ## Notes
 Recorded 2026-08-25. The idea was refined during the interview: initially framed as
@@ -110,3 +110,7 @@ recording happens by editing + committing, not by monitoring. The manifest stays
 (the CLI never writes it); the prune CLI was rejected, so local uninstall stays with the
 harnesses' own commands. This idea is adjacent to `record-ideas-as-beads`: both make
 agent-cortex the declared source of truth for the author's environment and workflow.
+
+**Superseded 2026-09-22.** The declared toolset is now expressed through `package.json`
+dependencies (required) and committed settings templates (optional), not a bespoke manifest —
+see the [harness-config memo](../technical-direction/harness-config.md).

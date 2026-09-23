@@ -1,8 +1,9 @@
 // Install-time generator + registrar for the Claude Code plugin. A plain
 // `agent-cortex install claude` MATERIALISES the plugin into a home-scoped
-// directory (~/.agent-cortex/claude); there is no committed claude/ output in
-// the repo to regenerate — claude-extras/ and the gitignored $HOME target are
-// the only stores. The materialised plugin is:
+// directory (~/.agent-cortex/claude) and merges the committed
+// claude/settings.json template into ~/.claude/settings.json; the generated
+// plugin subtree is never committed — only that template, claude-extras/, and
+// the gitignored $HOME target are stores. The materialised plugin is:
 //
 //   <output>/.claude-plugin/plugin.json     plugin manifest (version tracks the
 //                                           package — never stale)

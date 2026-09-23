@@ -1,11 +1,15 @@
-# Technical Direction: Execution-Label Migration Tooling (two-axis model)
+# Technical Direction: Migration Tooling (two-axis model)
 
 ## Problem and target outcome
 
 - Migrate all beads workspaces from `implementation-type:afk|hitl` to `execution:afk|hitl`
   (strict rename, agent-agnostic) as part of the two-axis workflow model epic.
-- Provide a repo-agnostic tool + skill any workspace can run, and a single-package.json
-  script tooling story across the agent-cortex repo.
+- Migrate loose idea markdown files (`docs/ideas/*.md`) to first-class `kind:idea` beads
+  in any workspace.
+- Both migrations are **steps in one versioned migration command** — `agent-cortex migrate`
+  (aliased `ctx migrate`), which detects a repo's current migration version and applies
+  ordered steps up to the latest. Repo-agnostic tool + skill any workspace can run, and a
+  single-package.json script tooling story across the agent-cortex repo.
 
 ## Current-state constraints
 
@@ -22,6 +26,8 @@
   — they remain workspace members with their own package.json.
 - `node_modules` gitignored; per-skill modules are installed manually today — a fragility in
   fresh clones and PI-installed contexts.
+- The CLI (`bin/agent-cortex.mjs` + `lib/cli.mjs`) is already zero-dep stdlib-only and is the
+  natural home for a migrate command; it currently wires only `install <harness>`.
 
 ## Decisions (locked in planning session)
 
@@ -45,28 +51,40 @@
 - Fresh-clone/installed-context verification: `pnpm install` at root then
   `pnpm -r typecheck` + `pnpm -r test` (or root `node --test` wiring) cover all scripts.
 
-### D3: Migration tool shape
+### D3: Migration command — versioned registry in the CLI
 
-- Script: `skills/productivity/migration/scripts/rename-execution-labels.mjs` — zero-dep,
-  `// @ts-check` + JSDoc.
-- Behavior:
-  1. Enumerate: `bd list --label-pattern 'implementation-type:*' --json`.
-  2. Group bead ids by label value (afk | hitl). A bead carrying both gets both execution labels.
-  3. Dry-run (default): print per-bead plan + summary counts; zero writes; exit 0.
-  4. Apply (`--apply`): batched `bd label add execution:<v> <ids...>` then
-     `bd label remove implementation-type:<v> <ids...>` per group.
-  5. Idempotent: re-run finds zero targets → no-op.
-  6. Fail loudly if `bd` unavailable or any subcommand errors.
-- Scope: rename ALL beads carrying `implementation-type:*` (including closed) — the F7
-  acceptance "zero implementation-type:* labels remain" requires it, and bd label history
-  tolerates it.
+- Command: `agent-cortex migrate` (alias `ctx migrate`), wired into `bin/agent-cortex.mjs`
+  + `lib/cli.mjs` (parseArgs + buildHelpText), zero-dep stdlib-only like the rest of the CLI.
+- A **versioned migration registry**: each step declares the version it migrates to.
+  `migrate` detects the current version of the target repo's state and applies each step in
+  order up to the latest. Steps:
+  1. **v1: label rename** (F1) — `implementation-type:afk|hitl` → `execution:afk|hitl`:
+     `bd list --label-pattern 'implementation-type:*' --json`; group ids by label value
+     (a bead with both gets both); dry-run default (per-bead plan + summary, zero writes,
+     exit 0); `--apply` batched `bd label add execution:<v> <ids...>` then
+     `bd label remove implementation-type:<v> <ids...>` per group; idempotent re-run
+     (zero targets → no-op); fail loudly if `bd` missing or a subcommand errors.
+     Scope: ALL beads including closed (F7 acceptance "zero implementation-type:* labels
+     remain" requires it; bd label history tolerates it).
+  2. **v2: ideas → beads** (F2) — `docs/ideas/*.md` (default, `--dir` override) →
+     `kind:idea` beads: map template sections to bead fields (Problem→--description,
+     How→--design, When/Priority/Validity/Constraints/Notes→--notes, referential→--context),
+     `bd create -l kind:idea -p <preserved priority, default P4>`; preserve content
+     fidelity (keep section markers inside fields); dry-run; safe deletion order
+     (docs/ideas/ + new-idea.sh only after F3 lands); `record-ideas-as-beads.md` migrates
+     itself last.
+- Shared plumbing: preflight (detect current version), `--dry-run` (default), `--apply`,
+  per-step verification, and a final summary. Do NOT run v1 against agent-cortex's own
+  .beads — the repo cutover is feature F7 (landed after skill updates so ralph never
+  deadlocks).
 
 ### D4: Migration skill
 
 - Location: `skills/productivity/migration/SKILL.md` (productivity = workflow tooling).
-- Docs the full sequence for any workspace: preflight (count via `bd label list-all`),
-  dry-run, apply, post-checks (grep stale refs; `bd ready -l execution:afk` smoke), plus
-  pointers to idea-file migration (F2) and skill/doc updates (F3/F4/F5/F6).
+- Docs the full sequence for any workspace: preflight (current-version detection),
+  `agent-cortex migrate` dry-run, apply, post-checks (grep stale refs; `bd ready -l
+  execution:afk` smoke), plus pointers to idea-file migration (F2) and skill/doc updates
+  (F3/F4/F5/F6).
 - Repo-agnostic: no agent-cortex-specific paths in the runnable steps.
 
 ### D6: npm packaging hygiene (no build step — F9)
@@ -106,17 +124,31 @@
 - Cons: 3 orphaned mini-workspaces, manual install fragility, resolution doc dance
   (`<skill-scripts>/node_modules/.bin/tsx`), contradicts single-package.json preference.
 
+### Option D: standalone one-off migration script (original D3, superseded)
+- Was: `skills/productivity/migration/scripts/rename-execution-labels.mjs` as a standalone
+  script with its own skill. Superseded by the unified `migrate` command: the label rename
+  is migration step v1 inside the same versioned registry as the idea-file migration (F2),
+  sharing preflight/dry-run/verify plumbing. Rationale (user directive, 2026-09-13): the
+  target is a migration *command* that converts any given repo from the current version to
+  the latest — one surface, not N ad-hoc scripts; also aligns with the planned `ctx`
+  alias/version/update surface (docs/ideas/ctx-alias-version-and-update-commands.md).
+
 ## Tradeoffs accepted
 
 - Scripts use JSDoc annotations where types matter; `tsc --noEmit` with `checkJs` keeps a
   typecheck gate at root.
 - Closed beads get their history labels renamed — accepted for a clean label space.
+- migrate command grows the CLI surface beyond `install`; kept small (one register of
+  versioned steps) to avoid a second mechanism drifting from bd's own state.
 
 ## Validation plan
 
 - F1-T3: scratch beads workspace (temp dir): create test beads with both labels + a dep pair,
   dry-run (assert zero writes), apply, verify rename, re-run idempotence, `bd ready -l
   execution:afk` smoke, then run the migration skill end-to-end once.
+- F2-T1: scratch repo with several idea `.md` files: `agent-cortex migrate` v2 dry-run
+  (zero writes), apply, verify kind:idea beads with content fidelity + priorities, delete
+  file flow, re-run idempotence.
 - F8-T3: fresh clone (or temp copy) + `pnpm install` at root; `pnpm -r typecheck` and
   `pnpm -r test` green; scripts execute via bare `node`.
 
@@ -125,8 +157,13 @@
 - A future script needs third-party deps at runtime → revisit D1 (either root dep or
   per-package re-introduction).
 - New extension with conflicting devDeps → revisit D2 membership rules.
+- A third migration step appears → extend the registry in place; if steps start sharing
+  little plumbing, revisit the unified-command decision (Option D).
 
 ## References
 
-- Code evidence: `skills/*/scripts/package.json` (3 orphaned), root `package.json` +
-  `pnpm-workspace.yaml`, bd CLI help (`bd list`, `bd label`), epic `agnt-ctx-s5xd` notes.
+- Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface), `skills/*/scripts/
+  package.json` (3 orphaned), root `package.json` + `pnpm-workspace.yaml`, bd CLI help
+  (`bd list`, `bd label`, `bd create`), epic `agnt-ctx-s5xd` notes.
+- Idea file: `docs/ideas/ctx-alias-version-and-update-commands.md` (ctx alias + version/update
+  surface that `migrate` joins).

@@ -29,8 +29,9 @@ agent-cortex/
 │   ├── agent-modes/          #   switchable agent modes (reads composable agents/)
 │   ├── skill-stats/
 │   └── notify/
-├── pi/                       # Global pi configuration (see below)
-│   └── settings.json
+├── pi/                       # Committed pi config templates (see below)
+│   ├── settings.json
+│   └── keybindings.json
 ├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
 ├── token-map.README.md       # design decisions behind token-map.json
 ├── bin/

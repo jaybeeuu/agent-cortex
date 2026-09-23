@@ -52,7 +52,7 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir, chmod } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, copyFile, stat, readdir, chmod, rename, lstat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,6 +69,18 @@ const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
 // Code at the materialised plugin. Overridable in tests via HOME (node's
 // os.homedir() honours $HOME on POSIX).
 const DEFAULT_OUTPUT = join(homedir(), ".agent-cortex", "claude");
+
+// Claude Code's user settings file: the default install merges the committed
+// claude/settings.json template into it. `--output` leaves it alone; an
+// explicit settingsPath is the programmatic (test/CI) seam that requests it.
+const DEFAULT_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
+
+// The committed user-settings template.
+const SETTINGS_TEMPLATE = "claude/settings.json";
+
+// The only keys the installer owns outright: everything else in the live file
+// is personal config the merge must preserve.
+const SETTINGS_OWNED_KEYS = ["enabledPlugins", "extraKnownMarketplaces"];
 
 // The token-map contract version this installer implements (token-map.json
 // "version" field). A higher map version is rejected: the contract must be
@@ -286,6 +298,141 @@ async function buildHandAuthored(root) {
   return items;
 }
 
+// ─── Claude user settings ────────────────────────────────────────────────────
+
+/**
+ * Materialise ~/.claude/settings.json from the committed claude/settings.json
+ * template with merge-keep-personal semantics (the same contract as the pi
+ * installer's installSettings):
+ *
+ *   - template keys fill in defaults the live file lacks; every value already
+ *     present in the live file wins (deeply), and unknown keys are preserved,
+ *     so personal config survives re-install;
+ *   - `enabledPlugins` and `extraKnownMarketplaces` are CLI-owned: they are
+ *     rewritten from the template outright. `permissions`, `hooks`, `env`,
+ *     `statusLine` and every other key are never touched.
+ */
+async function installSettings({ root, target, dryRun, warn }) {
+  const template = await readTemplateJson(join(root, SETTINGS_TEMPLATE), warn);
+  if (template === null) return null;
+
+  const merged = mergeSettings(template, await readJsonObject(target, warn));
+  for (const key of SETTINGS_OWNED_KEYS) {
+    if (key in template) merged[key] = template[key];
+    else delete merged[key];
+  }
+
+  const content = `${JSON.stringify(merged, null, 2)}\n`;
+  return writeManagedJson({ target, content, dryRun });
+}
+
+/**
+ * Merge the committed template over the live file. Template keys fill in
+ * defaults, live values win (deeply), and keys the template does not know about
+ * are preserved — re-installing never discards personal or Claude-written config.
+ */
+function mergeSettings(template, existing) {
+  const merged = {};
+  for (const key of Object.keys(template)) {
+    const templateValue = template[key];
+    const existingValue = existing[key];
+    if (isPlainObject(templateValue) && isPlainObject(existingValue)) {
+      merged[key] = mergeSettings(templateValue, existingValue);
+    } else {
+      merged[key] = key in existing ? existingValue : templateValue;
+    }
+  }
+  for (const key of Object.keys(existing)) {
+    if (!(key in merged)) merged[key] = existing[key];
+  }
+  return merged;
+}
+
+/**
+ * Write the managed settings file. A legacy symlink is replaced with a real
+ * file by writing a sibling temp file and renaming it over the target — rename
+ * replaces the link itself, so the committed template is never written through.
+ * Returns the action taken so the CLI can report the plan (dry-run included).
+ */
+async function writeManagedJson({ target, content, dryRun }) {
+  const symlink = await isSymlink(target);
+  const current = await readFileMaybe(target);
+
+  if (dryRun) {
+    return {
+      path: target,
+      action: symlink ? "would-remove-symlink" : current === content ? "unchanged" : "would-write",
+      removedSymlink: symlink,
+    };
+  }
+  if (!symlink && current === content) {
+    return { path: target, action: "unchanged", removedSymlink: false };
+  }
+
+  await mkdir(dirname(target), { recursive: true });
+  const tmp = join(dirname(target), `.${basename(target)}.${process.pid}.tmp`);
+  try {
+    await writeFile(tmp, content);
+    await rename(tmp, target);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
+  return { path: target, action: symlink ? "removed-symlink" : "written", removedSymlink: symlink };
+}
+
+async function readTemplateJson(filePath, warn) {
+  const raw = await readFileMaybe(filePath);
+  if (raw === null) {
+    warn(`no ${filePath} template in the package — skipping`);
+    return null;
+  }
+  const parsed = tryParseJsonObject(raw);
+  if (parsed === null) throw new Error(`${filePath} is not a JSON object`);
+  return parsed;
+}
+
+async function readJsonObject(filePath, warn) {
+  const raw = await readFileMaybe(filePath);
+  if (raw === null) return {};
+  const parsed = tryParseJsonObject(raw);
+  if (parsed === null) {
+    warn(`${filePath} is not a JSON object — ignoring its contents`);
+    return {};
+  }
+  return parsed;
+}
+
+function tryParseJsonObject(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readFileMaybe(filePath) {
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+async function isSymlink(filePath) {
+  try {
+    return (await lstat(filePath)).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Generate the Claude Code plugin subtree.
  *
@@ -298,14 +445,19 @@ async function buildHandAuthored(root) {
  * @param {string} [options.pluginRoot]  Override plugin_root used for {{PATH:...}} resolution
  *                                       (default: token-map.json's claude value)
  * @param {boolean} [options.dryRun]     Plan and report without writing anything.
+ * @param {string} [options.settingsPath] Claude user-settings target
+ *                                       (default ~/.claude/settings.json). Passing it
+ *                                       explicitly materialises settings even with
+ *                                       --output — the test/CI seam.
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
  * @returns {{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
  *             marketplaceManifest: object|null, agents: string[], natives: string[],
  *             skills: {names: string[], md: number, files: number, dir: string},
  *             hooks: boolean, hookFiles: string[], handAuthored: string[],
+ *             settings: {path: string, action: string, removedSymlink: boolean}|null,
  *             warnings: string[], dryRun: boolean }}
  */
-export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, warn = DEFAULT_WARN } = {}) {
+export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, warn = DEFAULT_WARN } = {}) {
   const tokenMap = await loadTokenMap(root);
   if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
     throw new Error(
@@ -345,6 +497,15 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     await mkdir(out, { recursive: true });
   }
 
+  // The default install owns ~/.claude/settings.json; --output is the
+  // generate-only form and leaves the user's Claude config alone. An explicit
+  // settingsPath requests the write regardless (the test/CI seam).
+  const settingsTarget = settingsPath ?? DEFAULT_SETTINGS_PATH;
+  const settings =
+    isDefaultInstall || settingsPath !== undefined
+      ? await installSettings({ root, target: settingsTarget, dryRun, warn: warnSink })
+      : null;
+
   const agents = await buildAgents(root);
   const natives = await buildNatives(root, join(root, "agents-native"));
   const skillOut = join(out, "skills");
@@ -367,6 +528,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     hooks: hooksJson !== null,
     hookFiles: hookFiles.map((f) => f.rel),
     handAuthored: handAuthored.map((f) => f.rel),
+    settings,
     warnings,
     dryRun,
   };
@@ -387,10 +549,12 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
       console.log(`  hook scripts: ${summary.hookFiles.join(", ")} (bundled into ${join(out, "hooks")}/)`);
     if (summary.handAuthored.length)
       console.log(`  hand-authored files: ${summary.handAuthored.join(", ")} (copied from repo claude-extras/)`);
+    if (summary.settings) console.log(`  settings → ${summary.settings.path} (${summary.settings.action})`);
     return summary;
   }
 
   // Write phase — the cleanup before buildSkills already cleared stale children.
+  if (settings) console.log(`Materialised Claude settings → ${settings.path} (${settings.action})`);
   const agentOut = join(out, "agents");
   await mkdir(agentOut, { recursive: true });
   for (const { file, content } of [...agents.files, ...natives]) {

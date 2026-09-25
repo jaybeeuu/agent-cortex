@@ -1,8 +1,8 @@
 #!/bin/bash
 # Claude Code statusLine: shows model name and context-window usage as a small
 # colored progress bar, with used% (color-coded) and used/total token counts
-# in compact form, e.g.:
-#   Sonnet 5 ~/src [████░░░░░░] 17% 13k / 1M
+# in compact form, followed by the approximate session cost, e.g.:
+#   Sonnet 5 ~/src [████░░░░░░] 17% 13k / 1M $0.42
 
 input=$(cat)
 
@@ -10,10 +10,32 @@ model=$(echo "$input" | jq -r '.model.display_name')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 used_tokens=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
 total_tokens=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
+cost_usd=$(echo "$input" | jq -r '.cost.total_cost_usd // empty')
 effort=$(echo "$input" | jq -r '.effort.level // empty')
 agent_name=$(echo "$input" | jq -r '.agent.name // empty')
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
 cwd_display="${cwd/#$HOME/~}"
+
+# Prefer the configured autocompaction threshold (from Claude Code settings)
+# as the denominator for context usage, falling back to the model's max
+# context window when no autocompaction limit is configured/available.
+settings_file="$HOME/.claude/settings.json"
+if [ -f "$settings_file" ]; then
+  autocompact_enabled=$(jq -r '.autoCompactEnabled // false' "$settings_file" 2>/dev/null)
+  autocompact_window=$(jq -r '.autoCompactWindow // empty' "$settings_file" 2>/dev/null)
+  if [ "$autocompact_enabled" = "true" ] && [ -n "$autocompact_window" ] && [ "$autocompact_window" != "null" ]; then
+    if [ "$autocompact_window" -gt 0 ] 2>/dev/null; then
+      total_tokens="$autocompact_window"
+    fi
+  fi
+fi
+
+# Recompute the used percentage against whichever denominator was selected
+# above (autocompaction limit or model max), rather than trusting the
+# pre-calculated used_percentage which is always relative to the model max.
+if [ -n "$used_tokens" ] && [ -n "$total_tokens" ] && [ "$total_tokens" -gt 0 ] 2>/dev/null; then
+  used=$(awk -v u="$used_tokens" -v t="$total_tokens" 'BEGIN { printf "%.2f", (u / t) * 100 }')
+fi
 
 # Collapse long paths to their first two and last two components, e.g.
 #   ~/src/jaybeeuu/thing/agent-cortex -> ~/src/.../thing/agent-cortex
@@ -91,6 +113,12 @@ format_tokens() {
   }'
 }
 
+# Approximate session cost, appended after the context-usage segment, e.g. " $0.42"
+cost_str=""
+if [ -n "$cost_usd" ] && [ "$cost_usd" != "null" ]; then
+  cost_str=" ${GREEN}\$$(awk -v c="$cost_usd" 'BEGIN { printf "%.2f", c }')${RESET}"
+fi
+
 if [ -n "$used" ]; then
   used_int=$(printf '%.0f' "$used")
   [ "$used_int" -lt 0 ] && used_int=0
@@ -118,7 +146,7 @@ if [ -n "$used" ]; then
     tokens_str=" $(format_tokens "$used_tokens") / $(format_tokens "$total_tokens")"
   fi
 
-  printf "${CYAN}%s${RESET}%b%b%b ${WHITE}[${bar_color}%s${WHITE}%s${RESET}${WHITE}]${RESET} ${bar_color}%s%%${RESET}%s" "$model" "$effort_str" "$agent_str" "$cwd_str" "$bar" "$bar_empty" "$used_int" "$tokens_str"
+  printf "${CYAN}%s${RESET}%b%b%b ${WHITE}[${bar_color}%s${WHITE}%s${RESET}${WHITE}]${RESET} ${bar_color}%s%%${RESET}%s%b" "$model" "$effort_str" "$agent_str" "$cwd_str" "$bar" "$bar_empty" "$used_int" "$tokens_str" "$cost_str"
 else
-  printf "${CYAN}%s${RESET}%b%b%b ${WHITE}[context: n/a]${RESET}" "$model" "$effort_str" "$agent_str" "$cwd_str"
+  printf "${CYAN}%s${RESET}%b%b%b ${WHITE}[context: n/a]${RESET}%b" "$model" "$effort_str" "$agent_str" "$cwd_str" "$cost_str"
 fi

@@ -53,10 +53,12 @@ if (parsed.command === "install") {
   // claude is the first wired harness: a plain `agent-cortex install claude`
   // materialises the plugin into the home install root (~/.agent-cortex/claude)
   // with copied, token-substituted skills, writes the marketplace manifest at
-  // ~/.agent-cortex/.claude-plugin/marketplace.json, and registers it with
-  // Claude Code (marketplace add → install → update); `--output <dir>` is the
-  // generate-only form (tests/CI validation), and there is no committed claude/
-  // subtree in the repo anymore.
+  // ~/.agent-cortex/.claude-plugin/marketplace.json, merges the committed
+  // claude/settings.json template into ~/.claude/settings.json (owning only
+  // enabledPlugins + extraKnownMarketplaces), and registers it with Claude Code
+  // (marketplace add → install → update); `--output <dir>` is the generate-only
+  // form (tests/CI validation), and the generated claude/ plugin subtree is
+  // never committed — only the settings template is.
   if (parsed.harness === "claude") {
     // Avoid loading the installer on the help/summary paths and for other harnesses.
     const { installClaude, registerClaude } = await import("./installers/claude.mjs");

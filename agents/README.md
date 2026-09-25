@@ -222,9 +222,11 @@ flat `agents/*.agent.md` files are built from them:
 Never edit the generated flat materialised files by hand — edit the composable directory.
 Generation is install-time: `claude` ships
 via `bin/installers/claude.mjs`, the generator behind plain `agent-cortex install claude`
-(which materialises into `~/.agent-cortex/claude` and registers the plugin with Claude
-Code); the repo commits no `claude/` output (hand-authored extras live in `claude-extras/`),
-and CI validates the materialiser with structural checks on a temp-dir install; `copilot` ships via
+(which materialises into `~/.agent-cortex/claude`, merges the committed
+`claude/settings.json` into `~/.claude/settings.json`, and registers the plugin with Claude
+Code); the only committed `claude/` file is that settings template (hand-authored extras live
+in `claude-extras/`), and CI validates the materialiser with structural checks on a temp-dir
+install; `copilot` ships via
 `bin/installers/copilot.mjs`, the shared code path behind both `agent-cortex install
 copilot` and `scripts/build-copilot-agents.mjs`; `pi` ships via
 `bin/installers/pi.mjs`, which materialises composed agents + token-substituted skills

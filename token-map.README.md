@@ -131,8 +131,10 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
   and `agent-cortex install copilot` run.
 - `bin/installers/claude.mjs` — the single Claude generator: plain
   `agent-cortex install claude` materialises the plugin into `~/.agent-cortex/claude`
-  with token-substituted skills and registers it with Claude Code; `--output <dir>` is the
-  generate-only form (tests/CI structural checks). The repo commits no `claude/` output.
+  with token-substituted skills, merges the committed `claude/settings.json` into
+  `~/.claude/settings.json`, and registers it with Claude Code; `--output <dir>` is the
+  generate-only form (tests/CI structural checks). The only committed `claude/` file is the
+  settings template.
 - `bin/installers/pi.mjs` — the pi harness installer (`agent-cortex install pi`), an
   install-time consumer of the map's contract.
 - `lib/cli.mjs` — `SUPPORTED_HARNESSES`, the install command surface the harness ids come

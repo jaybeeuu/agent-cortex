@@ -18,6 +18,7 @@ import {
   stat,
   lstat,
   readlink,
+  symlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -294,14 +295,15 @@ describe("install claude", () => {
     assert.equal(await pathExists(join(out, ".claude-plugin")), false);
   });
 
-  it("leaves the canonical sources untouched (no committed claude/ output)", async () => {
+  it("leaves the canonical sources untouched (no generated claude/ output)", async () => {
     const out = await makeTmp();
     const beforeExtras = (await readdir(join(ROOT, "claude-extras"))).sort();
     const beforeExtrasScripts = (await readdir(join(ROOT, "claude-extras", "scripts"))).sort();
     await runCli(["install", "claude", "--output", out]);
-    // no committed claude/ output remains, and installs never write into the
-    // canonical sources the plugin materialises from
-    assert.equal(await pathExists(join(ROOT, "claude")), false);
+    // the committed claude/ store carries only the settings template — the
+    // generated plugin subtree (agents/, skills/, .claude-plugin/, hooks.json)
+    // is never committed, and installs never write into the canonical sources
+    assert.deepStrictEqual((await readdir(join(ROOT, "claude"))).sort(), ["settings.json"]);
     assert.deepStrictEqual((await readdir(join(ROOT, "claude-extras"))).sort(), beforeExtras);
     assert.deepStrictEqual((await readdir(join(ROOT, "claude-extras", "scripts"))).sort(), beforeExtrasScripts);
   });
@@ -346,6 +348,11 @@ describe("install claude", () => {
       "plugin install agent-cortex@jaybeeuu -y",
     ]);
     assert.ok(stdout.includes("Registering plugin"), "CLI reports registration");
+
+    // the default install also materialises ~/.claude/settings.json from the
+    // committed template, owning only the two declared keys
+    const settings = JSON.parse(await readFile(join(fakeHome, ".claude", "settings.json"), "utf-8"));
+    assert.deepEqual(Object.keys(settings).sort(), ["enabledPlugins", "extraKnownMarketplaces"]);
   });
 
   it("re-running a plain install is the update path: no marketplace re-add, no double-install", async () => {
@@ -407,8 +414,24 @@ describe("install claude", () => {
     const { exitCode, stdout } = await runCli(["install", "claude", "--dry-run"], env);
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes(join(fakeHome, ".agent-cortex", "claude")), "dry-run names the home target");
+    assert.ok(stdout.includes(join(fakeHome, ".claude", "settings.json")), "dry-run names the settings target");
     assert.ok(/copied/i.test(stdout), "dry-run describes copied skills");
     assert.equal(await pathExists(join(fakeHome, ".agent-cortex")), false, "nothing written in dry-run");
+    assert.equal(await pathExists(join(fakeHome, ".claude")), false, "no settings written in dry-run");
+  });
+
+  it("--output stays generate-only and never touches ~/.claude/settings.json", async () => {
+    const fakeHome = await makeTmp();
+    const out = await makeTmp();
+    try {
+      const { exitCode } = await runCli(["install", "claude", "--output", out], { HOME: fakeHome });
+      assert.equal(exitCode, 0);
+      assert.ok(await pathExists(join(out, ".claude-plugin", "plugin.json")), "plugin subtree still generated");
+      assert.equal(await pathExists(join(fakeHome, ".claude")), false, "no user settings written by --output");
+    } finally {
+      await rm(fakeHome, { recursive: true, force: true });
+      await rm(out, { recursive: true, force: true });
+    }
   });
 
   it("rejects token-map.json versions newer than the implemented contract", async () => {
@@ -426,6 +449,216 @@ describe("install claude", () => {
       assert.equal(await pathExists(join(fixture, "out")), false, "nothing written when the contract is rejected");
     } finally {
       await rm(fixture, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── installClaude — ~/.claude/settings.json ─────────────────────────────────
+
+/** A claude/settings.json template carrying the two CLI-owned keys. */
+function settingsTemplate(overrides = {}) {
+  return { enabledPlugins: {}, extraKnownMarketplaces: {}, ...overrides };
+}
+
+/** A realistic personal ~/.claude/settings.json (keys the installer must never own). */
+function personalSettings(overrides = {}) {
+  return {
+    permissions: { allow: ["Bash(pnpm test:*)"] },
+    hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo personal" }] }] },
+    env: { PERSONAL_FLAG: "1" },
+    statusLine: { type: "command", command: "~/.claude/statusline.sh" },
+    ...overrides,
+  };
+}
+
+/** Minimal package root with a claude/settings.json template, enough for
+ * installClaude to materialise the plugin subtree into a throwaway output. */
+async function makeSettingsFixture({ template = settingsTemplate(), settings } = {}) {
+  const root = await makeTmp();
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({ name: "agent-cortex", version: "1.2.3", license: "MIT" }),
+  );
+  await writeFile(
+    join(root, "token-map.json"),
+    JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+  );
+  await mkdir(join(root, "agents"));
+  await mkdir(join(root, "skills"));
+  if (template !== null) {
+    await mkdir(join(root, "claude"), { recursive: true });
+    await writeFile(join(root, "claude", "settings.json"), JSON.stringify(template, null, 2) + "\n");
+  }
+  const output = join(root, "out");
+  const settingsPath = join(root, "claude-home", "settings.json");
+  if (settings !== undefined) {
+    await mkdir(dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  }
+  return { root, output, settingsPath, cleanup: () => rm(root, { recursive: true, force: true }) };
+}
+
+describe("install claude — settings.json", () => {
+  it("materialises a real settings.json carrying the CLI-owned keys from the committed template", async () => {
+    const fx = await makeSettingsFixture({
+      template: settingsTemplate({
+        enabledPlugins: { "context7@claude-plugins-official": true },
+        extraKnownMarketplaces: {
+          "claude-plugins-official": { source: { source: "github", repo: "anthropics/claude-plugins" } },
+        },
+      }),
+    });
+    try {
+      const result = await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
+
+      assert.equal(result.settings.path, fx.settingsPath);
+      assert.equal(result.settings.action, "written");
+      assert.equal((await lstat(fx.settingsPath)).isSymbolicLink(), false, "settings.json is a real file");
+      const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
+      assert.deepEqual(settings.enabledPlugins, { "context7@claude-plugins-official": true });
+      assert.deepEqual(settings.extraKnownMarketplaces, {
+        "claude-plugins-official": { source: { source: "github", repo: "anthropics/claude-plugins" } },
+      });
+      assert.deepEqual(
+        Object.keys(settings).sort(),
+        ["enabledPlugins", "extraKnownMarketplaces"],
+        "only the two CLI-owned keys are written",
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("preserves personal and unknown keys on re-install (merge-keep-personal)", async () => {
+    const fx = await makeSettingsFixture({
+      template: settingsTemplate({
+        theme: { name: "dark", accent: "blue" },
+        enabledPlugins: { "team@official": true },
+      }),
+      settings: personalSettings({
+        theme: { name: "light" },
+        personalOnly: { nested: true },
+      }),
+    });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
+      const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
+
+      assert.deepEqual(settings.permissions, { allow: ["Bash(pnpm test:*)"] });
+      assert.deepEqual(settings.hooks, { SessionStart: [{ hooks: [{ type: "command", command: "echo personal" }] }] });
+      assert.deepEqual(settings.env, { PERSONAL_FLAG: "1" });
+      assert.deepEqual(settings.statusLine, { type: "command", command: "~/.claude/statusline.sh" });
+      assert.deepEqual(settings.personalOnly, { nested: true }, "unknown key preserved");
+      assert.equal(settings.theme.name, "light", "personal value wins over the template default");
+      assert.equal(settings.theme.accent, "blue", "template default fills the unset nested key");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("owns only enabledPlugins + extraKnownMarketplaces — personal entries under them are replaced by the template", async () => {
+    const fx = await makeSettingsFixture({
+      template: settingsTemplate({
+        enabledPlugins: { "team@official": true },
+        extraKnownMarketplaces: {
+          official: { source: { source: "github", repo: "anthropics/plugins" } },
+        },
+      }),
+      settings: personalSettings({
+        enabledPlugins: { "personal@mine": true },
+        extraKnownMarketplaces: { mine: { source: { source: "github", repo: "me/mine" } } },
+      }),
+    });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
+      const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
+
+      assert.deepEqual(settings.enabledPlugins, { "team@official": true }, "template owns enabledPlugins");
+      assert.deepEqual(
+        settings.extraKnownMarketplaces,
+        { official: { source: { source: "github", repo: "anthropics/plugins" } } },
+        "template owns extraKnownMarketplaces",
+      );
+      assert.ok(!("personal@mine" in settings.enabledPlugins));
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("dry-run plans the settings write without touching the filesystem", async () => {
+    const fx = await makeSettingsFixture({
+      template: settingsTemplate({ enabledPlugins: { "team@official": true } }),
+    });
+    try {
+      const result = await installClaude({
+        root: fx.root,
+        output: fx.output,
+        settingsPath: fx.settingsPath,
+        dryRun: true,
+      });
+
+      assert.equal(result.settings.action, "would-write");
+      assert.equal(await pathExists(fx.settingsPath), false, "nothing written in dry-run");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("re-running is idempotent — the second install leaves settings.json unchanged", async () => {
+    const fx = await makeSettingsFixture({
+      template: settingsTemplate({ enabledPlugins: { "team@official": true } }),
+    });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
+      const first = await readFile(fx.settingsPath, "utf-8");
+
+      const second = await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
+      assert.equal(second.settings.action, "unchanged");
+      assert.equal(await readFile(fx.settingsPath, "utf-8"), first);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("replaces a legacy symlinked settings.json with a real file, never writing through the template", async () => {
+    const fx = await makeSettingsFixture({
+      template: settingsTemplate({ enabledPlugins: { "team@official": true } }),
+    });
+    try {
+      const templatePath = join(fx.root, "claude", "settings.json");
+      const templateBefore = await readFile(templatePath, "utf-8");
+      await mkdir(dirname(fx.settingsPath), { recursive: true });
+      await symlink(templatePath, fx.settingsPath);
+
+      const result = await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
+
+      assert.equal(result.settings.action, "removed-symlink");
+      assert.equal(result.settings.removedSymlink, true);
+      assert.equal((await lstat(fx.settingsPath)).isSymbolicLink(), false, "symlink replaced by a real file");
+      const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
+      assert.deepEqual(settings.enabledPlugins, { "team@official": true });
+      assert.equal(await readFile(templatePath, "utf-8"), templateBefore, "template never written through");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("warns and skips when the package ships no claude/settings.json template", async () => {
+    const fx = await makeSettingsFixture({ template: null });
+    try {
+      const warnings = [];
+      const result = await installClaude({
+        root: fx.root,
+        output: fx.output,
+        settingsPath: fx.settingsPath,
+        warn: (m) => warnings.push(m),
+      });
+
+      assert.equal(result.settings, null);
+      assert.ok(warnings.some((w) => w.includes("claude/settings.json")), "missing template is warned about");
+      assert.equal(await pathExists(fx.settingsPath), false, "nothing written without a template");
+    } finally {
+      await fx.cleanup();
     }
   });
 });

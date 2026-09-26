@@ -23,6 +23,7 @@ description: Defines this project's coding style, conventions, and architectural
 - **Clarity over cleverness.** Code is read many more times than it is written. Clever code optimises for the writing moment; clear code optimises for every subsequent reading.
 - **Validate at system edges, trust the type system within.** Inbound data from API ingress, deserialisation, or inter-service communication is untrusted until validated. Within application boundaries, trust the type system to enforce correct calls — don't re-validate at every internal module boundary.
 - **Prefer result objects for domain errors; reserve exceptions for emergencies.** Expected failures — validation errors, not-found, conflict — belong in a typed result the caller can handle. Thrown `Error` should signal something genuinely broken: a programming mistake, an invariant violation, or unrecoverable state.
+- **A function either returns a value or changes state — never both.** This is command/query separation at function scale: a command mutates (writes, I/O, logging) and returns nothing — `void` or `Promise<void>`; a query is pure and returns a value. Returning data *about* a mutation — the saved row, a count, the previous value, a success boolean — makes one function two operations wearing one name. Two carve-outs: a command that can fail may return a typed result (`Result<T, E>`), which reports an outcome rather than data about the world and so composes with the result-object guidance above; and a fluent builder whose whole purpose is construction may return `this` to chain. Neither licenses a passthrough return — `arr.push()`-style returns stay banned.
 - **Deep modules beat shallow ones.** A tight public API with complexity hidden behind it is easier to use, test, and change than a flat sprawl of interdependent helpers.
 - **Be a class when you are stateful.** When a module must hold mutable state and expose methods that transform or manage it, model it as a class with public methods and real private fields (`#name`) — not a factory function returning a closure of methods. Native `#private` is enforced at runtime; TypeScript's `private` modifier is compile-time only and erases away. This is orthogonal to the functional guidance elsewhere: small components, explicit props, and hooks still govern UI and pure transforms, but a stateful object is a class, and pretending otherwise is a functional idiom wrapped around an object.
 - **Abstraction must earn its keep, but local helpers are free.** An abstraction extracted into a shared module before its shape is proven nearly always guesses wrong. But extracting a local helper to clarify domain logic is always worthwhile — even at first use. The goal is readable code, not zero duplication.
@@ -49,6 +50,7 @@ description: Defines this project's coding style, conventions, and architectural
 - **Broadening scope.** A change that fixes a bug and also renames three modules and extracts an abstraction is three changes. Split it.
 - **Skipping edge validation.** Inbound data at API ingress, deserialisation, or inter-service boundaries is untrusted until validated. Within the application, trust the type system. A missed edge validation silently poisons downstream callers.
 - **Unstructured errors.** A thrown string or `{ message }` object leaves the caller guessing what failed and why. Prefer typed result objects for expected domain failures — use thrown `Error` only when something has genuinely gone wrong (programming error, invariant violation, unrecoverable state).
+- **A mutator that returns.** A function that changes state *and* returns something about that change — a count, the mutated object, the previous value — is two operations wearing one name. Split it into a command that mutates and a query that reads.
 - **Large modules with mixed concerns.** A file doing data loading, state orchestration, and rendering is three modules waiting to be extracted.
 - **Premature cross-module abstraction.** Extracting a shared utility into a common module before the pattern has proven itself across multiple callers nearly always guesses the wrong shape. Local helpers that clarify intent are fine at first use — keep them within the module boundary until the pattern repeats.
 
@@ -64,6 +66,7 @@ description: Defines this project's coding style, conventions, and architectural
 | "I'll throw an Error for this validation failure" | Expected domain failures should be typed results the caller can handle. Reserve thrown `Error` for things that are truly broken. |
 | "I'll extract this into a shared util — it might be useful later" | Extract locally first if it clarifies the code. Promote to shared only when at least a third real caller emerges. Guessing the shape before then wastes time and creates coupling. |
 | "A factory closure is more functional/pure" | State is state — a class names it. A closure over mutable state is an object with extra steps: the state is still there, the API is less discoverable, and nothing is gained. Use `#private` fields and public methods. |
+| "It's convenient to return the saved row / new count from the write" | That return turns a command into a query mid-flight: the caller now depends on data the mutation happens to produce. Return a typed result for the outcome, and let a separate query read the state if the caller needs it. |
 
 ## Cross-skill references
 
@@ -93,5 +96,6 @@ scoping) and the stateful-object-vs-factory pair.
 - [ ] Modules are split by ownership, not just for reshuffling code
 - [ ] State transitions are explicit and encapsulated behind a clear API
 - [ ] Stateful modules with methods are classes using `#private` fields, not factory closures
+- [ ] Functions are commands (mutate, return nothing) or queries (pure, return a value) — never both
 - [ ] Tests and docs updated where behaviour changed
 - [ ] Staged changes scanned with `review-security` before committing

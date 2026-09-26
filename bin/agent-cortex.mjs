@@ -53,10 +53,12 @@ if (parsed.command === "install") {
   // claude is the first wired harness: a plain `agent-cortex install claude`
   // materialises the plugin into the home install root (~/.agent-cortex/claude)
   // with copied, token-substituted skills, writes the marketplace manifest at
-  // ~/.agent-cortex/.claude-plugin/marketplace.json, and registers it with
-  // Claude Code (marketplace add → install → update); `--output <dir>` is the
-  // generate-only form (tests/CI validation), and there is no committed claude/
-  // subtree in the repo anymore.
+  // ~/.agent-cortex/.claude-plugin/marketplace.json, merges the committed
+  // claude/settings.json template into ~/.claude/settings.json (owning only
+  // enabledPlugins + extraKnownMarketplaces), and registers it with Claude Code
+  // (marketplace add → install → update); `--output <dir>` is the generate-only
+  // form (tests/CI validation), and the generated claude/ plugin subtree is
+  // never committed — only the settings template is.
   if (parsed.harness === "claude") {
     // Avoid loading the installer on the help/summary paths and for other harnesses.
     const { installClaude, registerClaude } = await import("./installers/claude.mjs");
@@ -110,6 +112,8 @@ function printPiInstall(result) {
     process.stdout.write(`  ✓ ${agent.name}.agent.md → ${agent.filePath}\n`);
   }
   process.stdout.write(`  ✓ Substituted ${result.skills.md} markdown file(s) across ${result.skills.skills} skill(s) → ${result.skills.dir}\n`);
+  printManagedConfig("settings.json", result.settings);
+  printManagedConfig("keybindings.json", result.keybindings);
   // A dry run installs nothing, so report the plan — otherwise the documented
   // "show what would be installed" contract prints no packages at all.
   const packages = result.packages ?? { planned: [], installed: [] };
@@ -121,5 +125,23 @@ function printPiInstall(result) {
   }
   if (result.dryRun) {
     process.stdout.write("(dry-run — nothing written)\n");
+  }
+}
+
+/** Report one managed pi config file (settings.json / keybindings.json). */
+function printManagedConfig(label, info) {
+  if (!info) return;
+  if (info.action === "would-remove-symlink") {
+    process.stdout.write(`  → would remove symlink ${info.path} and write ${label}\n`);
+  } else if (info.action === "would-write") {
+    process.stdout.write(`  → would write ${label} → ${info.path}\n`);
+  } else if (info.action === "unchanged") {
+    process.stdout.write(`  · ${label} → ${info.path} (unchanged)\n`);
+  } else if (info.action === "skipped") {
+    process.stdout.write(`  ⚠ ${label} modified after install — left untouched → ${info.path}\n`);
+  } else if (info.action === "removed-symlink") {
+    process.stdout.write(`  ✓ ${label} → ${info.path} (removed legacy symlink)\n`);
+  } else {
+    process.stdout.write(`  ✓ ${label} → ${info.path}\n`);
   }
 }

@@ -4,6 +4,8 @@
 //
 //   <output>/agents/<slug>.agent.md   composed agents (default ~/.pi/agent/agents)
 //   <output>/skills/<group>/<name>/   token-substituted skill copies (default ~/.pi/agent/skills)
+//   <output>/settings.json            merged pi settings — CLI owns `packages` (default ~/.pi/agent/settings.json)
+//   <output>/keybindings.json         generated pi keybindings (default ~/.pi/agent/keybindings.json)
 //
 // Composition per the token-map.json contract:
 //   1. {{SECTION:name}} is resolved from the agent's pi/<name>.md section file
@@ -31,8 +33,9 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, copyFile, readdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { readFile, writeFile, mkdir, copyFile, readdir, lstat, rename, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { join, dirname, basename, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
@@ -48,6 +51,16 @@ const CONTRACT_VERSION = 1;
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEFAULT_OUTPUT = join(homedir(), ".pi", "agent");
+
+const SETTINGS_TEMPLATE = "pi/settings.json";
+const KEYBINDINGS_TEMPLATE = "pi/keybindings.json";
+
+// pi parses settings.json / keybindings.json with a bare JSON.parse (see pi's
+// SettingsManager / KeybindingsManager), so JSONC comments are not an option —
+// a `//` line would make the file unreadable. The GENERATED marker therefore
+// lives in a top-level "//" key, the conventional JSON comment stand-in, which
+// pi ignores on load and preserves on write.
+const GENERATED_KEY = "//";
 
 const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
 
@@ -73,6 +86,7 @@ const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`
  * @returns {{ agents: {name:string, filePath:string}[], skills: {skills:number, md:number, files:number, dir:string},
  *             packages: {planned:string[], installed:string[], failed:{source:string, error:string}[]} | null,
+ *             settings: ManagedFileResult|null, keybindings: ManagedFileResult|null,
  *             warnings: string[], dryRun: boolean, agentsDir: string, skillsDir: string }}
  */
 export async function installPi(options = {}) {
@@ -98,6 +112,7 @@ export async function installPi(options = {}) {
 
   const agents = await installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, warn });
   const skills = await installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn });
+  const config = await installConfig({ root, output, dryRun, warn });
 
   // Third-party packages give the composed agents their pi tools (ask_questions
   // from pi-questions, fetch_content from pi-web-access). They are declared in
@@ -112,7 +127,7 @@ export async function installPi(options = {}) {
       })
     : null;
 
-  return { agents, skills, packages, warnings, dryRun, agentsDir, skillsDir };
+  return { agents, skills, packages, ...config, warnings, dryRun, agentsDir, skillsDir };
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
@@ -211,4 +226,214 @@ async function copyTree(src, dest, transform, dryRun) {
     }
   }
   return { md, files };
+}
+// ─── Pi config files ─────────────────────────────────────────────────────────
+
+/**
+ * Materialise the pi config files into the agent dir.
+ *
+ * `settings.json` is merged: the committed template supplies defaults for keys
+ * the live file lacks, while every value already present in the live file wins,
+ * so personal config (and anything pi itself wrote) survives re-install. The
+ * one key the CLI owns outright is `packages`: it is rewritten from the
+ * template with the repo path entry resolved against the target settings file.
+ *
+ * `keybindings.json` follows a checksum rule: a missing file or a legacy
+ * symlink is materialised from the template, an unmodified install is refreshed
+ * when the template changes, and a file edited after install is left untouched.
+ */
+async function installConfig({ root, output, dryRun, warn }) {
+  return {
+    settings: await installSettings({ root, output, dryRun, warn }),
+    keybindings: await installKeybindings({ root, output, dryRun, warn }),
+  };
+}
+
+async function installSettings({ root, output, dryRun, warn }) {
+  const template = await readTemplateJson(join(root, SETTINGS_TEMPLATE), warn);
+  if (template === null) return null;
+
+  const target = join(output, "settings.json");
+  const merged = mergeSettings(template, await readJsonObject(target, warn));
+  merged.packages = resolvePackages(template.packages, root, dirname(target));
+  delete merged[GENERATED_KEY];
+
+  const content = `${JSON.stringify(
+    { [GENERATED_KEY]: generatedMarker(SETTINGS_TEMPLATE), ...merged },
+    null,
+    2,
+  )}\n`;
+  return writeManagedJson({ target, content, dryRun });
+}
+
+async function installKeybindings({ root, output, dryRun, warn }) {
+  const template = await readTemplateJson(join(root, KEYBINDINGS_TEMPLATE), warn);
+  if (template === null) return null;
+
+  const target = join(output, "keybindings.json");
+  const content = `${JSON.stringify(
+    { [GENERATED_KEY]: generatedMarker(KEYBINDINGS_TEMPLATE, checksum(template)), ...template },
+    null,
+    2,
+  )}\n`;
+
+  const current = await readFileMaybe(target);
+  if (current !== null && !(await isSymlink(target)) && current !== content) {
+    const parsed = tryParseJsonObject(current);
+    // An install we wrote carries the checksum it recorded; a body that no
+    // longer matches was edited by hand and must not be clobbered. A body
+    // byte-identical to the template is a legacy copy and safe to refresh.
+    const recorded = parsed === null ? null : readRecordedChecksum(parsed[GENERATED_KEY]);
+    const unmodified = parsed !== null && (checksum(parsed) === checksum(template) || recorded === checksum(parsed));
+    if (!unmodified) {
+      warn(`${target} was modified after install — leaving it untouched (delete it to re-adopt the template)`);
+      return { path: target, action: "skipped", removedSymlink: false };
+    }
+  }
+  return writeManagedJson({ target, content, dryRun });
+}
+
+/** Human-readable marker written as the `//` key of every generated config file. */
+function generatedMarker(from, templateChecksum) {
+  const base = `GENERATED from ${from} by \`agent-cortex install pi\` — DO NOT EDIT; re-run the installer to update.`;
+  return templateChecksum ? `${base} template-checksum:${templateChecksum}` : base;
+}
+
+/** SHA-256 of a config body with the generated marker stripped, so it is stable across writes. */
+function checksum(obj) {
+  const { [GENERATED_KEY]: _marker, ...body } = obj;
+  return createHash("sha256").update(JSON.stringify(body, null, 2)).digest("hex");
+}
+
+function readRecordedChecksum(marker) {
+  if (typeof marker !== "string") return null;
+  const match = /template-checksum:([0-9a-f]{64})/.exec(marker);
+  return match ? match[1] : null;
+}
+
+/**
+ * Merge the committed template over the live file. Template keys fill in
+ * defaults, live values win (deeply), and keys the template does not know about
+ * are preserved — re-installing never discards personal or pi-written config.
+ */
+function mergeSettings(template, existing) {
+  const merged = {};
+  for (const key of Object.keys(template)) {
+    const templateValue = template[key];
+    const existingValue = existing[key];
+    if (isPlainObject(templateValue) && isPlainObject(existingValue)) {
+      merged[key] = mergeSettings(templateValue, existingValue);
+    } else {
+      merged[key] = key in existing ? existingValue : templateValue;
+    }
+  }
+  for (const key of Object.keys(existing)) {
+    if (!(key in merged)) merged[key] = existing[key];
+  }
+  return merged;
+}
+
+/**
+ * Build the CLI-managed packages list: the template entries with the repo path
+ * package resolved relative to the target settings file. pi resolves user-scope
+ * local package paths against its agent dir, so this keeps the checkout (or npm
+ * install) registered wherever the settings file lands.
+ */
+function resolvePackages(packages, root, settingsDir) {
+  if (!Array.isArray(packages)) return packages;
+  const repoSource = relative(settingsDir, root) || ".";
+  let resolved = false;
+  const out = packages.map((entry) => {
+    const source = typeof entry === "string" ? entry : entry?.source;
+    if (resolved || typeof source !== "string" || source.startsWith("npm:")) return entry;
+    resolved = true;
+    return typeof entry === "string" ? repoSource : { ...entry, source: repoSource };
+  });
+  if (!resolved) out.unshift({ source: repoSource, skills: [] });
+  return out;
+}
+
+/**
+ * Write a managed config file. A legacy symlink is replaced with a real file by
+ * writing a sibling temp file and renaming it over the target — rename replaces
+ * the link itself, so the repo template is never written through. Returns the
+ * action taken so the CLI can report the plan (dry-run included).
+ */
+async function writeManagedJson({ target, content, dryRun }) {
+  const symlink = await isSymlink(target);
+  const current = await readFileMaybe(target);
+
+  if (dryRun) {
+    return {
+      path: target,
+      action: symlink ? "would-remove-symlink" : current === content ? "unchanged" : "would-write",
+      removedSymlink: symlink,
+    };
+  }
+  if (!symlink && current === content) {
+    return { path: target, action: "unchanged", removedSymlink: false };
+  }
+
+  await mkdir(dirname(target), { recursive: true });
+  const tmp = join(dirname(target), `.${basename(target)}.${process.pid}.tmp`);
+  try {
+    await writeFile(tmp, content);
+    await rename(tmp, target);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
+  return { path: target, action: symlink ? "removed-symlink" : "written", removedSymlink: symlink };
+}
+
+async function readTemplateJson(filePath, warn) {
+  const raw = await readFileMaybe(filePath);
+  if (raw === null) {
+    warn(`no ${filePath} template in the package — skipping`);
+    return null;
+  }
+  const parsed = tryParseJsonObject(raw);
+  if (parsed === null) throw new Error(`${filePath} is not a JSON object`);
+  return parsed;
+}
+
+async function readJsonObject(filePath, warn) {
+  const raw = await readFileMaybe(filePath);
+  if (raw === null) return {};
+  const parsed = tryParseJsonObject(raw);
+  if (parsed === null) {
+    warn(`${filePath} is not a JSON object — ignoring its contents`);
+    return {};
+  }
+  return parsed;
+}
+
+function tryParseJsonObject(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readFileMaybe(filePath) {
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+async function isSymlink(filePath) {
+  try {
+    return (await lstat(filePath)).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }

@@ -225,7 +225,18 @@ describe("CLI integration", () => {
     assert.ok(stdout.includes("claude"));
   });
 
-  it("exits 0 for install pi", async () => {
+  it("exits 0 for install pi (into a temp output dir)", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "cli-pi-default-"));
+    try {
+      const { exitCode, stdout } = await runCli(["install", "pi", "--output", outDir]);
+      assert.equal(exitCode, 0);
+      assert.ok(stdout.includes("pi"));
+    } finally {
+      await rm(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("exits 0 for install pi --no-provision", async () => {
     // --no-provision keeps this hermetic: without it the CLI would install the
     // third-party packages declared in the package manifest.
     const { exitCode, stdout } = await runCli(["install", "pi", "--no-provision"]);
@@ -275,7 +286,7 @@ describe("CLI integration", () => {
     }
   });
 
-  it("exits 0 for install pi --output <tmp> and writes agent files", async () => {
+  it("exits 0 for install pi --output <tmp> and writes agent and config files", async () => {
     const outDir = await mkdtemp(join(tmpdir(), "cli-pi-install-"));
     try {
       const { exitCode, stdout } = await runCli(["install", "pi", "--output", outDir]);
@@ -283,6 +294,9 @@ describe("CLI integration", () => {
       assert.ok(stdout.includes("ralph.agent.md"));
       const ralph = await readFile(join(outDir, "agents", "ralph.agent.md"), "utf-8");
       assert.ok(ralph.includes("agent-cortex:ralph"));
+      const settings = JSON.parse(await readFile(join(outDir, "settings.json"), "utf-8"));
+      assert.ok(Array.isArray(settings.packages));
+      assert.ok(await readFile(join(outDir, "keybindings.json"), "utf-8"));
     } finally {
       await rm(outDir, { recursive: true, force: true });
     }

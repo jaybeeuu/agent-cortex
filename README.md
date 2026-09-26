@@ -29,18 +29,20 @@ agent-cortex/
 │   ├── agent-modes/          #   switchable agent modes (reads composable agents/)
 │   ├── skill-stats/
 │   └── notify/
-├── pi/                       # Global pi configuration (see below)
-│   └── settings.json
+├── pi/                       # Committed pi config templates (see below)
+│   ├── settings.json
+│   └── keybindings.json
 ├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
 ├── token-map.README.md       # design decisions behind token-map.json
 ├── bin/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
 │       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
-│       └── claude.mjs        # materialises ~/.agent-cortex/claude + registers with Claude Code (--output <dir> = generate-only form)
+│       └── claude.mjs        # materialises ~/.agent-cortex/claude + ~/.claude/settings.json, registers with Claude Code (--output <dir> = generate-only)
 ├── scripts/
 │   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
-└── claude-extras/            # Hand-authored Claude plugin extras (no committed claude/ output)
+├── claude/                   # Committed Claude user-settings template (settings.json) — merged into ~/.claude/settings.json
+└── claude-extras/            # Hand-authored Claude plugin extras
     ├── .mcp.json             #  MCP servers (context7, github) — copied into installs
     └── scripts/              #  statusline-command.sh — copied into installs (executable)
 ```
@@ -62,9 +64,10 @@ plain `agent-cortex install claude` copies the plugin into the home install root
 Claude Code by driving the `claude plugin` CLI — state-checked and idempotent (a fresh
 install adds the marketplace + installs the plugin; a re-run updates what state says is
 out of date; a repeat install at the same version is a no-op; a missing or pre-v2 CLI
-warns and prints the manual registration commands instead of failing). The repo commits
-no `claude/` output (hand-authored extras live in `claude-extras/`), so CI validates the
-materialiser itself — a temp-dir install plus structural checks:
+warns and prints the manual registration commands instead of failing). The generated
+`claude/` plugin subtree is never committed (only the `claude/settings.json` template and
+the hand-authored `claude-extras/` are), so CI validates the materialiser itself — a
+temp-dir install plus structural checks:
 
 - **Skills** stay single-source — the installer copies each `skills/<group>/<name>/` dir
   flat into `skills/<name>/` (Claude discovers skills only one level deep) with
@@ -102,7 +105,7 @@ does its own checkout and `pnpm install` rather than sharing build artifacts fro
 the `setup` job — pnpm workspace symlinks don't survive artifact upload/download,
 so artifact sharing would break the workspace resolution that the build depends on.
 
-The repo commits no generated `claude/` output, so the `claude-plugin-check` job
+The repo commits no generated `claude/` plugin output, so the `claude-plugin-check` job
 validates the Claude plugin **materialiser** instead of diffing a committed mirror:
 it runs `node bin/agent-cortex.mjs install claude --output <tmp dir>` and checks the
 result structurally — `plugin.json` version tracks `package.json`, every generated and
@@ -131,29 +134,43 @@ are sourced entirely from `main`.
 
 ## Installation
 
-### Symlink as global pi config
+### Pi config files (`settings.json` + `keybindings.json`)
 
-This repo's `pi/settings.json` is symlinked to `~/.pi/agent/settings.json`,
-making it the canonical store for personal pi agent configuration:
+`agent-cortex install pi` materialises `~/.pi/agent/settings.json` and
+`~/.pi/agent/keybindings.json` as real CLI-managed files — the legacy symlinks
+into this repo's `pi/` directory are gone. `pi/settings.json` and
+`pi/keybindings.json` are the committed **templates**; the live files exist only
+on the machine, so re-run the installer after pulling changes.
 
-```sh
-~/.pi/agent/settings.json -> /path/to/agent-cortex/pi/settings.json
-```
+`settings.json` is merged. The template supplies defaults for keys the live file
+lacks, every value already present in the live file wins, and keys the template
+does not know about are preserved — so personal config (and anything pi itself
+wrote) survives re-install. The one key the CLI owns outright is `packages`: it
+is rebuilt from the template with the repo path entry resolved against the live
+settings file.
 
-All `pi install` / `pi remove` commands write to this file, and changes are
-committed to git. On a fresh machine:
+Two consequences follow from that precedence:
 
-```sh
-git clone https://github.com/jaybeeuu/agent-cortex
-ln -sf "$PWD/agent-cortex/pi/settings.json" ~/.pi/agent/settings.json
-```
+- **Template changes to non-`packages` keys never reach an existing install.**
+  Because the live value always wins, editing a default in `pi/settings.json`
+  only affects a fresh install (or a manually deleted live file) — edit the live
+  file to adopt a new default.
+- **`pi install npm:<pkg>` entries do not survive re-install.** `packages` is
+  rebuilt from the template, so any `npm:` package pi added to the live file is
+  dropped on the next `agent-cortex install pi`. Declare long-lived packages in
+  the repo template instead.
+
+An unparseable live `settings.json` is warned about and overwritten.
+`keybindings.json` follows a checksum rule: written from the template, refreshed
+when the template changes, and left untouched once you edit it by hand (delete
+it to re-adopt the template).
 
 ### Pi package dependencies
 
 These packages are declared in the package manifest (`package.json` → `pi.packages`) and
 provisioned by `agent-cortex install pi`, so a clean `~/.pi` gets the tools they provide
-without a manual `pi install`. They are also declared in `pi/settings.json` for the
-symlinked-checkout workflow, where pi auto-installs them.
+without a manual `pi install`. They are also declared in the template `pi/settings.json`,
+so the materialised `settings.json` registers them with pi.
 
 | Package | Version | Purpose |
 |---|---|---|
@@ -179,6 +196,7 @@ composed agents and token-substituted skills into pi's user scope:
 agent-cortex install pi
 # → ~/.pi/agent/agents/<name>.agent.md (ralph, plan, ralph-plan, strategy)
 # → ~/.pi/agent/skills/  (token-substituted skill tree)
+# → ~/.pi/agent/settings.json + keybindings.json (merged from the repo templates)
 ```
 
 Flags:
@@ -186,7 +204,7 @@ Flags:
 | Flag | Meaning |
 | --- | --- |
 | `--dry-run` | Show what would be installed without writing anything |
-| `--output <dir>` | Install into `<dir>/agents` and `<dir>/skills` (default `~/.pi/agent`) |
+| `--output <dir>` | Install into `<dir>/agents`, `<dir>/skills` and the config files (default `~/.pi/agent`) |
 | `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
 | `--no-provision` | Skip provisioning the third-party pi packages declared in `package.json` `pi.packages` (default: install them via the `pi` CLI) |
 
@@ -211,9 +229,13 @@ root `~/.agent-cortex/claude` — **4 agents** (`strategy`, `plan`, `ralph-plan`
 **29 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
 symlinks), `SessionStart` + `Notification` hooks, and 2 MCP servers — writes a marketplace
 manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude`, and
-registers it with Claude Code. The repo commits no `claude/` output: hand-authored extras
-(`.mcp.json`, `scripts/`) are served from `claude-extras/`, and everything else is generated
-at install time — there is nothing to drift.
+registers it with Claude Code, and merges the committed `claude/settings.json` template into
+`~/.claude/settings.json`: the template supplies defaults, personal values win, and the
+installer owns exactly `enabledPlugins` + `extraKnownMarketplaces` — every other key
+(`permissions`, `hooks`, `env`, `statusLine`, unknown keys) is preserved. The only committed
+Claude config is that template plus the hand-authored extras in `claude-extras/`
+(`.mcp.json`, `scripts/`); the plugin subtree is generated at install time — there is nothing
+to drift.
 
 The generate-only `--output <dir>` form is for previewing and CI validation; the
 documented path is the plain install to `~/.agent-cortex/claude`:
@@ -267,8 +289,16 @@ agent-cortex install claude --require-register       # register or fail the inst
 ```
 
 `--dry-run` prints the full plan without spawning the claude CLI or writing anything;
-`--output <dir>` generates only, with no marketplace manifest and no registration. The
-equivalent manual registration adds a marketplace root by **absolute path** (a bare `.` is
+`--output <dir>` generates only, with no marketplace manifest and no registration.
+
+The install also merges the committed `claude/settings.json` template into
+`~/.claude/settings.json` (the settings file Claude Code reads at user scope). The template
+supplies defaults and personal values win; the installer owns exactly `enabledPlugins` +
+`extraKnownMarketplaces`, so `permissions`, `hooks`, `env`, `statusLine` and unknown keys are
+never touched. A legacy symlinked `settings.json` is replaced with a real file rather than
+written through, and `--output` leaves the user's Claude config alone.
+
+The equivalent manual registration adds a marketplace root by **absolute path** (a bare `.` is
 rejected) — the home install root (`~/.agent-cortex`) is the marketplace root written by
 the plain install; the repo checkout ships no manifest:
 
@@ -359,12 +389,13 @@ Edit the **sources** — the composable `agents/<name>/` directories (shared `ag
 per-harness frontmatter/sections, auto-composed by `scripts/build-copilot-agents.mjs` and
 `bin/installers/claude.mjs`), `agents-native/*.md` (Claude-only
 agents like `ralph` — the canonical bodies the installer copies verbatim), `skills/**`,
-`hooks/claude/hooks.json` (hook config), `claude-extras/` (hand-authored `.mcp.json` and
+`hooks/claude/hooks.json` (hook config), `claude/settings.json` (the user-settings template
+merged into `~/.claude/settings.json`), `claude-extras/` (hand-authored `.mcp.json` and
 `scripts/`), and `package.json` (plugin
 version — picked up at install time) — then run
-`agent-cortex install claude` (re-materialises the home plugin and re-registers it;
-`--output <dir>` generates a preview only). There is no committed
-`claude/` output to hand-edit or regenerate: `~/.agent-cortex/claude` is generated in full
+`agent-cortex install claude` (re-materialises the home plugin, merges settings, and
+re-registers it; `--output <dir>` generates a preview only). The only committed file under
+`claude/` is the settings template; `~/.agent-cortex/claude` is generated in full
 (`.claude-plugin/plugin.json`, `agents/`, `skills/`, `hooks.json`, `.mcp.json`, `scripts/`)
 so never edit anything under it. The generated `agents/*.agent.md` files are still
 drift-checked by CI (`git diff --exit-code -- 'agents/*.agent.md'`), and CI validates the

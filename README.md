@@ -167,18 +167,19 @@ it to re-adopt the template).
 
 ### Pi package dependencies
 
-These packages are declared in the package manifest (`package.json` → `pi.packages`) and
-provisioned by `agent-cortex install pi`, so a clean `~/.pi` gets the tools they provide
-without a manual `pi install`. They are also declared in the template `pi/settings.json`,
-so the materialised `settings.json` registers them with pi.
+These packages are real `dependencies` of agent-cortex and are shipped inside the published
+tarball via `bundledDependencies`, so a clean `~/.pi` gets the tools they provide with no
+manual `pi install` and no separate provisioning step. The package's `pi` manifest references
+their resources through `node_modules` (`node_modules/pi-questions/extensions/ask-questions.ts`,
+`node_modules/pi-web-access/index.ts` + skills), and the template `pi/settings.json` keeps the
+`node_modules/**` skills enabled while the raw agent-cortex skills stay filtered out.
+Bundling requires a hoisted layout, which is why the repo's `.npmrc` sets
+`node-linker=hoisted` (pnpm refuses `bundledDependencies` under the isolated linker).
 
 | Package | Version | Purpose |
 |---|---|---|
 | [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis (`fetch_content`) |
-| [`pi-questions`](https://www.npmjs.com/package/pi-questions) | latest | Structured interactive questions (`ask_questions`) |
-
-Pass `--no-provision` to skip the package install step (e.g. offline machines); a
-missing `pi` CLI or failed install warns and leaves the rest of the install intact.
+| [`pi-questions`](https://www.npmjs.com/package/pi-questions) | ^0.3.4 | Structured interactive questions (`ask_questions`) |
 
 Desktop notifications are handled by the local `extensions/notify/` extension
 (replaces the former `pi-notify` dependency). It sends an OSC desktop
@@ -206,7 +207,6 @@ Flags:
 | `--dry-run` | Show what would be installed without writing anything |
 | `--output <dir>` | Install into `<dir>/agents`, `<dir>/skills` and the config files (default `~/.pi/agent`) |
 | `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
-| `--no-provision` | Skip provisioning the third-party pi packages declared in `package.json` `pi.packages` (default: install them via the `pi` CLI) |
 
 Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).
 

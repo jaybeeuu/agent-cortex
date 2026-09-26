@@ -22,11 +22,16 @@
 // literal token syntax; other skill files are copied verbatim.
 //
 // Skills install into ~/.pi/agent/skills (pi's user-global skill dir), which is
-// the sole pi skill source: the checkout's raw package skills are not loaded
-// locally because pi/settings.json registers agent-cortex with an object-form
-// packages filter { source, "skills": [] } (extensions stay enabled). The
-// filter exists so pi never sees the raw, un-substituted package skills and
-// reports a name collision per skill (pi warns on collisions, user dir wins).
+// the sole source of agent-cortex's own skills locally: the checkout's raw
+// package skills are not loaded because pi/settings.json registers agent-cortex
+// with an object-form packages filter { source, "skills": ["node_modules/**"] }
+// (extensions stay enabled). The filter exists so pi never sees the raw,
+// un-substituted package skills and reports a name collision per skill (pi warns
+// on collisions, user dir wins), while the skills that ship inside a bundled pi
+// package — referenced through node_modules in the package's pi manifest — still
+// load. Required third-party pi packages (pi-questions, pi-web-access) are real
+// dependencies bundled into the published tarball, so pi resolves their
+// extensions from within the package; nothing is provisioned via the pi CLI.
 // Consumers who install the npm package without that filter still rely on pi's
 // shadowing order (user dir loads before package skills). Re-run this installer
 // after any skill edit so the substituted copy in the user dir stays in sync.
@@ -39,7 +44,6 @@ import { join, dirname, basename, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
-import { loadRequiredPackages, provisionPiPackages } from "../../lib/pi-packages.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 
 const PI = "pi";
@@ -75,17 +79,8 @@ const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
  * @param {boolean} [options.dryRun]     Compute and report without writing anything
  * @param {string} [options.pluginRoot]  Override plugin_root used for {{PATH:...}}
  *                                       resolution (default: token-map pi value)
- * @param {boolean} [options.provisionPackages]  Install the third-party pi packages
- *                                       declared in the package manifest (package.json
- *                                       pi.packages) into the pi user scope — e.g.
- *                                       pi-questions (ask_questions) and pi-web-access
- *                                       (fetch_content). Off by default; `agent-cortex
- *                                       install pi` turns it on for a real install.
- * @param {(source: string) => Promise<{ok: boolean, error: string | null}>} [options.runInstall]
- *                                       Installer for one package source (default: pi install)
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`
  * @returns {{ agents: {name:string, filePath:string}[], skills: {skills:number, md:number, files:number, dir:string},
- *             packages: {planned:string[], installed:string[], failed:{source:string, error:string}[]} | null,
  *             settings: ManagedFileResult|null, keybindings: ManagedFileResult|null,
  *             warnings: string[], dryRun: boolean, agentsDir: string, skillsDir: string }}
  */
@@ -114,20 +109,7 @@ export async function installPi(options = {}) {
   const skills = await installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn });
   const config = await installConfig({ root, output, dryRun, warn });
 
-  // Third-party packages give the composed agents their pi tools (ask_questions
-  // from pi-questions, fetch_content from pi-web-access). They are declared in
-  // the package manifest and only provisioned on a real install.
-  const packages = options.provisionPackages
-    ? await provisionPiPackages({
-        required: await loadRequiredPackages(root),
-        piRoot: output,
-        dryRun,
-        runInstall: options.runInstall,
-        warn,
-      })
-    : null;
-
-  return { agents, skills, packages, ...config, warnings, dryRun, agentsDir, skillsDir };
+  return { agents, skills, ...config, warnings, dryRun, agentsDir, skillsDir };
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
@@ -349,7 +331,7 @@ function resolvePackages(packages, root, settingsDir) {
     resolved = true;
     return typeof entry === "string" ? repoSource : { ...entry, source: repoSource };
   });
-  if (!resolved) out.unshift({ source: repoSource, skills: [] });
+  if (!resolved) out.unshift({ source: repoSource, skills: ["node_modules/**"] });
   return out;
 }
 

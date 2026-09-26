@@ -66,7 +66,7 @@ async function writeFixture(fx, relPath, content) {
 /** Template pi settings the fixture package ships (defaults the installer merges). */
 function defaultPiSettings() {
   return {
-    packages: [{ source: "../../src/agent-cortex", skills: [] }, "npm:pi-web-access@0.10.7"],
+    packages: [{ source: "../../src/agent-cortex", skills: ["node_modules/**"] }, "npm:context-mode"],
     defaultModel: "template/model",
     theme: "dark",
     tinyModel: { model: "template/tiny", maxNameLength: 40 },
@@ -79,11 +79,8 @@ function defaultPiKeybindings() {
 
 /** Seed a minimal but realistic package tree (agents + token-map + skills + pi templates). */
 async function seedPackage(fx, opts = {}) {
-  const { agents = {}, skills = {}, tokenMap: map, version, packages } = opts;
+  const { agents = {}, skills = {}, tokenMap: map, version } = opts;
   await writeFixture(fx, "token-map.json", JSON.stringify(map ?? tokenMap(version ? { version } : {})));
-  if (packages) {
-    await writeFixture(fx, "package.json", JSON.stringify({ name: "fixture", pi: { packages } }));
-  }
   await writeFixture(fx, "pi/settings.json", JSON.stringify(opts.piSettings ?? defaultPiSettings(), null, 2));
   await writeFixture(fx, "pi/keybindings.json", JSON.stringify(opts.piKeybindings ?? defaultPiKeybindings(), null, 2));
   for (const [name, def] of Object.entries(agents)) {
@@ -262,105 +259,6 @@ describe("installPi — agent composition", () => {
   });
 });
 
-// ─── Third-party package provisioning ────────────────────────────────────────
-
-describe("installPi — package provisioning", () => {
-  function recordingRunner() {
-    const calls = [];
-    return {
-      calls,
-      runInstall: async (source) => {
-        calls.push(source);
-        return { ok: true, error: null };
-      },
-    };
-  }
-
-  it("does not touch the pi package store unless provisioning is requested", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions"],
-      });
-      const { calls, runInstall } = recordingRunner();
-
-      const result = await installPi({ root: fx.root, output: fx.output, runInstall });
-
-      assert.deepEqual(calls, []);
-      assert.equal(result.packages, null);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("installs the packages declared in the package manifest when enabled", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions", "npm:pi-web-access@0.10.7"],
-      });
-      const { calls, runInstall } = recordingRunner();
-
-      const result = await installPi({ root: fx.root, output: fx.output, provisionPackages: true, runInstall });
-
-      assert.deepEqual(calls, ["npm:pi-questions", "npm:pi-web-access@0.10.7"]);
-      assert.deepEqual(result.packages.installed, ["npm:pi-questions", "npm:pi-web-access@0.10.7"]);
-      assert.deepEqual(result.packages.failed, []);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("dry-run reports the package plan without installing", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions"],
-      });
-      const { calls, runInstall } = recordingRunner();
-
-      const result = await installPi({
-        root: fx.root,
-        output: fx.output,
-        provisionPackages: true,
-        dryRun: true,
-        runInstall,
-      });
-
-      assert.deepEqual(calls, []);
-      assert.deepEqual(result.packages.planned, ["npm:pi-questions"]);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("warns but still installs agents when a package install fails", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions"],
-      });
-
-      const result = await installPi({
-        root: fx.root,
-        output: fx.output,
-        provisionPackages: true,
-        runInstall: async () => ({ ok: false, error: "offline" }),
-      });
-
-      assert.ok(await pathExists(join(fx.output, "agents", "alpha.agent.md")), "agents still installed");
-      assert.deepEqual(result.packages.failed, [{ source: "npm:pi-questions", error: "offline" }]);
-      assert.ok(result.warnings.some((w) => w.includes("npm:pi-questions")), "failure surfaced as a warning");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-});
-
 // ─── Skills ──────────────────────────────────────────────────────────────────
 
 describe("installPi — skills", () => {
@@ -452,9 +350,9 @@ describe("installPi — pi settings.json", () => {
       const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
 
       const repoEntry = settings.packages.find((p) => !(typeof p === "string" ? p : p.source).startsWith("npm:"));
-      assert.deepEqual(repoEntry.skills, [], "repo path package keeps the package filter shape");
+      assert.deepEqual(repoEntry.skills, ["node_modules/**"], "repo path package keeps the package filter shape");
       assert.equal(resolve(dirname(settingsPath), repoEntry.source), fx.root, "repo path package resolves to the package root");
-      assert.ok(settings.packages.includes("npm:pi-web-access@0.10.7"), "template npm deps preserved");
+      assert.ok(settings.packages.includes("npm:context-mode"), "template npm deps preserved");
       assert.equal(settings.defaultModel, "template/model", "template key present");
       assert.match(settings["//"], /GENERATED from pi\/settings\.json/);
       assert.equal(result.settings.action, "written");

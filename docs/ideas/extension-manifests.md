@@ -65,6 +65,13 @@ Still unbuilt: the Claude/Copilot manifest. `pi/settings.json` also lists these
 packages for the symlinked-checkout workflow (where pi auto-installs them); that redundancy is
 intentional until the manifest model is extended to both harnesses.
 
+**Replaced (agnt-ctx-764p.2).** The `pi.packages` + `lib/pi-packages.mjs` mechanism described
+above was removed. The required packages (`pi-questions`, `pi-web-access`) are now real
+`dependencies` bundled into the published tarball, referenced through `node_modules/...` in the
+package's `pi` manifest, and their skills are kept enabled by the template `pi/settings.json`
+filter (`node_modules/**`). Only the author's optional packages stay declared in the template
+`packages` list, provisioned by pi itself.
+
 ## Prune rejected (2026-09-21)
 
 The prune half was implemented (F6, `agnt-ctx-17hc`) and then rejected: PR #142 was closed

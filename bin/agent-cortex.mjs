@@ -32,10 +32,6 @@ if (parsed.command === "install") {
     try {
       const result = await installPi({
         dryRun: parsed.dryRun ?? false,
-        // Third-party pi packages are only provisioned for a real install:
-        // --output is the generate-only form, --no-provision opts an offline
-        // machine out explicitly.
-        provisionPackages: parsed.output === undefined && !parsed.noProvision,
         warn: () => {}, // warnings surface once in the printed summary
         ...(parsed.output ? { output: parsed.output } : {}),
         ...(parsed.pluginRoot ? { pluginRoot: parsed.pluginRoot } : {}),
@@ -114,12 +110,6 @@ function printPiInstall(result) {
   process.stdout.write(`  ✓ Substituted ${result.skills.md} markdown file(s) across ${result.skills.skills} skill(s) → ${result.skills.dir}\n`);
   printManagedConfig("settings.json", result.settings);
   printManagedConfig("keybindings.json", result.keybindings);
-  // A dry run installs nothing, so report the plan — otherwise the documented
-  // "show what would be installed" contract prints no packages at all.
-  const packages = result.packages ?? { planned: [], installed: [] };
-  for (const source of result.dryRun ? packages.planned : packages.installed) {
-    process.stdout.write(`  ✓ ${result.dryRun ? "Would install" : "Installed"} pi package ${source}\n`);
-  }
   for (const warning of result.warnings) {
     process.stdout.write(`  ⚠ ${warning}\n`);
   }

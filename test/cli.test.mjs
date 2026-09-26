@@ -123,9 +123,10 @@ describe("parseArgs", () => {
     assert.deepStrictEqual(result, { command: "install", harness: "pi", pluginRoot: "/tmp/plugin" });
   });
 
-  it("parses --no-provision for install", async () => {
+  it("no longer accepts --no-provision (package provisioning is gone)", async () => {
     const result = parseArgs(["install", "pi", "--no-provision"]);
-    assert.deepStrictEqual(result, { command: "install", harness: "pi", noProvision: true });
+    assert.equal(result.command, "install");
+    assert.ok(result.optionError.includes("--no-provision"));
   });
 
   it("combines multiple install options", async () => {
@@ -236,14 +237,6 @@ describe("CLI integration", () => {
     }
   });
 
-  it("exits 0 for install pi --no-provision", async () => {
-    // --no-provision keeps this hermetic: without it the CLI would install the
-    // third-party packages declared in the package manifest.
-    const { exitCode, stdout } = await runCli(["install", "pi", "--no-provision"]);
-    assert.equal(exitCode, 0);
-    assert.ok(stdout.includes("pi"));
-  });
-
   it("exits 1 and prints error for install with no harness", async () => {
     const { exitCode, stderr } = await runCli(["install"]);
     assert.equal(exitCode, 1);
@@ -267,23 +260,6 @@ describe("CLI integration", () => {
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes("ralph.agent.md"));
     assert.ok(stdout.includes("dry-run"));
-  });
-
-  it("install pi --dry-run lists the pi packages it would install", async () => {
-    // Fake HOME keeps the pi user scope hermetic: both manifest packages are
-    // missing, so the plan contains exactly the declared sources.
-    const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-home-"));
-    try {
-      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { HOME: fakeHome });
-      assert.equal(exitCode, 0);
-      assert.ok(stdout.includes("Would install pi package npm:pi-questions"), "planned pi-questions shown");
-      assert.ok(
-        stdout.includes("Would install pi package npm:pi-web-access@0.10.7"),
-        "planned pi-web-access shown",
-      );
-    } finally {
-      await rm(fakeHome, { recursive: true, force: true });
-    }
   });
 
   it("exits 0 for install pi --output <tmp> and writes agent and config files", async () => {

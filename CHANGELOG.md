@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.41.0
+
+### Minor Changes
+
+- a6b1929: `agent-cortex install pi` now materialises the pi config files as real CLI-managed files, replacing the legacy symlinks into the repo's `pi/` directory. `settings.json` is merged — the committed template supplies defaults, values already present (personal config and anything pi wrote) win, and the CLI owns the `packages` list with the repo path entry resolved against the settings file — so personal config survives re-install. `keybindings.json` is written from the template, refreshed when the template changes, and left alone once edited by hand. The generated header lives in a top-level `"//"` key because pi parses both files with a bare `JSON.parse`. `--dry-run` prints the plan (including "would remove symlink …") and `--output <dir>` keeps the generate-only semantics. Two caveats: because the live value wins, a changed default in the committed template only reaches fresh installs (edit the live file to adopt it); and `packages` is rebuilt from the template, so any `npm:` package added to the live file with `pi install npm:<pkg>` is dropped on the next install — declare long-lived packages in the repo template. An unparseable live `settings.json` is warned about and overwritten.
+- d6ac5a5: Provision the pi packages agent-cortex needs (pi-questions for `ask_questions`, pi-web-access for `fetch_content`) on `agent-cortex install pi`. The package manifest now declares them under `pi.packages`, the installer installs any that the pi user scope is missing via the pi CLI (idempotent, warns and continues on failure), and `--no-provision` opts an offline machine out. The token-map `ask_user` / `web_fetch` mappings are no longer no-ops on a clean `~/.pi`.
+- daa77c8: Encode test-quality rules into `style-tests`: the full agreed principle set (behaviour over
+  implementation, mocking only at external edges, module-boundary units, realistic
+  LocalStack/TestContainers integration, test independence, CI-only truth, spec-by-test, and
+  more), a blanket ban on asserting the static contents of a file (config, markdown, terraform,
+  snapshots) with the behaviour-not-inventory distinction, and test-data construction rules —
+  inline data, no shared mutable top-level fixtures, and small configurable factories over
+  repeated full literals. The content-assertion ban and the test-data rules land as red-flag rows
+  plus verification-checklist items. `style-tests/SKILL.md` deliberately occupies the full
+  ~150-line `SKILL.md` budget so the principles load automatically, rather than splitting into
+  `REFERENCE.md`.
+
+### Patch Changes
+
+- 3e2d149: Add the `agent-guardrails` pi extension: it appends behavioural circuit-breakers to the PI
+  system prompt once per user prompt — two-strikes retry limits, explicit check-in triggers, and
+  atomic-change discipline (first slice of `docs/ideas/improve-pi-system-prompt.md`).
+- a6b1929: The bundled `agent-modes` pi extension now registers its `--agent <name>` CLI flag while the extension loads, instead of from its `session_start` handler. PI validates parsed CLI flags against the extensions present at startup, so the late registration meant `pi --agent <name>` failed with `Unknown option: --agent`. Registration is extracted into a `registerAgentFlag(pi, agents)` helper called directly by the extension factory.
+- a6b1929: Materialise `~/.claude/settings.json` from a new committed `claude/settings.json` template when
+  `agent-cortex install claude` runs (parity with the pi installer's merge-keep-personal contract).
+  The template supplies defaults and personal values win; the installer owns exactly
+  `enabledPlugins` + `extraKnownMarketplaces`, so `permissions`, `hooks`, `env`, `statusLine` and
+  unknown keys are never touched. A legacy symlinked settings file is replaced with a real file,
+  `--dry-run` plans without writing, and `--output <dir>` leaves the user's Claude config alone.
+- 140d9d4: Add a deterministic classifier to the `classify-bead` skill
+  (`skills/planning/classify-bead/scripts/classify-bead.mjs`). One command resolves an
+  existing `implementation-type` label, the legacy `## Type` field, then conservative
+  heuristic signals, and applies the label itself; only beads with no deterministic signal
+  escalate to the rubric subagent. `create-task` and `write-a-prd` now run the classifier
+  before spawning a subagent, and `--audit` reports the deterministic-vs-rubric split
+  over recent beads.
+- e055123: Extract the generic async `isFile`/`isDirectory` stat wrappers into a shared `scripts/lib/fs.mjs` and import them from the claude, copilot, and pi installers instead of redefining them inline.
+- 720d678: Add a milestone-notes discipline to the `run-pipeline-stage` skill: the stage-runner prompt and
+  SKILL.md now instruct agents to append a short checkpoint to the bead's notes (`bd update <id>
+--append-notes`) at stage start and at each milestone, so a fresh session can resume from
+  `bd show <id>` alone if the original session dies mid-stage.
+- 515b75e: Document why the pi installer's substituted skills are the sole pi skill source (the local pi/settings.json packages filter `{ source, "skills": [] }` keeps raw package skills out) and update pi/settings.json to the current runtime config (models, packages, compaction, TUI prefs).
+- 11f9a36: Add a class-over-factory rule to `style-code`: when a module holds mutable state and exposes
+  methods that transform or manage it, model it as a class with public methods and native
+  `#private` fields rather than a factory function returning a closure of methods (TypeScript's
+  `private` modifier is compile-time only). Existing functional guidance for stateless components,
+  hooks, and pure transforms is unchanged.
+
 ## 1.40.0
 
 ### Minor Changes

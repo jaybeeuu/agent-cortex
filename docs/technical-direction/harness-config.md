@@ -1,5 +1,14 @@
 # Technical Direction: Harness config and third-party extensions
 
+**Implemented (agnt-ctx-764p.2).** Option B shipped for pi: `pi-questions` and `pi-web-access`
+are now real `dependencies` bundled via `bundledDependencies` and referenced through
+`node_modules/…` in the package's `pi` manifest, so a fresh pi session loads `ask_questions` and
+`fetch_content` with no separate `pi install`. The bespoke `package.json` `pi.packages` field and
+the `lib/pi-packages.mjs` provisioner it drove are removed. Bundling requires a hoisted
+`node_modules` layout, so the repo's `.npmrc` now sets `node-linker=hoisted` (pnpm refuses to
+pack `bundledDependencies` under the isolated linker). The present-tense framing below is the
+pre-implementation snapshot.
+
 ## Problem and target outcome
 
 - **What we are solving.** agent-cortex ships agents and skills to three harnesses (pi, Claude

@@ -7,6 +7,14 @@
   ],
   "license": "MIT",
   "repository": "https://github.com/jaybeeuu/agent-cortex",
+  "dependencies": {
+    "pi-questions": "^0.3.4",
+    "pi-web-access": "0.10.7"
+  },
+  "bundledDependencies": [
+    "pi-questions",
+    "pi-web-access"
+  ],
   "bin": {
     "agent-cortex": "./bin/agent-cortex.mjs"
   },
@@ -28,19 +36,19 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
+    "@earendil-works/pi-coding-agent": "^0.78.1",
     "tsx": "^4.0.0",
     "yaml": "^2.0.0"
   },
   "pi": {
     "extensions": [
-      "./extensions"
+      "./extensions",
+      "node_modules/pi-questions/extensions/ask-questions.ts",
+      "node_modules/pi-web-access/index.ts"
     ],
     "skills": [
-      "./skills"
-    ],
-    "packages": [
-      "npm:pi-questions",
-      "npm:pi-web-access@0.10.7"
+      "./skills",
+      "node_modules/pi-web-access/skills"
     ]
   }
 }

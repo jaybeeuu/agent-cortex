@@ -105,5 +105,5 @@ The full bead-property contract (titles, labels, dependencies per chore and for 
 - [ ] `implementation-type` label present on the parent bead (`bd label list <id>`) — resolved by the classifier or, on escalation, the rubric subagent.
 - [ ] HITL path: no pipeline chores created, caller told the classification. AFK path: script ran from the target project's cwd and its JSON contains every stage ID plus `featurePrReview`.
 - [ ] Chore titles/labels/dependencies match the contract (`[<parent-id>] <stage title>`, `stage:<id>`, `parent-child` to parent, `blocks` per `dependsOn`), verified against `REFERENCE.md`.
-- [ ] PR gate task exists with `implementation-type:hitl` + `lifecycle:feature-pr` labels and blocks the final document stage chore.
+- [ ] PR gate task exists and blocks the final document stage chore, carrying **exactly one** `implementation-type` label — `implementation-type:hitl` (never an inherited `implementation-type:afk` alongside it) — plus `lifecycle:feature-pr`.
 - [ ] Report returned the parent bead ID, classification, and all child bead IDs.

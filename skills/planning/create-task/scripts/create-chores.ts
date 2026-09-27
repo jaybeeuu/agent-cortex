@@ -106,6 +106,10 @@ const prGateBeadId = run([
   '--priority', priority,
   '--labels', 'implementation-type:hitl,lifecycle:feature-pr',
   '--parent', parentId,
+  // The gate declares its own labels; opt out of bd's create-time parent-label
+  // inheritance so its explicit :hitl is never joined by an inherited :afk.
+  // Stage chores deliberately keep inheriting :afk -- do not add this there.
+  '--no-inherit-labels',
   '--silent',
 ]);
 run(['bd', 'dep', 'add', prGateBeadId, documentStageBeadId, '--type', 'blocks']);

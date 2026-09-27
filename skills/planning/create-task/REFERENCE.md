@@ -24,7 +24,7 @@ One per stage in `pipeline.json` (currently `code`, `verify`, `review`, `documen
 
 - **Type**: `task`
 - **Title**: `[<parent-id>] PR Review and Merge`
-- **Labels**: `implementation-type:hitl`, `lifecycle:feature-pr`
+- **Labels**: `implementation-type:hitl`, `lifecycle:feature-pr` — exactly one `implementation-type` label. The gate declares its own labels, so the script passes `--no-inherit-labels` and it never picks up the parent's `implementation-type:afk`. Stage chores do **not** opt out; they keep inheriting `:afk`.
 - **Dependencies**: `parent-child` to the parent bead; `blocks` on the final document stage chore (`document`, falling back to the last stage in `pipeline.json`).
 - **Purpose**: human review of the agent PR (agent branch → feature branch) before the feature closes.
 

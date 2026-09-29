@@ -148,6 +148,202 @@ expect(await fetchUser("u1")).toStrictEqual({ id: "u1", displayName: "Ada" });
 Mock as little as possible: if a real collaborator is fast, deterministic, and side-effect free,
 use it.
 
+## Integration and e2e
+
+These layers prove what units cannot: that your code speaks correctly to a real collaborator,
+and that the assembled system works. They are the layers agents skip, and where flakiness is
+born. See `SKILL.md` for the principles that govern them.
+
+### What each layer proves
+
+A unit proves logic in isolation. An integration test proves your code against a real
+collaborator across **one seam**. An e2e test proves the assembled system on a user-visible
+journey. Pick the lowest layer that can prove the behaviour.
+
+```ts
+// ❌ Instead — an "integration" test that mocks the collaborator it exists to integrate with
+vi.mock("../db/pool");
+await saveOrder(order);
+expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO orders"));
+
+// ✅ Write — exercises the real collaborator across the seam
+await withPostgres(async (db) => {
+  const repository = new OrderRepository(db);
+  await repository.save(order);
+
+  expect(await repository.get(order.id)).toMatchObject({ id: order.id });
+});
+```
+
+```ts
+// ❌ Instead — a unit-tested rule re-proved at e2e: slow, and it proves nothing new
+it("applies a 10% discount to a £100 order", async () => {
+  await addToCart(page, productPricedAt(100));
+  await openCart(page);
+
+  expect(await page.textContent(".total")).toBe("£90.00");
+});
+
+// ✅ Write — e2e proves the journey and the wiring; the rule stays a unit test
+it("lets a signed-in customer complete checkout", async () => {
+  await signIn(page, customer);
+  await addToCart(page, product);
+  await checkout(page);
+
+  expect(await page.textContent(".confirmation")).toContain("Thank you");
+});
+```
+
+### Real collaborators, not fakes
+
+Run the genuine engine — Postgres, Redis, a queue, object storage — through TestContainers or
+LocalStack. A fake drifts from the real contract and reintroduces exactly the bug the
+integration test was written to catch. Fake only what you genuinely cannot run locally, and
+use a contract double when you do.
+
+```ts
+// ❌ Instead — a hand-rolled fake that does not share the real broker's contract
+const fakeQueue = { send: vi.fn() };
+await publishOrder(queueAdapter(fakeQueue));
+expect(fakeQueue.send).toHaveBeenCalled();
+
+// ✅ Write — the real broker in a container
+const queue = await startQueueContainer();
+await publishOrder(queueAdapter(queue));
+
+const [received] = await consumeOne(queue, ORDER_TOPIC);
+expect(received).toMatchObject({ id: order.id });
+```
+
+```ts
+// ❌ Instead — an ad-hoc stub invented per test; nothing pins it to the provider's API
+vi.spyOn(stripe, "charge").mockResolvedValue({ id: "ch_1" });
+
+// ✅ Write — a contract double generated from the provider's schema
+server.use(http.post("/v1/charges", () => HttpResponse.json(stripeChargeFixture)));
+
+expect(await client.charge(customer, 100)).toMatchObject({ id: "ch_1" });
+```
+
+### Isolation at the integration layer
+
+State is the enemy here. Give every test its own data and its own schema, namespace, or
+transaction; never share a seeded row or a long-lived database between tests or parallel
+workers. Starting a container is expensive and legitimately belongs in `beforeAll` — data
+does not.
+
+```ts
+// ❌ Instead — a shared seeded row mutated across tests; passes alone, fails in a parallel run
+beforeAll(async () => {
+  db = await startPostgresContainer();
+  await db.exec(seedSql);
+});
+
+it("updates the account", async () => {
+  await db.update("accounts", { id: "acc-1" }, { balance: 50 });
+});
+
+it("reads the seeded balance", async () => {
+  expect(await db.get("accounts", "acc-1")).toMatchObject({ balance: 100 });
+});
+
+// ✅ Write — container per suite, data per test
+beforeAll(async () => {
+  db = await startPostgresContainer();
+});
+
+it("updates the account", async () => {
+  const account = await createAccount(db, { balance: 100 });
+  await updateBalance(db, account.id, 50);
+
+  expect(await getAccount(db, account.id)).toMatchObject({ balance: 50 });
+});
+
+it("reads the inserted balance", async () => {
+  const account = await createAccount(db, { balance: 100 });
+
+  expect(await getAccount(db, account.id)).toMatchObject({ balance: 100 });
+});
+```
+
+### Async and eventual consistency
+
+Integration surfaces are asynchronous by nature. Await the observable signal with a bounded
+deadline; a fixed sleep is both slow and a race it may still lose.
+
+```ts
+// ❌ Instead — sleeps past the queue, then races it anyway
+await publishOrder(queue, order);
+await new Promise((resolve) => setTimeout(resolve, 500));
+
+expect(await findProjection(db, order.id)).toBeDefined();
+
+// ✅ Write — poll the observable signal with a bounded deadline
+await publishOrder(queue, order);
+await waitFor(async () => (await findProjection(db, order.id)) !== null, {
+  timeout: 5_000,
+  description: "order projection",
+});
+```
+
+```ts
+// ❌ Instead — asserts a step that has not run yet
+it("emits an audit event on save", async () => {
+  await saveUser(user);
+
+  expect(await auditLog.events()).toHaveLength(1);
+});
+
+// ✅ Write — await the event, then assert it
+it("emits an audit event on save", async () => {
+  await saveUser(user);
+  const event = await waitForEvent(auditLog, { type: "user.saved" });
+
+  expect(event).toMatchObject({ userId: user.id });
+});
+```
+
+### Determinism at the edges
+
+Pin the images, freeze the clock, and seed randomness. A test that pulls `latest` or reads the
+wall clock fails eventually for reasons that have nothing to do with the code.
+
+```ts
+// ❌ Instead — floating image tag and the real clock
+const container = await new GenericContainer("postgres:latest").start();
+const invoice = createInvoice({ issuedAt: new Date() });
+
+// ✅ Write — pinned image and an injected clock
+const container = await new GenericContainer("postgres:16.4-alpine").start();
+const clock = new FixedClock("2024-01-01T00:00:00Z");
+const invoice = createInvoice({ issuedAt: clock.now() });
+```
+
+### What e2e should prove
+
+E2E is the most expensive layer, so spend it only on what nothing else can prove: that the
+parts are wired together, migrations ran, configuration loaded, and a user can complete the
+journey. Keep the count small.
+
+```ts
+// ❌ Instead — reaches inside the system to assert call order
+it("checks out", async () => {
+  await checkout(page);
+
+  expect(spyOn(inventoryService, "reserve")).toHaveBeenCalledBefore(
+    spyOn(paymentService, "charge"),
+  );
+});
+
+// ✅ Write — asserts what the journey produced
+it("checks out", async () => {
+  await checkout(page);
+
+  expect(await page.textContent(".confirmation")).toContain("Thank you");
+  expect(await api.getOrder(orderRef)).toMatchObject({ state: "confirmed" });
+});
+```
+
 ## Assertions: targeted, never tautological
 
 ```ts

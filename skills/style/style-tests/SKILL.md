@@ -1,6 +1,6 @@
 ---
 name: style-tests
-description: Defines this project's test-writing conventions — what to test, assertion strategy, mock discipline, the ban on static-content assertions, and how to construct test data. Use BEFORE writing or editing any test and when reviewing tests — consult it whenever you add or change test files rather than choosing an approach ad hoc. Also for a "test review", "mock strategy", "what should I test", or "is this test well-written".
+description: Defines test-writing conventions — assertion strategy, mock discipline, the content-assertion ban, and test-data construction. Use before writing or reviewing any test, or for a "test review" or "what should I test".
 ---
 
 # Test Style
@@ -22,8 +22,9 @@ description: Defines this project's test-writing conventions — what to test, a
 - **Test behaviour, not implementation.** A test must survive a refactor that does not change observable behaviour. If it fails after such a refactor, the test was wrong.
 - **Mock last, at the edges.** Mock genuine external boundaries only. Never mock within the application/domain boundary; a real collaborator is almost always cheaper than a mock that lies.
 - **Unit tests at module boundaries.** Exercise the surface of a deep module through its public API, never its internals.
-- **Integration and e2e are realistic.** Exercise real service behaviour — AWS via LocalStack or TestContainers. AWS may not be the AUT, but it must still be exercised for certainty. Use a small number of smoke tests to prove the system hangs together.
+- **Integration and e2e exercise real services.** Run the genuine collaborator — Postgres, Redis, a queue, object storage via TestContainers or LocalStack — never a fake that drifts from the real contract. Reserve e2e for a small number of smoke tests proving the system hangs together.
 - **No more tests than needed.** Every test earns its cost by pinpointing exactly where a failure lies. A test that cannot localise a fault adds maintenance weight without signal.
+- **One behaviour per test.** A test should fail for exactly one reason; several unrelated assertions turn a failure into a debugging exercise.
 - **Test code is production code.** Linted, typechecked, properly typed — no `any`, no unsafe casts, no shortcuts in constructing data. Tolerate WETness where it leaves tests more descriptive.
 - **All setup and assertion data is visible inline.** Show exactly and only the values that explain the case; a helper with sensible defaults keeps it terse.
 - **Deterministic and performant.** A failing or flaky test is investigated now. Deferring is acceptable only against a top-priority bead.
@@ -50,14 +51,17 @@ is legitimate. `readFile(config).includes("x")` is not.
 
 ## Test-data construction
 
-- **Build data inline in the test** (or in a helper called from it) so the test body shows the shape of its own input.
+- **Vital data is visible inline.** Any value that is asserted, derives the asserted state, or sets up the scenario under test appears in the test body — never hidden in a helper or a module-scope constant.
+- **Incidental data is hidden.** Everything else takes an obvious default inside a factory, so the test body reads as only the values that matter.
 - **No shared mutable top-level fixture.** If data must be reused, produce it fresh per test via a function — a factory, not a constant. Module-scope constants are acceptable only when genuinely immutable and read-only.
-- **Prefer a small configurable helper** — a factory taking partial overrides with defaults for the rest — over repeated full literals. Build the helper only when reuse justifies it; a single test's data stays a plain inline object.
-- **Name and locate the helper conventionally** so the next agent finds it — colocated with the tests, named for what it builds.
+- **Prefer a small configurable factory.** Optional partial overrides over sensible defaults beat repeated full literals. Build it when reuse justifies it; a single test's data stays a plain inline object.
+- **Name and locate the factory conventionally.** Colocate it with the tests and name it for what it builds: `createNameOfType`.
+
+Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 
 ## Workflow
 
-1. **Determine the test level.** Can you test this behaviour through the module's public API or interface? Prefer integration-level tests (the trophy's higher coverage). Reserve unit tests for complex functional logic that genuinely benefits from tight isolation, always at the module boundary. Use a small number of e2e smoke tests — with real services via LocalStack/TestContainers — to prove the system hangs together.
+1. **Determine the test level.** A unit proves logic in isolation, integration proves your code against a real collaborator across one seam, and e2e proves the assembled system on a user-visible journey. Can you test this behaviour through the module's public API or interface? Prefer integration-level tests (the trophy's higher coverage). Reserve unit tests for complex functional logic that genuinely benefits from tight isolation, always at the module boundary. Use a small number of e2e smoke tests to prove the parts are wired together — not to re-prove rules already covered below.
 
 2. **Decide what to mock.** Mock as little as possible, and only at genuine external boundaries. A useful mental model: mock what is **above** the module under test in the dependency tree, not below it. At e2e, mock almost nothing.
 
@@ -75,11 +79,18 @@ is legitimate. `readFile(config).includes("x")` is not.
 |---|---|
 | Asserting static file content — an expected config/markdown/terraform string, or a snapshot of static content | Assert the behaviour the file participates in: data inserted into a template, a header compiled correctly, a deployed service ready to serve traffic |
 | Shared mutable top-level fixture reused across tests | Build fresh data per test via a factory; a module-scope constant only when genuinely immutable and read-only |
-| Repeated full literals for the same shape | A small configurable helper taking partial overrides with sensible defaults |
+| Repeated full literals for the same shape | A small configurable factory taking partial overrides with sensible defaults |
+| A test with no assertion, or one that cannot fail (`expect(result).toBeDefined()`) | Assert the observable contract — a specific value the code must produce |
+| Computing the expected value with the implementation's own logic | Hard-code the expected value from a known-good case; the test must not share the implementation's bug |
 | Mocking implementation details or internal module structure | Mock the genuine external boundary and test through the public interface |
+| An "integration" test that mocks the collaborator it is meant to integrate with | Run the real collaborator (TestContainers/LocalStack); a fake drifts from the real contract |
+| E2E re-testing business rules already covered by unit tests | Spend e2e on wiring, migrations, and the journey — keep it to a few smoke tests |
 | Duplicating type or lint coverage | Delete the assertion — the compiler and linter already guarantee it |
-| Skipping flaky or failing tests | Fix or delete; a skipped test is a blind spot |
+| Skipping flaky or failing tests, or leaving `.only`/focus in | Fix or delete; a skipped or focused test is a blind spot |
 | Sharing state via `before`/`after` hooks | Independent tests; hooks only for expensive, non-observable infrastructure |
+| Sleeping or polling for async work to finish | Await the real completion signal; inject a clock for time-dependent logic |
+| An unawaited promise in a test | `await` every async interaction so a rejection fails the test |
+| Asserting log or console output | Assert the returned value or emitted event |
 | `any` or unsafe casts in test code | Proper types — test code is production code |
 
 ## Common Rationalizations
@@ -93,6 +104,7 @@ is legitimate. `readFile(config).includes("x")` is not.
 | "I'll skip this failing test and come back" | A skipped test is a blind spot. The failure is telling you something — listen to it. |
 | "The config file must match exactly this content" | You are cataloguing a file, not proving behaviour. Assert what the code does with it. |
 | "A shared fixture saves setup time" | It couples tests and hides which value drives the case. Build data fresh per test. |
+| "Asserting every field is more thorough" | It makes the test break for reasons the case does not care about. Assert the fields that prove the behaviour. |
 
 ## Cross-skill references
 
@@ -105,45 +117,32 @@ is legitimate. `readFile(config).includes("x")` is not.
 
 ## Examples
 
-### Behaviour over content
+The full `❌ Instead` / `✅ Write` catalogue lives in `EXAMPLES.md`: behaviour over
+implementation, test data, mocking, integration and e2e, targeted assertions, structure and
+naming, determinism and async, isolation, and content assertions. Headline pairs:
 
 | Instead of… | Write… |
 |---|---|
-| Reading a generated config and asserting it equals an expected string | Assert the value the code inserted into the template |
-| Snapshotting a markdown or terraform file's contents | Assert the behaviour the renderer/compiler produced |
-| Asserting a deploy artefact's static bytes | A smoke test that the deployed service is up and ready to serve traffic |
-
-### Mock boundaries
-
-| Instead of… | Write… |
-|---|---|
-| Mocking the internal database driver to verify a query was called | Testing through the repository interface with a test double at that boundary |
-| Mocking `fetch` in a unit test for an API client | Testing the client with a real HTTP stub that returns controlled responses |
-
-### Targeted assertions
-
-| Instead of… | Write… |
-|---|---|
+| Mocking the internal database driver to verify a query was called | Testing through the repository interface with a real in-memory implementation |
+| Snapshotting a markdown or terraform file's contents | Asserting the behaviour the renderer/compiler produced |
 | `expect(result).toEqual(fullExpectedObject)` with every field asserted | `expect(result).toMatchObject({ status: "success", id: expect.any(String) })` |
-| `expect(mockSave).toHaveBeenCalledTimes(1)` and then `expect(mockSave).toHaveBeenCalledWith(data)` | Just the call-args assertion — count is redundant |
-
-### Test data
-
-| Instead of… | Write… |
-|---|---|
 | `const user = sharedUser; user.isAdmin = true;` mutating a module-scope fixture | `const user = createUser({ isAdmin: true });` — fresh per test |
-| Spelling the full object literal in every test | `createUser({ isAdmin: true })` — a helper with defaults and explicit overrides |
 
 ## Verification checklist
 
 - [ ] Test verifies behaviour, not implementation structure
+- [ ] Integration tests exercise the real collaborator — no mocking the engine you are integrating with
+- [ ] E2E smoke tests prove wiring, migrations, and the journey — not business rules covered lower down
+- [ ] Each test fails for exactly one reason, and its name states the behaviour
 - [ ] No mocking of internal module details — only public interfaces
 - [ ] No `before`/`after` hooks for shared test state (infrastructure setup only)
-- [ ] Assertions are targeted — no over-asserting or redundant checks
+- [ ] Assertions are targeted — no over-asserting, no tautologies, no assertion-free tests
 - [ ] No test asserts static file content (config, markdown, terraform, static snapshots) — assertions prove behaviour, not inventory
 - [ ] Test data is built inline or via a fresh-per-test factory; no shared mutable top-level fixture
-- [ ] Reused test data uses a small configurable helper rather than repeated full literals
-- [ ] No skipped or commented-out tests
-- [ ] No flaky tests — all deterministic
+- [ ] Vital data is visible inline; incidental data is defaulted in a factory
+- [ ] Reused test data uses a small configurable factory rather than repeated full literals
+- [ ] No skipped, focused, or commented-out tests
+- [ ] No flaky tests — all deterministic, no sleeps or real clocks
+- [ ] Every async interaction is awaited
 - [ ] No `any` or unsafe casts in test code
 - [ ] No duplication of type or linting coverage

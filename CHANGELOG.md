@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.41.1
+
+### Patch Changes
+
+- 3991199: Fix the PR gate bead created by `create-task`'s `create-chores.ts` carrying two conflicting
+  `implementation-type` labels. The gate declares `implementation-type:hitl` explicitly, but
+  `bd create --parent` also inherited the parent's `implementation-type:afk`, leaving the one
+  bead whose job is to stop automated merges labelled as autonomous work. The gate now passes
+  `--no-inherit-labels`; stage chores keep inheriting `:afk` intentionally. A regression test
+  drives the script against a stateful fake `bd` and asserts the gate's label set exactly.
+- c37b50a: Add a command/query-separation rule to `style-code`: a function either returns a value or
+  changes state — never both. Commands mutate and return nothing; queries are pure and return a
+  value. Two carve-outs: a command that can fail may return a typed result (`Result<T, E>`) rather
+  than throw, and a fluent builder may return `this` to chain. Returning data about a mutation —
+  the saved row, a count, the previous value — is no longer permitted. The existing result-object
+  guidance is unchanged.
+- c29fe79: Split the `style-tests` example catalogue into a new `EXAMPLES.md` and broaden it into
+  `❌ Instead` / `✅ Write` code pairs across eight categories: behaviour over implementation,
+  test data (vital visible / incidental hidden), mocking at boundaries, targeted assertions,
+  structure and naming, determinism and async, isolation, and content assertions. Red Flags gains
+  the recurring anti-patterns — assertion-free and tautological tests, expected values recomputed
+  with the implementation's own logic, `.only`/focus left in, sleeps and real clocks, unawaited
+  promises, and log-output assertions — and the verification checklist gains matching gates.
+  `SKILL.md` drops back to a lean 146 lines so the principles still load with the skill while the
+  deepened examples live behind progressive disclosure. The `createSomething` factory example is
+  corrected: it had a missing comma (a syntax error), asserted `prop: 0` while overriding with
+  `prop: 1`, and reached for `DeepPartial` where `Partial` reads better for a flat type.
+- c29fe79: Add integration and e2e layer conventions to `style-tests`. A new `## Integration and e2e`
+  section in `EXAMPLES.md` covers six sub-topics with `❌ Instead` / `✅ Write` pairs: what each
+  layer proves, real collaborators over fakes, isolation at the integration layer, bounded async
+  deadlines over sleeps, determinism at the edges, and what e2e should prove. `SKILL.md`
+  generalises the AWS-specific "Integration and e2e are realistic" principle to real-service
+  guidance, defines what unit, integration, and e2e each prove in workflow step 1, and adds two
+  Red Flags rows — an "integration" test that mocks the collaborator it exists to integrate with,
+  and e2e re-testing business rules already covered by unit tests — plus two matching checklist
+  items.
+
 ## 1.41.0
 
 ### Minor Changes

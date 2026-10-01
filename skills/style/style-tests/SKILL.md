@@ -12,8 +12,6 @@ description: Defines test-writing conventions — assertion strategy, mock disci
 - Deciding what test data to build and where.
 - Asked for a "test review", "what should I test", or "is this test well-written".
 
-For the `❌ Instead` / `✅ Write` pattern catalogue, see `EXAMPLES.md`.
-
 ## When NOT to use
 
 - The red-green-refactor development loop — use `tdd` instead.
@@ -24,7 +22,7 @@ For the `❌ Instead` / `✅ Write` pattern catalogue, see `EXAMPLES.md`.
 - **Test behaviour, not implementation.** A test must survive a refactor that does not change observable behaviour. If it fails after such a refactor, the test was wrong.
 - **Mock last, at the edges.** Mock genuine external boundaries only. Never mock within the application/domain boundary; a real collaborator is almost always cheaper than a mock that lies.
 - **Unit tests at module boundaries.** Exercise the surface of a deep module through its public API, never its internals.
-- **Integration and e2e are realistic.** Exercise real service behaviour — AWS via LocalStack or TestContainers. AWS may not be the AUT, but it must still be exercised for certainty. Use a small number of smoke tests to prove the system hangs together.
+- **Integration and e2e exercise real services.** Run the genuine collaborator — Postgres, Redis, a queue, object storage via TestContainers or LocalStack — never a fake that drifts from the real contract. Reserve e2e for a small number of smoke tests proving the system hangs together.
 - **No more tests than needed.** Every test earns its cost by pinpointing exactly where a failure lies. A test that cannot localise a fault adds maintenance weight without signal.
 - **One behaviour per test.** A test should fail for exactly one reason; several unrelated assertions turn a failure into a debugging exercise.
 - **Test code is production code.** Linted, typechecked, properly typed — no `any`, no unsafe casts, no shortcuts in constructing data. Tolerate WETness where it leaves tests more descriptive.
@@ -63,7 +61,7 @@ Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 
 ## Workflow
 
-1. **Determine the test level.** Can you test this behaviour through the module's public API or interface? Prefer integration-level tests (the trophy's higher coverage). Reserve unit tests for complex functional logic that genuinely benefits from tight isolation, always at the module boundary. Use a small number of e2e smoke tests — with real services via LocalStack/TestContainers — to prove the system hangs together.
+1. **Determine the test level.** A unit proves logic in isolation, integration proves your code against a real collaborator across one seam, and e2e proves the assembled system on a user-visible journey. Can you test this behaviour through the module's public API or interface? Prefer integration-level tests (the trophy's higher coverage). Reserve unit tests for complex functional logic that genuinely benefits from tight isolation, always at the module boundary. Use a small number of e2e smoke tests to prove the parts are wired together — not to re-prove rules already covered below.
 
 2. **Decide what to mock.** Mock as little as possible, and only at genuine external boundaries. A useful mental model: mock what is **above** the module under test in the dependency tree, not below it. At e2e, mock almost nothing.
 
@@ -85,6 +83,8 @@ Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 | A test with no assertion, or one that cannot fail (`expect(result).toBeDefined()`) | Assert the observable contract — a specific value the code must produce |
 | Computing the expected value with the implementation's own logic | Hard-code the expected value from a known-good case; the test must not share the implementation's bug |
 | Mocking implementation details or internal module structure | Mock the genuine external boundary and test through the public interface |
+| An "integration" test that mocks the collaborator it is meant to integrate with | Run the real collaborator (TestContainers/LocalStack); a fake drifts from the real contract |
+| E2E re-testing business rules already covered by unit tests | Spend e2e on wiring, migrations, and the journey — keep it to a few smoke tests |
 | Duplicating type or lint coverage | Delete the assertion — the compiler and linter already guarantee it |
 | Skipping flaky or failing tests, or leaving `.only`/focus in | Fix or delete; a skipped or focused test is a blind spot |
 | Sharing state via `before`/`after` hooks | Independent tests; hooks only for expensive, non-observable infrastructure |
@@ -118,8 +118,8 @@ Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 ## Examples
 
 The full `❌ Instead` / `✅ Write` catalogue lives in `EXAMPLES.md`: behaviour over
-implementation, test data, mocking, targeted assertions, structure and naming, determinism and
-async, isolation, and content assertions. Headline pairs:
+implementation, test data, mocking, integration and e2e, targeted assertions, structure and
+naming, determinism and async, isolation, and content assertions. Headline pairs:
 
 | Instead of… | Write… |
 |---|---|
@@ -131,6 +131,8 @@ async, isolation, and content assertions. Headline pairs:
 ## Verification checklist
 
 - [ ] Test verifies behaviour, not implementation structure
+- [ ] Integration tests exercise the real collaborator — no mocking the engine you are integrating with
+- [ ] E2E smoke tests prove wiring, migrations, and the journey — not business rules covered lower down
 - [ ] Each test fails for exactly one reason, and its name states the behaviour
 - [ ] No mocking of internal module details — only public interfaces
 - [ ] No `before`/`after` hooks for shared test state (infrastructure setup only)

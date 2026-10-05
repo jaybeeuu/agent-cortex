@@ -7,7 +7,7 @@ Body templates used in the Phase 3 and Phase 4 workflow steps of `SKILL.md`.
 Passed as the `--description` when creating an epic bead:
 
 ```bash
-bd create "<Phase Title>" --type epic --description "<epic body below>"
+bd create "<Phase Title>" --type epic --description "<epic body below>" --validate
 ```
 
 ```markdown
@@ -23,7 +23,7 @@ A concise description of this phase. Scope and goal, not implementation details.
 
 End-to-end behaviour for this phase. What a demo would show.
 
-## Acceptance criteria
+## Success Criteria
 
 - [ ] Criterion 1
 - [ ] Criterion 2

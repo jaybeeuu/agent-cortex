@@ -43,7 +43,7 @@ A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a sma
 
 6. **User picks an interface** (or accepts the recommendation).
 
-7. **Create the refactor bead.** Run the `create-task` skill with a concise title, the description from the template in [REFERENCE.md](REFERENCE.md), and priority P2. Always use `create-task` — never `bd create` directly — because it classifies the bead and expands AFK work into pipeline stages ralph can execute. Do not ask the user to review before creating; share the bead ID.
+7. **Create the refactor bead.** Run the `create-task` skill with a concise title, the description from the template in [REFERENCE.md](REFERENCE.md), and priority P2. The template's `## Acceptance Criteria` is required (enforced by `create-task`'s `--validate`) and must reflect outcomes the user agreed, not assumptions. Always use `create-task` — never `bd create` directly — because it classifies the bead and expands AFK work into pipeline stages ralph can execute. Do not ask the user to review before creating; share the bead ID.
 
 ## Red Flags
 
@@ -95,5 +95,6 @@ Output: numbered deepening candidates (cluster, coupling, dependency category, t
 - [ ] At least two radically different designs, each with signature, usage example, hidden complexity, dependency strategy, and trade-offs
 - [ ] Recommendation given in prose, with a hybrid proposed where elements combine well
 - [ ] Refactor bead created via `create-task` at P2 using the REFERENCE.md description template
+- [ ] Description carries agreed `## Acceptance Criteria`; the bead lints clean
 - [ ] Bead ID reported and no review gate imposed before creation
 - [ ] No unrelated areas explored or refactors proposed outside the chosen candidate

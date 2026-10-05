@@ -1,10 +1,10 @@
 // Shared test helper: a stateful fake `bd` binary for create-chores.ts.
 // `bd` is a genuine external system (its real database must never be touched
 // by tests), so the script is driven against this fake via the BD_PATH
-// override. The fake reproduces the one real behaviour the test depends on —
-// `bd create --parent` inherits the parent's labels unless
-// `--no-inherit-labels` is passed — and records every created bead to a JSON
-// state file the test can read back.
+// override. The fake reproduces the real behaviours the tests depend on —
+// `bd create --parent` label inheritance (unless `--no-inherit-labels` is
+// passed) and `bd create --validate` section enforcement — and records every
+// created bead to a JSON state file the test can read back.
 //
 // State lives in `state.json` next to the binary; the test seeds it with the
 // parent bead and reads the children back after the script runs. Written async
@@ -20,7 +20,7 @@ const FAKE_BD_SCRIPT = [
   "",
   "const stateFile = process.env.FAKE_BD_STATE;",
   "const VALUE_FLAGS = new Set(['--type', '--description', '--priority', '--labels', '--parent']);",
-  "const BOOL_FLAGS = new Set(['--silent', '--no-inherit-labels']);",
+  "const BOOL_FLAGS = new Set(['--silent', '--no-inherit-labels', '--validate']);",
   "",
   "(async () => {",
   "  const argv = process.argv.slice(2);",
@@ -37,13 +37,33 @@ const FAKE_BD_SCRIPT = [
   "  }",
   "",
   "  const state = JSON.parse(await fs.readFile(stateFile, 'utf8'));",
+  "",
+  "  // Model `bd create --validate`: reject a substantive bead whose description lacks the",
+  "  // required section(s) for its type. Chores have no requirements and always pass.",
+  "  if (bools.has('--validate')) {",
+  "    const type = flags['--type'] || 'task';",
+  "    const required = {",
+  "      task: ['## Acceptance Criteria'],",
+  "      feature: ['## Acceptance Criteria'],",
+  "      bug: ['## Steps to Reproduce', '## Acceptance Criteria'],",
+  "      epic: ['## Success Criteria'],",
+  "      chore: [],",
+  "    }[type] || ['## Acceptance Criteria'];",
+  "    const description = flags['--description'] || '';",
+  "    const missing = required.filter((section) => !description.toLowerCase().includes(section.toLowerCase()));",
+  "    if (missing.length > 0) {",
+  "      console.error('missing required sections for ' + type + ': ' + missing.join(', '));",
+  "      process.exit(1);",
+  "    }",
+  "  }",
+  "",
   "  const explicit = (flags['--labels'] || '').split(',').filter(Boolean);",
   "  const parent = state.beads.find((b) => b.id === flags['--parent']);",
   "  const inherited = parent && !bools.has('--no-inherit-labels') ? parent.labels : [];",
   "  const labels = [...new Set([...inherited, ...explicit])];",
   "",
   "  const id = 'bd-' + state.nextId++;",
-  "  state.beads.push({ id, title, labels, parent: flags['--parent'] ?? null });",
+  "  state.beads.push({ id, title, labels, parent: flags['--parent'] ?? null, type: flags['--type'] || 'task', description: flags['--description'] || '', validated: bools.has('--validate') });",
   "  await fs.writeFile(stateFile, JSON.stringify(state));",
   "  process.stdout.write(id + '\\n');",
   "})().catch((err) => {",

@@ -32,7 +32,7 @@ description: Create a detailed refactor plan via user interview, split into tiny
    - **description**: the refactor plan formatted with the template in `FORMAT.md`
    - **priority**: P2
 
-   Always invoke `create-task` — never `bd create` directly. `create-task` classifies the bead and expands AFK tasks into pipeline stage beads for ralph.
+   Always invoke `create-task` — never `bd create` directly. `create-task` classifies the bead and expands AFK tasks into pipeline stage beads for ralph. The description must include the template's `## Acceptance Criteria` — the plan's definition of done, agreed in the interview rather than invented — or `create-task`'s `--validate` gate rejects it.
 
 ## Red Flags
 
@@ -82,3 +82,4 @@ Output: a P2 bead filed via `create-task` whose description follows the `FORMAT.
 - [ ] Commit plan written with every commit leaving the codebase working.
 - [ ] Decision Document contains decisions only — no file paths or code snippets.
 - [ ] Bead filed via `create-task` with concise title, `FORMAT.md`-formatted description, priority P2.
+- [ ] Description carries agreed `## Acceptance Criteria`; the bead was created with `--validate` and lints clean.

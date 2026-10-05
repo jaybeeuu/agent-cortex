@@ -50,17 +50,21 @@ execute. The epic bead is the source of truth — no intermediate plan file.
    complete through all integration layers, demoable or verifiable on its own, and
    covering a specific set of user stories.
 5. For each phase define its **title**, **user stories covered**, **what to build**
-   (end-to-end behaviour, not layer-by-layer), and **acceptance criteria**.
+   (end-to-end behaviour, not layer-by-layer), and **success criteria** — the epic's required
+   `## Success Criteria`. The interview is complete only when every phase has agreed criteria;
+   never invent them.
 6. Present the proposed phases and ask about granularity, merges or splits, and which
    phases can run in parallel. Iterate until the user approves.
 
 ### Phase 3 — Create epics (one per phase)
 
 7. Create epics in dependency order (blockers first) so you can reference real bead IDs,
-   using the epic body template in [REFERENCE.md](./REFERENCE.md):
+   using the epic body template in [REFERENCE.md](./REFERENCE.md). The body must carry
+   `## Success Criteria`; `--validate` rejects it otherwise:
 
    ```bash
-   bd create "<Phase Title>" --type epic --description "<epic body from REFERENCE.md>"
+   bd create "<Phase Title>" --type epic --description "<epic body from REFERENCE.md>" --validate
+   bd lint <epic-id>
    ```
 
 8. Tag each epic with a priority (`p3` default; adjust for p4/p5), and `workflow:ralph`
@@ -127,7 +131,7 @@ Epic: "Phase 2 — Dashboard" (#127) — AFK (blocked by #123)
 - [ ] Phase 1 complete: PRD confirmed, codebase explored, architectural decisions captured.
 - [ ] Phase 2 complete: phases drafted and approved by the user.
 - [ ] Phase 3 complete: epics created in dependency order and tagged (priority, plus
-      `workflow:ralph` under ralph-plan/ralph).
+      `workflow:ralph` under ralph-plan/ralph), and `bd lint` clean.
 - [ ] Phase 4 complete: tasks created via `create-task`; epics carry the aggregate
       `implementation-type` tag.
 - [ ] Phase 5 complete: full bead tree presented and confirmed.
@@ -137,6 +141,7 @@ Epic: "Phase 2 — Dashboard" (#127) — AFK (blocked by #123)
 - [ ] Every phase is a vertical slice covering all layers, not a horizontal layer.
 - [ ] Every task is independently grabbable by a single agent.
 - [ ] All epics are tagged with a priority (and `workflow:ralph` when under ralph).
+- [ ] Epics created with `--validate`; `bd lint` reports no missing sections for the created tree.
 - [ ] All tasks are classified AFK/HITL via `create-task`.
 - [ ] Parent epics carry the aggregate `implementation-type` tag.
 - [ ] No intermediate plan file was created — epics are the source of truth.

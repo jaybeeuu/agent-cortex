@@ -1,7 +1,9 @@
 # Idea: ban-content-assertion-tests
 
 ## Status
-Backlog idea (not implementation-ready) — priority P1 (high)
+Filed as epic `agnt-ctx-h9gt` (2026-10-06) — awaiting `prd-to-tasks`. Slice 1 (the
+`style-tests` ban) shipped earlier in `daa77c8` (PR #143); this epic covers the review-gate
+enforcement and the skill sweep.
 
 ## Created
 2026-08-30

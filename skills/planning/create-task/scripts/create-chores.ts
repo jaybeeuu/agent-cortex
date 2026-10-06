@@ -101,8 +101,11 @@ const prGateBeadId = run([
   'bd', 'create', JSON.stringify(`[${parentId}] PR Review and Merge`),
   '--type', 'task',
   '--description', JSON.stringify(
-    'Human review gate: review and merge the agent PR into the feature branch before closing this feature.',
+    'Human review gate: review and merge the agent PR into the feature branch before closing this feature.\n\n## Acceptance Criteria\n\n- [ ] Agent PR reviewed and merged into the feature branch.',
   ),
+  // The gate is type `task`, so `--validate` enforces its `## Acceptance Criteria`
+  // section. Stage chores require no sections and deliberately omit the flag.
+  '--validate',
   '--priority', priority,
   '--labels', 'implementation-type:hitl,lifecycle:feature-pr',
   '--parent', parentId,

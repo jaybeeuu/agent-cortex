@@ -79,7 +79,9 @@ When a verify or review stage fails:
    ```bash
    fix_id=$(bd create "[<parent-id>] Fix (round <N>)" --type chore \
      --priority <same as parent> \
-     --description "<CHANGES_REQUESTED list or VERIFY_FAILURES list from the triggering REPORT>" -q)
+     --description "Requirements: see <parent-id> acceptance criteria (`bd show <parent-id>`).
+
+<CHANGES_REQUESTED list or VERIFY_FAILURES list from the triggering REPORT>" -q)
    bd tag $fix_id stage:fix
    bd dep add $fix_id <parent-id> --type parent-child   # fix-chore is child of parent
    ```

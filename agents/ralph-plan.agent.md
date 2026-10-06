@@ -47,7 +47,7 @@ Dispatch parallel **explore** sub-agents — one per independent research area. 
 - If the task requires designing a new module API or interface, invoke **design-an-interface** to generate and compare options. Write the output to `.agent-cortex/working-docs/interface-design.md`.
 
 ### 4. Grill the user
-After reviewing exploration findings, invoke the **grill-me** skill to surface and resolve outstanding design questions. Keep grilling until there are no open questions that would block implementation. Record answers in `.agent-cortex/working-docs/decisions.md`.
+After reviewing exploration findings, invoke the **grill-me** skill to surface and resolve outstanding design questions. Keep grilling until there are no open questions that would block implementation. The grill is complete only when there is enough agreed detail to fill every required section of the target bead type (task/feature → `## Acceptance Criteria`; epic → `## Success Criteria`; see the beads skill). Never invent an answer — surface it as an assumption and confirm it. Record answers in `.agent-cortex/working-docs/decisions.md`.
 
 ### 5. Write the plan
 Update the top-level bead's `design` field with a high-level implementation plan. Invoke the **style-comms** skill first so the plan matches the project's communication style.
@@ -64,14 +64,18 @@ For each new feature bead and each new task bead, create a HITL planning gate be
 Every planning gate description must be cold-start-ready so another person can pick it up without prior chat context. Include all of: (1) what is being built and why, (2) decisions already made, (3) open questions/risks, and (4) references (bead IDs, files, or docs) used during planning.
 
 ```bash
-gate_id=$(bd create "Plan: <feature title>" --type task --description "<planning context, decisions, open questions, and references>")
+gate_id=$(bd create "Plan: <feature title>" --type task --description "<planning context, decisions, open questions, and references>
+
+## Acceptance Criteria
+
+- [ ] User confirms planning is sufficient for this feature/task." --validate)
 bd tag <planning-gate-id> implementation-type:hitl
 bd dep add <feature-or-task-id> <planning-gate-id>   # feature/task depends on planning gate (gate blocks implementation)
 ```
 
 Do not close planning gates in bulk. Only close a gate after the user explicitly confirms that exact feature/task is ready to implement; leave all unconfirmed gates open and blocking.
 
-Before handing off, ensure every bead created in this step carries an `implementation-type` label — check `bd label list <id>` yourself. Do not spawn `classify-bead` here: planning gates were tagged inline above and `create-task` classifies its beads internally. Only invoke it for a bead that genuinely lacks both the label and a `## Type` field.
+Before handing off, ensure every bead created in this step carries an `implementation-type` label — check `bd label list <id>` yourself. Do not spawn `classify-bead` here: planning gates were tagged inline above and `create-task` classifies its beads internally. Only invoke it for a bead that genuinely lacks both the label and a `## Type` field. Then run `bd lint <id>` for every bead created in this step and fix any missing sections before handoff.
 
 Tag every bead created in this step with `workflow:ralph`:
 

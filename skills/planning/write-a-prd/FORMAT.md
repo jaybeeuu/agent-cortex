@@ -23,6 +23,12 @@ A LONG, numbered list of user stories. Each user story should be in the format o
 
 This list of user stories should be extremely extensive and cover all aspects of the feature.
 
+## Success Criteria
+
+The high-level, verifiable outcomes that mean this feature succeeded. This is the epic's
+`## Success Criteria` (required by `bd create --validate`) — distinct from the per-task
+acceptance criteria that `prd-to-tasks` derives later.
+
 ## Implementation Decisions
 
 A list of implementation decisions that were made. This can include:

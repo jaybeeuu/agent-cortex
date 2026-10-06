@@ -27,7 +27,7 @@ description: "Grilling session that challenges your plan against the existing do
 5. **Cross-reference with code.** When the user states how something works, check whether the code agrees. Surface contradictions the moment you find them.
 6. **Update `CONTEXT.md` inline.** When a term resolves, write the entry right there — do not batch. Keep it a pure glossary: no implementation details, no specs, no scratch notes. Entry format and file-discovery rules live in `REFERENCE.md`.
 7. **Offer ADRs sparingly.** Propose an ADR only when all three hold: hard to reverse, surprising without context, and the result of a real trade-off. If any is missing, skip it. ADR format lives in `REFERENCE.md`.
-8. **Close when shared understanding is reached.** Confirm every design-tree branch is resolved or explicitly deferred, and that the glossary diff captures the session's new language.
+8. **Close when shared understanding is reached.** Confirm every design-tree branch is resolved or explicitly deferred, that the glossary diff captures the session's new language, and — when the session feeds a bead — that there is enough agreed detail to fill every required section of the target bead type (see `bd-tool` → Required sections). Never invent section content; surface assumptions and confirm them.
 
 ## Red Flags
 
@@ -89,3 +89,4 @@ which voids an order before fulfilment. See cancellation.
 - [ ] Claims cross-referenced against code; contradictions surfaced
 - [ ] ADRs offered only when all three criteria held (offering none is a valid outcome)
 - [ ] All design-tree branches resolved or explicitly deferred before closing
+- [ ] When feeding a bead, enough agreed detail to fill every required section; no fabricated answers

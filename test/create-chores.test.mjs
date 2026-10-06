@@ -70,4 +70,16 @@ describe("create-chores", () => {
       ["implementation-type:afk", "stage:code"],
     );
   });
+
+  it("validates the PR gate task but not the stage chores", async () => {
+    const { ids, beads } = await createChoresAgainstFakeBd(["implementation-type:afk"]);
+
+    const gate = beads.find((b) => b.id === ids.featurePrReview);
+    assert.equal(gate.type, "task");
+    assert.equal(gate.validated, true);
+    assert.match(gate.description, /## Acceptance Criteria/);
+
+    const codeChore = beads.find((b) => b.id === ids.code);
+    assert.equal(codeChore.validated, false);
+  });
 });

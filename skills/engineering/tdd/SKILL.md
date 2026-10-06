@@ -16,7 +16,7 @@ description: Test-driven development with red-green-refactor loop. Use when buil
 - Prototyping, throwaway code, or exploratory spikes where speed of discovery matters more than correctness.
 - Changes so trivial that tests would duplicate type or lint coverage (rename, pure data shuffle).
 - When the test-to-implementation ratio would be absurdly high — a one-line change requiring extensive test setup.
-- Testing documentation or skill files to prove content exists in markdown. Tests verify executable code, not prose. If you want to validate a SKILL.md structure, use a linter or schema check instead.
+- Asserting the static contents of files to prove they exist — config, markdown, terraform, snapshots. Tests verify executable behaviour, not file contents. If you want to validate a file's structure, use a linter or schema check instead.
 
 ## Philosophy / rationale
 

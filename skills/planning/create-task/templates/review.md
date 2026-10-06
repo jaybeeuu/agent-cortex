@@ -23,6 +23,13 @@ as a required change — do not proceed with the quality review.
 description and project conventions. Only flag genuine correctness issues or clear deviations
 from stated requirements — not stylistic preferences.
 
+A test that asserts the static contents of a file — an expected config, markdown, terraform,
+or static snapshot — is a required finding, not a stylistic preference: **the assertion does
+not prove the behaviour under test**. Set `REVIEW_OUTCOME: CHANGES_REQUESTED` and list it as a
+required change. This is distinct from a legitimate golden-output test whose expected value is
+a product of the behaviour under test — flag only the assertion that does not prove the
+behaviour.
+
 End your response with a ---REPORT--- block:
 ---REPORT---
 BEAD_ID: <id>

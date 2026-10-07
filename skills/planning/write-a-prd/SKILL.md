@@ -22,10 +22,10 @@ description: Create a PRD through user interview, codebase exploration, and modu
 
 1. **Gather the problem statement.** Ask the user for a long, detailed description of the problem and any potential solution ideas. Ask one question at a time.
 2. **Explore the codebase.** Verify the user's assertions against the repo's current state. Explore instead of asking when the answer lives in code.
-3. **Interview relentlessly.** Walk down each branch of the design tree, resolving dependencies between decisions one by one, until the user's understanding and yours are identical. Every open question at this point becomes ambiguity in the PRD.
+3. **Interview relentlessly.** Walk down each branch of the design tree, resolving dependencies between decisions one by one, until the user's understanding and yours are identical. The epic's required sections — `## Success Criteria` in particular — are the interview's target: it is complete only when there is enough agreed detail to fill every required section. Never invent an answer; surface it as an assumption and confirm it with the user.
 4. **Sketch the modules.** List the major modules to build or modify, actively looking for deep modules — ones that encapsulate rich behaviour behind a simple, stable interface testable in isolation. Confirm the list with the user, plus which modules they want tests written for.
-5. **Write the PRD.** Render the template in `FORMAT.md` (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Make the user-story list extremely extensive so it covers all aspects of the feature.
-6. **File the bead.** Create the epic with `bd create "<title>" --type epic --priority P1 --body-file -`, piping the rendered PRD to stdin, then run the `classify-bead` classifier (`node <this-skill-dir>/../classify-bead/scripts/classify-bead.mjs <epic-id>`, run from the target project's cwd) to label it AFK or HITL. Escalate to the `classify-bead` subagent only when the classifier reports `escalate: true`.
+5. **Write the PRD.** Render the template in `FORMAT.md` (Problem Statement, Solution, User Stories, Success Criteria, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Make the user-story list extremely extensive so it covers all aspects of the feature.
+6. **File the bead.** Create the epic with `bd create "<title>" --type epic --priority P1 --body-file - --validate`, piping the rendered PRD to stdin, then run the `classify-bead` classifier (`node <this-skill-dir>/../classify-bead/scripts/classify-bead.mjs <epic-id>`, run from the target project's cwd) to label it AFK or HITL. Escalate to the `classify-bead` subagent only when the classifier reports `escalate: true`. Finally run `bd lint <epic-id>` and fix any missing sections before reporting.
 
 Run the steps in order. Skip a step only when the user confirms it is unnecessary (e.g. the codebase is already explored).
 
@@ -52,7 +52,7 @@ Run the steps in order. Skip a step only when the user confirms it is unnecessar
 
 - [ ] Gate 1 — shared understanding: every design-tree branch resolved and the user confirms the summary.
 - [ ] Gate 2 — modules agreed: the module list and test expectations match the user's model of the solution.
-- [ ] Gate 3 — PRD filed: the epic bead contains the rendered template and carries an implementation-type label.
+- [ ] Gate 3 — PRD filed: the epic bead contains the rendered template, carries an implementation-type label, and lints clean.
 
 ## Cross-skill references
 
@@ -69,6 +69,8 @@ Output: an epic bead whose description is the rendered PRD — problem, solution
 ## Verification checklist
 
 - [ ] Template in `FORMAT.md` rendered fully, with no placeholder sections.
+- [ ] `## Success Criteria` present and the epic created with `--validate`.
+- [ ] `bd lint <epic-id>` reports no missing sections.
 - [ ] Every user story follows "As an <actor>, I want <feature>, so that <benefit>".
 - [ ] Codebase assertions verified against the repo before writing.
 - [ ] Implementation Decisions contains no file paths or code snippets.

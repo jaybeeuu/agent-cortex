@@ -43,19 +43,44 @@ For new tasks with pipeline expansion:
 
 ```bash
 # use the create-task skill, or manually:
-bd create "<title>" -d "<description>" -p <0-3>
+bd create "<title>" -d "<description>" -p <0-3> --validate
 ```
 
 For parent-child relationships (create with `--parent`):
 
 ```bash
-bd create "<title>" --parent <parent-id>
+bd create "<title>" --parent <parent-id> --validate
 ```
 
 For blocking dependencies between beads:
 
 ```bash
 bd dep add <id> <blocked-by-id> --type blocks
+```
+
+### Required sections
+
+Create substantive beads with `--validate` so a section-less bead is rejected before it is
+recorded. `bd create --validate` requires these sections per type (matching is case-insensitive);
+`bd lint` checks the same contract on existing beads and exits non-zero when any are missing:
+
+| Type | Required sections |
+|---|---|
+| `task`, `feature` | `## Acceptance Criteria` |
+| `epic` | `## Success Criteria` |
+| `bug` | `## Steps to Reproduce`, `## Acceptance Criteria` |
+| `chore` | none |
+
+Plan what you write: the type's required sections are the target of the planning interview
+(`write-a-prd`, `request-refactor-plan`, `plan`, `grill-me`, …). Do not invent section content —
+surface an assumption and confirm it with the human. Chore beads carry no required sections; their
+description should reference the parent/requirements bead rather than restating criteria.
+
+Review after creating — lint the beads you just made and fix any flagged ones:
+
+```bash
+bd lint <new-id>...      # scoped to your beads; exits non-zero on missing sections
+bd lint                  # the whole open backlog (may flag pre-existing beads)
 ```
 
 ## Completing work

@@ -47,6 +47,10 @@ Establish what needs to be built through investigation and collaborative design.
    - Technical constraints and trade-offs
    - How each change will be verified
 
+The epic's required sections — `## Success Criteria` for the PRD epic — are the interview's target:
+it is complete only when every required section can be filled from agreed answers. Never invent
+section content; surface assumptions and confirm them with the user.
+
 4. Sketch the major modules that will be built or modified. Look for opportunities to extract deep modules — ones that encapsulate significant behaviour behind a simple, testable interface.
 
 5. Draft a PRD using the template from `write-a-prd`. Include:
@@ -60,8 +64,9 @@ Establish what needs to be built through investigation and collaborative design.
 7. Create an epic bead from the approved PRD:
    ```bash
    bd create "<Feature Title> — PRD" --type epic \
-     --description "<rendered PRD as markdown>" --priority p2
+     --description "<rendered PRD as markdown>" --priority p2 --validate
    bd tag <epic-id> workflow:plan
+   bd lint <epic-id>
    ```
 
 #### Phase 1 gate
@@ -70,7 +75,7 @@ Establish what needs to be built through investigation and collaborative design.
 - [ ] Design decisions resolved through interview
 - [ ] Modules sketched and reviewed with the user
 - [ ] PRD drafted and approved by the user
-- [ ] Epic bead created from approved PRD
+- [ ] Epic bead created from approved PRD and lints clean (`bd lint <epic-id>`)
 
 ### Phase 2 — Break into tasks
 
@@ -82,13 +87,14 @@ Take the approved PRD and produce a set of epics and tasks using tracer-bullet v
    - **Title**: short descriptive name
    - **User stories covered**: which PRD stories this phase addresses
    - **What to build**: end-to-end behaviour description
-   - **Acceptance criteria**: verifiable outcomes
+   - **Success criteria**: verifiable outcomes — the epic's required `## Success Criteria`
 
 10. If the work is small enough for a single epic (one phase, a few tasks), skip epics and proceed directly to Phase 3. A single epic with a few tasks dispatches through ralph more efficiently than creating unnecessary epic hierarchy. If the work has multiple distinct phases, create epics:
     ```bash
     bd create "<Phase Title>" --type epic \
-      --description "<epic body with scope, criteria, dependencies>" --priority <same as parent>
+      --description "<epic body with scope, success criteria, dependencies>" --priority <same as parent> --validate
     bd tag <epic-id> workflow:plan
+    bd lint <epic-id>
     bd dep add <epic-id> <parent-epic-id> --type parent-child
     ```
 
@@ -146,8 +152,13 @@ Deliver a handoff bead and instructions for running ralph.
     - **Multiple independent epics**: create a parent meta-epic that groups them:
       ```bash
       bd create "<Feature Title> — Implementation" --type epic \
-        --description "Meta-epic grouping all phases for execution. See child epics for detail." \
-        --priority <same>
+        --description "Meta-epic grouping all phases for execution. See child epics for detail.
+
+## Success Criteria
+
+- [ ] All child epics complete and the feature verified end-to-end." \
+        --priority <same> --validate
+      bd lint <meta-epic>
       bd dep add <epic-1> <meta-epic> --type parent-child
       bd dep add <epic-2> <meta-epic> --type parent-child
       ```
@@ -187,13 +198,14 @@ Deliver a handoff bead and instructions for running ralph.
 #### Phase 4 gate
 
 - [ ] Handoff bead identified and tagged `workflow:ralph`
+- [ ] Every handoff-path bead lints clean (`bd lint`)
 - [ ] Bead state pushed with `bd dolt push`
 - [ ] Handoff summary presented with the exact instruction to give an agent
 
 ## Phase-gate checklist
 
-- [ ] Phase 1: PRD drafted and approved, epic bead created
-- [ ] Phase 2: Task breakdown approved, epics created (if needed)
+- [ ] Phase 1: PRD drafted and approved, epic bead created and validated
+- [ ] Phase 2: Task breakdown approved, epics created (if needed) and validated
 - [ ] Phase 3: All tasks created, classified, expanded, tree presented
 - [ ] Phase 4: Handoff bead prepared, state pushed, summary delivered
 

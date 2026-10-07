@@ -61,11 +61,16 @@ On stage failure, create a chore bead whose description carries the feedback so 
 
 ```bash
 new_id=$(bd create "[<parent-id>] <title>" --type chore \
-  --description "<feedback content from REPORT>" --priority <parent-priority> -q)
+  --description "Requirements: see <parent-id> acceptance criteria (`bd show <parent-id>`).
+
+<feedback content from REPORT>" --priority <parent-priority> -q)
 bd tag $new_id stage:<next-stage>
 bd tag $new_id workflow:ralph
 bd dep add $new_id <parent-id> --type parent-child
 ```
+
+Chore beads carry no required sections, so the feedback description must point at the
+parent/requirements bead (`<parent-id>`) rather than restating its acceptance criteria.
 
 | Triggering outcome | Suggested title | Next stage tag | Description content |
 |---|---|---|---|

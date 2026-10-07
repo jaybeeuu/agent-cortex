@@ -43,6 +43,11 @@ Describe the architectural friction:
 - What integration risk exists in the seams between them
 - Why this makes the codebase harder to navigate and maintain
 
+## Acceptance Criteria
+
+- [ ] <verifiable outcome 1>
+- [ ] <verifiable outcome 2>
+
 ## Proposed Interface
 
 The chosen interface design:

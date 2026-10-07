@@ -5,7 +5,7 @@ description: Create a task bead, classify it as AFK or HITL, and if AFK expand i
 
 # Create Task
 
-Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or human-in-the-loop (HITL) execution, and — when AFK — expand it into the standard pipeline: one chore bead per stage plus a HITL PR gate task so a human always reviews the finished branch. Parameters: `title` (required), `description` (required), `priority` (0–3, default 2), `parent` (epic bead ID, optional — sets a `parent-child` dependency).
+Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or human-in-the-loop (HITL) execution, and — when AFK — expand it into the standard pipeline: one chore bead per stage plus a HITL PR gate task so a human always reviews the finished branch. Parameters: `title` (required), `description` (required), `priority` (0–3, default 2), `parent` (epic bead ID, optional — sets a `parent-child` dependency). The description must carry the task's required section — `## Acceptance Criteria` — which `--validate` enforces; fill it from agreed answers, not assumptions (see `bd-tool` → Required sections).
 
 ## When to use
 
@@ -21,10 +21,13 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 ## Workflow
 
-1. **Create the parent bead.**
+1. **Create the parent bead.** The description must contain the task's required section —
+   `## Acceptance Criteria` — or `--validate` rejects creation. Fill it from agreed answers, not
+   assumptions (see `bd-tool` → Required sections).
 
    ```bash
-   bd create "<title>" --description "<description>" --priority <priority>
+   bd create "<title>" --description "<description>" --priority <priority> --validate
+   bd lint <new-id>
    ```
 
    If a `parent` epic was provided, record the dependency:
@@ -65,6 +68,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 ## Red Flags
 
+- **Filling acceptance criteria with assumptions.** Fabricated criteria pass `--validate` but mislead the pipeline. The description is the interview's output — confirm it with the human instead.
 - **Running the script from the wrong directory.** Chores land in whatever `.beads` tree `bd` resolves from cwd — the target project's root is the only safe cwd.
 - **Spawning the `classify-bead` subagent when the classifier already resolved the bead.** The deterministic script is the short-circuit; a subagent is only for `escalate: true`.
 - **Skipping the classifier and classifying by hand.** The rubric is a subagent's job; a hand-rolled guess drifts from it.
@@ -101,6 +105,7 @@ The full bead-property contract (titles, labels, dependencies per chore and for 
 ## Verification checklist
 
 - [ ] Parent bead exists with the correct title, description, and priority.
+- [ ] Parent bead created with `--validate`, and `bd lint <id>` reports no missing sections.
 - [ ] `parent-child` dependency added when a parent epic was supplied.
 - [ ] `implementation-type` label present on the parent bead (`bd label list <id>`) — resolved by the classifier or, on escalation, the rubric subagent.
 - [ ] HITL path: no pipeline chores created, caller told the classification. AFK path: script ran from the target project's cwd and its JSON contains every stage ID plus `featurePrReview`.

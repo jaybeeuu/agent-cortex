@@ -10,6 +10,11 @@ The problem that the developer is facing, from the developer's perspective.
 
 The solution to the problem, from the developer's perspective.
 
+## Acceptance Criteria
+
+- [ ] <criterion 1>
+- [ ] <criterion 2>
+
 ## Commits
 
 A long, detailed implementation plan in plain English, broken into the tiniest commits possible. Each commit should leave the codebase in a working state.

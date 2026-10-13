@@ -26,10 +26,12 @@ argument-hint: "The work to ticket: goal, epic/initiative, constraints, or paste
 
 3. **Draft the body** from the template below, then check it against the format rules and the verification checklist.
 
+4. **Hand over the draft.** Present the body for review and get the human's agreement before it is created or filed. The draft is the review artefact — nothing reaches the tracker unseen.
+
 ```markdown
 ## Context
 
-<1–3 sentences of pointers: parent ticket or epic, where the approach lives
+<1–5 sentences of pointers: parent ticket or epic, where the approach lives
 (RFC/ADR section), the decisions already made, and what this depends on.
 Reference these — do not explain them.>
 
@@ -90,12 +92,12 @@ section when there are none.>
 
 ## Common Rationalizations
 
-| Rationalization | Rebuttal |
-|---|---|
-| "The engineer will figure it out" | Skilled engineers can — but questions are a blocked ticket. The ticket must stand alone. |
-| "More detail is safer" | Detail helps only if it informs the implementer. Every extra sentence is noise to skim. |
-| "The reviewer should see every file touched" | The reviewer needs the scope and somewhere to start, not an inventory. The implementer finds the rest. |
-| "I'll flag the open question in the ticket" | Only if the human agrees to leave it open. Otherwise resolve it or split a spike — an unagreed question is a blocked implementer. |
+| Rationalization                              | Rebuttal                                                                                                                          |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| "The engineer will figure it out"            | Skilled engineers can — but questions are a blocked ticket. The ticket must stand alone.                                          |
+| "More detail is safer"                       | Detail helps only if it informs the implementer. Every extra sentence is noise to skim.                                           |
+| "The reviewer should see every file touched" | The reviewer needs the scope and somewhere to start, not an inventory. The implementer finds the rest.                            |
+| "I'll flag the open question in the ticket"  | Only if the human agrees to leave it open. Otherwise resolve it or split a spike — an unagreed question is a blocked implementer. |
 
 ## Philosophy / rationale
 
@@ -106,11 +108,11 @@ section when there are none.>
 
 ## Cross-skill references
 
-| When you need… | Use this skill |
-|---|---|
-| To break a spec into a map of tickets | `spec-to-tickets` |
-| Tone, structure, and concision for human-facing writing | `style-comms` |
-| A requirements document that precedes the ticket | `write-a-prd` |
+| When you need…                                          | Use this skill    |
+| ------------------------------------------------------- | ----------------- |
+| To break a spec into a map of tickets                   | `spec-to-tickets` |
+| Tone, structure, and concision for human-facing writing | `style-comms`     |
+| A requirements document that precedes the ticket        | `write-a-prd`     |
 
 See [EXAMPLES.md](./EXAMPLES.md) for worked before/after rewrites.
 
@@ -125,3 +127,4 @@ See [EXAMPLES.md](./EXAMPLES.md) for worked before/after rewrites.
 - [ ] Every section is within its guidance budget, or the extra is justified by the work
 - [ ] Any open question is one the human explicitly agreed to, listed under `Open questions` with an owner
 - [ ] A skilled engineer can start immediately with zero follow-up questions
+- [ ] The human reviewed the drafted body before it was created

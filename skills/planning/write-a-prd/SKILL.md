@@ -14,8 +14,8 @@ description: Create a PRD through user interview, codebase exploration, and modu
 ## When NOT to use
 
 - The idea is not ready to build yet — use `record-idea` to capture it to the backlog.
-- The output targets a human team's external tracker — use `write-a-ticket`.
-- A PRD already exists and needs breaking into tasks — use `prd-to-tasks`.
+- The output targets a human team's external tracker — use `write-a-ticket` for one ticket, or `spec-to-tickets` to break a spec into many.
+- A PRD already exists and needs breaking down — use `prd-to-tasks` for beads, or `spec-to-tickets` for external tickets.
 - The scope is a refactor needing a safe incremental plan — use `request-refactor-plan`.
 
 ## Workflow
@@ -58,6 +58,7 @@ Run the steps in order. Skip a step only when the user confirms it is unnecessar
 
 - Use `record-idea` when the idea is not yet ready to build.
 - Use `write-a-ticket` when the spec targets an external tracker rather than a bead.
+- Use `spec-to-tickets` when an approved PRD/RFC must become a map of external tickets.
 - Run `prd-to-tasks` on the filed epic to break the PRD into an executable backlog.
 - Run the `classify-bead` classifier on the new epic — the repo labels every new bead AFK or HITL. Its `scripts/` directory sits next to this skill's directory in every harness, so `<this-skill-dir>/../classify-bead/scripts/classify-bead.mjs` resolves it. Escalate to its rubric subagent only when the classifier reports `escalate: true`.
 

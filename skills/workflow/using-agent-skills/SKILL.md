@@ -23,6 +23,7 @@ Task arrives
     ├── Have a rough idea? ─────────────────→ record-idea
     ├── New feature / PRD needed? ──────────→ write-a-prd
     ├── PRD approved, need tasks? ──────────→ prd-to-tasks
+    ├── Spec approved, need tickets? ───────→ spec-to-tickets
     ├── Need a single task tracked? ────────→ create-task
     ├── Need to plan a feature end-to-end? ─→ plan
     ├── Running beads / task execution? ────→ ralph

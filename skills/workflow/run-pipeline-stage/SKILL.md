@@ -36,7 +36,7 @@ A leaf bead is the worker's record of what happened. The orchestrator reads it; 
 3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth. Append a stage-start note immediately (see _Milestone Notes_).
 4. Read the bead's `stage:*` label — it names the stage to execute.
 5. Load the universal stage-runner prompt (`skills/workflow/run-pipeline-stage/prompts/stage-runner.md`) — it carries the lifecycle, remediation, and REPORT contract — populate `<stage>`, and read the matching playbook (`playbooks/<stage>.md`) for stage-specific rules.
-6. Tag the stage — beads are the only status view, so there is nothing to render:
+6. Tag the stage — beads are the only status view:
 
 ```bash
 bd tag <id> stage:<stage>

@@ -17,10 +17,10 @@
   `bd list --label-pattern/regex [--json]`, `bd label add/remove` (batch multiple ids).
 - `bd list` supports `--label-pattern`/`--json`; `bd count` does NOT support `--label-pattern`.
 - `bd ready --label-pattern 'stage:*'` works; `bd ready -l execution:afk` verified.
-- 2 script packages exist with per-skill `package.json` + own `pnpm-workspace.yaml` +
-  own `pnpm-lock.yaml` (create-task, validate-agent-dir). They are NOT
-  members of the root workspace (root glob `skills/*/scripts` does not match the nested
-  `skills/<domain>/<name>/scripts`; root lockfile has zero refs to them).
+- 2 script packages remain (create-task, validate-agent-dir), each with its own `package.json`
+  and `pnpm-lock.yaml`. The root `skills/**/scripts` glob makes both workspace members — both
+  appear as importers in the root `pnpm-lock.yaml`. A third, `run-pipeline-stage/scripts`, was
+  deleted with the generated progress view.
 - All scripts are stdlib-only (`node:child_process`, `node:fs`, `node:path`, `node:url`).
 - Extensions (`extensions/skill-stats`) have real peer deps on `@earendil-works/pi-coding-agent`
   — they remain workspace members with their own package.json.
@@ -43,9 +43,10 @@
 
 ### D2: Single package.json (root workspace consolidation)
 
-- Fold the 3 per-skill script packages into the root workspace: delete their `package.json`,
-  `pnpm-workspace.yaml`, `pnpm-lock.yaml`; convert scripts to `.mjs` (D1); root
-  `package.json` owns typecheck/test wiring.
+- Fold the per-skill script packages into the root workspace (3 at planning time, 2 remain):
+  delete their `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`; convert scripts to
+  `.mjs` (D1); root `package.json` owns typecheck/test wiring. The `skills/**/scripts` glob
+  already made them workspace members, so what remains is deleting the per-package files.
 - Extensions stay as workspace members (`extensions/*` glob) — their package.jsons are
   semantically meaningful (peer deps on the pi runtime).
 - Fresh-clone/installed-context verification: `pnpm install` at root then
@@ -160,8 +161,8 @@
 
 ## References
 
-- Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface), `skills/*/scripts/
-  package.json` (3 orphaned), root `package.json` + `pnpm-workspace.yaml`, bd CLI help
+- Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface), `skills/*/*/scripts/
+  package.json` (2 remaining), root `package.json` + `pnpm-workspace.yaml`, bd CLI help
   (`bd list`, `bd label`, `bd create`), epic `agnt-ctx-s5xd` notes.
 - Idea file: `docs/ideas/ctx-alias-version-and-update-commands.md` (ctx alias + version/update
   surface that `migrate` joins).

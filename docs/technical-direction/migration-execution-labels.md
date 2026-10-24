@@ -169,8 +169,9 @@
 
 ## References
 
-- Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface), `skills/*/scripts/
-  package.json` (3 orphaned), root `package.json` + `pnpm-workspace.yaml`, bd CLI help
-  (`bd list`, `bd label`, `bd create`), epic `agnt-ctx-s5xd` notes.
+- Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface),
+  `skills/*/*/scripts/package.json` (3, root workspace members), root `package.json` +
+  `pnpm-workspace.yaml`, bd CLI help (`bd list`, `bd label`, `bd create`), epic
+  `agnt-ctx-s5xd` notes.
 - Idea file: `docs/ideas/ctx-alias-version-and-update-commands.md` (ctx alias + version/update
   surface that `migrate` joins).

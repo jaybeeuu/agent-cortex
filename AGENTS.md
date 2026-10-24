@@ -13,7 +13,7 @@ available in the author's coding sessions.
 
 ```
 agent-cortex/
-├── package.json           # PI package manifest (pi: { extensions, skills, packages })
+├── package.json           # PI package manifest (pi: { extensions, skills }) + pi runtime deps
 ├── plugin.json            # GitHub Copilot plugin manifest — agents, skills, MCP servers
 ├── agents/                # Custom agents — canonical composable <name>/ dirs
 │   ├── *.agent.md         #   generated from <name>/ by scripts/build-copilot-agents.mjs
@@ -38,7 +38,7 @@ agent-cortex/
 ├── claude-extras/        # Hand-authored Claude plugin extras
 │   ├── .mcp.json         # MCP servers (context7, github) — copied into installs
 │   └── scripts/          # statusline-command.sh — copied into installs (executable)
-└── package.json          # PI package manifest (pi: { extensions, skills, packages })
+└── package.json          # PI package manifest (pi: { extensions, skills }) + pi runtime deps
 ```
 
 ## Versioning

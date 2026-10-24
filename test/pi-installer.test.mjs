@@ -1,13 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, readFile, readdir, stat, lstat, symlink } from "node:fs/promises";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { installPi } from "../bin/installers/pi.mjs";
 
 // Real repo root — used by the integration smoke test to prove the installer
-// works against the canonical sources (agents/, skills/, token-map.json).
+// works against the canonical sources (agents/, skills/, extensions/, token-map.json).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** True when a path exists (stat succeeds). */
@@ -39,7 +39,7 @@ function tokenMap(extra = {}) {
     harnesses: ["pi"],
     tools: { ...TOOL_MAP },
     paths: {
-      plugin_root: { pi: "~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex" },
+      plugin_root: { pi: "~/.agent-cortex/pi" },
       skills_dir: { pi: { base: "plugin_root", relative: "skills" } },
       agents_dir: { pi: { base: "plugin_root", relative: "agents" } },
     },
@@ -63,29 +63,53 @@ async function writeFixture(fx, relPath, content) {
   await writeFile(p, content);
 }
 
-/** Template pi settings the fixture package ships (defaults the installer merges). */
-function defaultPiSettings() {
+/** Write the fixture package's own package.json (version + declared runtime dependencies). */
+function defaultPackageJson(version = "9.9.9", dependencies = {}) {
+  return { name: "fixture-package", version, dependencies };
+}
+
+/**
+ * Create a fake installed dependency — its own directory plus the package.json
+ * the installer reads to decide whether it ships pi resources.
+ */
+async function createInstalledPackage(baseDir, { name, version = "1.0.0", dependencies = {}, pi, files = {} }) {
+  const dir = join(baseDir, name);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "package.json"),
+    JSON.stringify({ name, version, dependencies, ...(pi === undefined ? {} : { pi }) }, null, 2),
+  );
+  for (const [rel, content] of Object.entries(files)) {
+    await mkdir(dirname(join(dir, rel)), { recursive: true });
+    await writeFile(join(dir, rel), content);
+  }
+  return dir;
+}
+
+/** Resolve the fake installed packages by name, recording who asked for them. */
+function fakeResolver(packages) {
+  const calls = [];
   return {
-    packages: [{ source: "../../src/agent-cortex", skills: [] }, "npm:pi-web-access@0.10.7"],
-    defaultModel: "template/model",
-    theme: "dark",
-    tinyModel: { model: "template/tiny", maxNameLength: 40 },
+    calls,
+    resolvePackage: async (name, fromDir) => {
+      calls.push({ name, fromDir });
+      const dir = packages[name];
+      if (dir === undefined) throw new Error(`cannot resolve "${name}"`);
+      return dir;
+    },
   };
 }
 
-function defaultPiKeybindings() {
-  return { "tui.input.newLine": ["shift+enter"] };
-}
-
-/** Seed a minimal but realistic package tree (agents + token-map + skills + pi templates). */
+/**
+ * Seed a minimal but realistic package tree: token-map, package.json, agents,
+ * skills, and extensions — the sources the staged package is built from.
+ */
 async function seedPackage(fx, opts = {}) {
-  const { agents = {}, skills = {}, tokenMap: map, version, packages } = opts;
-  await writeFixture(fx, "token-map.json", JSON.stringify(map ?? tokenMap(version ? { version } : {})));
-  if (packages) {
-    await writeFixture(fx, "package.json", JSON.stringify({ name: "fixture", pi: { packages } }));
-  }
-  await writeFixture(fx, "pi/settings.json", JSON.stringify(opts.piSettings ?? defaultPiSettings(), null, 2));
-  await writeFixture(fx, "pi/keybindings.json", JSON.stringify(opts.piKeybindings ?? defaultPiKeybindings(), null, 2));
+  const { agents = {}, tokenMap: map, tokenMapVersion, packageVersion = "9.9.9", dependencies } = opts;
+  await writeFixture(fx, "token-map.json", JSON.stringify(map ?? tokenMap(tokenMapVersion ? { version: tokenMapVersion } : {})));
+  await writeFixture(fx, "package.json", JSON.stringify(defaultPackageJson(packageVersion, dependencies), null, 2));
+  await writeFixture(fx, "extensions/echo/index.ts", "export default () => {};\n");
+  await writeFixture(fx, "skills/engineering/echo/SKILL.md", "---\nname: echo\ndescription: d\n---\n\nBody.\n");
   for (const [name, def] of Object.entries(agents)) {
     await writeFixture(fx, `agents/${name}/agent.md`, def.body ?? `# ${name}\nBody of ${name}.`);
     await writeFixture(
@@ -103,9 +127,6 @@ async function seedPackage(fx, opts = {}) {
     for (const [section, content] of Object.entries(def.sections ?? {})) {
       await writeFixture(fx, `agents/${name}/pi/${section}.md`, content);
     }
-  }
-  for (const [path, content] of Object.entries(skills)) {
-    await writeFixture(fx, `skills/${path}`, content);
   }
 }
 
@@ -141,7 +162,7 @@ describe("installPi — agent composition", () => {
         },
       });
 
-      const result = await installPi({ root: fx.root, output: fx.output });
+      const result = await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
 
       const file = join(fx.output, "agents", "alpha.agent.md");
       assert.ok(await pathExists(file), "agent file written");
@@ -170,7 +191,7 @@ describe("installPi — agent composition", () => {
         },
       });
 
-      const result = await installPi({ root: fx.root, output: fx.output });
+      const result = await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
       const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
 
       assert.ok(!content.includes("ask_user"), "null-mapped token dropped from prose");
@@ -186,7 +207,10 @@ describe("installPi — agent composition", () => {
     const fx = await makeFixture();
     try {
       await seedPackage(fx, { agents: { alpha: { body: "# alpha\nUse {{TOOL:nope}} now." } } });
-      await assert.rejects(installPi({ root: fx.root, output: fx.output }), /unknown tool token {{TOOL:nope}}/);
+      await assert.rejects(
+        installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
+        /unknown tool token {{TOOL:nope}}/,
+      );
     } finally {
       await fx.cleanup();
     }
@@ -196,7 +220,10 @@ describe("installPi — agent composition", () => {
     const fx = await makeFixture();
     try {
       await seedPackage(fx, { agents: { alpha: { body: "# alpha\n{{SECTION:missing}}" } } });
-      await assert.rejects(installPi({ root: fx.root, output: fx.output }), /missing section "missing"/);
+      await assert.rejects(
+        installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
+        /missing section "missing"/,
+      );
     } finally {
       await fx.cleanup();
     }
@@ -213,15 +240,12 @@ describe("installPi — agent composition", () => {
         },
       });
 
-      const result = await installPi({ root: fx.root, output: fx.output });
+      const result = await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
       const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
 
+      assert.ok(content.includes("Named: ~/.agent-cortex/pi/skills"), "named path resolves through token-map paths table");
       assert.ok(
-        content.includes("Named: ~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills"),
-        "named path resolves through token-map paths table",
-      );
-      assert.ok(
-        content.includes("Relative: ~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills/x/SKILL.md"),
+        content.includes("Relative: ~/.agent-cortex/pi/skills/x/SKILL.md"),
         "relative path resolves against plugin root",
       );
       assert.equal(result.warnings.length, 0);
@@ -240,7 +264,12 @@ describe("installPi — agent composition", () => {
       });
 
       const pluginRoot = join(fx.root, "checkout");
-      await installPi({ root: fx.root, output: fx.output, pluginRoot });
+      await installPi({
+        root: fx.root,
+        output: fx.output,
+        pluginRoot,
+        resolvePackage: fakeResolver({}).resolvePackage,
+      });
       const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
       assert.ok(content.includes(join(pluginRoot, "skills", "x", "SKILL.md")), "plugin root override used");
     } finally {
@@ -252,109 +281,13 @@ describe("installPi — agent composition", () => {
     const fx = await makeFixture();
     try {
       await seedPackage(fx, {
-        version: 99,
+        tokenMapVersion: 99,
         agents: { alpha: { body: "# alpha" } },
       });
-      await assert.rejects(installPi({ root: fx.root, output: fx.output }), /version 99/);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-});
-
-// ─── Third-party package provisioning ────────────────────────────────────────
-
-describe("installPi — package provisioning", () => {
-  function recordingRunner() {
-    const calls = [];
-    return {
-      calls,
-      runInstall: async (source) => {
-        calls.push(source);
-        return { ok: true, error: null };
-      },
-    };
-  }
-
-  it("does not touch the pi package store unless provisioning is requested", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions"],
-      });
-      const { calls, runInstall } = recordingRunner();
-
-      const result = await installPi({ root: fx.root, output: fx.output, runInstall });
-
-      assert.deepEqual(calls, []);
-      assert.equal(result.packages, null);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("installs the packages declared in the package manifest when enabled", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions", "npm:pi-web-access@0.10.7"],
-      });
-      const { calls, runInstall } = recordingRunner();
-
-      const result = await installPi({ root: fx.root, output: fx.output, provisionPackages: true, runInstall });
-
-      assert.deepEqual(calls, ["npm:pi-questions", "npm:pi-web-access@0.10.7"]);
-      assert.deepEqual(result.packages.installed, ["npm:pi-questions", "npm:pi-web-access@0.10.7"]);
-      assert.deepEqual(result.packages.failed, []);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("dry-run reports the package plan without installing", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions"],
-      });
-      const { calls, runInstall } = recordingRunner();
-
-      const result = await installPi({
-        root: fx.root,
-        output: fx.output,
-        provisionPackages: true,
-        dryRun: true,
-        runInstall,
-      });
-
-      assert.deepEqual(calls, []);
-      assert.deepEqual(result.packages.planned, ["npm:pi-questions"]);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("warns but still installs agents when a package install fails", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, {
-        agents: { alpha: { body: "# alpha" } },
-        packages: ["npm:pi-questions"],
-      });
-
-      const result = await installPi({
-        root: fx.root,
-        output: fx.output,
-        provisionPackages: true,
-        runInstall: async () => ({ ok: false, error: "offline" }),
-      });
-
-      assert.ok(await pathExists(join(fx.output, "agents", "alpha.agent.md")), "agents still installed");
-      assert.deepEqual(result.packages.failed, [{ source: "npm:pi-questions", error: "offline" }]);
-      assert.ok(result.warnings.some((w) => w.includes("npm:pi-questions")), "failure surfaced as a warning");
+      await assert.rejects(
+        installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
+        /version 99/,
+      );
     } finally {
       await fx.cleanup();
     }
@@ -369,14 +302,15 @@ describe("installPi — skills", () => {
     try {
       await seedPackage(fx, {
         agents: { alpha: { body: "# alpha" } },
-        skills: {
-          "engineering/echo/SKILL.md":
-            "---\nname: echo\ndescription: Echoes {{TOOL:view}}.\n---\n\nUse {{TOOL:view}} to read and {{TOOL:skill}} for help.\nOpen {{PATH:skills/echo/SKILL.md}}.",
-          "engineering/echo/scripts/run.sh": "#!/bin/sh\necho hi\n",
-        },
       });
+      await writeFixture(
+        fx,
+        "skills/engineering/echo/SKILL.md",
+        "---\nname: echo\ndescription: Echoes {{TOOL:view}}.\n---\n\nUse {{TOOL:view}} to read and {{TOOL:skill}} for help.\nOpen {{PATH:skills/echo/SKILL.md}}.",
+      );
+      await writeFixture(fx, "skills/engineering/echo/scripts/run.sh", "#!/bin/sh\necho hi\n");
 
-      await installPi({ root: fx.root, output: fx.output });
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
 
       const skillFile = join(fx.output, "skills", "engineering", "echo", "SKILL.md");
       assert.ok(await pathExists(skillFile), "skill copied");
@@ -384,15 +318,288 @@ describe("installPi — skills", () => {
       assert.ok(content.includes("description: Echoes read."), "token substituted in skill frontmatter");
       assert.ok(content.includes("Use read to read and  for help."), "null-mapped {{TOOL:skill}} dropped");
       assert.ok(
-        content.includes(
-          "Open ~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills/echo/SKILL.md.",
-        ),
+        content.includes("Open ~/.agent-cortex/pi/skills/echo/SKILL.md."),
         "relative path resolved against plugin root",
       );
       assert.ok(!/{{/.test(content), "no literal tokens remain in skill");
 
       const script = await readFile(join(fx.output, "skills", "engineering", "echo", "scripts", "run.sh"), "utf-8");
       assert.equal(script, "#!/bin/sh\necho hi\n", "non-md files copied verbatim");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Extensions ──────────────────────────────────────────────────────────────
+
+describe("installPi — extensions", () => {
+  it("copies the extensions tree into the staged package", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await writeFixture(fx, "extensions/modes/index.ts", "export default () => {};\n");
+      await writeFixture(fx, "extensions/auto-name.ts", "export default () => {};\n");
+
+      const result = await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      assert.equal(result.extensions.files, 3, "every extension file copied");
+      assert.ok(await pathExists(join(fx.output, "extensions", "modes", "index.ts")));
+      assert.ok(await pathExists(join(fx.output, "extensions", "auto-name.ts")));
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("never copies node_modules or symlinks out of the extensions tree", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await writeFixture(fx, "extensions/linked/index.ts", "export default () => {};\n");
+      await writeFixture(fx, "extensions/linked/node_modules/dep/package.json", "{}\n");
+      await symlink(join(fx.root, "extensions", "linked", "index.ts"), join(fx.root, "extensions", "alias.ts"));
+
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      assert.equal(await pathExists(join(fx.output, "extensions", "linked", "node_modules")), false);
+      assert.equal(await pathExists(join(fx.output, "extensions", "alias.ts")), false);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Staged package manifest ─────────────────────────────────────────────────
+
+describe("installPi — staged package manifest", () => {
+  it("writes a pi package manifest for the staged resources", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+
+      const result = await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      const manifest = JSON.parse(await readFile(join(fx.output, "package.json"), "utf-8"));
+      assert.deepEqual(manifest.keywords, ["pi-package"]);
+      assert.equal(manifest.version, "9.9.9", "version tracks the package being staged");
+      assert.deepEqual(manifest.pi, { extensions: ["./extensions"], skills: ["./skills"] });
+      assert.match(manifest["//"], /GENERATED by `agent-cortex install pi`/);
+      assert.equal(result.manifest.path, join(fx.output, "package.json"));
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("ships token-map.json so the staged agent-modes extension keeps its source of truth", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      const staged = JSON.parse(await readFile(join(fx.output, "token-map.json"), "utf-8"));
+      assert.deepEqual(staged, tokenMap(), "token map copied verbatim");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("refuses to stage into the package root, where it would clear the sources", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await assert.rejects(
+        installPi({ root: fx.root, output: fx.root, resolvePackage: fakeResolver({}).resolvePackage }),
+        /refusing to stage/,
+      );
+      assert.ok(await pathExists(join(fx.root, "agents", "alpha", "agent.md")), "sources untouched");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Bundled third-party packages ────────────────────────────────────────────
+
+describe("installPi — bundled pi packages", () => {
+  it("copies declared pi packages into node_modules and loads their resources from the manifest", async () => {
+    const fx = await makeFixture();
+    try {
+      const installed = join(fx.root, "installed");
+      const questions = await createInstalledPackage(installed, {
+        name: "pi-questions",
+        pi: { extensions: ["./extensions/ask-questions.ts"] },
+        files: { "extensions/ask-questions.ts": "export default () => {};\n" },
+      });
+      const web = await createInstalledPackage(installed, {
+        name: "pi-web-access",
+        pi: { extensions: ["./index.ts"], skills: ["./skills"] },
+        files: { "index.ts": "export default () => {};\n", "skills/web/SKILL.md": "---\nname: web\n---\n" },
+      });
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        dependencies: { "pi-questions": "^1.0.0", "pi-web-access": "1.0.0" },
+      });
+
+      const result = await installPi({
+        root: fx.root,
+        output: fx.output,
+        resolvePackage: fakeResolver({ "pi-questions": questions, "pi-web-access": web }).resolvePackage,
+      });
+
+      assert.deepEqual(result.packages.bundled, ["pi-questions", "pi-web-access"]);
+      assert.ok(await pathExists(join(fx.output, "node_modules", "pi-questions", "extensions", "ask-questions.ts")));
+      assert.ok(await pathExists(join(fx.output, "node_modules", "pi-web-access", "skills", "web", "SKILL.md")));
+
+      const manifest = JSON.parse(await readFile(join(fx.output, "package.json"), "utf-8"));
+      assert.deepEqual(manifest.pi.extensions, [
+        "./extensions",
+        "node_modules/pi-questions/extensions/ask-questions.ts",
+        "node_modules/pi-web-access/index.ts",
+      ]);
+      assert.deepEqual(manifest.pi.skills, ["./skills", "node_modules/pi-web-access/skills"]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("copies the transitive closure, resolving each dependency from its dependent", async () => {
+    const fx = await makeFixture();
+    try {
+      const installed = join(fx.root, "installed");
+      const web = await createInstalledPackage(installed, {
+        name: "pi-web-access",
+        dependencies: { "p-limit": "^6.0.0" },
+        pi: { extensions: ["./index.ts"] },
+        files: { "index.ts": "export default () => {};\n" },
+      });
+      const limit = await createInstalledPackage(installed, {
+        name: "p-limit",
+        files: { "index.js": "export const limit = 1;\n" },
+      });
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        dependencies: { "pi-web-access": "1.0.0" },
+      });
+      const resolver = fakeResolver({ "pi-web-access": web, "p-limit": limit });
+
+      const result = await installPi({ root: fx.root, output: fx.output, resolvePackage: resolver.resolvePackage });
+
+      assert.deepEqual(result.packages.bundled, ["pi-web-access"], "only declared packages contribute resources");
+      assert.deepEqual(result.packages.staged, ["pi-web-access", "p-limit"]);
+      assert.ok(await pathExists(join(fx.output, "node_modules", "p-limit", "index.js")));
+      assert.deepEqual(
+        resolver.calls.find((call) => call.name === "p-limit").fromDir,
+        web,
+        "transitive dependency resolved from its dependent, not a hoisted root",
+      );
+      const manifest = JSON.parse(await readFile(join(fx.output, "package.json"), "utf-8"));
+      assert.deepEqual(manifest.pi.extensions, ["./extensions", "node_modules/pi-web-access/index.ts"]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("leaves ordinary dependencies out of node_modules and the manifest", async () => {
+    const fx = await makeFixture();
+    try {
+      const installed = join(fx.root, "installed");
+      const util = await createInstalledPackage(installed, { name: "plain-util", files: { "index.js": "export {};\n" } });
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        dependencies: { "plain-util": "^1.0.0" },
+      });
+
+      const result = await installPi({
+        root: fx.root,
+        output: fx.output,
+        resolvePackage: fakeResolver({ "plain-util": util }).resolvePackage,
+      });
+
+      assert.deepEqual(result.packages.staged, []);
+      assert.equal(await pathExists(join(fx.output, "node_modules")), false);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("fails the install when a declared dependency cannot be resolved, leaving the previous staging intact", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+      const staged = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
+
+      await writeFixture(fx, "package.json", JSON.stringify(defaultPackageJson("9.9.9", { "pi-questions": "^1.0.0" })));
+
+      await assert.rejects(
+        installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
+        /cannot resolve "pi-questions"/,
+      );
+      assert.equal(await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8"), staged);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("fails when a bundled package's declared resource is missing from its published files", async () => {
+    const fx = await makeFixture();
+    try {
+      const installed = join(fx.root, "installed");
+      const questions = await createInstalledPackage(installed, {
+        name: "pi-questions",
+        pi: { extensions: ["./extensions/ask-questions.ts"] },
+      });
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        dependencies: { "pi-questions": "^1.0.0" },
+      });
+
+      await assert.rejects(
+        installPi({
+          root: fx.root,
+          output: fx.output,
+          resolvePackage: fakeResolver({ "pi-questions": questions }).resolvePackage,
+        }),
+        /references missing resources: node_modules\/pi-questions\/extensions\/ask-questions\.ts/,
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Idempotency ─────────────────────────────────────────────────────────────
+
+describe("installPi — re-staging", () => {
+  it("removes artifacts of a previous run instead of accumulating them", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+      const first = (await listFiles(fx.output)).sort();
+
+      await writeFixture(fx, "skills/engineering/echo/SKILL.md", "---\nname: echo\ndescription: d\n---\n\nUpdated.\n");
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      assert.deepEqual((await listFiles(fx.output)).sort(), first, "same tree, no stale copies");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("drops a skill that no longer exists in the sources", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await writeFixture(fx, "skills/engineering/retired/SKILL.md", "---\nname: retired\ndescription: d\n---\n\nBody.\n");
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+      assert.ok(await pathExists(join(fx.output, "skills", "engineering", "retired", "SKILL.md")));
+
+      await rm(join(fx.root, "skills", "engineering", "retired"), { recursive: true });
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      assert.equal(await pathExists(join(fx.output, "skills", "engineering", "retired")), false);
     } finally {
       await fx.cleanup();
     }
@@ -407,17 +614,21 @@ describe("installPi — output & dry-run", () => {
     try {
       await seedPackage(fx, {
         agents: { alpha: { body: "# alpha" } },
-        skills: { "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nBody." },
       });
 
-      const result = await installPi({ root: fx.root, output: fx.output, dryRun: true });
+      const result = await installPi({
+        root: fx.root,
+        output: fx.output,
+        dryRun: true,
+        resolvePackage: fakeResolver({}).resolvePackage,
+      });
 
       assert.equal(result.dryRun, true);
       assert.equal((await listFiles(fx.output)).length, 0, "no files written in dry-run");
       assert.equal(result.agents.length, 1);
       assert.equal(result.agents[0].name, "alpha");
       assert.equal(result.skills.skills, 1);
-      // Planned paths are still reported so the user can see what would happen.
+      assert.equal(result.manifest.path, join(fx.output, "package.json"));
       assert.ok(result.agents[0].filePath.startsWith(fx.output));
     } finally {
       await fx.cleanup();
@@ -429,229 +640,8 @@ describe("installPi — output & dry-run", () => {
     try {
       await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
       const deep = join(fx.output, "nested", "deep");
-      await installPi({ root: fx.root, output: deep });
+      await installPi({ root: fx.root, output: deep, resolvePackage: fakeResolver({}).resolvePackage });
       assert.ok(await pathExists(join(deep, "agents", "alpha.agent.md")));
-    } finally {
-      await fx.cleanup();
-    }
-  });
-});
-
-// ─── Pi settings.json ────────────────────────────────────────────────────────
-
-describe("installPi — pi settings.json", () => {
-  it("writes a real settings.json with the repo path package and template keys", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      const settingsPath = join(fx.output, "settings.json");
-      assert.equal((await lstat(settingsPath)).isSymbolicLink(), false, "settings.json is a real file");
-      const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
-
-      const repoEntry = settings.packages.find((p) => !(typeof p === "string" ? p : p.source).startsWith("npm:"));
-      assert.deepEqual(repoEntry.skills, [], "repo path package keeps the package filter shape");
-      assert.equal(resolve(dirname(settingsPath), repoEntry.source), fx.root, "repo path package resolves to the package root");
-      assert.ok(settings.packages.includes("npm:pi-web-access@0.10.7"), "template npm deps preserved");
-      assert.equal(settings.defaultModel, "template/model", "template key present");
-      assert.match(settings["//"], /GENERATED from pi\/settings\.json/);
-      assert.equal(result.settings.action, "written");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("preserves personal values and unknown keys while filling template defaults", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await writeFixture(
-        fx,
-        "out/settings.json",
-        JSON.stringify({
-          defaultModel: "personal/model",
-          theme: "light",
-          personalOnly: { nested: true },
-          tinyModel: { model: "personal/tiny" },
-        }),
-      );
-
-      await installPi({ root: fx.root, output: fx.output });
-
-      const settings = JSON.parse(await readFile(join(fx.output, "settings.json"), "utf-8"));
-      assert.equal(settings.defaultModel, "personal/model", "personal value wins over the template default");
-      assert.equal(settings.theme, "light", "personal value wins over the template default");
-      assert.deepEqual(settings.personalOnly, { nested: true }, "unknown key preserved");
-      assert.equal(settings.tinyModel.model, "personal/tiny", "nested personal leaf retained");
-      assert.equal(settings.tinyModel.maxNameLength, 40, "nested template default filled in");
-      assert.ok(
-        settings.packages.some((p) => !(typeof p === "string" ? p : p.source).startsWith("npm:")),
-        "packages stays CLI-managed",
-      );
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("replaces a legacy symlink with a real managed file", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await mkdir(fx.output, { recursive: true });
-      await symlink(join(fx.root, "pi", "settings.json"), join(fx.output, "settings.json"));
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      assert.equal(result.settings.action, "removed-symlink");
-      const settingsPath = join(fx.output, "settings.json");
-      assert.equal((await lstat(settingsPath)).isSymbolicLink(), false, "symlink replaced by a real file");
-      const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
-      assert.ok(settings.packages.length > 0, "managed packages written");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("re-running leaves settings.json unchanged", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await installPi({ root: fx.root, output: fx.output });
-      const first = await readFile(join(fx.output, "settings.json"), "utf-8");
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      assert.equal(result.settings.action, "unchanged");
-      assert.equal(await readFile(join(fx.output, "settings.json"), "utf-8"), first);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("dry-run plans the settings write without touching the filesystem", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-
-      const result = await installPi({ root: fx.root, output: fx.output, dryRun: true });
-
-      assert.equal(result.settings.action, "would-write");
-      assert.equal(await pathExists(join(fx.output, "settings.json")), false, "no file written in dry-run");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("dry-run reports would-remove-symlink for a legacy symlink", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await mkdir(fx.output, { recursive: true });
-      const link = join(fx.output, "settings.json");
-      await symlink(join(fx.root, "pi", "settings.json"), link);
-
-      const result = await installPi({ root: fx.root, output: fx.output, dryRun: true });
-
-      assert.equal(result.settings.action, "would-remove-symlink");
-      assert.equal(result.settings.removedSymlink, true);
-      assert.equal((await lstat(link)).isSymbolicLink(), true, "symlink untouched in dry-run");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-});
-
-// ─── Pi keybindings.json ─────────────────────────────────────────────────────
-
-describe("installPi — pi keybindings.json", () => {
-  it("writes the template bindings as a real generated file", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      const keybindingsPath = join(fx.output, "keybindings.json");
-      assert.equal((await lstat(keybindingsPath)).isSymbolicLink(), false, "keybindings.json is a real file");
-      const keybindings = JSON.parse(await readFile(keybindingsPath, "utf-8"));
-      assert.deepEqual(keybindings["tui.input.newLine"], ["shift+enter"], "template bindings copied");
-      assert.match(keybindings["//"], /GENERATED from pi\/keybindings\.json/);
-      assert.equal(result.keybindings.action, "written");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("leaves a user-modified keybindings file alone", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await writeFixture(
-        fx,
-        "out/keybindings.json",
-        JSON.stringify({ "tui.input.newLine": ["ctrl+j"] }, null, 2),
-      );
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      assert.equal(result.keybindings.action, "skipped");
-      const keybindings = JSON.parse(await readFile(join(fx.output, "keybindings.json"), "utf-8"));
-      assert.deepEqual(keybindings["tui.input.newLine"], ["ctrl+j"], "user edit preserved");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("refreshes an unmodified install when the template changes", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await installPi({ root: fx.root, output: fx.output });
-      await writeFixture(
-        fx,
-        "pi/keybindings.json",
-        JSON.stringify({ "tui.input.newLine": ["ctrl+j"] }, null, 2),
-      );
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      assert.equal(result.keybindings.action, "written");
-      const keybindings = JSON.parse(await readFile(join(fx.output, "keybindings.json"), "utf-8"));
-      assert.deepEqual(keybindings["tui.input.newLine"], ["ctrl+j"], "updated template applied");
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("replaces a legacy symlink with a real file", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await mkdir(fx.output, { recursive: true });
-      await symlink(join(fx.root, "pi", "keybindings.json"), join(fx.output, "keybindings.json"));
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      assert.equal(result.keybindings.action, "removed-symlink");
-      assert.equal((await lstat(join(fx.output, "keybindings.json"))).isSymbolicLink(), false);
-    } finally {
-      await fx.cleanup();
-    }
-  });
-
-  it("re-running leaves keybindings.json unchanged", async () => {
-    const fx = await makeFixture();
-    try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
-      await installPi({ root: fx.root, output: fx.output });
-      const first = await readFile(join(fx.output, "keybindings.json"), "utf-8");
-
-      const result = await installPi({ root: fx.root, output: fx.output });
-
-      assert.equal(result.keybindings.action, "unchanged");
-      assert.equal(await readFile(join(fx.output, "keybindings.json"), "utf-8"), first);
     } finally {
       await fx.cleanup();
     }
@@ -684,7 +674,7 @@ describe("installPi — real repo integration", () => {
       const plan = await readFile(join(fx.output, "agents", "plan.agent.md"), "utf-8");
       assert.match(plan, /tools: "bash read edit write grep find ask_questions task read_agent read"/);
       assert.ok(
-        plan.includes("~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills/workflow/plan/SKILL.md"),
+        plan.includes("~/.agent-cortex/pi/skills/workflow/plan/SKILL.md"),
         "plan PATH token resolved against token-map plugin root",
       );
 
@@ -719,6 +709,41 @@ describe("installPi — real repo integration", () => {
         const content = await readFile(join(fx.output, "skills", f), "utf-8");
         assert.ok(!/{{/.test(content), `no literal tokens in skill ${f}`);
       }
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("stages a self-contained package: real files only, bundled pi tools, nothing outside the output", async () => {
+    const fx = await makeFixture();
+    try {
+      const result = await installPi({ root: REPO_ROOT, output: fx.output });
+
+      const manifest = JSON.parse(await readFile(join(fx.output, "package.json"), "utf-8"));
+      assert.deepEqual(manifest.pi.extensions, [
+        "./extensions",
+        "node_modules/pi-questions/extensions/ask-questions.ts",
+        "node_modules/pi-web-access/index.ts",
+      ]);
+      assert.deepEqual(manifest.pi.skills, ["./skills", "node_modules/pi-web-access/skills"]);
+      assert.deepEqual(result.packages.bundled, ["pi-questions", "pi-web-access"]);
+
+      for (const rel of [...manifest.pi.extensions, ...manifest.pi.skills]) {
+        assert.ok(await pathExists(join(fx.output, rel)), `manifest resource ${rel} exists`);
+      }
+      for (const name of ["pi-questions", "pi-web-access"]) {
+        assert.equal((await lstat(join(fx.output, "node_modules", name))).isSymbolicLink(), false, `${name} is a real directory`);
+      }
+
+      const tree = await listFiles(fx.output);
+      assert.ok(tree.some((f) => f.startsWith(join("extensions", "agent-modes"))), "extensions staged");
+      assert.ok(tree.some((f) => f === "token-map.json"), "token map staged");
+
+      const links = [];
+      for (const rel of tree) {
+        if ((await lstat(join(fx.output, rel))).isSymbolicLink()) links.push(rel);
+      }
+      assert.deepEqual(links, [], "staged tree contains no symlinks");
     } finally {
       await fx.cleanup();
     }

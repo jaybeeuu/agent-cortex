@@ -17,11 +17,11 @@
   `bd list --label-pattern/regex [--json]`, `bd label add/remove` (batch multiple ids).
 - `bd list` supports `--label-pattern`/`--json`; `bd count` does NOT support `--label-pattern`.
 - `bd ready --label-pattern 'stage:*'` works; `bd ready -l execution:afk` verified.
-- 3 script packages exist with per-skill `package.json` + own `pnpm-workspace.yaml` +
-  own `pnpm-lock.yaml` (create-task, validate-agent-dir, run-pipeline-stage). They are NOT
+- 2 script packages exist with per-skill `package.json` + own `pnpm-workspace.yaml` +
+  own `pnpm-lock.yaml` (create-task, validate-agent-dir). They are NOT
   members of the root workspace (root glob `skills/*/scripts` does not match the nested
   `skills/<domain>/<name>/scripts`; root lockfile has zero refs to them).
-- All 3 scripts are stdlib-only (`node:child_process`, `node:fs`, `node:path`, `node:url`).
+- All scripts are stdlib-only (`node:child_process`, `node:fs`, `node:path`, `node:url`).
 - Extensions (`extensions/skill-stats`) have real peer deps on `@earendil-works/pi-coding-agent`
   — they remain workspace members with their own package.json.
 - `node_modules` gitignored; per-skill modules are installed manually today — a fragility in
@@ -103,8 +103,6 @@
 
 ### D5: Knocked-on invocation changes (F4/F5)
 
-- ralph init step 9: `pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx
-  generate-progress.ts` → `node <abs>/generate-progress.mjs`.
 - create-task chore creation: `<skill-scripts>/node_modules/.bin/tsx create-chores.ts` →
   `node <abs>/create-chores.mjs`.
 

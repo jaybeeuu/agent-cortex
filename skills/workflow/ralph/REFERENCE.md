@@ -13,7 +13,7 @@ Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL
 5. **Ensure branch + worktree exist for this parent task** (see _Feature branches and worktrees_ below), then note the worktree path — you'll pass it as `cwd` to {{TOOL:task}}.
 6. **Fill in the prompt** — replace placeholders with:
    - Stage from bead label (`stage:<stage>`) for `<stage>`
-   - Chore bead ID and its `bd show` output for the bead specification. Do **not** inject `bd prime` output — the stage runner runs `bd prime` itself if it needs project context
+   - The leaf execution bead ID and its `bd show` output for the bead specification. Do **not** inject `bd prime` output — the stage runner runs `bd prime` itself if it needs project context
    - Parent task description from `bd show <parent-id>`
    - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
@@ -48,7 +48,7 @@ For each parent task bead (`<parent-id>`):
 
 When the `document` chore for a parent task completes:
 
-1. Close the `document` chore.
+1. Confirm the document worker closed its own chore (`bd show <id>` reads `closed`); do not close it yourself.
 2. Create or update a feature PR immediately from the agent branch to the feature branch (`feature/<parent-id>` into `epic/<epic-id>`; into `main` for single-feature epics):
    ```bash
    # <base> is epic/<epic-id> for multi-feature epics, main for single-feature
@@ -67,34 +67,21 @@ When the `document` chore for a parent task completes:
 
 ---
 
-## Fix Loop
+## Cap Backstop (read-only)
 
-When a verify or review stage fails:
+Ralph never builds remediation. The worker that fails a stage creates its own `stage:fix` chore, a fresh instance of the failed stage blocked on that fix, and re-blocks the later stages behind the fresh bead (see the `run-pipeline-stage` skill, _Remediation Children_). Ralph only guards the cap, and only reads:
 
-1. **Determine the parent task**: look up the chore bead's parent via `bd show <chore-id>` (follow the `parent-child` dependency).
-2. **Count existing fix rounds**: list all chore beads that are children of the parent task with label `stage:fix`. The count of these (including closed ones) is the number of fix rounds already attempted.
-3. **Read `maxFixRounds`** from `skills/planning/create-task/pipeline.json` (held in memory since initialization).
-4. **If fix rounds ≥ maxFixRounds**: close the parent task bead as failed (`bd close <parent-id> --reason "Max fix rounds reached"`). Do not create another fix chore.
-5. **Otherwise, create a fix chore** with the feedback in its description so the fixer agent can read it directly from `bd show`:
+1. **Read `maxFixRounds`** from `skills/planning/create-task/pipeline.json` (held in memory since initialization).
+2. **Count existing fix rounds** for the parent — closed chores count:
    ```bash
-   fix_id=$(bd create "[<parent-id>] Fix (round <N>)" --type chore \
-     --priority <same as parent> \
-     --description "Requirements: see <parent-id> acceptance criteria (`bd show <parent-id>`).
-
-<CHANGES_REQUESTED list or VERIFY_FAILURES list from the triggering REPORT>" -q)
-   bd tag $fix_id stage:fix
-   bd dep add $fix_id <parent-id> --type parent-child   # fix-chore is child of parent
+   fix_rounds=$(bd children <parent-id> --json | grep -c '"stage:fix"')
    ```
-6. **Find the verify chore** for this parent task (the chore with label `stage:verify` and a `parent-child` dep to the parent).
-7. **Block the verify chore** on the new fix chore:
+3. **Before dispatching any `stage:*` chore of that parent**, if `fix_rounds >= maxFixRounds`: create nothing and block the parent, so a human sees it in the shutdown summary:
    ```bash
-   bd dep add <verify-id> $fix_id --type blocks          # verify waits for fix
+   bd update <parent-id> --status blocked \
+     --append-notes "[<ISO-timestamp>] max fix rounds reached (<fix_rounds>/<maxFixRounds>)"
    ```
-8. **Reopen the verify chore**:
-   ```bash
-   bd reopen <verify-id>
-   ```
-   This ensures the fix chore runs first, then verify re-runs automatically when the fix closes.
+4. Ralph does **not** close the parent as failed and does **not** reopen or re-wire any chore — the worker already closed the failed leaf bead and the fresh stage bead is already blocked on its fix.
 
 ---
 
@@ -204,6 +191,6 @@ All task state is derived from beads; `state.json` holds only runtime bookkeepin
 | What is ready? | `bd ready` — filter for chores with `stage:*` labels |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
 | Which agent-ID maps to which bead? | `inflight` entries in `.agent-cortex/ralph/state.json` |
-| How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task. Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. |
+| How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task (`bd children <parent-id> --json | grep -c '"stage:fix"'`). Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. Read-only: used for the cap backstop, never to build remediation. |
 | Which features are review-gated? | Find open child task beads labelled `lifecycle:feature-pr` and `implementation-type:hitl` |
 | Which epics are review-gated? | `bd list -l awaiting-epic-pr-merge` |

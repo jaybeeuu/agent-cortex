@@ -1,11 +1,11 @@
 ---
 name: run-pipeline-stage
-description: Execute a single pipeline stage for a bead (code, verify, review, document) via its playbook and dispatch rules, reporting the outcome in a fixed REPORT shape. Use when you want to "work through beads inline", "pick up a specific stage bead", or run one stage "without the full ralph orchestrator".
+description: Execute a single pipeline stage for a bead (code, verify, review, document) via its playbook and read-only routing, reporting the outcome in a fixed REPORT shape. Use when you want to "work through beads inline", "pick up a specific stage bead", or run one stage "without the full ralph orchestrator".
 ---
 
 # Run Pipeline Stage
 
-Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `stage:fix`) are created by the `create-task` skill from the pipeline definition in `skills/planning/create-task/pipeline.json`. This skill executes one stage at a time and reports the outcome.
+Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `stage:fix`) come from the pipeline definition in `skills/planning/create-task/pipeline.json`. This skill executes one stage and owns that bead's lifecycle: the runner that does the work appends its own notes, closes its own leaf execution bead on **both** outcomes, and builds its own remediation children when the stage fails. The orchestrator dispatches and routes — it never edits or closes a leaf bead.
 
 ## When to use
 
@@ -20,13 +20,22 @@ Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `st
 - Creating or planning beads — use `create-task` or `plan`.
 - Exploratory bead bookkeeping without a stage — that is `bd-tool`.
 
+## Ownership split
+
+| Actor | Owns |
+|---|---|
+| Stage runner (worker) | Milestone notes, progress-log lines, closing its leaf bead on both outcomes, remediation children, the REPORT |
+| Orchestrator (ralph or you) | Claim, dispatch, forward routing, the read-only cap backstop, the PR gate |
+
+A leaf bead is the worker's record of what happened. The orchestrator reads it; it does not write it.
+
 ## Workflow
 
 1. Run `bd prime` and hold the output; subagents can run it themselves if they need context.
 2. If no bead was specified, run `bd ready` and ask the user which to work on.
 3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth. Append a stage-start note immediately (see _Milestone Notes_).
 4. Read the bead's `stage:*` label — it names the stage to execute.
-5. Load the universal stage-runner prompt (`skills/workflow/run-pipeline-stage/prompts/stage-runner.md`), populate `<stage>`, and read the matching playbook (`skills/workflow/run-pipeline-stage/playbooks/<stage>.md`) for stage-specific rules.
+5. Load the universal stage-runner prompt (`skills/workflow/run-pipeline-stage/prompts/stage-runner.md`) — it carries the lifecycle, remediation, and REPORT contract — populate `<stage>`, and read the matching playbook (`playbooks/<stage>.md`) for stage-specific rules.
 6. Tag the stage and regenerate the progress doc so pairing sessions stay current:
 
 ```bash
@@ -36,48 +45,43 @@ workspace="/absolute/path/to/worktree"
 pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
 ```
 
-7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}} and end the prompt with the REPORT contract below.
-8. Route the REPORT through the Dispatch Rules: advance to the next stage, create a feedback bead, or close the parent.
+7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}}. The prompt already ends with the REPORT contract; never compose one without it.
+8. On the REPORT: route forward per _Routing_ below. Do **not** close the leaf bead — the worker closed it before reporting.
 
-Each step leaves observable state — a claimed bead, a `stage:` tag, a regenerated progress doc, and a REPORT that drives the next action.
+Each step leaves observable state — a claimed bead, a `stage:` tag, a regenerated progress doc, worker notes and a closed bead, and a REPORT that drives the next action.
 
-## Dispatch Rules
+## Routing (read-only)
+
+The worker built anything this stage needed; routing picks up whatever `bd ready` returns.
 
 | Stage complete | Condition | Next action |
-|---|---|---|
-| `code` | — | Run **verify** |
-| `verify` | `OUTCOME: SUCCESS` | Run **review** |
-| `verify` | `OUTCOME: BLOCKED` | Create a `stage:fix` chore (see _Feedback Beads_) |
-| `review` | `OUTCOME: SUCCESS` | Run **document** |
-| `review` | `OUTCOME: BLOCKED` and fixRounds < maxFixRounds | Create a `stage:fix` chore; increment fixRounds |
-| `review` | `OUTCOME: BLOCKED` and fixRounds ≥ maxFixRounds | `bd update <parent-id> --status blocked --notes "max fix rounds reached"`; record for shutdown |
-| `document` | — | `bd close <id>` — done |
+| `code` | `OUTCOME: SUCCESS` | Dispatch the ready `stage:verify` chore |
+| `verify` | `OUTCOME: SUCCESS` | Dispatch the ready `stage:review` chore |
+| `review` | `OUTCOME: SUCCESS` | Dispatch the ready `stage:document` chore |
+| `fix` | `OUTCOME: SUCCESS` | Dispatch the ready re-run chore that was blocked on the fix |
+| `document` | `OUTCOME: SUCCESS` | Open/update the feature PR and the HITL gate bead |
+| `code` / `verify` / `review` / `fix` / `document` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh instance of its own stage; dispatch the ready fix chore |
+| any | parent status `blocked` | Nothing — the worker or the cap backstop blocked it; record it for shutdown |
 
-`maxFixRounds` is read from `skills/planning/create-task/pipeline.json` (currently `4`). A fix chore re-runs the stage that failed — fix after verify → verify; fix after review → review.
-
-## Feedback Beads
-
-On stage failure, create a chore bead whose description carries the feedback so the orchestrator's dispatch path stays uniform — it just picks up whatever `bd ready` returns:
+Cap backstop (read-only): before dispatching a `stage:*` chore, count the parent's fix rounds and, if already at `maxFixRounds` (`skills/planning/create-task/pipeline.json`, currently `4`), block the parent and create nothing:
 
 ```bash
-new_id=$(bd create "[<parent-id>] <title>" --type chore \
-  --description "Requirements: see <parent-id> acceptance criteria (`bd show <parent-id>`).
-
-<feedback content from REPORT>" --priority <parent-priority> -q)
-bd tag $new_id stage:<next-stage>
-bd tag $new_id workflow:ralph
-bd dep add $new_id <parent-id> --type parent-child
+fix_rounds=$(bd children <parent-id> --json | grep -c '"stage:fix"')
 ```
 
-Chore beads carry no required sections, so the feedback description must point at the
-parent/requirements bead (`<parent-id>`) rather than restating its acceptance criteria.
+## Remediation Children (worker-built)
 
-| Triggering outcome | Suggested title | Next stage tag | Description content |
-|---|---|---|---|
-| `OUTCOME: BLOCKED` from verify | `Fix: verify failures` | `stage:code` | Full BLOCKING_ISSUES list |
-| `OUTCOME: BLOCKED` from review | `Fix: reviewer feedback` | `stage:fix` | Full BLOCKING_ISSUES list |
+On `OUTCOME: BLOCKED` the worker creates its own chain — a `stage:fix` chore carrying the feedback, plus a **fresh instance of the stage that failed**, blocked on the fix. A fresh instance is not optional: the failed chore is already closed, so the pre-created chain cannot re-verify a fix.
 
-Do not dispatch a new agent right after creating the feedback bead — it appears in `bd ready` on the next cycle and flows through the normal scheduling path.
+| Failed stage | Chain |
+|---|---|
+| `code` | `stage:fix` → fresh `stage:code` |
+| `verify` | `stage:fix` → fresh `stage:verify` |
+| `review` | `stage:fix` → fresh `stage:review` |
+| `document` | `stage:fix` → fresh `stage:document` |
+| `fix` | `stage:fix` → fresh `stage:fix` |
+
+Webbing, at cap, and the exact commands live in `prompts/stage-runner.md` and each playbook's _Remediation and close_ section. In short: both beads are children of the parent task (`--parent <parent-id>`), the fresh stage is `bd dep add <fresh> <fix> --type blocks`, and any not-yet-run later stage is re-blocked behind the fresh bead. Chores carry no required sections, so the feedback description points at the parent/requirements bead (`<parent-id>`) rather than restating its acceptance criteria.
 
 ## Progress Logging
 
@@ -105,62 +109,61 @@ bd update <id> --append-notes "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [<stage>] <what 
 
 ## Report Format
 
-Every subagent prompt must end with the REPORT instruction:
+Every stage-runner prompt ends with the literal REPORT instruction (see `prompts/stage-runner.md`):
 
-> End your response with a `---REPORT---` block in exactly this format:
-> ```
-> ---REPORT---
-> BEAD_ID: <id>
-> STAGE_COMPLETED: <code|verify|review|document>
-> SUMMARY: <2-3 sentence summary of what was done>
-> FILES_CHANGED: <comma-separated list, or "none">
-> OUTCOME: <SUCCESS|BLOCKED>
-> BLOCKING_ISSUES:                              ← only if OUTCOME is BLOCKED
-> - <specific blocking issue>
-> ---
-> ```
+```
+---REPORT---
+BEAD_ID: <id>
+STAGE_COMPLETED: <code|verify|review|document|fix>
+SUMMARY: <2-3 sentence summary of what was done>
+FILES_CHANGED: <comma-separated list, or "none">
+OUTCOME: <SUCCESS|BLOCKED>
+BLOCKING_ISSUES:                              ← only if OUTCOME is BLOCKED
+- <specific blocking issue>
+```
 
 Subagents report facts — do not ask them to suggest or predict the next step.
 
 ## Red Flags
 
 - Dispatching a subagent before tagging the stage — beads are the only source of truth for stage progress.
+- Closing a leaf bead from the orchestrator — the worker closed it; a second close hides who owned the outcome.
+- Creating a feedback or fix bead from the orchestrator — that is the worker's contract and bypasses its cap accounting.
 - Composing a subagent prompt without the REPORT contract — the output cannot be routed.
-- Creating a feedback bead and then dispatching anyway — bypasses the fix-round accounting and parent-child dependency graph.
 - Skipping the playbook "because the stage is simple" — playbooks carry the per-stage discipline the pipeline relies on.
 - Leaving bead notes to the end of the stage — a session that dies mid-stage then loses the whole trail.
 
 ## Common Rationalizations
 
 | "The stage is small — I'll just run it directly" | The stage skills and playbook keep output conformant; skipping them produces work that loops back as a fix chore. |
-| "I'll dispatch the fix right away — faster than a chore bead" | Feedback beads keep dispatch uniform and durable; direct re-dispatch breaks fix-round accounting and the dependency graph. |
+| "I'll close the chore — the worker forgot" | The worker closing it is the contract; an unclosed bead means the worker died, so read its notes and re-dispatch, do not paper over it. |
+| "I'll wire the fix chain myself — faster" | Two owners of one lifecycle is what this skill exists to remove; worker-built chains keep cap accounting and the dependency graph truthful. |
 | "The stage is obvious from the prompt — no tag needed" | Beads are the source of truth; prompt drift desynchronises the progress doc, the log, and downstream dispatch. |
 
 ## Cross-skill references
 
 - `create-task` owns `pipeline.json` — stages, `maxFixRounds`, and the stage templates.
 - `bd-tool` covers bead mechanics beyond the commands in this skill.
-- `ralph` runs many stage beads concurrently and consumes this skill's log and REPORT contracts.
-- Playbooks delegate to stage skills: `tdd`/`style-code`/`style-tests` (code), `review-security` (review), `style-documentation` (document).
+- `ralph` runs many stage beads concurrently and consumes this skill's log and REPORT contracts, plus its read-only cap backstop.
+- Playbooks delegate to stage skills: `tdd`/`style-code`/`style-tests` (code, fix), `review-security` (review), `style-documentation` (document).
 
 ## Examples
 
-- Input: a `stage:verify` bead reporting `OUTCOME: BLOCKED` with two failing tests → Output: a `Fix: verify failures` chore tagged `stage:code` whose description lists both failures; verify closes and the chore is picked up on the next `bd ready` cycle.
-- Input: a `stage:document` bead reporting `OUTCOME: SUCCESS` → Output: the parent bead is closed with `bd close <id>` and that task's pipeline ends.
+- Input: a `stage:verify` runner reporting `OUTCOME: BLOCKED` with two failing tests → Output: a `Fix (round 1)` chore plus a fresh `Verify (re-run 1)` chore blocked on it, `review` re-blocked behind the fresh verify, verify's own bead closed, and one `---REPORT---` block.
+- Input: a `stage:document` runner reporting `OUTCOME: SUCCESS` → Output: document's bead already closed by the runner; the orchestrator opens the feature PR and updates the HITL gate bead.
 
 ## Philosophy / rationale
 
 - Beads hold all orchestration state — there is no separate state file to drift out of sync.
-- Subagents return facts in one fixed REPORT shape so routing stays mechanical across stages and harnesses.
-- Feedback as beads, not direct re-dispatches, puts every agent on a single scheduling path and keeps every decision visible in the dependency graph.
+- Whoever does the work owns the record: a worker that closes its own bead leaves an auditable trail the orchestrator can only read.
+- Self-contained remediation keeps the dependency graph truthful, so `bd ready` alone is enough to schedule the next step.
 
 ## Verification checklist
 
 - [ ] Bead claimed (`bd update <id> --claim`) before any executor works it.
 - [ ] `bd tag <id> stage:<stage>` run and progress doc regenerated before dispatch.
 - [ ] Correct playbook read and followed for the stage; stage skills invoked where the playbook says.
-- [ ] Composed prompt ends with the complete REPORT contract block.
+- [ ] Composed prompt carries the lifecycle, remediation, and REPORT contract from `prompts/stage-runner.md`.
 - [ ] Progress log lines written for every stage transition and key result.
 - [ ] Milestone notes appended at stage start and each milestone with `--append-notes` (not `--notes`).
-- [ ] REPORT routed per the Dispatch Rules — next stage, feedback bead, or `bd close <id>`.
-- [ ] Feedback beads carry the full BLOCKING_ISSUES content and the parent-child dependency.
+- [ ] The orchestrator closed no leaf bead and created no fix bead; the cap backstop ran before any dispatch.

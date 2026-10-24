@@ -65,7 +65,7 @@ Run once at startup:
 
 ## Creating and dispatching a stage chore
 
-Use this procedure whenever a new chore bead is needed (initial stage, success-path next stage, or picking up a feedback chore from `bd ready`):
+Use this procedure whenever a new chore bead is needed (initial stage, success-path next stage, or picking up a worker-built remediation chore from `bd ready`):
 
 ```bash
 chore_id=$(bd create "[<parent-id>] <Stage title>" \
@@ -76,7 +76,7 @@ bd dep add $chore_id <parent-id> --type parent-child
 bd update $chore_id --claim
 ```
 
-Then load the universal stage runner prompt from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the spawning mechanism described in the polling section, running from the feature worktree. Stage-specific policy comes from `skills/workflow/run-pipeline-stage/playbooks/<stage>.md`.
+Then load the universal stage runner prompt from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the spawning mechanism described in the polling section, running from the feature worktree. Stage-specific policy comes from `skills/workflow/run-pipeline-stage/playbooks/<stage>.md`. The prompt's lifecycle, remediation, and REPORT sections are the worker's contract — pass them through verbatim, never restate or trim them.
 
 Add the entry to `inflight` in `state.json`:
 ```json
@@ -115,7 +115,7 @@ All orchestration state is derived from beads:
 - **inflight[].logLine**: the next line number to read from the parent's log file (1-based; start at 1). Updated after every poll.
 - **Loop counts are not stored here** — derive them from beads:
   - TDD loop count = number of `stage:test-writing` chore children of `<parentId>` (including the current one)
-  - Fix round count = number of `stage:fixing` chore children of `<parentId>`
+  - Fix round count = number of `stage:fix` chore children of `<parentId>` (closed ones count)
 
 Update `.agent-cortex/ralph/state.json` after **every** agent completion or dispatch, then regenerate `.agent-cortex/ralph/progress.md`.
 
@@ -135,13 +135,13 @@ After initialization, Ralph waits for background agents to complete. Completion 
 2. **Read** the completed agent's full output (PI: the result arrives in the `wait_for_agents` response, with `read_agent` as a fallback for a specific result; Copilot: `read_agent`; Claude: the result was delivered inline).
 3. **Re-read** `.agent-cortex/ralph/state.json` to identify the chore bead and parent for that agent ID.
 4. **Parse** the agent's `---REPORT---` block (see report format in the `run-pipeline-stage` skill).
-5. **Close** the completed chore bead: `bd close <chore-id>`.
-6. **Advance** the parent using the dispatch rules in the `run-pipeline-stage` skill:
+5. **Confirm** the worker closed its own leaf execution bead: `bd show <chore-id>` should read `closed`. If it is still open the worker died mid-stage — read its notes and re-dispatch. Never close it yourself.
+6. **Advance** the parent using the routing guidance in the `run-pipeline-stage` skill:
    - **Success paths** (code → verify, verify SUCCESS → review, review SUCCESS → document): create the next chore bead and dispatch it immediately (see _Creating and dispatching a stage chore_ above). Update the inflight entry with the new choreId/agentId, reset logLine to 1.
    - **Documenting → done**: close the parent feature bead (`bd close <parent-id>`), remove it from inflight, open/update the feature PR immediately (agent-branch → feature branch), report the PR URL in chat, then update the HITL PR gate bead with the PR URL.
-   - **Failure paths** (verify BLOCKED, review CHANGES_REQUESTED): check loop cap (see below), then create a feedback bead per the _Feedback Beads_ section in `run-pipeline-stage`. Do **not** dispatch immediately — the feedback bead appears in `bd ready` and is picked up in step 7. Remove the inflight entry for this chore; the feedback bead will create a new entry when dispatched.
+   - **Failure paths** (`OUTCOME: BLOCKED` from any stage): create nothing. The worker already closed its failed chore and built its own remediation — a `stage:fix` chore plus a fresh instance of the failed stage blocked on it. Run the cap backstop (see below); if the parent is at `maxFixRounds`, block the parent instead and record it for shutdown. Remove the inflight entry for this chore; the worker's beads appear in `bd ready` and are picked up in step 7.
 7. **Check for newly ready beads**: run `bd ready`. For each bead not yet tracked:
-   - **Chore bead with `stage:*` label** (a feedback bead): find its parent via `bd show <chore-id>` (follow the `parent-child` dep). Check loop cap (see below). If under cap: dispatch it via _Creating and dispatching a stage chore_. If at cap: block it (`bd update <chore-id> --status blocked --notes "<cap> cap reached"`) and record for shutdown.
+   - **Chore bead with `stage:*` label** (a worker-built remediation chore or a pre-created stage): find its parent via `bd show <chore-id>` (follow the `parent-child` dep). Run the cap backstop (see below). If under cap: dispatch it via _Creating and dispatching a stage chore_. If at cap: block the parent (`bd update <parent-id> --status blocked --append-notes "<cap> reached"`) and record it for shutdown — create nothing.
    - **Task bead, AFK, in-flight count < 5, no open feature PR HITL gate**: claim the parent, create its first code chore, dispatch it.
    - **Task bead, AFK, in-flight count at 5**: hold in memory as Waiting.
    - **HITL task bead**: note for **Pending Human Action** shutdown summary.
@@ -151,17 +151,15 @@ After initialization, Ralph waits for background agents to complete. Completion 
    - If HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see below).
    - Otherwise, proceed to **Shutdown** (see below).
 
-### Loop cap check
+### Cap backstop (read-only)
 
-Before creating a fix feedback bead, read `maxFixRounds` from `skills/planning/create-task/pipeline.json` and count existing fix chore children:
+Ralph never builds remediation and never closes a leaf bead — the worker that failed a stage did both (see _Remediation Children_ in the `run-pipeline-stage` skill). Ralph only guards retry blow-up, and only reads:
 
 ```bash
-fix_rounds=$(bd children <parent-id> | grep 'stage:fix' | wc -l)
+fix_rounds=$(bd children <parent-id> --json | grep -c '"stage:fix"')
 ```
 
-- If `fix_rounds ≥ maxFixRounds` → do **not** create feedback bead; block the parent instead.
-
-Block command: `bd update <parent-id> --status blocked --notes "<cap> cap reached"`. Record for shutdown summary.
+Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. If `fix_rounds >= maxFixRounds`, create nothing and block the parent: `bd update <parent-id> --status blocked --append-notes "[<ISO-timestamp>] max fix rounds reached (<fix_rounds>/<maxFixRounds>)"`. Record it for the shutdown summary.
 
 ---
 
@@ -253,7 +251,8 @@ All beads complete.
 - **Always** derive orchestration state from beads — do not store loop counts in state.json.
 - **Subagents can fetch their own context** — they will run `bd prime` if they need project-level state. Do not inject `bd prime` output into subagent prompts.
 - **Max 5** tasks in-flight at once (counted by parent features, not individual chore beads).
-- **Max fix rounds** per parent (read `maxFixRounds` from `skills/planning/create-task/pipeline.json`; count of `stage:fix` chore children); block the parent if exceeded.
+- **Never** close a leaf execution bead and **never** create a `stage:fix`/feedback bead — the worker owns its bead's lifecycle and builds its own remediation chain.
+- **Max fix rounds** per parent is a read-only backstop (read `maxFixRounds` from `skills/planning/create-task/pipeline.json`; count `stage:fix` chore children); block the parent at cap and create nothing.
 - **Always** run feature chores in the feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge feature or epic PRs — merge decisions are human-controlled.
 - **Never** continue past feature completion until PR `feature/<parent-id> -> epic/<epic-id>` is merged and the child HITL PR gate bead is closed by a human.

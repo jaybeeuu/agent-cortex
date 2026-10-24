@@ -40,7 +40,7 @@ PI detects subagent completion with a blocking wait, not polling: after dispatch
 - **Dispatch-and-wait** — during initialization, dispatch up to 5 AFK chore subagents with `task` and hold their agent IDs (recorded in `state.json`'s `inflight` list).
 - **Wait** — call `wait_for_agents` with the agent IDs of every in-flight chore (`timeout` defaults to 120s). The tool blocks until at least one finishes. For each completed agent:
   1. Flush its log tail if it has new lines (see _Log polling_ below) to surface progress to chat.
-  2. Apply the shared completion handling in the **Event loop** section of agent.md (the result is included in the wait response, or re-read with `read_agent`; re-read state.json, parse the REPORT, close the chore, advance the parent, check for newly ready beads, run the shutdown check).
+  2. Apply the shared completion handling in the **Event loop** section of agent.md (the result is included in the wait response, or re-read with `read_agent`; re-read state.json, parse the REPORT, confirm the worker closed the chore, advance the parent, check for newly ready beads, run the shutdown check).
   3. Drop the completed agent ID from the wait set.
 - **Repeat** — dispatch replacements for completed chores (up to 5 in flight), add their new IDs to the wait set, and call `wait_for_agents` again with the remaining + new IDs.
 - **Timeout / STILL RUNNING** — if the timeout elapses with agents still working, the tool returns those agents as STILL RUNNING (with `timed out` noted). Call `wait_for_agents` again with the same IDs — the still-running agents keep working; you never re-dispatch them. `read_agent` remains available to re-read a completed result at any time.

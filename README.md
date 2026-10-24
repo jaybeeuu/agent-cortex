@@ -114,10 +114,14 @@ and no symlinks leak into the copied tree. The Copilot drift check
 (`pnpm build:copilot` + `git diff --exit-code -- 'agents/*.agent.md'`) still guards the
 committed flat agent files.
 
-A separate `changeset-check` job runs only on pull requests and fails any PR that
-touches a versioned path (`extensions/`, `skills/`, `agents/`, `package.json`, or
-`plugin.json`) without a changeset in `.changeset/`. Add one with `pnpm changeset` —
-the `style-versioning` skill documents the format.
+A separate `changeset-check` job runs on every pull request and fails it unless the
+PR adds a `.changeset/*.md` file. **Publishing is the default and `no-publish` is the
+only opt-out**, so shipping nothing has to be a deliberate, reviewable act rather
+than an accident. Two exemptions: the changesets bot's Version Packages PR (it
+consumes changesets and adds none) and PRs labelled `no-publish`. The `no-publish`
+label must exist in the repository's label settings — a one-off repo-settings step
+that no PR can ship. The `style-versioning` skill documents the format of a
+changeset.
 
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when
@@ -125,10 +129,16 @@ changesets are pending, then publishes to npm once it lands. The version step ru
 `pnpm version-packages` — bumping `package.json`, syncing `plugin.json`, and
 regenerating the committed Copilot agent files (the Claude plugin is materialised at
 install time with the package version, so it has no committed output to regenerate)
-so the drift gates stay green; the
-publish step runs `pnpm publish-package` (pack + provenance publish). Publish
-authenticates via npm Trusted Publishing (OIDC) — no npm token or GitHub
-secret is needed, only the one-time npm-side setup on npmjs.com (package →
+so the drift gates stay green; the publish step runs `pnpm publish-package` (pack +
+provenance publish), or
+`pnpm publish-noop` when the merged PR carried `no-publish`. Labels are invisible on
+a push event, so the job resolves the PR merged for the pushed commit through the
+GitHub API and reads its labels — no extra secret or scope, since the job already
+holds `GITHUB_TOKEN` and `pull-requests: write`. A direct push with no merged PR
+resolves to no labels and therefore publishes, so attempting to publish an
+already-published version still fails loudly; there is deliberately no idempotency
+guard. Publishing authenticates via npm Trusted Publishing (OIDC) — no npm token or
+GitHub secret is needed, only the one-time npm-side setup on npmjs.com (package →
 Access → Trusted Publishing for the `jaybeeuu/agent-cortex` repo). Releases
 are sourced entirely from `main`.
 

@@ -13,14 +13,21 @@
 
 ## Current-state constraints
 
-- bd CLI is a global binary (`~/.local/bin/bd`); label ops: `bd label list-all [--json]`,
-  `bd list --label-pattern/regex [--json]`, `bd label add/remove` (batch multiple ids).
+- bd is a globally installed CLI resolved from `PATH` (whatever single `bd` is on PATH —
+  Homebrew, npm, or the install script); `BD_PATH` is the override for machines where `bd` is
+  not on PATH. Skill scripts invoke `BD_PATH || 'bd'` and never hardcode an install path.
+  Label ops: `bd label list-all [--json]`, `bd list --label-pattern/regex [--json]`,
+  `bd label add/remove` (batch multiple ids).
+- A `bd` whose install target has been removed (`~/.local/bin` orphans, dangling pnpm shims)
+  must not be pinned: it can be a schema behind the workspace DB and fail with a schema
+  version mismatch. Keep exactly one `bd` on PATH so `bd` and the DB version agree.
 - `bd list` supports `--label-pattern`/`--json`; `bd count` does NOT support `--label-pattern`.
 - `bd ready --label-pattern 'stage:*'` works; `bd ready -l execution:afk` verified.
-- 3 script packages exist with per-skill `package.json` + own `pnpm-workspace.yaml` +
-  own `pnpm-lock.yaml` (create-task, validate-agent-dir, run-pipeline-stage). They are NOT
-  members of the root workspace (root glob `skills/*/scripts` does not match the nested
-  `skills/<domain>/<name>/scripts`; root lockfile has zero refs to them).
+- 3 script packages still exist with their own `package.json` (create-task,
+  validate-agent-dir, run-pipeline-stage). They ARE root workspace members (root glob
+  `skills/**/scripts`; all three are in the root `pnpm-lock.yaml`). Residual per-skill
+  `pnpm-lock.yaml` (all three) and `pnpm-workspace.yaml` (validate-agent-dir,
+  run-pipeline-stage) are stale artefacts of the pre-D2 layout.
 - All 3 scripts are stdlib-only (`node:child_process`, `node:fs`, `node:path`, `node:url`).
 - Extensions (`extensions/skill-stats`) have real peer deps on `@earendil-works/pi-coding-agent`
   — they remain workspace members with their own package.json.

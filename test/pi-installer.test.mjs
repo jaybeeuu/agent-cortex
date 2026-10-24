@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, readFile, readdir, stat, lstat, symlink } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { installPi } from "../bin/installers/pi.mjs";
+
+const execFileAsync = promisify(execFile);
 
 // Real repo root — used by the integration smoke test to prove the installer
 // works against the canonical sources (agents/, skills/, token-map.json).
@@ -54,6 +58,40 @@ async function makeFixture() {
     root,
     output,
     cleanup: async () => rm(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * A main checkout plus a linked git worktree under .agent-cortex/worktrees/<id> —
+ * the layout ralph runs beads in. `root` is the worktree, so fixture writers
+ * target it the way a worktree invocation of the installer would.
+ */
+async function makeWorktreeFixture() {
+  const dir = await mkdtemp(join(tmpdir(), "pi-installer-worktree-"));
+  const main = join(dir, "repo");
+  const worktree = join(main, ".agent-cortex", "worktrees", "agnt-ctx-test");
+  const git = (...args) =>
+    execFileAsync("git", [
+      "-C",
+      main,
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=test",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ]);
+  await mkdir(main, { recursive: true });
+  await git("init", "--quiet");
+  await git("commit", "--quiet", "--allow-empty", "-m", "initial");
+  await git("worktree", "add", "--quiet", worktree);
+  return {
+    root: worktree,
+    main,
+    worktree,
+    output: join(dir, "out"),
+    cleanup: async () => rm(dir, { recursive: true, force: true }),
   };
 }
 
@@ -458,6 +496,30 @@ describe("installPi — pi settings.json", () => {
       assert.equal(settings.defaultModel, "template/model", "template key present");
       assert.match(settings["//"], /GENERATED from pi\/settings\.json/);
       assert.equal(result.settings.action, "written");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("registers the main checkout instead of the git worktree the installer ran in", async () => {
+    const fx = await makeWorktreeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      const settingsPath = join(fx.output, "settings.json");
+      const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
+      const repoEntry = settings.packages.find((p) => !(typeof p === "string" ? p : p.source).startsWith("npm:"));
+      assert.equal(
+        resolve(dirname(settingsPath), repoEntry.source),
+        fx.main,
+        "package source points at the main checkout, never the ephemeral worktree",
+      );
+      assert.ok(
+        result.warnings.some((w) => w.includes(fx.main)),
+        "the worktree invocation is reported, naming the checkout it registered instead",
+      );
     } finally {
       await fx.cleanup();
     }

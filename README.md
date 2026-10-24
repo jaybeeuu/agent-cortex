@@ -170,6 +170,14 @@ Two consequences follow from that precedence:
   dropped on the next `agent-cortex install pi`. Declare long-lived packages in
   the repo template instead.
 
+That repo path entry registers the **main checkout**, even when the installer
+runs inside a linked git worktree (ralph's `.agent-cortex/worktrees/<id>`). A
+worktree is gitignored and short-lived, so registering it would leave `packages`
+dangling as soon as the worktree is removed; the installer warns, naming the
+checkout it registered instead. The agents and skills it copies still come from
+the checkout you ran it in, so run the installer from the main checkout when you
+want that checkout's agents and skills installed too.
+
 An unparseable live `settings.json` is warned about and overwritten.
 `keybindings.json` follows a checksum rule: written from the template, refreshed
 when the template changes, and left untouched once you edit it by hand (delete

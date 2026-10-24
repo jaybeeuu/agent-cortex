@@ -21,6 +21,11 @@
 // Skill markdown files get the same TOOL/PATH substitution so pi never serves
 // literal token syntax; other skill files are copied verbatim.
 //
+// The settings `packages` entry has to outlive the install (pi loads from it at
+// runtime), so when the installer runs inside a linked git worktree — ralph's
+// .agent-cortex/worktrees/<id> — that entry registers the main checkout instead
+// of the gitignored worktree itself.
+//
 // Skills install into ~/.pi/agent/skills (pi's user-global skill dir), which is
 // the sole pi skill source: the checkout's raw package skills are not loaded
 // locally because pi/settings.json registers agent-cortex with an object-form
@@ -35,7 +40,9 @@
 
 import { readFile, writeFile, mkdir, copyFile, readdir, lstat, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { join, dirname, basename, relative } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { join, dirname, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
@@ -63,6 +70,8 @@ const KEYBINDINGS_TEMPLATE = "pi/keybindings.json";
 const GENERATED_KEY = "//";
 
 const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Install the agent-cortex pi harness into the pi runtime.
@@ -110,9 +119,21 @@ export async function installPi(options = {}) {
   const agentsDir = join(output, "agents");
   const skillsDir = join(output, "skills");
 
+  // The settings `packages` entry registers a checkout with pi, and pi loads
+  // from it at runtime — so it must survive this install. A linked git worktree
+  // (ralph's .agent-cortex/worktrees/<id>) is gitignored and short-lived: it
+  // registers the main checkout instead, while the copies above still come from
+  // the invoked worktree.
+  const mainRoot = await findMainWorkingTree(root);
+  if (mainRoot) {
+    warn(
+      `${root} is a git worktree — registering the main checkout ${mainRoot} as the pi package source (a worktree disappears with its branch); run the installer from ${mainRoot} to install that checkout's agents and skills`,
+    );
+  }
+
   const agents = await installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, warn });
   const skills = await installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn });
-  const config = await installConfig({ root, output, dryRun, warn });
+  const config = await installConfig({ root, packageRoot: mainRoot ?? root, output, dryRun, warn });
 
   // Third-party packages give the composed agents their pi tools (ask_questions
   // from pi-questions, fetch_content from pi-web-access). They are declared in
@@ -242,20 +263,20 @@ async function copyTree(src, dest, transform, dryRun) {
  * symlink is materialised from the template, an unmodified install is refreshed
  * when the template changes, and a file edited after install is left untouched.
  */
-async function installConfig({ root, output, dryRun, warn }) {
+async function installConfig({ root, packageRoot, output, dryRun, warn }) {
   return {
-    settings: await installSettings({ root, output, dryRun, warn }),
+    settings: await installSettings({ root, packageRoot, output, dryRun, warn }),
     keybindings: await installKeybindings({ root, output, dryRun, warn }),
   };
 }
 
-async function installSettings({ root, output, dryRun, warn }) {
+async function installSettings({ root, packageRoot, output, dryRun, warn }) {
   const template = await readTemplateJson(join(root, SETTINGS_TEMPLATE), warn);
   if (template === null) return null;
 
   const target = join(output, "settings.json");
   const merged = mergeSettings(template, await readJsonObject(target, warn));
-  merged.packages = resolvePackages(template.packages, root, dirname(target));
+  merged.packages = resolvePackages(template.packages, packageRoot, dirname(target));
   delete merged[GENERATED_KEY];
 
   const content = `${JSON.stringify(
@@ -331,6 +352,32 @@ function mergeSettings(template, existing) {
     if (!(key in merged)) merged[key] = existing[key];
   }
   return merged;
+}
+
+/**
+ * The main working tree `root` belongs to when it is a linked git worktree, or
+ * null when it is the repo's main checkout — or not inside a repo at all.
+ *
+ * A linked worktree is the only git checkout whose `.git` is a file rather than
+ * a directory, so every other case is settled without spawning git. git itself
+ * then distinguishes a worktree from a submodule, which shares one git dir.
+ */
+async function findMainWorkingTree(root) {
+  if (!(await isFile(join(root, ".git")))) return null;
+
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync("git", ["-C", root, "rev-parse", "--git-dir", "--git-common-dir"]));
+  } catch (err) {
+    throw new Error(
+      `cannot determine the main working tree of ${root} (${err.message}) — run "agent-cortex install pi" from the main checkout`,
+    );
+  }
+  // Both paths are reported relative to the same directory, so comparing them as
+  // text is sound; an unchanged git dir means root owns its repo (main checkout).
+  const [gitDir, commonDir] = stdout.trim().split("\n");
+  if (!commonDir || commonDir === gitDir) return null;
+  return dirname(resolve(root, commonDir));
 }
 
 /**

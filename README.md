@@ -149,6 +149,7 @@ pi install ~/.agent-cortex/pi     # register the staged package with pi
 The staged package contains:
 
 | Path | Contents |
+| --- | --- |
 | `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`; the version tracks the package |
 | `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
 | `skills/` | token-substituted skill copies (real files, never symlinks) |
@@ -165,6 +166,7 @@ cannot provide those tools. Re-staging clears the children the installer owns, s
 a re-run never accumulates stale copies.
 
 | Flag | Meaning |
+| --- | --- |
 | `--dry-run` | Show what would be staged without writing anything |
 | `--output <dir>` | Stage into `<dir>` instead of `~/.agent-cortex/pi` (tests/CI) |
 | `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |

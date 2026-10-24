@@ -7,6 +7,11 @@ harness's native dependency fields plus committed settings templates. See the de
 prune TUI was rejected (see "Prune rejected") and the proposed declared-vs-installed diff was
 dropped — `agent-cortex install <harness>` reconciles instead.
 
+The mechanism recorded under "What shipped" has since been removed (2026-10-24,
+`agnt-ctx-7kru.1`): `pi.packages`, `lib/pi-packages.mjs` and `--no-provision` are gone, and the
+required pi packages now travel inside the staged package at `~/.agent-cortex/pi` instead of
+being provisioned into pi's user scope.
+
 ## Created
 2026-08-25
 

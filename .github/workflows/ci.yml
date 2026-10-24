@@ -48,12 +48,13 @@ jobs:
 
   changeset-check:
     name: Changeset check
-    # Only `no-publish` can change the verdict, so ignore label churn on every
-    # other label; `github.event.label.name` is set only on labeled/unlabeled.
-    if: >-
-      github.event_name == 'pull_request' &&
-      (github.event.label.name == 'no-publish' ||
-       (github.event.action != 'labeled' && github.event.action != 'unlabeled'))
+    # The gate is a pure, idempotent recomputation of the diff plus PR metadata,
+    # so every pull_request event must run it. Do NOT narrow this to the
+    # labels that can change the verdict: GitHub reports a skipped job as a
+    # success (docs.github.com - about-status-checks), so skipping on unrelated
+    # label churn would silently turn a failing gate green and let a
+    # changeset-less PR merge.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

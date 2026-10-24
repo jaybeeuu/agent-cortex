@@ -24,7 +24,7 @@ Rules:
 
 ## Completion detection (Copilot)
 
-Copilot detects subagent completion with an active poll loop: a `sleep 120` background timer plus log tailing. When a background agent completes, flush its log with the _Log polling_ procedure below, then apply the shared completion handling in the **Event loop** section of agent.md (read the result with `read_agent`, re-read state.json, parse the REPORT, close the chore, advance the parent, check for newly ready beads, run the shutdown check).
+Copilot detects subagent completion with an active poll loop: a `sleep 120` background timer plus log tailing. When a background agent completes, flush its log with the _Log polling_ procedure below, then apply the shared completion handling in the **Event loop** section of agent.md (read the result with `read_agent`, re-read state.json, parse the REPORT, confirm the worker closed the chore, advance the parent, check for newly ready beads, run the shutdown check).
 
 ### Poll timer lifecycle
 

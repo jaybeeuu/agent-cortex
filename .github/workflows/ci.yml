@@ -5,6 +5,12 @@ on:
     branches:
       - main
   pull_request:
+    # The default types (opened/synchronize/reopened) would make the documented
+    # `no-publish` opt-out unreachable: labelling a PR after the check failed
+    # would never re-trigger it, and a manual re-run replays the original event
+    # payload. Label events keep the gate honest in both directions — adding the
+    # label turns it green, removing it turns it red again.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
   setup:
@@ -42,7 +48,12 @@ jobs:
 
   changeset-check:
     name: Changeset check
-    if: github.event_name == 'pull_request'
+    # Only `no-publish` can change the verdict, so ignore label churn on every
+    # other label; `github.event.label.name` is set only on labeled/unlabeled.
+    if: >-
+      github.event_name == 'pull_request' &&
+      (github.event.label.name == 'no-publish' ||
+       (github.event.action != 'labeled' && github.event.action != 'unlabeled'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

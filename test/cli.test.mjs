@@ -243,6 +243,12 @@ describe("CLI integration", () => {
     assert.ok(stderr.includes("--bogus"));
   });
 
+  it("exits 1 for the removed --no-provision flag", async () => {
+    const { exitCode, stderr } = await runCli(["install", "pi", "--no-provision"]);
+    assert.equal(exitCode, 1);
+    assert.ok(stderr.includes("--no-provision"), "the removed flag is named in the error");
+  });
+
   it("exits 1 and prints error for install with a missing option value", async () => {
     const { exitCode, stderr } = await runCli(["install", "pi", "--output"]);
     assert.equal(exitCode, 1);

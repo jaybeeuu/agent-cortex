@@ -14,7 +14,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "echo 'Build complete \u2014 no compilation needed for PI package'",
+    "build": "echo 'Build complete — no compilation needed for PI package'",
     "lint": "pnpm typecheck && pnpm check:sync",
     "check:sync": "node scripts/check-no-sync.mjs",
     "test": "node --test test/*.test.mjs && pnpm -r test",

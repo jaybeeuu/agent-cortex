@@ -1,5 +1,5 @@
 ---
-"@jaybeeuu/agent-cortex": patch
+"@jaybeeuu/agent-cortex": minor
 ---
 
 Add the `migration` skill (`skills/productivity/migration/`). It documents how any workspace

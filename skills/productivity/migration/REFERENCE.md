@@ -10,11 +10,11 @@ also exposed as `ctx migrate`. This skill depends on the following behaviour —
 
 | Contract | Guarantee the skill assumes |
 |---|---|
-| `agent-cortex migrate` | Runs the plan for every step the repo still needs. **Dry run is the default**: zero writes, exit 0. |
+| `agent-cortex migrate` | **Dry run is the default**: plans the first pending step only, zero writes, exit 0. With `--apply` it runs every step the repo still needs. |
 | `--apply` | Performs the writes. Same plan, executed. |
 | `--dry-run` | Explicit form of the default; identical output, still zero writes. |
 | `--help` | Lists the commands and flags this build accepts, including whether `migrate` itself is present. |
-| Registry detection | Reports the repo's current version and the steps it will run, derived from workspace state — not from a flag or a stored marker the agent has to keep. |
+| Registry detection | Reports the repo's current version and the first step with pending work — the only step a dry run plans — derived from workspace state, not from a flag or a stored marker the agent has to keep. |
 | Step ordering | Applies steps in version order, oldest first. The final summary is one line per step: its name and description, that step's pending bead total, and a `verified` line. It carries no per-group breakdown — derive group sizes from the step-v1 `bd list --label-pattern` query. |
 | Idempotence | A converged repo plans zero targets and exits 0; a re-run after a partial failure resumes rather than repeating writes. |
 | Failure mode | Fails loudly (non-zero exit) when `bd` is missing or a `bd` subcommand errors; never silently skips a group. |

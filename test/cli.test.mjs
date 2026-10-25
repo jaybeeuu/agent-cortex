@@ -157,6 +157,30 @@ describe("parseArgs", () => {
     assert.deepStrictEqual(parseArgs(["install", "pi"]), { command: "install", harness: "pi" });
   });
 
+  it("defaults migrate to a dry run", async () => {
+    assert.deepStrictEqual(parseArgs(["migrate"]), { command: "migrate", apply: false });
+  });
+
+  it("parses --apply for migrate", async () => {
+    assert.deepStrictEqual(parseArgs(["migrate", "--apply"]), { command: "migrate", apply: true });
+  });
+
+  it("parses an explicit --dry-run for migrate", async () => {
+    assert.deepStrictEqual(parseArgs(["migrate", "--dry-run"]), { command: "migrate", apply: false });
+  });
+
+  it("rejects --apply combined with --dry-run", async () => {
+    const result = parseArgs(["migrate", "--apply", "--dry-run"]);
+    assert.equal(result.command, "migrate");
+    assert.ok(result.optionError.includes("--apply"));
+  });
+
+  it("reports an unknown option for migrate", async () => {
+    const result = parseArgs(["migrate", "--bogus"]);
+    assert.equal(result.command, "migrate");
+    assert.ok(result.optionError.includes("--bogus"));
+  });
+
   it("returns { command: 'unknown', name: 'foo' } for unknown command", async () => {
     const result = parseArgs(["foo"]);
     assert.deepStrictEqual(result, { command: "unknown", name: "foo" });
@@ -169,6 +193,7 @@ describe("buildHelpText", () => {
     assert.ok(typeof text === "string");
     assert.ok(text.includes("agent-cortex"));
     assert.ok(text.includes("install"));
+    assert.ok(text.includes("migrate"));
   });
 });
 

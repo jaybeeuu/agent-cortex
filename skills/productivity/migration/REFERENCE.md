@@ -1,0 +1,135 @@
+# Migration reference
+
+Contracts, step details, and recovery recipes for the `migration` skill. `SKILL.md` holds the
+workflow and the gate; this file holds the detail you reach for while running it.
+
+## Command interface the skill relies on
+
+The command is shipped by the `agent-cortex` CLI (`bin/agent-cortex.mjs` + `lib/cli.mjs`) and is
+also exposed as `ctx migrate`. This skill depends on the following behaviour — nothing wider:
+
+| Contract | Guarantee the skill assumes |
+|---|---|
+| `agent-cortex migrate` | Runs the plan for every step the repo still needs. **Dry run is the default**: zero writes, exit 0. |
+| `--apply` | Performs the writes. Same plan, executed. |
+| `--dry-run` | Explicit form of the default; identical output, still zero writes. |
+| `--help` | Lists the commands and flags this build accepts, including whether `migrate` itself is present. |
+| Registry detection | Reports the repo's current version and the steps it will run, derived from workspace state — not from a flag or a stored marker the agent has to keep. |
+| Step ordering | Applies steps in version order, oldest first, and reports a final summary with per-step, per-group results. |
+| Idempotence | A converged repo plans zero targets and exits 0; a re-run after a partial failure resumes rather than repeating writes. |
+| Failure mode | Fails loudly (non-zero exit) when `bd` is missing or a `bd` subcommand errors; never silently skips a group. |
+
+Read `<command> --help` in the target workspace before relying on any flag beyond the above. The
+registry grows over time; treat the flags in this table as the floor, and the installed build's
+help output as the truth. If `migrate` is not listed at all, the installed package predates the
+command — upgrade rather than reconstructing the steps by hand.
+
+Scope note: the command touches beads only. Skills, hooks, docs, and agent prompts that mention
+the old labels are follow-up edits in the repo, not command output.
+
+## Step v1 — label rename
+
+Purpose: `implementation-type:afk|hitl` → `execution:afk|hitl`, strictly renamed and
+agent-agnostic.
+
+Mechanics the plan reflects:
+
+1. Enumerate every bead carrying an `implementation-type:*` label —
+   `bd list --label-pattern 'implementation-type:*' --json` — including closed beads, because a
+   clean label space is the goal and bd tolerates label history on closed issues.
+2. Group bead ids by label value. A bead carrying both `afk` and `hitl` appears in both groups;
+   that is a data problem worth inspecting, not a conflict the tool resolves for you.
+3. Per group, on `--apply`: `bd label add execution:<value> <ids…>` then
+   `bd label remove implementation-type:<value> <ids…>`. Add-then-remove keeps the routing label
+   present at every instant, so nothing is unroutable mid-flight.
+4. Re-running after convergence finds zero targets — the no-op that proves idempotence.
+
+Verification commands:
+
+```bash
+bd label list-all                                      # no implementation-type:* entries
+bd list --label-pattern 'implementation-type:*' --all  # empty
+bd label list <bead-id>                               # spot-check: execution:<value> present
+bd ready -l execution:afk                             # the routing query still works
+```
+
+## Step v2 — ideas to beads
+
+Purpose: retired loose idea files (`docs/ideas/*.md`, overridable with `--dir`) become
+`kind:idea` beads.
+
+Mechanics the plan reflects:
+
+- Each file maps to one bead: the problem section becomes `--description`, the how section
+  `--design`, the when/priority/validity/constraints/notes sections `--notes`, referential links
+  `--context`. Section markers stay inside the fields so content fidelity survives the move.
+- Priority is preserved from the file; a file with no stated priority becomes P4 (backlog).
+- Beads are created with `-l kind:idea` and are always `execution:hitl`: an idea is human-owned
+  until it is promoted, and it stays out of the agent queue by *not* carrying `execution:afk`.
+- Deletion of the source files (and any scaffold script that writes them) happens only after the
+  skills that create and consume them stop using the file flow — otherwise the repo regenerates
+  what you just deleted. Land those skill updates first, then delete.
+
+Verify with `bd list -l kind:idea --long`, checking one migrated bead's fields against its source
+file before the files are removed.
+
+## Rollback recipes
+
+The pre-migration `bd export --all` snapshot plus the recorded dry-run plan is enough to undo any
+step. Work per label group, oldest rename last, and re-verify with the v1 checks after each
+inversion.
+
+```bash
+# Invert the v1 rename for a specific group
+bd label add implementation-type:afk <ids…>
+bd label remove execution:afk <ids…>
+
+# Confirm the inversion landed before touching the next group
+bd list -l execution:afk --all
+```
+
+Rules that keep recovery safe:
+
+- Drive every change through `bd`; editing `.beads/` files bypasses Dolt bookkeeping and produces
+  a workspace that disagrees with its own history.
+- Invert one group at a time and re-check. Whole-step inversion in one shot makes a partial
+  mistake indistinguishable from a partial success.
+- If the workspace is shared or synced (`bd dolt push` in use), say so in your report and pause
+  for the human owner before inverting — other clones may already have observed the rename.
+
+## Manual fallback (pinned version, no `migrate`)
+
+Use only when the installed package genuinely lacks the command and an upgrade is out of scope.
+Run exactly what v1 would run, with the same gate:
+
+```bash
+bd list --label-pattern 'implementation-type:*' --json    # read the plan; confirm group counts
+bd label add execution:afk <ids…>
+bd label remove implementation-type:afk <ids…>
+bd label add execution:hitl <ids…>
+bd label remove implementation-type:hitl <ids…>
+bd label list-all                                          # verify: nothing left
+```
+
+Then record in the handoff that the run did not go through the registry, so the repo still needs
+a `migrate` dry run once the command is available (it will simply find nothing to do).
+
+## Stale-reference sweep
+
+The rename is not done while text still teaches the old label. Search the workspace for the old
+name and route each hit to its owner:
+
+```bash
+grep -rn "implementation-type" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.beads
+```
+
+Classify each hit before editing: skill instructions and classifier logic (they apply labels),
+routing queries in orchestration docs (they filter on labels), and historical records such as
+changelogs, ADRs, or closed-bead notes (leave them — rewriting history removes the trail).
+
+## Reporting a run
+
+Record, in order: the detected version and steps planned, the snapshot location, the dry-run
+plan's per-group counts, the `--apply` summary, the four post-check results, the idempotence
+re-run outcome, and the stale-reference list with owning files. That sequence is also the
+evidence trail if a later post-check fails.

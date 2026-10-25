@@ -1,0 +1,156 @@
+---
+name: migration
+description: Migrate a beads workspace to the two-axis model via the versioned `agent-cortex migrate` command: dry-run, apply, verify, recover. Use when asked to "run the migration" or "rename the labels".
+---
+
+# Migration
+
+Bring a beads workspace up to the current workflow model by running the versioned
+`agent-cortex migrate` command (alias `ctx migrate`) in that workspace. The command keeps an
+ordered registry of steps, detects the version a repo is at, and applies each step in order
+until the repo is current — the same command migrates every workspace, whenever it joins.
+
+Steps are **dry-run by default**, **idempotent**, and **verified per step**. Your job is to
+plan, gate, and prove the run — never to hand-edit `.beads/` or a label list.
+
+Steps in flight (full contract in `REFERENCE.md`):
+
+| Version | Step | Effect |
+|---|---|---|
+| v1 | Label rename | `implementation-type:afk\|hitl` → `execution:afk\|hitl`, all beads including closed |
+| v2 | Ideas → beads | `docs/ideas/*.md` files become `kind:idea` beads (`--dir` overrides the source) |
+
+## When to use
+
+- A workspace's beads still carry `implementation-type:afk|hitl` and must move to `execution:*`.
+- The user says "run the migration", "rename the labels", "migrate this repo", or asks why
+  `bd ready -l execution:afk` returns nothing in a project that clearly has AFK work.
+- A repo adopts agent-cortex (or a newer version) and its existing beads predate the model.
+- Loose idea markdown is being retired in favour of `kind:idea` beads (step v2).
+
+## When NOT to use
+
+- No `.beads/` in the workspace — initialise it first with the `init-beads` skill; there is
+  nothing to migrate.
+- The migration command is absent from the installed `agent-cortex` — upgrade the package
+  instead of hand-running steps. The only exception is the documented manual fallback in
+  `REFERENCE.md`, used when a fix is needed on a pinned version.
+- The repo's skills and routing queries still create and filter the *old* labels. Land those
+  updates first: renaming under a ralph that queries `implementation-type:afk` leaves the
+  workspace unroutable. Order the sequence; do not race it.
+
+## Workflow
+
+1. **Preflight.** Run `bd version`, `bd label list-all`, and `agent-cortex --help` (upgrade the
+   package if `migrate` is not listed). Resolve the command name this harness exposes
+   (`agent-cortex migrate` or `ctx migrate`) and read `<command> --help` for the flags this
+   build accepts. Act on the version the registry detects — do not infer it yourself.
+
+2. **Snapshot before touching anything.** `bd export --all > beads-before-migration.jsonl`
+   (JSONL of every issue including closed, with labels and dependencies). This is the rollback
+   source of truth; keep it until the post-checks pass.
+
+3. **Dry run.** Run the command with no apply flag — dry-run is the default, and an explicit
+   `--dry-run` is equivalent. It writes nothing and exits 0. Read the plan it prints: the
+   current version, each step it would run, the beads grouped per label value, and the summary.
+
+4. **Gate on the plan.** Apply only when all of these hold:
+   - The detected version and the steps to run match what you expect for this repo.
+   - Every `implementation-type:<value>` group maps to exactly one `execution:<value>` group.
+   - Group sizes reconcile with `bd list --label-pattern 'implementation-type:*' --all --json`
+     (a bead carrying both labels appears in both groups — expected, not a conflict).
+   - No unmapped or novel label value: the rename is strict, so anything unexpected is a signal
+     to stop and inspect, not to guess.
+
+5. **Apply.** Run the same command with `--apply`. Steps write in batches per label value —
+   add the `execution:<value>` label, then remove the `implementation-type:<value>` label — so a
+   partial failure never loses the routing label. Record the summary verbatim in your report.
+
+6. **Post-check.** Treat the migration as unproven until all of these hold:
+
+   ```bash
+   bd label list-all                                    # no implementation-type:* remains
+   bd list --label-pattern 'implementation-type:*' --all # empty
+   bd ready -l execution:afk                            # same beads as the pre-migration AFK set
+   ```
+
+   Then grep the repo for stale `implementation-type` references (skills, docs, hooks, configs).
+   List the files still to update — they are follow-up work, not part of the rename.
+
+7. **Prove idempotence.** Re-run the dry run. A converged repo plans zero targets, performs no
+   writes, and exits 0. A non-empty plan after `--apply` means the write step did not converge:
+   investigate before applying again.
+
+8. **Recover if needed.** A dry run that wrote nothing is the normal failure mode. For a
+   half-applied step, an inverted rename, or a bad plan, follow _Rollback and recovery_.
+
+9. **Continue the sequence.** The label rename is one step, not the migration. Idea files become
+   beads at a later step, and any skill, hook, or doc that creates or queries the old labels
+   must be updated before the workspace is truly current. Hand those edits to their owners; the
+   migration command does not rewrite prose.
+
+Workflow at a glance:
+
+```text
+[Preflight: bd + command]
+          |
+          v
+[Snapshot: bd export --all]
+          |
+          v
+[Dry run: read plan] --(plan unexpected)--> [Stop: no writes]
+          |
+    (plan matches)
+          v
+     [Apply --apply]
+          |
+          v
+[Post-check 4 gates] --(fail)--> [Invert per group]
+          |
+        (pass)
+          v
+[Re-run dry run: no-op] --> [Hand off stale refs + later steps]
+```
+
+## Rollback and recovery
+
+- **Nothing applied yet** — the dry run wrote nothing, so discard the plan; the workspace is
+  untouched; the snapshot is not even needed.
+- **A step died mid-batch** — dry-run, then re-run `--apply`: steps are idempotent per group, so
+  already-renamed beads no longer match and the retry resumes instead of repeating writes.
+- **A completed step was wrong** — invert it per group from the recorded plan or pre-migration
+  export: `bd label add implementation-type:<value> <ids…>` then
+  `bd label remove execution:<value> <ids…>`, through `bd`, never by editing `.beads/` files.
+- **Unsure which groups moved** — diff the pre-migration export's label sets against
+  `bd export --all` now. Recipes and shared-workspace cautions are in `REFERENCE.md`.
+
+## Rationale: why the rename exists
+
+The workspace runs on two independent axes: **bead type** (`idea → epic → feature → chore`,
+what shape the work has) and **execution** (`execution:afk` = agent-routable, `execution:hitl` =
+human required). Hierarchy is ownership via `--parent`; ordering is `depends-on`, which alone
+gates readiness. `implementation-type:` collapsed the two axes and named one particular executor,
+which is why routing broke when the executor changed; `execution:` is agent-agnostic and is the
+exact value ralph queries (`bd ready -l execution:afk`). That is also why the rename is strict:
+the label *is* the query, so a half-migrated workspace does not error — it silently starves, and
+the queue looks empty instead of broken. Hence snapshot → dry run → gated apply → post-check.
+
+## Cross-skill references
+
+- `bd-tool` — bead query and label conventions the migration's post-checks rely on.
+- `init-beads` — create the `.beads/` workspace before a first migration.
+- `classify-bead` — the skill that applies `execution:*` labels to new beads after migration.
+- `ralph` — the consumer of `execution:afk`; its query is the migration's smoke test.
+
+## Verification checklist
+
+- [ ] `bd version` and `<command> --help` both ran; the command and its supported flags are known.
+- [ ] A pre-migration `bd export --all` snapshot exists and is readable.
+- [ ] The dry run reported a plan and wrote nothing (no label changes in `bd label list-all`).
+- [ ] The plan reconciles with `bd list --label-pattern 'implementation-type:*' --all --json`.
+- [ ] `--apply` summary is recorded, with per-group bead counts.
+- [ ] `bd label list-all` and `bd list --label-pattern 'implementation-type:*'` show nothing left.
+- [ ] `bd ready -l execution:afk` returns the same beads as the pre-migration AFK set.
+- [ ] A repeat dry run is a no-op (zero targets, exit 0).
+- [ ] Stale `implementation-type` references are listed with their owning files, and later steps
+      (idea files → beads) plus skill/doc updates are handed off explicitly.

@@ -139,20 +139,20 @@ Ralph never builds remediation. The worker that fails a stage creates its own `s
 
 Run whenever polling is triggered (timer or agent completion):
 
-1. **Query in-flight beads**: `bd list --status=in_progress --type=chore`. Extract each bead's ID and title.
-2. For each in-flight bead, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file. Track the next unread line number per parent in memory, starting at 1:
+1. **Read in-flight entries**: `inflight` in `.agent-cortex/ralph/state.json` — every dispatched worker, stage (`kind: "stage"`) or expansion (`kind: "expand"`). Each entry carries `parentId` and `logLine`.
+2. For each in-flight entry, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file:
    ```bash
-   tail -n +<lastLine> .agent-cortex/ralph/ralph-<parent-id>.log 2>/dev/null
+   tail -n +<logLine> .agent-cortex/ralph/ralph-<parentId>.log 2>/dev/null
    ```
-3. For each bead that has new lines:
+3. For each entry that has new lines:
    - **Post a chat summary** of new key events (stage transitions and notable events — not every line verbatim):
      ```
-     📋 [bead-id] <title>
+     📋 [parent-id] <title>
         coding → verifying  (or whatever transition)
         Tests: 12 passed, 0 failed
      ```
-   - Update the in-memory line offset for that bead.
-4. If no bead had new lines, post nothing — do not spam the chat with empty polls.
+   - Update `logLine` in `state.json` for that entry.
+4. If no entry had new lines, post nothing — do not spam the chat with empty polls.
 
 ---
 
@@ -193,7 +193,7 @@ Proceed here when no agent work is in flight (no stage workers and no expansion 
 
 ## Shutdown
 
-When `bd list --status=in_progress --type=chore` returns no results, `inflight` holds no expansion worker, AND `bd ready` returns no chore beads with `stage:*` labels:
+When `inflight` holds no entries AND `bd ready` returns no chore beads with `stage:*` labels:
 
 1. For each **multi-feature** epic whose feature beads are all closed, open/update an epic PR to main (skip single-feature epics — no epic branch exists):
    ```bash
@@ -242,7 +242,7 @@ All task state is derived from beads; `state.json` holds only runtime bookkeepin
 
 | Question | How to answer |
 |----------|---------------|
-| What is in-flight? | `bd list --status=in_progress --type=chore` for stage workers, plus the `kind: "expand"` entries in `state.json` — expansion workers hold no chore, so beads alone under-report in-flight work. |
+| What is in-flight? | The `inflight` entries in `.agent-cortex/ralph/state.json` — `kind: "stage"` for a dispatched stage chore, `kind: "expand"` for an expansion worker. Expansion workers hold no chore, so beads alone under-report in-flight work. |
 | What is ready? | `bd ready` — filter for chores with `stage:*` labels. An AFK task bead with no `stage:*` children needs expansion first (_Expansion Guard_). |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
 | Which agent-ID maps to which bead? | `inflight` entries in `.agent-cortex/ralph/state.json` |

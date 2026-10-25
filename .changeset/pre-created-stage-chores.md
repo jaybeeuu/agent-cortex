@@ -19,3 +19,9 @@ chain", so ralph confirms the chore tree exists and dispatches the ready `stage:
 PI wait set and the Copilot timer start, HITL-pause check, and shutdown check all cover expansion
 workers, so an in-flight expansion no longer looks like idle work and can no longer trigger HITL
 Pause or Shutdown mid-expansion.
+
+Every in-flight query now derives from `state.json`'s `inflight` instead of a
+`--type=chore` beads listing: the dispatch cap counts parents with an `inflight` entry (stage or
+`expand`), Log Polling tails the log of every `inflight` entry's `parentId`, and the Copilot
+HITL-pause check, ralph's Shutdown condition, and the REFERENCE _What is in-flight?_ row all read
+`inflight` — so a running expansion worker occupies a slot and is polled like any other worker.

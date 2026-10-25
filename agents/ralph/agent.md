@@ -211,7 +211,7 @@ Proceed here when no agent work is in flight (no stage workers and no expansion 
 
 ## Shutdown
 
-When `bd list --status=in_progress --type=chore` returns no results AND `inflight` holds no expansion worker AND `bd ready` returns no chore beads with `stage:*` labels:
+When `inflight` holds no entries AND `bd ready` returns no chore beads with `stage:*` labels:
 
 1. For each **multi-feature** epic whose feature beads are complete, open/update a PR from `epic/<epic-id>` into `main`, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — no epic branch exists.
 2. Run:

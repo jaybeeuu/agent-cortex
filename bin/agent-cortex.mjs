@@ -2,7 +2,7 @@
 
 import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
 import { join } from "node:path";
-import { installPi } from "./installers/pi.mjs";
+import { installPi, registerPi } from "./installers/pi.mjs";
 
 const argv = process.argv.slice(2);
 const parsed = parseArgs(argv);
@@ -30,6 +30,11 @@ if (parsed.command === "install") {
   }
 
   if (parsed.harness === "pi") {
+    // A plain `agent-cortex install pi` stages the package into the home
+    // install root (~/.agent-cortex/pi) and registers that directory with pi
+    // through pi's own `pi install` (idempotent by state: a re-run is a no-op
+    // update); `--output <dir>` is the stage-only form (tests/CI) and prints
+    // the registration command instead.
     try {
       const result = await installPi({
         dryRun: parsed.dryRun ?? false,
@@ -38,6 +43,16 @@ if (parsed.command === "install") {
         ...(parsed.pluginRoot ? { pluginRoot: parsed.pluginRoot } : {}),
       });
       printPiInstall(result);
+      if (parsed.output === undefined) {
+        await registerPi({
+          output: result.output,
+          dryRun: parsed.dryRun ?? false,
+          requireRegister: parsed.requireRegister ?? false,
+          warn: (msg) => process.stdout.write(`  ⚠ ${msg}\n`),
+        });
+      } else {
+        process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
+      }
     } catch (err) {
       process.stderr.write(`Install failed: ${err.message}\n`);
       process.exit(1);
@@ -124,7 +139,5 @@ function printPiInstall(result) {
   }
   if (result.dryRun) {
     process.stdout.write("(dry-run — nothing written)\n");
-  } else {
-    process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
   }
 }

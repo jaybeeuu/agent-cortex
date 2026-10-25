@@ -256,10 +256,17 @@ describe("CLI integration", () => {
   });
 
   it("exits 0 for install pi --dry-run and writes nothing", async () => {
-    const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"]);
-    assert.equal(exitCode, 0);
-    assert.ok(stdout.includes("ralph.agent.md"));
-    assert.ok(stdout.includes("dry-run"));
+    // A throwaway HOME keeps the registration plan (which reads pi's settings)
+    // off the developer's real ~/.pi/agent.
+    const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-dry-run-home-"));
+    try {
+      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { HOME: fakeHome });
+      assert.equal(exitCode, 0);
+      assert.ok(stdout.includes("ralph.agent.md"));
+      assert.ok(stdout.includes("dry-run"));
+    } finally {
+      await rm(fakeHome, { recursive: true, force: true });
+    }
   });
 
   it("install pi --dry-run reports the bundled pi packages it would stage", async () => {

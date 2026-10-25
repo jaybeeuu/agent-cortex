@@ -96,8 +96,14 @@
   extensions are TS by pi contract (`index.ts` entrypoint, loader transpiles; the pi runtime
   import is type-only). Root build script is deliberately a no-op.
 - Chosen: (1) `files` whitelist in package.json — ship only runtime assets (skills/, agents/,
-  extensions/, bin/, lib/, AGENTS.md, plugin.json, README, LICENSE); (2) `prepublishOnly`
+  extensions/, bin/, lib/, scripts/, AGENTS.md, plugin.json, README, LICENSE); (2) `prepublishOnly`
   gate running `pnpm typecheck && pnpm test`; (3) wire `test/cli.test.mjs` into root `test`.
+- `scripts/` is a runtime asset despite its build-tooling name, and the whitelist must include
+  it: all three installers statically import `scripts/lib/{compose-agent,fs}.mjs`,
+  `bin/agent-cortex.mjs` lazily imports `scripts/lib/migrate.mjs` for `migrate`, and the
+  published `postinstall` hook runs `scripts/install-instructions.sh`. Omitting it ships a
+  package whose install and migration paths fail only for consumers — every local run stays
+  green, so nothing catches it before publish.
 - Revisit trigger: if an extension ever gains real runtime deps, bundle that extension with
   esbuild at prepack — not a repo-wide build.
 

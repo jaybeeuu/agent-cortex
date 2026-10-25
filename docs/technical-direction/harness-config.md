@@ -14,7 +14,10 @@ below no longer hold:
 - **pi's own settings are no longer installer output.** The installer writes nothing into
   `~/.pi/agent`; it registers the staged package by driving pi's own `pi install` /
   `pi remove` commands, which own `settings.json` → `packages[]`. `pi/settings.json` and
-  `pi/keybindings.json` are reference templates.
+  `pi/keybindings.json` are reference templates. Registration's invariant is **one
+  agent-cortex source**: a source pointing at a raw agent-cortex checkout is removed first,
+  and one that survives `pi remove` fails the run rather than leave two sources configured
+  that both load.
 
 `pi.packages` and `lib/pi-packages.mjs` are deleted, so the bespoke-pi-mechanism problem this
 memo was written to settle is closed. The Claude and Copilot analysis stands.

@@ -157,6 +157,10 @@ Registration is idempotent by state: the staged path is registered once (a
 re-run is a true no-op — a local package source is read from disk on every pi
 start, so nothing needs refreshing), and a source pointing at a raw agent-cortex
 checkout is removed first, so exactly one agent-cortex source stays configured.
+The installer decides that plan by reading pi's settings at
+`~/.pi/agent/settings.json`, so a pi agent dir relocated with
+`PI_CODING_AGENT_DIR` is not inspected — a superseded raw-repo source configured
+there has to be removed by hand with `pi remove <path>`.
 
 The staged package contains:
 

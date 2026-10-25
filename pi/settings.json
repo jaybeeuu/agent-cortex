@@ -10,11 +10,9 @@
       "source": "../../src/agent-cortex",
       "skills": []
     },
-    "npm:pi-web-access@0.10.7",
     "npm:@getpipher/vision",
     "npm:@hypabolic/pi-hypa",
-    "npm:context-mode",
-    "npm:pi-questions"
+    "npm:context-mode"
   ],
   "defaultProvider": "opencode-go",
   "defaultModel": "deepseek-v4.1-flash",

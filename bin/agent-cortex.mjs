@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
+import { join } from "node:path";
 import { installPi } from "./installers/pi.mjs";
 
 const argv = process.argv.slice(2);
@@ -32,10 +33,6 @@ if (parsed.command === "install") {
     try {
       const result = await installPi({
         dryRun: parsed.dryRun ?? false,
-        // Third-party pi packages are only provisioned for a real install:
-        // --output is the generate-only form, --no-provision opts an offline
-        // machine out explicitly.
-        provisionPackages: parsed.output === undefined && !parsed.noProvision,
         warn: () => {}, // warnings surface once in the printed summary
         ...(parsed.output ? { output: parsed.output } : {}),
         ...(parsed.pluginRoot ? { pluginRoot: parsed.pluginRoot } : {}),
@@ -108,40 +105,26 @@ if (parsed.command === "install") {
 
 function printPiInstall(result) {
   process.stdout.write(`Installing agent-cortex for "pi" harness…\n`);
+  process.stdout.write(`  ✓ Staged pi package → ${result.output}\n`);
   for (const agent of result.agents) {
     process.stdout.write(`  ✓ ${agent.name}.agent.md → ${agent.filePath}\n`);
   }
   process.stdout.write(`  ✓ Substituted ${result.skills.md} markdown file(s) across ${result.skills.skills} skill(s) → ${result.skills.dir}\n`);
-  printManagedConfig("settings.json", result.settings);
-  printManagedConfig("keybindings.json", result.keybindings);
-  // A dry run installs nothing, so report the plan — otherwise the documented
-  // "show what would be installed" contract prints no packages at all.
-  const packages = result.packages ?? { planned: [], installed: [] };
-  for (const source of result.dryRun ? packages.planned : packages.installed) {
-    process.stdout.write(`  ✓ ${result.dryRun ? "Would install" : "Installed"} pi package ${source}\n`);
+  process.stdout.write(`  ✓ Copied ${result.extensions.files} extension file(s) → ${result.extensions.dir}\n`);
+  for (const name of result.packages.bundled) {
+    process.stdout.write(`  ✓ Bundled pi package ${name} → ${join(result.packages.dir, name)}\n`);
   }
+  const transitive = result.packages.staged.length - result.packages.bundled.length;
+  if (transitive > 0) {
+    process.stdout.write(`  ✓ Copied ${transitive} transitive dependency tree(s) → ${result.packages.dir}\n`);
+  }
+  process.stdout.write(`  ✓ ${result.dryRun ? "Would write" : "Wrote"} ${result.manifest.path} (version ${result.manifest.manifest.version})\n`);
   for (const warning of result.warnings) {
     process.stdout.write(`  ⚠ ${warning}\n`);
   }
   if (result.dryRun) {
     process.stdout.write("(dry-run — nothing written)\n");
-  }
-}
-
-/** Report one managed pi config file (settings.json / keybindings.json). */
-function printManagedConfig(label, info) {
-  if (!info) return;
-  if (info.action === "would-remove-symlink") {
-    process.stdout.write(`  → would remove symlink ${info.path} and write ${label}\n`);
-  } else if (info.action === "would-write") {
-    process.stdout.write(`  → would write ${label} → ${info.path}\n`);
-  } else if (info.action === "unchanged") {
-    process.stdout.write(`  · ${label} → ${info.path} (unchanged)\n`);
-  } else if (info.action === "skipped") {
-    process.stdout.write(`  ⚠ ${label} modified after install — left untouched → ${info.path}\n`);
-  } else if (info.action === "removed-symlink") {
-    process.stdout.write(`  ✓ ${label} → ${info.path} (removed legacy symlink)\n`);
   } else {
-    process.stdout.write(`  ✓ ${label} → ${info.path}\n`);
+    process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
   }
 }

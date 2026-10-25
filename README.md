@@ -105,6 +105,13 @@ does its own checkout and `pnpm install` rather than sharing build artifacts fro
 the `setup` job — pnpm workspace symlinks don't survive artifact upload/download,
 so artifact sharing would break the workspace resolution that the build depends on.
 
+The root `pnpm-workspace.yaml` carries a strict `allowBuilds` map: on pnpm 12 (what CI
+pins) any dependency with install or build scripts that is not named there aborts
+`pnpm install` with `ERR_PNPM_IGNORED_BUILDS`. pnpm 10 only warns, so a newly pulled-in
+native dependency surfaces as a red `Setup` job before it surfaces locally. Adding one
+therefore means deciding its build policy in that map — `false` unless it genuinely
+needs to compile, with a comment saying why.
+
 The repo commits no generated `claude/` plugin output, so the `claude-plugin-check` job
 validates the Claude plugin **materialiser** instead of diffing a committed mirror:
 it runs `node bin/agent-cortex.mjs install claude --output <tmp dir>` and checks the
@@ -134,81 +141,58 @@ are sourced entirely from `main`.
 
 ## Installation
 
-### Pi config files (`settings.json` + `keybindings.json`)
+### Pi package staging (`agent-cortex install pi`)
 
-`agent-cortex install pi` materialises `~/.pi/agent/settings.json` and
-`~/.pi/agent/keybindings.json` as real CLI-managed files — the legacy symlinks
-into this repo's `pi/` directory are gone. `pi/settings.json` and
-`pi/keybindings.json` are the committed **templates**; the live files exist only
-on the machine, so re-run the installer after pulling changes.
+`agent-cortex install pi` materialises agent-cortex as a self-contained pi
+package in `~/.agent-cortex/pi` — the pi analogue of `~/.agent-cortex/claude`.
+Nothing is written into pi's own directories (`~/.pi/agent/…`); registering the
+package with pi is a separate step.
 
-`settings.json` is merged. The template supplies defaults for keys the live file
-lacks, every value already present in the live file wins, and keys the template
-does not know about are preserved — so personal config (and anything pi itself
-wrote) survives re-install. The one key the CLI owns outright is `packages`: it
-is rebuilt from the template with the repo path entry resolved against the live
-settings file.
+```sh
+agent-cortex install pi
+pi install ~/.agent-cortex/pi     # register the staged package with pi
+```
 
-Two consequences follow from that precedence:
+The staged package contains:
 
-- **Template changes to non-`packages` keys never reach an existing install.**
-  Because the live value always wins, editing a default in `pi/settings.json`
-  only affects a fresh install (or a manually deleted live file) — edit the live
-  file to adopt a new default.
-- **`pi install npm:<pkg>` entries do not survive re-install.** `packages` is
-  rebuilt from the template, so any `npm:` package pi added to the live file is
-  dropped on the next `agent-cortex install pi`. Declare long-lived packages in
-  the repo template instead.
+| Path | Contents |
+| --- | --- |
+| `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`; the version tracks the package |
+| `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
+| `skills/` | token-substituted skill copies (real files, never symlinks) |
+| `extensions/` | copy of the repo `extensions/` tree |
+| `token-map.json` | the token map `agent-modes` reads from the package root |
+| `node_modules/` | the required third-party pi packages and their transitive closure |
 
-An unparseable live `settings.json` is warned about and overwritten.
-`keybindings.json` follows a checksum rule: written from the template, refreshed
-when the template changes, and left untouched once you edit it by hand (delete
-it to re-adopt the template).
+The third-party packages supply the tools the agents need — `pi-questions`
+(`ask_questions`) and `pi-web-access` (`fetch_content`). They are ordinary
+runtime dependencies of this package and travel inside the staged tree, so pi
+loads them from a local directory without any npm resolution of its own. An
+unresolvable dependency fails the install rather than staging a package that
+cannot provide those tools. Re-staging clears the children the installer owns, so
+a re-run never accumulates stale copies.
 
-### Pi package dependencies
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Show what would be staged without writing anything |
+| `--output <dir>` | Stage into `<dir>` instead of `~/.agent-cortex/pi` (tests/CI) |
+| `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
 
-These packages are declared in the package manifest (`package.json` → `pi.packages`) and
-provisioned by `agent-cortex install pi`, so a clean `~/.pi` gets the tools they provide
-without a manual `pi install`. They are also declared in the template `pi/settings.json`,
-so the materialised `settings.json` registers them with pi.
+Re-run whenever you pull changes, then re-register.
 
-| Package | Version | Purpose |
-|---|---|---|
-| [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis (`fetch_content`) |
-| [`pi-questions`](https://www.npmjs.com/package/pi-questions) | latest | Structured interactive questions (`ask_questions`) |
-
-Pass `--no-provision` to skip the package install step (e.g. offline machines); a
-missing `pi` CLI or failed install warns and leaves the rest of the install intact.
+### Desktop notifications
 
 Desktop notifications are handled by the local `extensions/notify/` extension
 (replaces the former `pi-notify` dependency). It sends an OSC desktop
 notification on multi-turn tasks, labelled with the tmux session:window.pane
 if available, or the project directory name otherwise.
 
-### Pi harness agents & skills (`agent-cortex install pi`)
+### Pi config files
 
-The agents are already available to pi through the package (`pi.skills` + the
-`agent-modes` extension compose them at runtime), but the raw package files carry
-literal `{{TOOL:...}}` / `{{PATH:...}}` tokens. Run the pi installer to materialise
-composed agents and token-substituted skills into pi's user scope:
-
-```sh
-agent-cortex install pi
-# → ~/.pi/agent/agents/<name>.agent.md (ralph, plan, ralph-plan, strategy)
-# → ~/.pi/agent/skills/  (token-substituted skill tree)
-# → ~/.pi/agent/settings.json + keybindings.json (merged from the repo templates)
-```
-
-Flags:
-
-| Flag | Meaning |
-| --- | --- |
-| `--dry-run` | Show what would be installed without writing anything |
-| `--output <dir>` | Install into `<dir>/agents`, `<dir>/skills` and the config files (default `~/.pi/agent`) |
-| `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
-| `--no-provision` | Skip provisioning the third-party pi packages declared in `package.json` `pi.packages` (default: install them via the `pi` CLI) |
-
-Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).
+`pi/settings.json` and `pi/keybindings.json` are committed **reference
+templates** for your own pi configuration. They are not installer output: pi's
+`settings.json` and `keybindings.json` are pi's own user config, so
+`agent-cortex install pi` leaves them alone.
 
 ### Copilot plugin (separate)
 

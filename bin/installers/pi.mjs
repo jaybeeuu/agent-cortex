@@ -1,45 +1,79 @@
 // Pi harness installer: agent-cortex install pi
 //
-// Materialises the agent-cortex package into the pi runtime's user scope:
+// MATERIALISES agent-cortex as a self-contained pi package in a home-scoped
+// directory (~/.agent-cortex/pi) instead of writing into pi's own user
+// directories (~/.pi/agent/…) — the pi analogue of the Claude installer's
+// ~/.agent-cortex/claude. Registration is a separate step (pi's own
+// `pi install <path>` reads the generated manifest); this installer only ever
+// writes below its output directory.
 //
-//   <output>/agents/<slug>.agent.md   composed agents (default ~/.pi/agent/agents)
-//   <output>/skills/<group>/<name>/   token-substituted skill copies (default ~/.pi/agent/skills)
-//   <output>/settings.json            merged pi settings — CLI owns `packages` (default ~/.pi/agent/settings.json)
-//   <output>/keybindings.json         generated pi keybindings (default ~/.pi/agent/keybindings.json)
+// Generated tree:
+//
+//   <output>/package.json            pi manifest — keywords ["pi-package"],
+//                                    pi.extensions + pi.skills (conventional
+//                                    dirs plus the bundled third-party packages)
+//   <output>/agents/<slug>.agent.md  composed flat agents (agents/<name>/
+//                                    agent.md + pi/ harness dirs, {{TOOL:...}} /
+//                                    {{PATH:...}} substituted against
+//                                    token-map.json's pi column). pi package
+//                                    rules have no agent resource type: the
+//                                    shipped agent-modes extension resolves
+//                                    <extension>/../../agents, i.e. this dir
+//   <output>/skills/<group>/<name>/  token-substituted skill copies — real
+//                                    files, never symlinks
+//   <output>/extensions/             copy of the repo extensions/ tree (loaded
+//                                    by pi's package discovery)
+//   <output>/token-map.json          the map agent-modes reads from the package
+//                                    root when composing agents
+//   <output>/node_modules/<pkg>/     the required third-party pi packages
+//                                    (ask_questions from pi-questions,
+//                                    fetch_content from pi-web-access) and
+//                                    their transitive closure
 //
 // Composition per the token-map.json contract:
 //   1. {{SECTION:name}} is resolved from the agent's pi/<name>.md section file
 //      (shared composer, scripts/lib/compose-agent.mjs).
-//   2. {{TOOL:key}} is substituted with the pi column (pi maps ask_user →
-//      ask_questions and skill → read); any (future) null pi mapping drops the
-//      token from prose with a warning.
+//   2. {{TOOL:key}} is substituted with the pi column; a null pi mapping drops
+//      the token from prose with a warning.
 //   3. {{PATH:key}} named keys resolve through the paths table; bare relative
-//      paths resolve against the plugin root (default: token-map.json's pi value,
-//      overridable with --plugin-root for checkout/symlinked installs).
-// Frontmatter tool lists are translated the same way agent-modes does at runtime:
-// canonical → pi column, null → omitted, unknown (native pi tool) → pass through.
-// Skill markdown files get the same TOOL/PATH substitution so pi never serves
-// literal token syntax; other skill files are copied verbatim.
+//      paths resolve against the plugin root (default: token-map.json's pi
+//      value, which points at this staged package; overridable with
+//      --plugin-root for checkout/symlinked installs).
+// Frontmatter tool lists are translated the same way agent-modes does at
+// runtime: canonical → pi column, null → omitted, unknown (native pi tool) →
+// pass through.
 //
-// Skills install into ~/.pi/agent/skills (pi's user-global skill dir), which is
-// the sole pi skill source: the checkout's raw package skills are not loaded
-// locally because pi/settings.json registers agent-cortex with an object-form
-// packages filter { source, "skills": [] } (extensions stay enabled). The
-// filter exists so pi never sees the raw, un-substituted package skills and
-// reports a name collision per skill (pi warns on collisions, user dir wins).
-// Consumers who install the npm package without that filter still rely on pi's
-// shadowing order (user dir loads before package skills). Re-run this installer
-// after any skill edit so the substituted copy in the user dir stays in sync.
+// Third-party packages: the agents need tools that live in other pi packages.
+// They are ordinary runtime dependencies of this package, and the staged tree
+// ships its own copy of each (plus its closure) under node_modules/ — pi loads
+// a local directory and resolves nothing itself, so a staged package without
+// them would hand the agents a model with no ask_questions/fetch_content.
+// Resolution goes through Node (createRequire(import.meta.url).resolve), so it
+// is hoist-agnostic: isolated, hoisted, nested, and global installs all work.
+// A dependency that cannot be resolved fails the install.
+//
+// Re-staging is idempotent: the installer clears the children it owns before
+// writing, so a re-run never accumulates stale copies.
+//
+// pi's own user settings (settings.json, keybindings.json) are NOT touched:
+// they are pi's config, not the package's. The committed pi/*.json templates
+// remain reference copies.
+//
+//   node bin/agent-cortex.mjs install pi
+//                               materialises into ~/.agent-cortex/pi
+//   node bin/agent-cortex.mjs install pi --output <dir>
+//                               stages into <dir> instead (tests/CI)
+//   node bin/agent-cortex.mjs install pi --dry-run
+//                               reports the plan without writing
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, copyFile, readdir, lstat, rename, rm } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import { join, dirname, basename, relative } from "node:path";
+import { readFile, writeFile, mkdir, copyFile, readdir, rm, stat } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
-import { loadRequiredPackages, provisionPiPackages } from "../../lib/pi-packages.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 
 const PI = "pi";
@@ -50,54 +84,62 @@ const PI = "pi";
 const CONTRACT_VERSION = 1;
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DEFAULT_OUTPUT = join(homedir(), ".pi", "agent");
 
-const SETTINGS_TEMPLATE = "pi/settings.json";
-const KEYBINDINGS_TEMPLATE = "pi/keybindings.json";
+// Home-scoped staged package. pi loads it by path once registered, so nothing
+// is written into ~/.pi/agent. Overridable via --output (tests/CI) or HOME
+// (node's os.homedir() honours $HOME on POSIX).
+const DEFAULT_OUTPUT = join(homedir(), ".agent-cortex", "pi");
 
-// pi parses settings.json / keybindings.json with a bare JSON.parse (see pi's
-// SettingsManager / KeybindingsManager), so JSONC comments are not an option —
-// a `//` line would make the file unreadable. The GENERATED marker therefore
-// lives in a top-level "//" key, the conventional JSON comment stand-in, which
-// pi ignores on load and preserves on write.
-const GENERATED_KEY = "//";
+// Name of the generated package. `private` because it is a staged build
+// artifact, never published.
+const STAGED_NAME = "@jaybeeuu/agent-cortex-pi";
+
+// Children of the output directory this installer owns. They are removed
+// before every write so re-staging cannot leave stale copies behind (a skill
+// deleted in the repo, a package dropped from the manifest). Anything else in
+// the output directory is left alone.
+const OWNED_CHILDREN = ["package.json", "token-map.json", "agents", "skills", "extensions", "node_modules"];
+
+const GENERATED_MARKER =
+  "GENERATED by `agent-cortex install pi` — DO NOT EDIT; re-run the installer to update.";
 
 const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
 
 /**
- * Install the agent-cortex pi harness into the pi runtime.
+ * Stage the agent-cortex pi package.
  *
  * @param {object} options
  * @param {string} [options.root]        Package root (defaults to this file's repo)
- * @param {string} [options.output]      Pi user-scope dir; agents go to
- *                                       <output>/agents, skills to <output>/skills
- *                                       (default ~/.pi/agent)
- * @param {boolean} [options.dryRun]     Compute and report without writing anything
+ * @param {string} [options.output]      Staged package dir (default ~/.agent-cortex/pi)
+ * @param {boolean} [options.dryRun]     Report the plan without writing anything
  * @param {string} [options.pluginRoot]  Override plugin_root used for {{PATH:...}}
  *                                       resolution (default: token-map pi value)
- * @param {boolean} [options.provisionPackages]  Install the third-party pi packages
- *                                       declared in the package manifest (package.json
- *                                       pi.packages) into the pi user scope — e.g.
- *                                       pi-questions (ask_questions) and pi-web-access
- *                                       (fetch_content). Off by default; `agent-cortex
- *                                       install pi` turns it on for a real install.
- * @param {(source: string) => Promise<{ok: boolean, error: string | null}>} [options.runInstall]
- *                                       Installer for one package source (default: pi install)
+ * @param {(name: string, fromDir?: string) => string | Promise<string>} [options.resolvePackage]
+ *                                       Resolve an installed dependency to its
+ *                                       directory (default: Node resolution from
+ *                                       this package's own install)
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`
- * @returns {{ agents: {name:string, filePath:string}[], skills: {skills:number, md:number, files:number, dir:string},
- *             packages: {planned:string[], installed:string[], failed:{source:string, error:string}[]} | null,
- *             settings: ManagedFileResult|null, keybindings: ManagedFileResult|null,
- *             warnings: string[], dryRun: boolean, agentsDir: string, skillsDir: string }}
+ * @returns {Promise<{ output: string, agents: {name: string, filePath: string}[],
+ *             skills: {skills: number, md: number, files: number, dir: string},
+ *             extensions: {files: number, dir: string},
+ *             packages: {dir: string, bundled: string[], staged: string[], resources: {extensions: string[], skills: string[]}},
+ *             manifest: {path: string, manifest: object},
+ *             tokenMap: string, warnings: string[], dryRun: boolean }>}
  */
 export async function installPi(options = {}) {
   const root = options.root ?? PACKAGE_ROOT;
   const output = options.output ?? DEFAULT_OUTPUT;
   const dryRun = options.dryRun ?? false;
+  const resolvePackage = options.resolvePackage ?? resolveFromNode;
   const warnings = [];
   const warn = (msg) => {
     warnings.push(msg);
     (options.warn ?? DEFAULT_WARN)(msg);
   };
+
+  if (resolve(output) === resolve(root)) {
+    throw new Error(`refusing to stage the pi package into the package root ${output} — the installer clears its own output tree`);
+  }
 
   const tokenMap = await loadTokenMap(root);
   if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
@@ -107,27 +149,43 @@ export async function installPi(options = {}) {
   }
 
   const pluginRoot = options.pluginRoot ?? tokenMap.paths.plugin_root?.[PI];
-  const agentsDir = join(output, "agents");
-  const skillsDir = join(output, "skills");
 
-  const agents = await installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, warn });
-  const skills = await installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn });
-  const config = await installConfig({ root, output, dryRun, warn });
+  // Resolve the bundled packages before clearing the output: an unresolvable
+  // dependency must fail the install without destroying the previous staging.
+  const dependencies = await resolvePiPackages({ root, resolvePackage });
 
-  // Third-party packages give the composed agents their pi tools (ask_questions
-  // from pi-questions, fetch_content from pi-web-access). They are declared in
-  // the package manifest and only provisioned on a real install.
-  const packages = options.provisionPackages
-    ? await provisionPiPackages({
-        required: await loadRequiredPackages(root),
-        piRoot: output,
-        dryRun,
-        runInstall: options.runInstall,
-        warn,
-      })
-    : null;
+  if (!dryRun) {
+    for (const child of OWNED_CHILDREN) {
+      await rm(join(output, child), { recursive: true, force: true });
+    }
+    await mkdir(output, { recursive: true });
+  }
 
-  return { agents, skills, packages, ...config, warnings, dryRun, agentsDir, skillsDir };
+  const agents = await installAgents({ root, agentsDir: join(output, "agents"), dryRun, pluginRoot, tokenMap, warn });
+  const skills = await installSkills({ root, skillsDir: join(output, "skills"), dryRun, pluginRoot, tokenMap, warn });
+  const extensions = await installExtensions({ root, output, dryRun });
+  const tokenMapFile = await installTokenMap({ output, tokenMap, dryRun });
+  const packages = await stagePiPackages({ dependencies, output, resolvePackage, dryRun, warn });
+  const manifestObject = await buildManifest({ root, dependencies });
+  // Verify before writing the manifest: a package whose declared resources are
+  // missing is not loadable, so it must never be reported as staged.
+  if (!dryRun) {
+    await verifyManifestResources({ output, manifest: manifestObject });
+    await writeManifest({ output, manifest: manifestObject });
+  }
+  const manifest = { path: join(output, "package.json"), manifest: manifestObject };
+
+  return {
+    output,
+    agents,
+    skills,
+    extensions,
+    packages,
+    manifest,
+    tokenMap: tokenMapFile,
+    warnings,
+    dryRun,
+  };
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
@@ -186,7 +244,6 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
   const transform = (content) =>
     substituteTokens(content, PI, tokenMap, { dropNullTools: true, pluginRoot, resolveRelativePaths: true, warn });
 
-  if (!dryRun) await mkdir(skillsDir, { recursive: true });
   let skills = 0;
   let md = 0;
   let files = 0;
@@ -196,7 +253,7 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
     for (const name of (await readdir(groupDir)).sort()) {
       if (!(await isFile(join(groupDir, name, "SKILL.md")))) continue;
       skills += 1;
-      const stats = await copyTree(join(groupDir, name), join(skillsDir, group, name), transform, dryRun);
+      const stats = await copyTree(join(groupDir, name), join(skillsDir, group, name), { dryRun, transform });
       md += stats.md;
       files += stats.files;
     }
@@ -204,235 +261,258 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
   return { skills, md, files, dir: skillsDir };
 }
 
-/** Recursively copy a tree; transform .md file contents, copy everything else verbatim. */
-async function copyTree(src, dest, transform, dryRun) {
-  let md = 0;
-  let files = 0;
-  const entries = await readdir(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const from = join(src, entry.name);
-    const to = join(dest, entry.name);
-    if (entry.isDirectory()) {
-      const stats = await copyTree(from, to, transform, dryRun);
-      md += stats.md;
-      files += stats.files;
-    } else if (entry.isFile()) {
-      files += 1;
-      if (entry.name.endsWith(".md")) md += 1;
-      if (dryRun) continue;
-      await mkdir(dest, { recursive: true });
-      if (entry.name.endsWith(".md")) await writeFile(to, transform(await readFile(from, "utf-8")));
-      else await copyFile(from, to);
-    }
-  }
-  return { md, files };
-}
-// ─── Pi config files ─────────────────────────────────────────────────────────
+// ─── Extensions ──────────────────────────────────────────────────────────────
 
 /**
- * Materialise the pi config files into the agent dir.
+ * Copy the repo's extensions/ tree into the staged package verbatim.
  *
- * `settings.json` is merged: the committed template supplies defaults for keys
- * the live file lacks, while every value already present in the live file wins,
- * so personal config (and anything pi itself wrote) survives re-install. The
- * one key the CLI owns outright is `packages`: it is rewritten from the
- * template with the repo path entry resolved against the target settings file.
- *
- * `keybindings.json` follows a checksum rule: a missing file or a legacy
- * symlink is materialised from the template, an unmodified install is refreshed
- * when the template changes, and a file edited after install is left untouched.
+ * The extensions import `@earendil-works/*`, which pi's loader supplies, so no
+ * dependency tree is needed. `node_modules` (pnpm workspace links) and symlinks
+ * are never copied: the staged package owns its dependencies and must contain
+ * real files only.
  */
-async function installConfig({ root, output, dryRun, warn }) {
+async function installExtensions({ root, output, dryRun }) {
+  const src = join(root, "extensions");
+  const dir = join(output, "extensions");
+  if (!(await isDirectory(src))) return { files: 0, dir };
+  const { files } = await copyTree(src, dir, { dryRun });
+  return { files, dir };
+}
+
+// ─── Token map ───────────────────────────────────────────────────────────────
+
+/**
+ * Ship token-map.json alongside agents/ — agent-modes loads it from the package
+ * root, so the staged extensions keep the same source of truth as the checkout.
+ */
+async function installTokenMap({ output, tokenMap, dryRun }) {
+  const path = join(output, "token-map.json");
+  if (!dryRun) await writeFile(path, `${JSON.stringify(tokenMap, null, 2)}\n`);
+  return path;
+}
+
+// ─── Third-party pi packages ─────────────────────────────────────────────────
+
+/**
+ * Resolve the pi packages this package depends on.
+ *
+ * Every declared runtime dependency is resolved and inspected: one that ships
+ * pi resources (a `pi` manifest key) is bundled into the staged package, and
+ * its declared resource paths are rewritten relative to node_modules/ so the
+ * generated manifest loads them. Ordinary dependencies are left to the usual
+ * module resolution.
+ *
+ * @returns {Promise<{packages: {name: string, dir: string}[], resources: {extensions: string[], skills: string[]}}>}
+ */
+async function resolvePiPackages({ root, resolvePackage }) {
+  const packages = [];
+  const resources = { extensions: [], skills: [] };
+
+  for (const name of await readDirectDependencies(root)) {
+    const dir = await resolvePackage(name);
+    const manifest = await readJsonObject(join(dir, "package.json"));
+    if (manifest === null || manifest.pi === undefined) continue;
+
+    packages.push({ name, dir });
+    for (const type of ["extensions", "skills"]) {
+      for (const entry of asStringList(manifest.pi[type])) {
+        resources[type].push(`node_modules/${name}/${stripRelative(entry)}`);
+      }
+    }
+  }
+
+  return { packages, resources };
+}
+
+/**
+ * Copy the resolved packages and their transitive closure into <output>/node_modules.
+ *
+ * The walk resolves every dependency from its dependent's own directory, so the
+ * source layout is irrelevant. Copies are real files (never symlinks) and stay
+ * flat, matching what pi loads from a local package; a package that resolves to
+ * two different versions keeps the first and warns.
+ */
+async function stagePiPackages({ dependencies, output, resolvePackage, dryRun, warn }) {
+  const staged = new Map();
+  const pending = dependencies.packages.map(({ name, dir }) => ({ name, dir }));
+
+  while (pending.length > 0) {
+    const { name, dir } = pending.shift();
+    const seen = staged.get(name);
+    if (seen !== undefined) {
+      if (seen !== dir) warn(`pi package "${name}" resolves to two directories (${seen}, ${dir}) — keeping the first`);
+      continue;
+    }
+    staged.set(name, dir);
+    for (const dependency of await readDependencyNames(dir)) {
+      pending.push({ name: dependency, dir: await resolvePackage(dependency, dir) });
+    }
+  }
+
+  const nodeModulesDir = join(output, "node_modules");
+  if (!dryRun) {
+    for (const [name, dir] of staged) await copyTree(dir, join(nodeModulesDir, name), {});
+  }
   return {
-    settings: await installSettings({ root, output, dryRun, warn }),
-    keybindings: await installKeybindings({ root, output, dryRun, warn }),
+    dir: nodeModulesDir,
+    bundled: dependencies.packages.map(({ name }) => name),
+    staged: [...staged.keys()],
+    resources: dependencies.resources,
   };
 }
 
-async function installSettings({ root, output, dryRun, warn }) {
-  const template = await readTemplateJson(join(root, SETTINGS_TEMPLATE), warn);
-  if (template === null) return null;
-
-  const target = join(output, "settings.json");
-  const merged = mergeSettings(template, await readJsonObject(target, warn));
-  merged.packages = resolvePackages(template.packages, root, dirname(target));
-  delete merged[GENERATED_KEY];
-
-  const content = `${JSON.stringify(
-    { [GENERATED_KEY]: generatedMarker(SETTINGS_TEMPLATE), ...merged },
-    null,
-    2,
-  )}\n`;
-  return writeManagedJson({ target, content, dryRun });
-}
-
-async function installKeybindings({ root, output, dryRun, warn }) {
-  const template = await readTemplateJson(join(root, KEYBINDINGS_TEMPLATE), warn);
-  if (template === null) return null;
-
-  const target = join(output, "keybindings.json");
-  const content = `${JSON.stringify(
-    { [GENERATED_KEY]: generatedMarker(KEYBINDINGS_TEMPLATE, checksum(template)), ...template },
-    null,
-    2,
-  )}\n`;
-
-  const current = await readFileMaybe(target);
-  if (current !== null && !(await isSymlink(target)) && current !== content) {
-    const parsed = tryParseJsonObject(current);
-    // An install we wrote carries the checksum it recorded; a body that no
-    // longer matches was edited by hand and must not be clobbered. A body
-    // byte-identical to the template is a legacy copy and safe to refresh.
-    const recorded = parsed === null ? null : readRecordedChecksum(parsed[GENERATED_KEY]);
-    const unmodified = parsed !== null && (checksum(parsed) === checksum(template) || recorded === checksum(parsed));
-    if (!unmodified) {
-      warn(`${target} was modified after install — leaving it untouched (delete it to re-adopt the template)`);
-      return { path: target, action: "skipped", removedSymlink: false };
+/**
+ * Node's own resolution from this package's install — hoist-agnostic by
+ * construction. A package's `package.json` is not always exported, so the
+ * package directory is found by resolving an entry point and walking up to the
+ * enclosing manifest that names it.
+ */
+async function resolveFromNode(name, fromDir = PACKAGE_ROOT) {
+  const req = createRequire(join(fromDir, "package.json"));
+  let entry = null;
+  for (const specifier of [name, `${name}/package.json`]) {
+    try {
+      entry = req.resolve(specifier);
+      break;
+    } catch {
+      // try the next form — `exports` may hide either subpath
     }
   }
-  return writeManagedJson({ target, content, dryRun });
+  if (entry === null) {
+    throw new Error(`cannot resolve pi package "${name}" from ${fromDir} — run \`pnpm install\` first`);
+  }
+
+  let dir = dirname(entry);
+  while (true) {
+    const manifest = await readJsonObject(join(dir, "package.json"));
+    if (manifest?.name === name) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) throw new Error(`cannot locate the package directory of "${name}" resolved from ${fromDir}`);
+    dir = parent;
+  }
 }
 
-/** Human-readable marker written as the `//` key of every generated config file. */
-function generatedMarker(from, templateChecksum) {
-  const base = `GENERATED from ${from} by \`agent-cortex install pi\` — DO NOT EDIT; re-run the installer to update.`;
-  return templateChecksum ? `${base} template-checksum:${templateChecksum}` : base;
+async function readDirectDependencies(root) {
+  const manifest = await readJsonObject(join(root, "package.json"));
+  return manifest === null ? [] : Object.keys(manifest.dependencies ?? {});
 }
 
-/** SHA-256 of a config body with the generated marker stripped, so it is stable across writes. */
-function checksum(obj) {
-  const { [GENERATED_KEY]: _marker, ...body } = obj;
-  return createHash("sha256").update(JSON.stringify(body, null, 2)).digest("hex");
+async function readDependencyNames(dir) {
+  const manifest = await readJsonObject(join(dir, "package.json"));
+  return manifest === null ? [] : Object.keys(manifest.dependencies ?? {});
 }
 
-function readRecordedChecksum(marker) {
-  if (typeof marker !== "string") return null;
-  const match = /template-checksum:([0-9a-f]{64})/.exec(marker);
-  return match ? match[1] : null;
+// ─── Manifest ────────────────────────────────────────────────────────────────
+
+/**
+ * Build the staged package's pi manifest.
+ *
+ * pi's package rules do the loading: conventional dirs are declared explicitly
+ * so the bundled packages' resources are included alongside ./extensions and
+ * ./skills (one pi-visible source, no tokenised repo copies).
+ */
+async function buildManifest({ root, dependencies }) {
+  const pkg = await readJsonObject(join(root, "package.json"));
+  return {
+    "//": GENERATED_MARKER,
+    name: STAGED_NAME,
+    version: typeof pkg?.version === "string" ? pkg.version : "0.0.0",
+    private: true,
+    description: "agent-cortex pi resources — generated by `agent-cortex install pi`",
+    type: "module",
+    keywords: ["pi-package"],
+    pi: {
+      extensions: ["./extensions", ...dependencies.resources.extensions],
+      skills: ["./skills", ...dependencies.resources.skills],
+    },
+  };
+}
+
+async function writeManifest({ output, manifest }) {
+  const path = join(output, "package.json");
+  await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
+  return { path, manifest };
 }
 
 /**
- * Merge the committed template over the live file. Template keys fill in
- * defaults, live values win (deeply), and keys the template does not know about
- * are preserved — re-installing never discards personal or pi-written config.
+ * Prove the manifest references real resources before reporting a success: a
+ * staged package whose declared extension or skill path does not exist would
+ * load silently short of the tools the agents expect.
  */
-function mergeSettings(template, existing) {
-  const merged = {};
-  for (const key of Object.keys(template)) {
-    const templateValue = template[key];
-    const existingValue = existing[key];
-    if (isPlainObject(templateValue) && isPlainObject(existingValue)) {
-      merged[key] = mergeSettings(templateValue, existingValue);
-    } else {
-      merged[key] = key in existing ? existingValue : templateValue;
+async function verifyManifestResources({ output, manifest }) {
+  const declared = [...manifest.pi.extensions, ...manifest.pi.skills];
+  const missing = [];
+  for (const rel of declared) {
+    if (!(await pathExists(join(output, rel)))) missing.push(rel);
+  }
+  if (missing.length > 0) {
+    throw new Error(`staged pi manifest references missing resources: ${missing.join(", ")}`);
+  }
+}
+
+// ─── Copying ─────────────────────────────────────────────────────────────────
+
+/**
+ * Recursively copy a tree, optionally transforming file contents. `.md` files
+ * go through `transform` when supplied; everything else is copied verbatim.
+ * `node_modules` and symlinks are never copied.
+ */
+async function copyTree(src, dest, { dryRun = false, transform = null } = {}) {
+  let files = 0;
+  let md = 0;
+  for (const entry of await readdir(src, { withFileTypes: true })) {
+    if (entry.name === "node_modules") continue;
+    if (entry.isSymbolicLink()) continue;
+    const from = join(src, entry.name);
+    const to = join(dest, entry.name);
+    if (entry.isDirectory()) {
+      const stats = await copyTree(from, to, { dryRun, transform });
+      files += stats.files;
+      md += stats.md;
+    } else if (entry.isFile()) {
+      files += 1;
+      const isMarkdown = entry.name.endsWith(".md");
+      if (isMarkdown) md += 1;
+      if (dryRun) continue;
+      await mkdir(dest, { recursive: true });
+      if (isMarkdown && transform !== null) await writeFile(to, transform(await readFile(from, "utf-8")));
+      else await copyFile(from, to);
     }
   }
-  for (const key of Object.keys(existing)) {
-    if (!(key in merged)) merged[key] = existing[key];
-  }
-  return merged;
+  return { files, md };
 }
 
-/**
- * Build the CLI-managed packages list: the template entries with the repo path
- * package resolved relative to the target settings file. pi resolves user-scope
- * local package paths against its agent dir, so this keeps the checkout (or npm
- * install) registered wherever the settings file lands.
- */
-function resolvePackages(packages, root, settingsDir) {
-  if (!Array.isArray(packages)) return packages;
-  const repoSource = relative(settingsDir, root) || ".";
-  let resolved = false;
-  const out = packages.map((entry) => {
-    const source = typeof entry === "string" ? entry : entry?.source;
-    if (resolved || typeof source !== "string" || source.startsWith("npm:")) return entry;
-    resolved = true;
-    return typeof entry === "string" ? repoSource : { ...entry, source: repoSource };
-  });
-  if (!resolved) out.unshift({ source: repoSource, skills: [] });
-  return out;
+// ─── Small helpers ───────────────────────────────────────────────────────────
+
+/** `./skills/` → `skills` — a package resource path relative to its own root. */
+function stripRelative(entry) {
+  return entry.replace(/^\.\//, "").replace(/\/$/, "");
 }
 
-/**
- * Write a managed config file. A legacy symlink is replaced with a real file by
- * writing a sibling temp file and renaming it over the target — rename replaces
- * the link itself, so the repo template is never written through. Returns the
- * action taken so the CLI can report the plan (dry-run included).
- */
-async function writeManagedJson({ target, content, dryRun }) {
-  const symlink = await isSymlink(target);
-  const current = await readFileMaybe(target);
+function asStringList(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+}
 
-  if (dryRun) {
-    return {
-      path: target,
-      action: symlink ? "would-remove-symlink" : current === content ? "unchanged" : "would-write",
-      removedSymlink: symlink,
-    };
-  }
-  if (!symlink && current === content) {
-    return { path: target, action: "unchanged", removedSymlink: false };
-  }
-
-  await mkdir(dirname(target), { recursive: true });
-  const tmp = join(dirname(target), `.${basename(target)}.${process.pid}.tmp`);
+async function readJsonObject(filePath) {
+  let raw;
   try {
-    await writeFile(tmp, content);
-    await rename(tmp, target);
+    raw = await readFile(filePath, "utf-8");
   } catch (err) {
-    await rm(tmp, { force: true });
+    if (err.code === "ENOENT") return null;
     throw err;
   }
-  return { path: target, action: symlink ? "removed-symlink" : "written", removedSymlink: symlink };
-}
-
-async function readTemplateJson(filePath, warn) {
-  const raw = await readFileMaybe(filePath);
-  if (raw === null) {
-    warn(`no ${filePath} template in the package — skipping`);
-    return null;
-  }
-  const parsed = tryParseJsonObject(raw);
-  if (parsed === null) throw new Error(`${filePath} is not a JSON object`);
-  return parsed;
-}
-
-async function readJsonObject(filePath, warn) {
-  const raw = await readFileMaybe(filePath);
-  if (raw === null) return {};
-  const parsed = tryParseJsonObject(raw);
-  if (parsed === null) {
-    warn(`${filePath} is not a JSON object — ignoring its contents`);
-    return {};
-  }
-  return parsed;
-}
-
-function tryParseJsonObject(raw) {
   try {
     const parsed = JSON.parse(raw);
-    return isPlainObject(parsed) ? parsed : null;
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
-function isPlainObject(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-async function readFileMaybe(filePath) {
+async function pathExists(filePath) {
   try {
-    return await readFile(filePath, "utf-8");
-  } catch (err) {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-}
-
-async function isSymlink(filePath) {
-  try {
-    return (await lstat(filePath)).isSymbolicLink();
+    await stat(filePath);
+    return true;
   } catch {
     return false;
   }

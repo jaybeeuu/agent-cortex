@@ -35,12 +35,14 @@ agent-agnostic.
 Mechanics the plan reflects:
 
 1. Enumerate every bead carrying an `implementation-type:*` label —
-   `bd list --label-pattern 'implementation-type:*' --json` — including closed beads, because a
-   clean label space is the goal and bd tolerates label history on closed issues.
+   `bd list --label-pattern 'implementation-type:*' --all --json --limit 0` — including closed
+   beads, because a clean label space is the goal and bd tolerates label history on closed
+   issues. `--limit 0` is explicit: `bd list` documents a default limit of 50, and reconciliation
+   must see the whole workspace.
 2. Group bead ids by label value. A bead carrying both `afk` and `hitl` appears in both groups;
    that is a data problem worth inspecting, not a conflict the tool resolves for you.
-3. Per group, on `--apply`: `bd label add execution:<value> <ids…>` then
-   `bd label remove implementation-type:<value> <ids…>`. Add-then-remove keeps the routing label
+3. Per group, on `--apply`: `bd label add <ids…> execution:<value>` then
+   `bd label remove <ids…> implementation-type:<value>`. Add-then-remove keeps the routing label
    present at every instant, so nothing is unroutable mid-flight.
 4. Re-running after convergence finds zero targets — the no-op that proves idempotence.
 
@@ -79,10 +81,14 @@ The pre-migration `bd export --all` snapshot plus the recorded dry-run plan is e
 step. Work per label group, oldest rename last, and re-verify with the v1 checks after each
 inversion.
 
+Every `bd label` call in this skill passes issue ids first and the label last, matching the CLI's
+`bd label add [issue-id...] [label[,label...]]`. Reversing that order fails: the ids are resolved
+before the trailing argument is read as a label.
+
 ```bash
 # Invert the v1 rename for a specific group
-bd label add implementation-type:afk <ids…>
-bd label remove execution:afk <ids…>
+bd label add <ids…> implementation-type:afk
+bd label remove <ids…> execution:afk
 
 # Confirm the inversion landed before touching the next group
 bd list -l execution:afk --all
@@ -103,12 +109,13 @@ Use only when the installed package genuinely lacks the command and an upgrade i
 Run exactly what v1 would run, with the same gate:
 
 ```bash
-bd list --label-pattern 'implementation-type:*' --json    # read the plan; confirm group counts
-bd label add execution:afk <ids…>
-bd label remove implementation-type:afk <ids…>
-bd label add execution:hitl <ids…>
-bd label remove implementation-type:hitl <ids…>
-bd label list-all                                          # verify: nothing left
+# Read the plan; confirm the group counts match what you expect
+bd list --label-pattern 'implementation-type:*' --all --json --limit 0
+bd label add <ids…> execution:afk
+bd label remove <ids…> implementation-type:afk
+bd label add <ids…> execution:hitl
+bd label remove <ids…> implementation-type:hitl
+bd label list-all                        # verify: nothing left
 ```
 
 Then record in the handoff that the run did not go through the registry, so the repo still needs

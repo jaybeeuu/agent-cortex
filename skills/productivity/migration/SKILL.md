@@ -52,13 +52,17 @@ Steps in flight (full contract in `REFERENCE.md`):
 
 3. **Dry run.** Run the command with no apply flag — dry-run is the default, and an explicit
    `--dry-run` is equivalent. It writes nothing and exits 0. Read the plan it prints: the
-   current version, each step it would run, the beads grouped per label value, and the summary.
+   workspace version against the latest, then the **first pending step** only — its name, one
+   line per pending bead naming the labels it would gain and lose, the pending bead count, and
+   the no-writes notice. Steps behind a pending one are not named, and the plan does not group
+   beads by label value — take group sizes from the `bd list` query in step 4.
 
 4. **Gate on the plan.** Apply only when all of these hold:
    - The detected version and the steps to run match what you expect for this repo.
    - Every `implementation-type:<value>` group maps to exactly one `execution:<value>` group.
-   - Group sizes reconcile with `bd list --label-pattern 'implementation-type:*' --all --json`
-     (a bead carrying both labels appears in both groups — expected, not a conflict).
+   - Group sizes reconcile with
+     `bd list --label-pattern 'implementation-type:*' --all --json --limit 0` (a bead carrying
+     both labels appears in both groups — expected, not a conflict).
    - No unmapped or novel label value: the rename is strict, so anything unexpected is a signal
      to stop and inspect, not to guess.
 
@@ -119,8 +123,9 @@ Workflow at a glance:
 - **A step died mid-batch** — dry-run, then re-run `--apply`: steps are idempotent per group, so
   already-renamed beads no longer match and the retry resumes instead of repeating writes.
 - **A completed step was wrong** — invert it per group from the recorded plan or pre-migration
-  export: `bd label add implementation-type:<value> <ids…>` then
-  `bd label remove execution:<value> <ids…>`, through `bd`, never by editing `.beads/` files.
+  export: `bd label add <ids…> implementation-type:<value>` then
+  `bd label remove <ids…> execution:<value>` (issue ids first, label last), through `bd`, never
+  by editing `.beads/` files.
 - **Unsure which groups moved** — diff the pre-migration export's label sets against
   `bd export --all` now. Recipes and shared-workspace cautions are in `REFERENCE.md`.
 
@@ -147,7 +152,8 @@ the queue looks empty instead of broken. Hence snapshot → dry run → gated ap
 - [ ] `bd version` and `<command> --help` both ran; the command and its supported flags are known.
 - [ ] A pre-migration `bd export --all` snapshot exists and is readable.
 - [ ] The dry run reported a plan and wrote nothing (no label changes in `bd label list-all`).
-- [ ] The plan reconciles with `bd list --label-pattern 'implementation-type:*' --all --json`.
+- [ ] The plan reconciles with
+      `bd list --label-pattern 'implementation-type:*' --all --json --limit 0`.
 - [ ] `--apply` summary is recorded, with per-group bead counts.
 - [ ] `bd label list-all` and `bd list --label-pattern 'implementation-type:*'` show nothing left.
 - [ ] `bd ready -l execution:afk` returns the same beads as the pre-migration AFK set.

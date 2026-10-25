@@ -5,9 +5,9 @@ packages:
 allowBuilds:
   '@google/genai': false
   esbuild: false
-  # koffi (optional FFI dep of @mariozechner/pi-tui, pulled in by pi-questions /
-  # pi-web-access) ships prebuilt build/koffi/<platform>_<arch>/*.node binaries
-  # that index.js loads directly. Its install script (cnoke --prebuild) only
+  # koffi (an optionalDependency of @mariozechner/pi-tui, which pi-questions
+  # peers on) ships prebuilt build/koffi/<platform>_<arch>/*.node binaries that
+  # index.js loads directly. Its install script (cnoke --prebuild) only
   # matters for toolchains with no shipped binary, so deny it: acknowledged
   # explicitly to satisfy the strict allowlist, no compilation, no download.
   koffi: false

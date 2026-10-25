@@ -105,6 +105,13 @@ does its own checkout and `pnpm install` rather than sharing build artifacts fro
 the `setup` job — pnpm workspace symlinks don't survive artifact upload/download,
 so artifact sharing would break the workspace resolution that the build depends on.
 
+The root `pnpm-workspace.yaml` carries a strict `allowBuilds` map: on pnpm 12 (what CI
+pins) any dependency with install or build scripts that is not named there aborts
+`pnpm install` with `ERR_PNPM_IGNORED_BUILDS`. pnpm 10 only warns, so a newly pulled-in
+native dependency surfaces as a red `Setup` job before it surfaces locally. Adding one
+therefore means deciding its build policy in that map — `false` unless it genuinely
+needs to compile, with a comment saying why.
+
 The repo commits no generated `claude/` plugin output, so the `claude-plugin-check` job
 validates the Claude plugin **materialiser** instead of diffing a committed mirror:
 it runs `node bin/agent-cortex.mjs install claude --output <tmp dir>` and checks the

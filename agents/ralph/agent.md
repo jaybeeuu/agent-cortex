@@ -132,7 +132,6 @@ All orchestration state is derived from beads:
 - **inflight[].parentId**: the parent feature task bead. Log file is `.agent-cortex/ralph/ralph-<parentId>.log`.
 - **inflight[].logLine**: the next line number to read from the parent's log file (1-based; start at 1). Updated after every poll.
 - **Loop counts are not stored here** — derive them from beads:
-  - TDD loop count = number of `stage:test-writing` chore children of `<parentId>` (including the current one)
   - Fix round count = number of `stage:fix` chore children of `<parentId>` (closed ones count)
 
 Update `.agent-cortex/ralph/state.json` after **every** agent completion or dispatch.
@@ -167,7 +166,7 @@ After initialization, Ralph waits for background agents to complete. Completion 
    - **HITL task bead**: note for **Pending Human Action** shutdown summary.
    - **NEEDS-REFINEMENT bead**: note for **Needs Refinement** shutdown summary.
    When a parent is removed from `inflight` (completed or failed), immediately promote the first Waiting AFK parent.
-8. **If nothing remains in flight** — `inflight` holds no stage workers and no expansion workers, `bd ready` returns no chore beads with `stage:*` labels, and there are no AFK task beads:
+8. **If nothing remains in flight** — `inflight` holds no stage workers and no expansion workers, `bd ready` returns no chore beads with `stage:*` labels, and no ready, claimable chore-less AFK task bead is awaiting expansion (a queued AFK bead behind an open `lifecycle:feature-pr` HITL gate is not claimable, so it keeps ralph paused rather than awake):
    - If HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see below).
    - Otherwise, proceed to **Shutdown** (see below).
 
@@ -185,7 +184,7 @@ Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. If `fix_ro
 
 ## HITL Pause
 
-Proceed here when no agent work is in flight (no stage workers and no expansion workers in `inflight`), no work is dispatchable (no `stage:*` chore beads ready and no chore-less AFK task bead awaiting expansion), and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
+Proceed here when no agent work is in flight (no stage workers and no expansion workers in `inflight`), no work is dispatchable (no `stage:*` chore beads ready and no ready, claimable chore-less AFK task bead awaiting expansion — claimability is part of dispatchability: an AFK bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it does not keep ralph awake), and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
 
 1. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — their feature branch PRs already target `main` directly.
 2. Run `bd dolt push`.
@@ -211,7 +210,7 @@ Proceed here when no agent work is in flight (no stage workers and no expansion 
 
 ## Shutdown
 
-When nothing is in flight AND nothing is dispatchable — `inflight` holds no entries, `bd ready` returns no chore beads with `stage:*` labels, and no chore-less AFK task bead is awaiting expansion (see _The in-flight invariant_ in the `ralph` skill's REFERENCE.md):
+When nothing is in flight AND nothing is dispatchable — `inflight` holds no entries, `bd ready` returns no chore beads with `stage:*` labels, and no ready, claimable chore-less AFK task bead is awaiting expansion (see _The in-flight invariant_ in the `ralph` skill's REFERENCE.md):
 
 1. For each **multi-feature** epic whose feature beads are complete, open/update a PR from `epic/<epic-id>` into `main`, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — no epic branch exists.
 2. Run:

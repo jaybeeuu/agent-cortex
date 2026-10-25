@@ -67,7 +67,7 @@ On each completion notification (background agent finished, or the poll timer fi
    | any | parent status `blocked` | Nothing — the worker hit `maxFixRounds`; record the parent for the shutdown summary |
 
 5. Run `bd ready` and dispatch new ready `stage:*` chore beads while the in-flight count is under 5 — max 5 parent features, counted from `state.json`'s `inflight` (a parent counts while any of its workers, stage or `kind: "expand"`, sits in `inflight`; REFERENCE.md, _What is in-flight?_). If a ready AFK task bead has no chore tree, dispatch an expansion worker instead of a stage (see _Expansion guard_ above). Before each dispatch run the read-only cap backstop (REFERENCE.md, _Cap Backstop_): at `maxFixRounds` block the parent and create nothing. Do not schedule new parent features while any `lifecycle:feature-pr` HITL gate bead is open.
-6. If nothing is in flight (no stage workers, no expansion workers) and nothing is dispatchable (`bd ready` returns no `stage:*` chore and no chore-less AFK task bead awaiting expansion), proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
+6. If nothing is in flight (no stage workers, no expansion workers) and nothing is dispatchable (`bd ready` returns no `stage:*` chore and no ready, claimable chore-less AFK task bead awaiting expansion — a queued AFK bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it is paused work, not dispatchable work), proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
 
 ### 4. Reporting status (beads are the view)
 
@@ -88,7 +88,7 @@ bd show <id>                   # full detail, including the worker's notes
 
 ### 6. HITL pause and shutdown
 
-- **HITL Pause** — when nothing is in flight (no stage workers, no expansion workers), nothing is dispatchable (no `stage:*` chores ready, no chore-less AFK task bead awaiting expansion), and HITL gate beads are pending: open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
+- **HITL Pause** — when nothing is in flight (no stage workers, no expansion workers), nothing is dispatchable (no `stage:*` chores ready, no ready, claimable chore-less AFK task bead awaiting expansion), and HITL gate beads are pending: open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
 - **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
 
 ## Red Flags
@@ -135,7 +135,7 @@ bd show <id>                   # full detail, including the worker's notes
 - [ ] Init ran once with observable results: `state.json` exists, `bd ready` was parsed, and agent work is in flight — a stage chore claimed, or an expansion worker dispatched for a chore-less bead.
 - [ ] Every stage runner was spawned with {{TOOL:task}} from the parent's feature worktree, with the `---REPORT---` instruction in its prompt.
 - [ ] In-flight count never exceeded 5, and the read-only cap backstop ran before every `stage:*` dispatch.
-- [ ] Every in-flight, dispatchable-work, HITL-pause, and shutdown predicate was read from `state.json`'s `inflight` (stage **and** expansion workers) plus `bd ready` — never from a chore-only `bd` query.
+- [ ] Every in-flight, dispatchable-work, HITL-pause, and shutdown predicate was read from `state.json`'s `inflight` (stage **and** expansion workers) plus `bd ready`, with the ready, claimable scope of a chore-less AFK task bead — never from a chore-only `bd` query, and never counting a bead an open `lifecycle:feature-pr` gate blocks from being claimed.
 - [ ] Ralph closed no leaf execution bead and created no fix bead; every closed chore carries its worker's close reason.
 - [ ] Any chore-less AFK task bead was expanded with `create-chores.ts` (one parent bead), never with `create-task`.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.

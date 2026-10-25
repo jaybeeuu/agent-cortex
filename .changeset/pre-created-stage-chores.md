@@ -36,7 +36,25 @@ never-from table, and the skill's init hand-over no longer gates on "no chore wa
 mid-expansion). The remaining chore-only predicates were widened at the same time: the init
 hand-over, the HITL-pause conditions (agent body, skill, REFERENCE, Copilot poll tick), and the
 Shutdown conditions now require that nothing is *dispatchable* — no ready `stage:*` chore **and**
-no chore-less AFK task bead awaiting expansion — instead of only "no stage chores are ready".
+no **ready, claimable** chore-less AFK task bead awaiting expansion — instead of only "no stage
+chores are ready".
+
+"Claimable" is part of the predicate because the feature-PR gate already scopes it: while a
+`lifecycle:feature-pr` HITL gate bead is open ralph schedules no new parent features, so a queued
+unexpanded AFK bead in that state is paused work, not dispatchable work. Without that half of the
+scope the pause predicate is unreachable in the canonical post-PR state — gate open, unexpanded
+AFK beads queued, `inflight` empty, no ready `stage:*` chore — so Copilot would restart its 120 s
+timer forever and PI would re-arm a wait set with no agent IDs. The invariant table now defines
+"dispatchable" as ready *and* claimable and explains that failure mode, and PI's wait loop defines
+the empty-wait-set state explicitly: never call `wait_for_agents` with no IDs; run the event loop's
+final check, which resolves to HITL Pause (gate beads pending) or Shutdown (none).
+
+The chore-type carve-out is now stated as *the only legitimate chore-type control-flow predicate*
+rather than "the one legitimate chore-type query": the `stage:fix` retry counter in _Cap Backstop_
+counts remediation history, so it may gate a dispatch decision but may never answer "is anything in
+flight?". The stale TDD loop-count line (`stage:test-writing` chore children) is dropped — that
+label is absent from the pre-created chain in `skills/planning/create-task/pipeline.json`.
+
 `agents/ralph/claude/polling.md` is marked explicitly unused: `bin/installers/claude.mjs` DEFERs
 `ralph` to `agents-native/ralph.md`, so nothing composes it; its completion-handling text is
 nonetheless aligned to the same `kind` branch so the harness-neutral wake-section work can revive

@@ -46,9 +46,11 @@ Steps in flight (full contract in `REFERENCE.md`):
    (`agent-cortex migrate` or `ctx migrate`) and read `<command> --help` for the flags this
    build accepts. Act on the version the registry detects — do not infer it yourself.
 
-2. **Snapshot before touching anything.** `bd export --all > beads-before-migration.jsonl`
-   (JSONL of every issue including closed, with labels and dependencies). This is the rollback
-   source of truth; keep it until the post-checks pass.
+2. **Snapshot before touching anything.** `bd export --all -o <path>.jsonl` (JSONL of every issue
+   including closed, with labels and dependencies). `--all` also exports infrastructure beads,
+   templates, gates, and `bd remember` memories, so keep the file outside the repo or gitignored —
+   see _Snapshot scope_ in `REFERENCE.md`. This is the rollback source of truth; keep it until the
+   post-checks pass.
 
 3. **Dry run.** Run the command with no apply flag — dry-run is the default, and an explicit
    `--dry-run` is equivalent. It writes nothing and exits 0. Read the plan it prints: the
@@ -154,7 +156,9 @@ the queue looks empty instead of broken. Hence snapshot → dry run → gated ap
 - [ ] The dry run reported a plan and wrote nothing (no label changes in `bd label list-all`).
 - [ ] The plan reconciles with
       `bd list --label-pattern 'implementation-type:*' --all --json --limit 0`.
-- [ ] `--apply` summary is recorded, with per-group bead counts.
+- [ ] The `--apply` summary is recorded verbatim: one line per step with its pending bead total
+      and a `verified` line. It reports no per-group counts — reconcile group sizes against the
+      step-4 `bd list --label-pattern 'implementation-type:*' --all --json --limit 0` query.
 - [ ] `bd label list-all` and `bd list --label-pattern 'implementation-type:*'` show nothing left.
 - [ ] `bd ready -l execution:afk` returns the same beads as the pre-migration AFK set.
 - [ ] A repeat dry run is a no-op (zero targets, exit 0).

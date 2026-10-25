@@ -15,7 +15,7 @@ also exposed as `ctx migrate`. This skill depends on the following behaviour —
 | `--dry-run` | Explicit form of the default; identical output, still zero writes. |
 | `--help` | Lists the commands and flags this build accepts, including whether `migrate` itself is present. |
 | Registry detection | Reports the repo's current version and the steps it will run, derived from workspace state — not from a flag or a stored marker the agent has to keep. |
-| Step ordering | Applies steps in version order, oldest first, and reports a final summary with per-step, per-group results. |
+| Step ordering | Applies steps in version order, oldest first. The final summary is one line per step: its name and description, that step's pending bead total, and a `verified` line. It carries no per-group breakdown — derive group sizes from the step-v1 `bd list --label-pattern` query. |
 | Idempotence | A converged repo plans zero targets and exits 0; a re-run after a partial failure resumes rather than repeating writes. |
 | Failure mode | Fails loudly (non-zero exit) when `bd` is missing or a `bd` subcommand errors; never silently skips a group. |
 
@@ -26,6 +26,16 @@ command — upgrade rather than reconstructing the steps by hand.
 
 Scope note: the command touches beads only. Skills, hooks, docs, and agent prompts that mention
 the old labels are follow-up edits in the repo, not command output.
+
+## Snapshot scope (SKILL step 2)
+
+`bd export --all` is the pre-migration snapshot. It includes infrastructure beads (agents, roles,
+messages), templates, gates, and `bd remember` memories as well as regular issues — so treat the
+file as sensitive and keep it out of the repo (a path outside the workspace, or one you have
+gitignored; `bd export --all -o <path>.jsonl` writes it directly). It is an issue export, not a
+full database backup: Dolt branches, commit history, and working-set state are not captured. For
+undoing a migration that is enough — steps change labels and dependencies, both of which the
+export records.
 
 ## Step v1 — label rename
 
@@ -137,6 +147,6 @@ changelogs, ADRs, or closed-bead notes (leave them — rewriting history removes
 ## Reporting a run
 
 Record, in order: the detected version and steps planned, the snapshot location, the dry-run
-plan's per-group counts, the `--apply` summary, the four post-check results, the idempotence
-re-run outcome, and the stale-reference list with owning files. That sequence is also the
-evidence trail if a later post-check fails.
+plan with the group sizes reconciled from the `bd list --label-pattern` query, the `--apply`
+summary, the four post-check results, the idempotence re-run outcome, and the stale-reference list
+with owning files. That sequence is also the evidence trail if a later post-check fails.

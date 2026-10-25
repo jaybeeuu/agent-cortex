@@ -51,8 +51,8 @@ A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, 
 On each completion notification (background agent finished, or the poll timer fired):
 
 1. Poll that parent's log for new lines — `tail -n +<nextLine> .agent-cortex/ralph/ralph-<parent-id>.log` (logs are keyed by parent bead ID, so every stage of a feature shares one file) — and post only new key events (stage transitions, test/lint results), never empty updates.
-2. Read the completed agent's output with {{TOOL:read_agent}} and parse its `---REPORT---` block for `BEAD_ID`, `STAGE_COMPLETED`, and the outcome.
-3. Confirm the worker closed its chore bead: `bd show <bead-id>` should read `closed` with the outcome in its close reason. If it is still open the worker died mid-stage — read its notes and re-dispatch; never close it yourself.
+2. Read the completed agent's output with {{TOOL:read_agent}} and parse its `---REPORT---` block for `BEAD_ID`, `STAGE_COMPLETED`, and the outcome. An **expansion worker** (`kind: "expand"` in `state.json`, no chore) has no REPORT and no leaf bead to confirm — confirm the parent now has `stage:*` chores (`bd children <parent-id> --json | grep -c '"stage:'`) and skip to step 5 to dispatch its ready `stage:code` chore.
+3. Confirm the stage worker closed its chore bead: `bd show <bead-id>` should read `closed` with the outcome in its close reason. If it is still open the worker died mid-stage — read its notes and re-dispatch; never close it yourself.
 4. Route the parent per the dispatch table — nothing is created here: the pre-created chain already encodes the order, and the worker owns any remediation it needs.
 
    | Stage completed | Condition | Next action |
@@ -67,7 +67,7 @@ On each completion notification (background agent finished, or the poll timer fi
    | any | parent status `blocked` | Nothing — the worker hit `maxFixRounds`; record the parent for the shutdown summary |
 
 5. Run `bd ready` and dispatch new ready `stage:*` chore beads while the in-flight count (`bd list --status=in_progress --type=chore`) is under 5. If a ready AFK task bead has no chore tree, dispatch an expansion worker instead of a stage (see _Expansion guard_ above). Before each dispatch run the read-only cap backstop (REFERENCE.md, _Cap Backstop_): at `maxFixRounds` block the parent and create nothing. Do not schedule new parent features while any `lifecycle:feature-pr` HITL gate bead is open.
-6. If no chores are in-flight and `bd ready` returns no `stage:*` chores, proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
+6. If nothing is in flight (no stage workers, no expansion workers) and `bd ready` returns no `stage:*` chores, proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
 
 ### 4. Reporting status (beads are the view)
 
@@ -88,7 +88,7 @@ bd show <id>                   # full detail, including the worker's notes
 
 ### 6. HITL pause and shutdown
 
-- **HITL Pause** — when no chores are in-flight, none ready, and HITL gate beads are pending: open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
+- **HITL Pause** — when nothing is in flight (no stage workers, no expansion workers), no `stage:*` chores are ready, and HITL gate beads are pending: open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
 - **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
 
 ## Red Flags

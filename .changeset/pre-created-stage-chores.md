@@ -11,3 +11,11 @@ returned `code`/`verify`/`review`/`document`/`featurePrReview` mapping is report
 normal dispatch picks up `stage:code`; the guard names the duplicate-parent hazard of re-running
 `create-task` for an existing bead. `create-task` documents expanding an existing bead as a
 supported entry point.
+
+An expansion worker has its own completion contract: it is recorded in `state.json`'s `inflight`
+as `"kind": "expand"` with `choreId: null` (stage dispatches are `"kind": "stage"`), emits no
+`---REPORT---`, and owns no bead to close — its completion means "the parent now has a `stage:*`
+chain", so ralph confirms the chore tree exists and dispatches the ready `stage:code` chore. The
+PI wait set and the Copilot timer start, HITL-pause check, and shutdown check all cover expansion
+workers, so an in-flight expansion no longer looks like idle work and can no longer trigger HITL
+Pause or Shutdown mid-expansion.

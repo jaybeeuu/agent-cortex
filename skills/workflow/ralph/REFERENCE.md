@@ -4,7 +4,33 @@ Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL
 
 ---
 
+## Expansion Guard
+
+Stage chores are pre-created, never created on demand. `create-chores.ts` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. Ralph's dispatch is therefore always "claim what `bd ready` returns".
+
+A ready AFK task bead with **no** `stage:*` chore children has nothing to dispatch. Expand it, then dispatch the resulting `stage:code` chore:
+
+1. **Confirm it is chore-less** — a bead that already has stage chores is never expanded again:
+   ```bash
+   bd children <parent-id> --json | grep -c '"stage:'   # must print 0
+   ```
+2. **Dispatch an expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
+   ```bash
+   <create-task-scripts>/node_modules/.bin/tsx \
+     <create-task-scripts>/create-chores.ts \
+     --parent <parent-id> --priority <parent-priority>
+   ```
+   `<create-task-scripts>` is the absolute path to `skills/planning/create-task/scripts/`, resolved from wherever the skill was loaded — never hardcode one harness's install path. `<parent-priority>` is the parent's own priority from `bd show <parent-id>`, so chores match the task they belong to.
+3. **Report the mapping** the worker returns — `code`, `verify`, `review`, `document`, `featurePrReview` — and close nothing. The worker owns no bead on this run; the expansion is bookkeeping, not a stage.
+4. **Dispatch normally.** The next `bd ready` pass picks up the `stage:code` chore, and the pre-created chain carries the rest.
+
+**Never expand an existing bead with `create-task`** — or with any other command that creates a bead. `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. The guard exists so an AFK task bead always ends with exactly one parent: `create-chores.ts` expands a bead that already exists; only `create-task` creates parents.
+
+---
+
 ## Dispatching a Chore Bead
+
+Chores already exist, so dispatch never creates one:
 
 1. **Claim** the bead: `bd update <id> --claim`.
 2. **Read its `stage:*` label** from `bd show <id>`.
@@ -193,7 +219,7 @@ All task state is derived from beads; `state.json` holds only runtime bookkeepin
 | Question | How to answer |
 |----------|---------------|
 | What is in-flight? | `bd list --status=in_progress --type=chore` |
-| What is ready? | `bd ready` — filter for chores with `stage:*` labels |
+| What is ready? | `bd ready` — filter for chores with `stage:*` labels. An AFK task bead with no `stage:*` children needs expansion first (_Expansion Guard_). |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
 | Which agent-ID maps to which bead? | `inflight` entries in `.agent-cortex/ralph/state.json` |
 | How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task (`bd children <parent-id> --json | grep -c '"stage:fix"'`). Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. Read-only: used for the cap backstop, never to build remediation. |

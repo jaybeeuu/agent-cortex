@@ -10,6 +10,7 @@ tsx create-chores.ts --parent <bead-id> [--priority <0-4>]
 
 - Reads `<skill>/pipeline.json`; creates each stage chore via `bd create` and wires dependencies via `bd dep add`.
 - Prints a JSON object mapping each stage ID to its chore bead ID, plus `featurePrReview` for the PR gate.
+- Expands a bead that already exists — it never creates a parent. It is also not idempotent: running it against a bead that already has stage chores creates a second chain, so callers check for existing `stage:*` children first (ralph's expansion guard).
 
 ## Stage chore beads
 

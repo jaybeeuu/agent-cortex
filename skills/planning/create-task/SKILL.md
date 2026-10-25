@@ -10,6 +10,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 ## When to use
 
 - Starting new tracked work that must move through implementation, verification, and review gates — user phrases like "create a task for this", "track this work end-to-end", or "get this into the ralph pipeline".
+- Expanding an **existing** AFK task bead that has no `stage:*` chore children — run step 4 only (see _Expanding an existing bead_).
 - A caller (`prd-to-tasks`, `ralph-plan`) needs one task bead with the full child-chore structure.
 
 ## When NOT to use
@@ -66,6 +67,12 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 5. **Report.** Return the parent bead ID, the classification (`AFK`), and the created child bead IDs from the script output (including `featurePrReview`).
 
+### Expanding an existing bead
+
+Steps 1–3 create a bead; step 4 expands one. A bead that already exists but has no `stage:*` chore children — an AFK task filed before the pipeline existed, or one ralph found chore-less — is a supported entry point: run step 4's `create-chores.ts --parent <existing-id> --priority <its-own-priority>` directly, then report the mapping. No steps 1–3, no new description, no re-classification.
+
+**Never re-run `create-task` for an existing bead.** It creates a bead first and expands second, so the run leaves a **second parent** beside the original, which stays chore-less — the duplicate ralph's expansion guard exists to prevent. `create-chores.ts` expands a bead that already exists; only step 1 creates a parent.
+
 ## Red Flags
 
 - **Filling acceptance criteria with assumptions.** Fabricated criteria pass `--validate` but mislead the pipeline. The description is the interview's output — confirm it with the human instead.
@@ -73,6 +80,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 - **Spawning the `classify-bead` subagent when the classifier already resolved the bead.** The deterministic script is the short-circuit; a subagent is only for `escalate: true`.
 - **Skipping the classifier and classifying by hand.** The rubric is a subagent's job; a hand-rolled guess drifts from it.
 - **Expanding an HITL bead.** If classification is HITL, stop — creating a chore tree for human-driven work is wrong.
+- **Expanding an existing bead by re-running `create-task`.** That step creates a bead, so the original stays chore-less and gains a second parent beside it. Run `create-chores.ts --parent <existing-id>` instead.
 - **Hardcoding `<skill-scripts>`.** The install path differs per harness (plugin cache, installed-plugins, dev checkout); resolve it at runtime.
 
 ## Common Rationalizations
@@ -112,3 +120,4 @@ The full bead-property contract (titles, labels, dependencies per chore and for 
 - [ ] Chore titles/labels/dependencies match the contract (`[<parent-id>] <stage title>`, `stage:<id>`, `parent-child` to parent, `blocks` per `dependsOn`), verified against `REFERENCE.md`.
 - [ ] PR gate task exists and blocks the final document stage chore, carrying **exactly one** `implementation-type` label — `implementation-type:hitl` (never an inherited `implementation-type:afk` alongside it) — plus `lifecycle:feature-pr`.
 - [ ] Report returned the parent bead ID, classification, and all child bead IDs.
+- [ ] Expansion-only run (existing bead): steps 1–3 skipped, `create-chores.ts` expanded that bead, and the tree still holds exactly one parent.

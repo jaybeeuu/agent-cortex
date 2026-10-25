@@ -1,5 +1,5 @@
 ---
-"@jaybeeuu/agent-cortex": patch
+"@jaybeeuu/agent-cortex": minor
 ---
 
 Add `agent-cortex migrate`, a repo-agnostic, versioned migration command for beads

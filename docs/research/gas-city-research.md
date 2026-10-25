@@ -225,7 +225,6 @@ With Gas City:
 - Step sequencing → formula `needs` dependencies (TOML, `bd`)
 - Pass/fail routing → gate shell scripts (run tests, typecheck, lint)
 - Retry loop → convergence engine (Go, deterministic)
-- `generate-progress.ts` → largely replaceable by `gc status` / `bd` queries
 - Ralph's dispatch table → formula + gate config
 
 ### The remaining gap

@@ -110,23 +110,22 @@ Run whenever polling is triggered (timer or agent completion):
 
 Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
 
-1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main (skip single-feature epics — their feature branch PRs already target `main`):
+1. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main (skip single-feature epics — their feature branch PRs already target `main`):
    ```bash
    gh pr create --base main --head epic/<epic-id> --title "[<epic-id>] Merge epic into main" --body "<epic summary>"
    ```
    Tag each epic bead with `awaiting-epic-pr-merge` until merged.
-3. Run:
+2. Run:
    ```bash
    bd dolt push
    ```
-4. Collect pending HITL gate beads and their PR URLs:
+3. Collect pending HITL gate beads and their PR URLs:
    ```bash
    bd list -l lifecycle:feature-pr -l implementation-type:hitl
    bd list -l awaiting-epic-pr-merge
    ```
    For each bead, run `bd show <id>` to retrieve the PR URL from bead notes.
-5. Output the **Pending Human Action** summary:
+4. Output the **Pending Human Action** summary:
    ```
    ⏸️  Ralph is paused — human action required before work can continue.
 
@@ -138,7 +137,7 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
 
    When you've completed the above, prompt me to continue.
    ```
-6. **Stop completely.** Do not restart the poll timer. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
+5. **Stop completely.** Do not restart the poll timer. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
 
 ---
 
@@ -146,17 +145,16 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
 
 When `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels:
 
-1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each **multi-feature** epic whose feature beads are all closed, open/update an epic PR to main (skip single-feature epics — no epic branch exists):
+1. For each **multi-feature** epic whose feature beads are all closed, open/update an epic PR to main (skip single-feature epics — no epic branch exists):
    ```bash
    gh pr create --base main --head epic/<epic-id> --title "[<epic-id>] Merge epic into main" --body "<epic summary>"
    ```
    Tag each epic bead with `awaiting-epic-pr-merge` until merged.
-3. Run:
+2. Run:
    ```bash
    bd dolt push
    ```
-4. If any HITL beads were noted during the session, output:
+3. If any HITL beads were noted during the session, output:
    ```
    All agent work is complete. The following steps require human action before work can continue:
 
@@ -177,9 +175,16 @@ When `bd list --status=in_progress --type=chore` returns no results AND `bd read
 
 ## State Files
 
+Status is read from beads — there is no rendered status document to build or refresh:
+
+```bash
+bd list --parent <parent-id>   # every chore for a feature, with its state
+bd ready                       # the next dispatchable work
+bd show <id>                   # full detail, including the worker's notes
+```
+
 | File | Purpose |
 |------|---------|
-| `.agent-cortex/ralph/progress.md` | Human-readable snapshot. Regenerate: `workspace="/abs/path"; pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"`. `workspace` must be an **absolute** path — never `.` or `$(pwd)`. **Never hand-edit.** |
 | `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the poll-timer shellId (Copilot) and the in-flight agent-ID→bead mapping. Shape: `{ "timerShellId": null, "inflight": [ { "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. Initialise at startup with `{ "timerShellId": null, "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
 | `.agent-cortex/ralph/ralph-*.log` | Per-parent log files written by subagents — every stage chore of a feature appends to `.agent-cortex/ralph/ralph-<parent-id>.log` (e.g. `ralph-abc-123.log`). |
 

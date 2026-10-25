@@ -36,19 +36,16 @@ A leaf bead is the worker's record of what happened. The orchestrator reads it; 
 3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth. Append a stage-start note immediately (see _Milestone Notes_).
 4. Read the bead's `stage:*` label — it names the stage to execute.
 5. Load the universal stage-runner prompt (`skills/workflow/run-pipeline-stage/prompts/stage-runner.md`) — it carries the lifecycle, remediation, and REPORT contract — populate `<stage>`, and read the matching playbook (`playbooks/<stage>.md`) for stage-specific rules.
-6. Tag the stage and regenerate the progress doc so pairing sessions stay current:
+6. Tag the stage — beads are the only status view:
 
 ```bash
 bd tag <id> stage:<stage>
-# workspace must be the absolute path of the worktree — never . or $(pwd)
-workspace="/absolute/path/to/worktree"
-pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"
 ```
 
 7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}}. The prompt already ends with the REPORT contract; never compose one without it.
 8. On the REPORT: route forward per _Routing_ below. Do **not** close the leaf bead — the worker closed it before reporting.
 
-Each step leaves observable state — a claimed bead, a `stage:` tag, a regenerated progress doc, worker notes and a closed bead, and a REPORT that drives the next action.
+Each step leaves observable state — a claimed bead, a `stage:` tag, worker notes and a closed bead, and a REPORT that drives the next action.
 
 ## Routing (read-only)
 
@@ -138,7 +135,7 @@ Subagents report facts — do not ask them to suggest or predict the next step.
 | "The stage is small — I'll just run it directly" | The stage skills and playbook keep output conformant; skipping them produces work that loops back as a fix chore. |
 | "I'll close the chore — the worker forgot" | The worker closing it is the contract; an unclosed bead means the worker died, so read its notes and re-dispatch, do not paper over it. |
 | "I'll wire the fix chain myself — faster" | Two owners of one lifecycle is what this skill exists to remove; worker-built chains keep cap accounting and the dependency graph truthful. |
-| "The stage is obvious from the prompt — no tag needed" | Beads are the source of truth; prompt drift desynchronises the progress doc, the log, and downstream dispatch. |
+| "The stage is obvious from the prompt — no tag needed" | Beads are the source of truth; prompt drift desynchronises the log and downstream dispatch. |
 
 ## Cross-skill references
 
@@ -161,7 +158,7 @@ Subagents report facts — do not ask them to suggest or predict the next step.
 ## Verification checklist
 
 - [ ] Bead claimed (`bd update <id> --claim`) before any executor works it.
-- [ ] `bd tag <id> stage:<stage>` run and progress doc regenerated before dispatch.
+- [ ] `bd tag <id> stage:<stage>` run before dispatch.
 - [ ] Correct playbook read and followed for the stage; stage skills invoked where the playbook says.
 - [ ] Composed prompt carries the lifecycle, remediation, and REPORT contract from `prompts/stage-runner.md`.
 - [ ] Progress log lines written for every stage transition and key result.

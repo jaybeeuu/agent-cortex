@@ -42,7 +42,7 @@ agents/ralph/
 │   └── polling.md                  # Copilot completion: sleep-120 poll timer + read_agent
 └── claude/
     ├── frontmatter.json            # Claude tools: ["bash", "task"]
-    └── polling.md                  # Claude event-driven (no polling)
+    └── polling.md                  # UNUSED — ralph's Claude build is DEFERred to agents-native/ralph.md
 ```
 
 ### Example: plan agent (no per-harness sections)

@@ -4,6 +4,28 @@ Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL
 
 ---
 
+## The in-flight invariant
+
+Every ralph control-flow predicate — *is any agent work in flight?*, *is there work?*, *is there
+room to dispatch?*, *may we pause?*, *may we shut down?* — is answered from `state.json`'s
+`inflight` list (entries carry `kind: "stage"` or `kind: "expand"`) plus `bd ready`. **Never**
+from a chore-type `bd` query, and never from "was a chore dispatched?".
+
+| Question | Derive it from | Never from |
+|----------|----------------|------------|
+| Is any agent work in flight? | `inflight` in `.agent-cortex/ralph/state.json` — stage **and** expansion entries | `bd list -t chore`, `bd ready -t chore`, or any "were chores dispatched?" test |
+| Is anything dispatchable? | `bd ready`: a `stage:*` chore **or** a chore-less AFK task bead awaiting expansion | A chore listing alone — a chore-less AFK bead is work waiting, not idle |
+| Is there room under the 5-feature cap? | Parent count in `inflight` | A count of chore beads |
+| May ralph pause or shut down? | `inflight` empty **and** nothing dispatchable (per the row above) | "No stage worker is running" |
+
+**Why:** an expansion worker claims no chore. A chore-only predicate therefore reports "nothing
+in flight" while an agent is running, which makes ralph pause or shut down mid-expansion and
+leaves the parent's freshly created `stage:*` chain undispatched. The one legitimate chore-type
+query in ralph is the retry counter in _Cap Backstop_ (`stage:fix` children): it counts
+remediation history, not in-flight work, so it is not a control-flow predicate.
+
+---
+
 ## Expansion Guard
 
 Stage chores are pre-created, never created on demand. `create-chores.ts` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. Ralph's dispatch is therefore always "claim what `bd ready` returns".
@@ -158,7 +180,7 @@ Run whenever polling is triggered (timer or agent completion):
 
 ## HITL Pause
 
-Proceed here when no agent work is in flight (no stage workers and no expansion workers in `inflight`), no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
+Proceed here when no agent work is in flight (no stage workers and no expansion workers in `inflight`), nothing is dispatchable (no `stage:*` chore beads ready, no chore-less AFK task bead awaiting expansion), and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
 
 1. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main (skip single-feature epics — their feature branch PRs already target `main`):
    ```bash
@@ -193,7 +215,7 @@ Proceed here when no agent work is in flight (no stage workers and no expansion 
 
 ## Shutdown
 
-When `inflight` holds no entries AND `bd ready` returns no chore beads with `stage:*` labels:
+When nothing is in flight AND nothing is dispatchable — `inflight` holds no entries, `bd ready` returns no chore beads with `stage:*` labels, and no chore-less AFK task bead is awaiting expansion (_The in-flight invariant_ above):
 
 1. For each **multi-feature** epic whose feature beads are all closed, open/update an epic PR to main (skip single-feature epics — no epic branch exists):
    ```bash

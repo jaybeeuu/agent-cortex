@@ -1,3 +1,14 @@
+<!--
+UNUSED — this section is not composed into any agent. `bin/installers/claude.mjs` DEFERs `ralph`
+to agents-native/ralph.md, which is authored natively for Claude Code (event-driven, no
+`state.json`, no `{{SECTION:polling}}` substitution), so `agents/ralph/claude/polling.md` is never
+read by the composer or by any installer. It is kept — and kept aligned with
+`.agent-cortex/ralph/state.json`'s `inflight` invariant — so the harness-neutral wake-section work
+(agnt-ctx-s5xd.10.3) can revive it without inheriting the chore-only predicate the other harnesses
+have now dropped. If you are reading this expecting live behaviour, read agents-native/ralph.md
+instead.
+-->
+
 ## Spawning subagents (Claude Code)
 
 RALPH HAS ONLY ONE WAY TO SPAWN SUBAGENTS: call the **`Task`** tool (not bash, not any other tool).
@@ -22,7 +33,7 @@ Claude Code **re-invokes you automatically when a background worker completes** 
 
 - There is **no poll timer on Claude**: skip the PI/Copilot timer start and restart steps in initialization, and there is nothing to kill in **HITL Pause** — when you stop, you simply stop. The harness wakes you again when the user re-invokes you.
 - There is **no log tailing on Claude**: workers' progress lines (`.agent-cortex/ralph/ralph-<parentId>.log`) are written by the workers themselves and surfaced by the harness with the completion — nothing to flush, nothing to poll. Produce the shared chat summaries from the delivered result instead.
-- On each completion, apply the shared handling in the **Event loop** section of agent.md (steps 3–8: correlate the task ID to its bead via `state.json`, parse the REPORT, confirm the worker closed the chore, advance the parent, check for newly ready beads, run the shutdown check). `state.json` `logLine` tracking is not used on Claude.
+- On each completion, apply the shared handling in the **Event loop** section of agent.md (steps 3–8: correlate the task ID to its entry via `state.json`'s `inflight`, branch on the entry's `kind` — a `stage` entry parses the REPORT and confirms the worker closed its chore, an `expand` entry has no REPORT and no bead to confirm, so confirm the parent now has `stage:*` chores and dispatch its ready `stage:code` — advance the parent, check for newly ready beads, run the shutdown check). `state.json` `logLine` tracking is not used on Claude.
 
 ## Completion constraints
 

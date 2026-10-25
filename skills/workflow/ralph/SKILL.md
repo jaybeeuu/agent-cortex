@@ -38,7 +38,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
    - **Task or other type without an `implementation-type:*` label**: unexpected here — classification happens at planning time via `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note it for the shutdown summary.
    - **Task labelled `implementation-type:hitl`**: skip — record the ID for the Pending Human Action summary at shutdown.
 7. For each ready chore bead (up to 5), dispatch it from its parent's feature worktree (see _Dispatching a chore bead_ in REFERENCE.md — create branches/worktrees first). For a ready AFK task bead with no `stage:*` chore children, dispatch an expansion worker instead (see _Expansion guard_ below); its `stage:code` chore is dispatchable as soon as the worker reports.
-8. Hand over to your harness's completion-detection mechanism: Copilot keeps a `sleep 120` poll timer running in the background; PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no chore was dispatched and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md).
+8. Hand over to your harness's completion-detection mechanism: Copilot keeps a `sleep 120` poll timer running in the background; PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no **agent work** was dispatched — `state.json`'s `inflight` holds no entries, so neither a stage worker nor an expansion worker is running — and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md). An expansion-only init is in flight, not idle: keep the completion mechanism running and continue at the event loop.
 
 ### 2. Expansion guard (stage chores are pre-created)
 
@@ -67,7 +67,7 @@ On each completion notification (background agent finished, or the poll timer fi
    | any | parent status `blocked` | Nothing — the worker hit `maxFixRounds`; record the parent for the shutdown summary |
 
 5. Run `bd ready` and dispatch new ready `stage:*` chore beads while the in-flight count is under 5 — max 5 parent features, counted from `state.json`'s `inflight` (a parent counts while any of its workers, stage or `kind: "expand"`, sits in `inflight`; REFERENCE.md, _What is in-flight?_). If a ready AFK task bead has no chore tree, dispatch an expansion worker instead of a stage (see _Expansion guard_ above). Before each dispatch run the read-only cap backstop (REFERENCE.md, _Cap Backstop_): at `maxFixRounds` block the parent and create nothing. Do not schedule new parent features while any `lifecycle:feature-pr` HITL gate bead is open.
-6. If nothing is in flight (no stage workers, no expansion workers) and `bd ready` returns no `stage:*` chores, proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
+6. If nothing is in flight (no stage workers, no expansion workers) and nothing is dispatchable (`bd ready` returns no `stage:*` chore and no chore-less AFK task bead awaiting expansion), proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
 
 ### 4. Reporting status (beads are the view)
 
@@ -88,7 +88,7 @@ bd show <id>                   # full detail, including the worker's notes
 
 ### 6. HITL pause and shutdown
 
-- **HITL Pause** — when nothing is in flight (no stage workers, no expansion workers), no `stage:*` chores are ready, and HITL gate beads are pending: open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
+- **HITL Pause** — when nothing is in flight (no stage workers, no expansion workers), nothing is dispatchable (no `stage:*` chores ready, no chore-less AFK task bead awaiting expansion), and HITL gate beads are pending: open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
 - **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
 
 ## Red Flags
@@ -114,14 +114,15 @@ bd show <id>                   # full detail, including the worker's notes
 ## Philosophy / rationale
 
 - Orchestration state derives from beads so a crash loses nothing but an in-memory ID mapping: `state.json` holds only the poll-timer shellId and the agent-ID→bead mapping, never task state.
+- Every control-flow predicate — is anything in flight, is there work, is there room, may we pause or shut down — derives from `state.json`'s `inflight` (`kind: "stage"` or `kind: "expand"`) plus `bd ready`, never from a chore-type `bd` query: an expansion worker owns no chore, so a chore-only predicate reports idle while an agent is running (REFERENCE.md, _The in-flight invariant_).
 - Classification happens up-front at planning time (`create-task`), so the loop can trust `bd ready` instead of re-interpreting each bead's intent.
 - Human review gates are non-negotiable because agent-authored changes still need a person to merge them.
 - One owner per lifecycle: the actor that did the work records the outcome, so beads never carry an outcome written by someone who was not there.
 
 ## Phase-gate checklists
 
-- [ ] Init complete: `bd prime` held, gitignore entries present, workspace and state.json created, pipeline.json read, first `bd ready` classified, first chores dispatched.
-- [ ] Event loop handed off: completion-detection mechanism running (or HITL Pause/Shutdown started).
+- [ ] Init complete: `bd prime` held, gitignore entries present, workspace and state.json created, pipeline.json read, first `bd ready` classified, first agent work dispatched (a stage chore or an expansion worker).
+- [ ] Event loop handed off: completion-detection mechanism running (or HITL Pause/Shutdown started) — an expansion-only init is in flight, not idle.
 
 ## Cross-skill references
 
@@ -131,9 +132,10 @@ bd show <id>                   # full detail, including the worker's notes
 
 ## Verification checklist
 
-- [ ] Init ran once with observable results: `state.json` exists, `bd ready` was parsed, and the first chore beads are claimed.
+- [ ] Init ran once with observable results: `state.json` exists, `bd ready` was parsed, and agent work is in flight — a stage chore claimed, or an expansion worker dispatched for a chore-less bead.
 - [ ] Every stage runner was spawned with {{TOOL:task}} from the parent's feature worktree, with the `---REPORT---` instruction in its prompt.
 - [ ] In-flight count never exceeded 5, and the read-only cap backstop ran before every `stage:*` dispatch.
+- [ ] Every in-flight, dispatchable-work, HITL-pause, and shutdown predicate was read from `state.json`'s `inflight` (stage **and** expansion workers) plus `bd ready` — never from a chore-only `bd` query.
 - [ ] Ralph closed no leaf execution bead and created no fix bead; every closed chore carries its worker's close reason.
 - [ ] Any chore-less AFK task bead was expanded with `create-chores.ts` (one parent bead), never with `create-task`.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.

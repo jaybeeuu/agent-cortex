@@ -69,7 +69,7 @@ Run once at startup:
 
 A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, so it is not dispatched as work. Expand it first, then let the normal dispatch pick up the resulting `stage:code` chore:
 
-1. Confirm the bead is chore-less: `bd children <parent-id> --json | grep -c '"stage:'` returns `0`. A bead that already has stage chores is never expanded again.
+1. Confirm the bead is chore-less: `bd children <parent-id> --json | grep -c '"stage:'` prints `0` — add `|| true` under `set -e` or inside an `&&` chain, since `grep -c` exits `1` on a zero count and the printed number is the answer. A bead that already has stage chores is never expanded again.
 2. Dispatch an **expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`, created per the branching model if it is missing) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
 
    ```bash
@@ -87,7 +87,7 @@ A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, 
 4. The worker reports the returned mapping — `code`, `verify`, `review`, `document`, `featurePrReview` — and closes nothing. It emits **no** `---REPORT---` block and owns no bead, so there is nothing to parse and no close to confirm.
 5. Its completion means the parent now has a `stage:*` chain: the event loop's next `bd ready` pass picks up the `stage:code` chore (event loop step 7).
 
-**Expansion completion contract.** An expansion worker is dispatched like a stage worker but is not one: no chore claim, no `---REPORT---`, no leaf-bead close. Handle its completion with the expansion branch in event-loop step 3, which confirms the chain exists (`bd children <parent-id> --json | grep -c '"stage:'` is non-zero) and dispatches the ready `stage:code` chore. If the parent still has no `stage:*` children the expansion failed: surface the worker's output in chat, **never re-run `create-chores.ts`** (it is not idempotent — a second run duplicates the chain), and record the parent for the shutdown summary. Either way, create nothing and close nothing.
+**Expansion completion contract.** An expansion worker is dispatched like a stage worker but is not one: no chore claim, no `---REPORT---`, no leaf-bead close. Handle its completion with the expansion branch in event-loop step 3, which confirms the chain exists (`bd children <parent-id> --json | grep -c '"stage:'` prints a non-zero count) and dispatches the ready `stage:code` chore. If the parent still has no `stage:*` children the expansion failed: surface the worker's output in chat, **never re-run `create-chores.ts`** (it is not idempotent — a second run duplicates the chain), and record the parent for the shutdown summary. Either way, create nothing and close nothing.
 
 **Never expand an existing bead by running `create-task`** (or any other command that creates a bead). `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. `create-chores.ts` expands a bead that already exists; it never creates parents.
 

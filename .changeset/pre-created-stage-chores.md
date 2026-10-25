@@ -52,7 +52,10 @@ final check, which resolves to HITL Pause (gate beads pending) or Shutdown (none
 The chore-type carve-out is now stated as *the only legitimate chore-type control-flow predicate*
 rather than "the one legitimate chore-type query": the `stage:fix` retry counter in _Cap Backstop_
 counts remediation history, so it may gate a dispatch decision but may never answer "is anything in
-flight?". The stale TDD loop-count line (`stage:test-writing` chore children) is dropped — that
+flight?". The carve-out is scoped to *control-flow predicates* so it no longer condemns the
+expansion guard's own structural `grep -c '"stage:'` check, and that check states the count it
+expects rather than demanding exit `0` — `grep -c` exits `1` on zero matches, so the guard now
+says to add `|| true` under `set -e` or in an `&&` chain. The stale TDD loop-count line (`stage:test-writing` chore children) is dropped — that
 label is absent from the pre-created chain in `skills/planning/create-task/pipeline.json`.
 
 `agents/ralph/claude/polling.md` is marked explicitly unused: `bin/installers/claude.mjs` DEFERs

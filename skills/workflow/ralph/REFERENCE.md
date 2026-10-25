@@ -31,7 +31,10 @@ in flight" while an agent is running, which makes ralph pause or shut down mid-e
 leaves the parent's freshly created `stage:*` chain undispatched. The only legitimate chore-type
 control-flow predicate in ralph is the retry counter in _Cap Backstop_ (`stage:fix` children): it
 counts remediation history rather than in-flight work, so it may gate a dispatch decision but it
-must never answer *is anything in flight?*. Every other chore-type `bd` query is a bug.
+must never answer *is anything in flight?*. Every other chore-type `bd` query used as a
+control-flow predicate is a bug. Structural checks that ask nothing more than *what does this bead
+already have?* — the _Expansion Guard_'s `grep -c '"stage:'`, the _Cap Backstop_'s `stage:fix`
+count — are not predicates and are fine.
 
 ---
 
@@ -43,8 +46,11 @@ A ready AFK task bead with **no** `stage:*` chore children has nothing to dispat
 
 1. **Confirm it is chore-less** — a bead that already has stage chores is never expanded again:
    ```bash
-   bd children <parent-id> --json | grep -c '"stage:'   # must print 0
+   bd children <parent-id> --json | grep -c '"stage:'
    ```
+   Expect `0` printed. `grep -c` exits `1` when it counts zero matches, so add `|| true` when the
+   check runs under `set -e` or inside an `&&` chain — the printed count is the answer, not the exit
+   status.
 2. **Dispatch an expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
    ```bash
    <create-task-scripts>/node_modules/.bin/tsx \
@@ -76,10 +82,11 @@ An expansion worker is dispatched like a stage worker but is **not** one. Nothin
 On completion, remove the entry from `inflight` and confirm the chore tree exists rather than taking the worker's word for it:
 
 ```bash
-bd children <parent-id> --json | grep -c '"stage:'   # must be non-zero
+bd children <parent-id> --json | grep -c '"stage:'
 ```
 
-A zero count means the expansion failed. Surface the worker's output in chat and record the parent for the shutdown summary — **never re-dispatch the expansion**, because `create-chores.ts` is not idempotent and a second run duplicates the chain beside the first. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
+Expect a non-zero count — one match per `stage:*` label in the chain. A printed `0` means the
+expansion failed. Surface the worker's output in chat and record the parent for the shutdown summary — **never re-dispatch the expansion**, because `create-chores.ts` is not idempotent and a second run duplicates the chain beside the first. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
 
 ---
 

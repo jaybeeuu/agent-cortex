@@ -185,6 +185,31 @@ describe("registerPi", () => {
     }
   });
 
+  it("fails the run when a superseded source cannot be removed, naming the source left configured", async () => {
+    const tree = await makeInstallTree();
+    try {
+      const fx = await makePi(tree, { packages: [{ source: "../checkout", skills: [] }], failWhen: "remove" });
+
+      const error = await registerPi({
+        root: fx.root,
+        output: fx.staged,
+        settingsPath: fx.settingsPath,
+        piBin: fx.pi.bin,
+        warn: () => {},
+      }).then(
+        () => null,
+        (err) => err,
+      );
+
+      assert.ok(error, "the registration fails instead of reporting success");
+      assert.ok(error.message.includes(fx.rawRepo), `names the source still configured: ${error.message}`);
+      assert.deepEqual(await fx.calls(), ["--version", `remove ${fx.rawRepo}`], "the install never runs");
+      assert.deepEqual(await fx.localSources(), [fx.rawRepo], "no second agent-cortex source is added");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
   it("--dry-run plans the registration without spawning pi or writing settings", async () => {
     const tree = await makeInstallTree();
     try {

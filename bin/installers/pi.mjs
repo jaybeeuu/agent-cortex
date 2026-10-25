@@ -67,9 +67,10 @@
 // `git pull && agent-cortex install pi` is a true no-op (a local package source
 // is read from disk on every pi start — there is nothing to refresh). Sources
 // pointing at a raw agent-cortex checkout (this package's own repo name) are
-// removed first, so exactly one agent-cortex source stays configured. If the
-// `pi` CLI is missing, the installer warns and prints the exact commands,
-// exiting non-zero only with --require-register.
+// removed first, so exactly one agent-cortex source stays configured; a source
+// that survives its removal fails the run, because two configured sources both
+// load. If the `pi` CLI is missing, the installer warns and prints the exact
+// commands, exiting non-zero only with --require-register.
 //
 //   node bin/agent-cortex.mjs install pi
 //                               materialises into ~/.agent-cortex/pi AND
@@ -445,6 +446,11 @@ async function readDependencyNames(dir) {
  *   a source resolves to a raw agent-cortex checkout (this package's own name)
  *     → `pi remove` it first, so exactly one agent-cortex source stays
  *
+ * A superseded source that survives its removal fails the run: pi would load
+ * both sources side by side, so reporting success would leave the very state
+ * this step exists to prevent. Nothing is installed on that path, and the
+ * error names the source still configured.
+ *
  * When the `pi` CLI cannot be run, the staged package is left unregistered:
  * the installer warns, prints the exact commands, and fails only with
  * `requireRegister` (the file side of the install already succeeded).
@@ -520,9 +526,14 @@ export async function registerPi({
       await runPiCommand(piBin, ["remove", path]);
       summary.removed.push(path);
     } catch (err) {
-      // A source we can no longer drop must not stop the new one registering:
-      // the staged package is still the working source, so warn and carry on.
-      warn(`${err.message} — the staged package still registers; remove that source with "${piBin} remove ${path}"`);
+      // Two configured sources both load, so a source we cannot drop means the
+      // registration failed — installing now would leave pi with a raw repo
+      // checkout and the staged package at once, and every re-run would repeat
+      // the same non-converging cycle. Fail instead of reporting success.
+      throw new Error(
+        `${err.message} — the superseded source is still configured: ${path}. ` +
+          `Remove it with "${piBin} remove ${path}" and re-run`,
+      );
     }
   }
 

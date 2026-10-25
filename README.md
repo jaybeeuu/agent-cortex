@@ -188,6 +188,11 @@ If the `pi` CLI is not on `PATH`, the staged package is correct but unregistered
 the installer warns and prints the exact commands (`pi install
 ~/.agent-cortex/pi`, plus a `pi remove` for any superseded raw-repo source).
 
+A superseded raw-repo source that `pi remove` cannot drop fails the install
+(non-zero, naming the source still configured): pi would load both sources, so
+reporting success would leave the two-source state registration exists to
+prevent. Nothing is installed on that path — remove the source by hand and re-run.
+
 Re-run `agent-cortex install pi` after every `git pull` to refresh the staged
 package; registration is already in place, so that re-run changes nothing in
 pi's settings. Verify with `pi list` and `pi config` (restart pi to apply).

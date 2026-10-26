@@ -217,8 +217,9 @@ flat `agents/*.agent.md` files are built from them:
 - The pi harness delivers two ways: the `agent-modes` extension composes `agent.md` +
   `pi/frontmatter.json` at runtime against `token-map.json`, and `agent-cortex install pi`
   renders flat pi agents + token-substituted skills into a self-contained package at
-  `~/.agent-cortex/pi`, which pi loads once registered (see README "Pi harness agents &
-  skills"). `agent-modes` and the `subagent` extension both read agents beside themselves,
+  `~/.agent-cortex/pi`, which pi loads once registered (see README "Pi package staging
+  (`agent-cortex install pi`)"). `agent-modes` and the `subagent` extension both read agents
+  beside themselves,
   so the staged package needs no `~/.pi/agent` writes.
 
 Never edit the generated flat materialised files by hand — edit the composable directory.

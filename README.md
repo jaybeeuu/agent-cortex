@@ -144,14 +144,23 @@ are sourced entirely from `main`.
 ### Pi package staging (`agent-cortex install pi`)
 
 `agent-cortex install pi` materialises agent-cortex as a self-contained pi
-package in `~/.agent-cortex/pi` — the pi analogue of `~/.agent-cortex/claude`.
-Nothing is written into pi's own directories (`~/.pi/agent/…`); registering the
-package with pi is a separate step.
+package in `~/.agent-cortex/pi` — the pi analogue of `~/.agent-cortex/claude` —
+and registers that directory with pi through pi's own `pi install`. Nothing is
+written into pi's own directories (`~/.pi/agent/…`): pi owns its settings file,
+so the installer only reads it to decide the plan and lets the `pi` CLI write it.
 
 ```sh
-agent-cortex install pi
-pi install ~/.agent-cortex/pi     # register the staged package with pi
+agent-cortex install pi          # stage ~/.agent-cortex/pi + register it with pi
 ```
+
+Registration is idempotent by state: the staged path is registered once (a
+re-run is a true no-op — a local package source is read from disk on every pi
+start, so nothing needs refreshing), and a source pointing at a raw agent-cortex
+checkout is removed first, so exactly one agent-cortex source stays configured.
+The installer decides that plan by reading pi's settings at
+`~/.pi/agent/settings.json`, so a pi agent dir relocated with
+`PI_CODING_AGENT_DIR` is not inspected — a superseded raw-repo source configured
+there has to be removed by hand with `pi remove <path>`.
 
 The staged package contains:
 
@@ -174,11 +183,23 @@ a re-run never accumulates stale copies.
 
 | Flag | Meaning |
 | --- | --- |
-| `--dry-run` | Show what would be staged without writing anything |
-| `--output <dir>` | Stage into `<dir>` instead of `~/.agent-cortex/pi` (tests/CI) |
+| `--dry-run` | Show what would be staged and registered without writing or spawning anything |
+| `--output <dir>` | Stage into `<dir>` only — no registration (tests/CI) |
 | `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
+| `--require-register` | Fail the install when the `pi` CLI cannot drive registration; by default a missing CLI warns and prints the commands to run |
 
-Re-run whenever you pull changes, then re-register.
+If the `pi` CLI is not on `PATH`, the staged package is correct but unregistered:
+the installer warns and prints the exact commands (`pi install
+~/.agent-cortex/pi`, plus a `pi remove` for any superseded raw-repo source).
+
+A superseded raw-repo source that `pi remove` cannot drop fails the install
+(non-zero, naming the source still configured): pi would load both sources, so
+reporting success would leave the two-source state registration exists to
+prevent. Nothing is installed on that path — remove the source by hand and re-run.
+
+Re-run `agent-cortex install pi` after every `git pull` to refresh the staged
+package; registration is already in place, so that re-run changes nothing in
+pi's settings. Verify with `pi list` and `pi config` (restart pi to apply).
 
 ### Desktop notifications
 

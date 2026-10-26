@@ -12,8 +12,12 @@ below no longer hold:
   npm packages itself, so a tarball's `node_modules/` reached nobody; bundling also forced a
   repo-wide `node-linker=hoisted`, surrendering pnpm's isolated resolution for the workspace.
 - **pi's own settings are no longer installer output.** The installer writes nothing into
-  `~/.pi/agent`. `pi/settings.json` and `pi/keybindings.json` are reference templates, and
-  registering the staged package is a separate `pi install ~/.agent-cortex/pi`.
+  `~/.pi/agent`; it registers the staged package by driving pi's own `pi install` /
+  `pi remove` commands, which own `settings.json` → `packages[]`. `pi/settings.json` and
+  `pi/keybindings.json` are reference templates. Registration's invariant is **one
+  agent-cortex source**: a source pointing at a raw agent-cortex checkout is removed first,
+  and one that survives `pi remove` fails the run rather than leave two sources configured
+  that both load.
 
 `pi.packages` and `lib/pi-packages.mjs` are deleted, so the bespoke-pi-mechanism problem this
 memo was written to settle is closed. The Claude and Copilot analysis stands.

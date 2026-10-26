@@ -497,6 +497,7 @@ export async function registerPi({
     if (registered) console.log(`  already configured: ${stagedPath}`);
     else console.log(`  would run: ${piBin} install ${stagedPath}`);
     console.log("(dry-run — no pi state written)");
+    summary.registered = registered;
     return summary;
   }
 
@@ -537,16 +538,23 @@ export async function registerPi({
     }
   }
 
-  // The plan reaches here with an install to run: the staged path is not
-  // configured yet (a registered staged path returns as a no-op above).
-  if (!(await isDirectory(stagedPath))) {
-    throw new Error(`nothing staged at ${stagedPath} — run "agent-cortex install pi" without --dry-run first`);
+  // Execute exactly the plan built above: an already-configured staged path is
+  // not re-installed (it may still reach here because a stale source had to be
+  // removed first), so the commands in `summary` are the commands that ran.
+  if (!registered) {
+    if (!(await isDirectory(stagedPath))) {
+      throw new Error(`nothing staged at ${stagedPath} — run "agent-cortex install pi" without --dry-run first`);
+    }
+    console.log(`  ${piBin} install ${stagedPath}`);
+    await runPiCommand(piBin, ["install", stagedPath]);
   }
-  console.log(`  ${piBin} install ${stagedPath}`);
-  await runPiCommand(piBin, ["install", stagedPath]);
 
   summary.registered = true;
-  console.log(`Registered — verify with "${piBin} list" and "${piBin} config" (restart pi to apply).`);
+  console.log(
+    registered
+      ? `Superseded source(s) removed — ${stagedPath} stays registered (restart pi to apply).`
+      : `Registered — verify with "${piBin} list" and "${piBin} config" (restart pi to apply).`,
+  );
   return summary;
 }
 

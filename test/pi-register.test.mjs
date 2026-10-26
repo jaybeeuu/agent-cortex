@@ -179,6 +179,11 @@ describe("registerPi", () => {
       });
 
       assert.deepEqual(summary.commands, [["remove", fx.rawRepo]], "no re-install of the staged source");
+      assert.deepEqual(
+        await fx.calls(),
+        ["--version", `remove ${fx.rawRepo}`],
+        "the plan and the commands that ran agree: no install of an already-configured source",
+      );
       assert.deepEqual(await fx.localSources(), [fx.staged]);
     } finally {
       await tree.cleanup();

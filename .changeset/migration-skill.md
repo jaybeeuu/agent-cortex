@@ -12,3 +12,10 @@ records the command interface the skill depends on, the v1 label-rename and v2 i
 rollback recipes, and the manual fallback for pinned versions. The two-axis model (bead type ×
 execution) is stated as the rationale, including why a half-migrated workspace silently starves
 ralph's queue.
+
+The skill sets `disable-model-invocation: true`, so it is reachable only through its explicit
+command and never auto-routed from a description match — `--apply` renames labels across a whole
+workspace, which is not something a fuzzy match should be able to trigger. On Claude Code and pi
+that hides the skill from automatic selection while `/skill-name` still works; on Copilot CLI the
+field suppresses auto-routing *and* model-mediated invocation, leaving only the interactive
+`/migration` slash command (see `docs/research/disable-model-invocation.md`).

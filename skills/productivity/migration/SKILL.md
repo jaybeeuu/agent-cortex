@@ -1,6 +1,7 @@
 ---
 name: migration
 description: "Migrate a beads workspace to the two-axis model via the versioned `agent-cortex migrate` command: dry-run, apply, verify, recover. Use when asked to \"run the migration\" or \"rename the labels\"."
+disable-model-invocation: true
 ---
 
 # Migration

@@ -106,6 +106,23 @@ if (parsed.command === "install") {
   process.exit(0);
 }
 
+if (parsed.command === "migrate") {
+  if (parsed.optionError) {
+    process.stderr.write(`${parsed.optionError}\n`);
+    process.exit(1);
+  }
+
+  // Loaded lazily: the migration registry is only needed on this path.
+  const { runMigrate } = await import("../scripts/lib/migrate.mjs");
+  try {
+    await runMigrate({ apply: parsed.apply ?? false });
+  } catch (err) {
+    process.stderr.write(`Migration failed: ${err.message}\n`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 function printPiInstall(result) {
   process.stdout.write(`Installing agent-cortex for "pi" harness…\n`);
   for (const agent of result.agents) {

@@ -60,6 +60,11 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 - **Share generic tooling helpers in `scripts/lib/`**: tooling code (installers under
   `bin/installers/`, hooks, other scripts) imports shared utilities from `scripts/lib/`
   (e.g. `compose-agent.mjs`, `fs.mjs`) rather than redefining them inline.
+- **`scripts/` is a runtime asset, not just build tooling**: `bin/agent-cortex.mjs` imports
+  `scripts/lib/migrate.mjs` for `migrate`, the installers import `scripts/lib/{compose-agent,fs}.mjs`,
+  and the `postinstall` hook runs `scripts/install-instructions.sh` — so any `package.json`
+  `files` whitelist must include `scripts/`, or published installs and `migrate` break for
+  consumers while every local run stays green.
 
 ## Skill Conventions
 

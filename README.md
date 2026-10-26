@@ -401,3 +401,23 @@ so never edit anything under it. The generated `agents/*.agent.md` files are sti
 drift-checked by CI (`git diff --exit-code -- 'agents/*.agent.md'`), and CI validates the
 Claude materialiser (structural checks on a temp-dir install) so sources and installer can
 never silently diverge.
+
+## Migrating a beads workspace
+
+`agent-cortex migrate` brings the `.beads` workspace it runs in — any repo, not just this
+one — up to the latest agent-cortex migration version. The current version is derived from
+the workspace's own state (the first step with pending work), so there is no marker file to
+drift and a re-run after an apply is a no-op. Step v1 renames `implementation-type:afk|hitl`
+labels to `execution:afk|hitl` on every bead carrying them, closed ones included: the goal
+is an empty legacy namespace, not just a clean live one (see
+`docs/technical-direction/migration-execution-labels.md` for the two-axis model behind it).
+
+A bare `agent-cortex migrate` is a **dry run** — it prints the per-bead plan and writes
+nothing. `--apply` runs every pending step in order and verifies each before moving on. It
+shells out to the `bd` CLI on `PATH` (`BD_PATH` overrides) and fails loudly, rather than
+half-applying, when `bd` is missing or a `bd` subcommand errors.
+
+```sh
+agent-cortex migrate            # dry run — per-bead plan, zero writes
+agent-cortex migrate --apply    # apply pending steps, verifying each
+```

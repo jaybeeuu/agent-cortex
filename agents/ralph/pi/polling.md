@@ -33,16 +33,17 @@ Rules:
 
 ## Completion detection (PI)
 
-PI detects subagent completion with a blocking wait, not polling: after dispatching, call `wait_for_agents` with every in-flight agent ID. It returns as soon as at least one agent completes, with that agent's result ready to process. Do not `sleep`, do not start background timers — the wait tool IS the completion mechanism.
+PI detects subagent completion with a blocking wait, not polling: after dispatching, call `wait_for_agents` with every in-flight agent ID — stage workers **and** expansion workers. It returns as soon as at least one agent completes, with that agent's result ready to process. Do not `sleep`, do not start background timers — the wait tool IS the completion mechanism.
 
 ### Wait loop lifecycle
 
-- **Dispatch-and-wait** — during initialization, dispatch up to 5 AFK chore subagents with `task` and hold their agent IDs (recorded in `state.json`'s `inflight` list).
-- **Wait** — call `wait_for_agents` with the agent IDs of every in-flight chore (`timeout` defaults to 120s). The tool blocks until at least one finishes. For each completed agent:
+- **Dispatch-and-wait** — during initialization, dispatch up to 5 AFK chore subagents with `task` (or an expansion worker for a chore-less AFK bead) and hold their agent IDs (recorded in `state.json`'s `inflight` list; expansion entries carry `kind: "expand"` and `choreId: null`).
+- **Wait** — call `wait_for_agents` with the agent IDs of every in-flight agent, stage worker or expansion worker (`timeout` defaults to 120s). The tool blocks until at least one finishes. For each completed agent:
   1. Flush its log tail if it has new lines (see _Log polling_ below) to surface progress to chat.
-  2. Apply the shared completion handling in the **Event loop** section of agent.md (the result is included in the wait response, or re-read with `read_agent`; re-read state.json, parse the REPORT, confirm the worker closed the chore, advance the parent, check for newly ready beads, run the shutdown check).
+  2. Apply the shared completion handling in the **Event loop** section of agent.md (the result is included in the wait response, or re-read with `read_agent`; re-read state.json and branch on the entry's `kind` — `stage` parses the REPORT and confirms the worker closed its chore, `expand` confirms the parent now has `stage:*` chores and dispatches the ready `stage:code` — then check for newly ready beads and the shutdown check). An expansion worker is in the wait set but is never treated as a chore: it emits no REPORT and needs no close confirmation.
   3. Drop the completed agent ID from the wait set.
-- **Repeat** — dispatch replacements for completed chores (up to 5 in flight), add their new IDs to the wait set, and call `wait_for_agents` again with the remaining + new IDs.
+- **Repeat** — dispatch replacements for completed work (up to 5 in flight), add their new IDs to the wait set, and call `wait_for_agents` again with the remaining + new IDs. A completed expansion leaves a slot to fill with its parent's newly ready `stage:code` chore.
+- **Empty wait set** — never call `wait_for_agents` with an empty `agentIds` list. When handling a completion leaves `inflight` empty, run the event loop's final check (agent.md, _If nothing remains in flight_): a ready `stage:*` chore, or a ready, claimable chore-less AFK task bead (expand it first), is dispatchable — dispatch it and wait again. With nothing dispatchable, pending HITL gate beads mean **HITL Pause** and none mean **Shutdown**; either way stop calling `wait_for_agents` and act again only when the user re-prompts.
 - **Timeout / STILL RUNNING** — if the timeout elapses with agents still working, the tool returns those agents as STILL RUNNING (with `timed out` noted). Call `wait_for_agents` again with the same IDs — the still-running agents keep working; you never re-dispatch them. `read_agent` remains available to re-read a completed result at any time.
 - **Abort** — if the user aborts, `wait_for_agents` returns immediately with what is known so far (no hang); do not re-issue the wait.
 - **Stop** — when stopping completely (HITL Pause or Shutdown) there is no timer to kill on PI: just stop calling `wait_for_agents`. Never start background `sleep` timers for completion detection.
@@ -68,7 +69,7 @@ Run this procedure each time `wait_for_agents` returns (or whenever a new agent 
 
 ## Polling constraints
 
-- **Always** keep a `wait_for_agents` call outstanding while agents are in-flight — never let running agent work stall without a wait active.
+- **Always** keep a `wait_for_agents` call outstanding while agents are in-flight — stage workers and expansion workers alike. Never let running agent work stall without a wait active.
 - **Never** re-dispatch an agent that is merely STILL RUNNING — wait again on the same ID.
 - **Never** start `sleep` / background timer loops for completion detection on PI — `wait_for_agents` replaces them. There is nothing to kill on HITL Pause for PI.
 - **Never** post empty poll updates to chat — only surface new log content.

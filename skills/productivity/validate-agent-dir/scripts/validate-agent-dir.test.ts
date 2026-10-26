@@ -181,8 +181,8 @@ describe("validateAgentDir", () => {
         tmpDir,
         "ralph",
         makeFrontmatter(),
-        "# Body\n\n{{SECTION:polling}}",
-        { "polling.md": "# Polling loop\n\nYou poll every 2 minutes." }
+        "# Body\n\n{{SECTION:wake}}",
+        { "wake.md": "# Wake mechanism\n\nYou are woken when a worker completes." }
       );
       const result = validateAgentDir(join(tmpDir, "agents", "ralph"));
       assert.equal(result.ok, true);
@@ -267,9 +267,9 @@ describe("token format in agent.md body", () => {
   });
 
   it("accepts valid {{SECTION:name}} tokens", () => {
-    const body = "# Body\n\n{{SECTION:polling}}";
+    const body = "# Body\n\n{{SECTION:wake}}";
     const tokens = extractTokens(body);
-    assert.deepEqual(tokens.sections, ["polling"]);
+    assert.deepEqual(tokens.sections, ["wake"]);
   });
 
   it("extracts multiple tokens of different types", () => {
@@ -278,12 +278,12 @@ describe("token format in agent.md body", () => {
 
 Use {{TOOL:task}} to spawn.
 Read {{PATH:skills/plan/SKILL.md}}.
-{{SECTION:polling}}
+{{SECTION:wake}}
 `;
     const tokens = extractTokens(body);
     assert.deepEqual(tokens.tools, ["task"]);
     assert.deepEqual(tokens.paths, ["skills/plan/SKILL.md"]);
-    assert.deepEqual(tokens.sections, ["polling"]);
+    assert.deepEqual(tokens.sections, ["wake"]);
   });
 });
 

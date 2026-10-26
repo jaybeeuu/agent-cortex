@@ -66,6 +66,12 @@ rather than inventing a dotted form:
   natively, never generated). Agent names themselves do not get per-row mappings because
   the prefix rule covers all of them; the deferred list captures the only structural
   difference.
+- **`wake`** — the completion mechanism per harness (`copilot`: polling, `pi`:
+  blocking-wait, `claude`: event-driven). Informational only — no installer substitutes a
+  token from it. It records the fact that the shared ralph body deliberately does not
+  state, so `{{SECTION:wake}}` → `agents/ralph/<harness>/wake.md` is the single place
+  harness specifics live, and the mechanism stays checkable instead of being inferred from
+  prose. `agents/README.md` carries the same table for humans.
 - **Deliberately not mapped:** hook patterns, MCP servers, and tool descriptions. Those
   differ *structurally* per harness (different hook event names, different config files),
   not by a single substitutable token; each installer already hardcodes its own shape. The

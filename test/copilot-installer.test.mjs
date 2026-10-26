@@ -117,8 +117,8 @@ describe("installCopilot — agent composition", () => {
       await seedCopilotPackage(fx, {
         agents: {
           alpha: {
-            body: "# alpha\nUse {{TOOL:view}} to read.\n{{SECTION:polling}}\nRead {{PATH:agents_dir}}.",
-            sections: { polling: "Spawn with {{TOOL:task}}." },
+            body: "# alpha\nUse {{TOOL:view}} to read.\n{{SECTION:wake}}\nRead {{PATH:agents_dir}}.",
+            sections: { wake: "Spawn with {{TOOL:task}}." },
             frontmatter: {
               name: "agent-cortex:alpha",
               description: "Reads things.",
@@ -142,7 +142,7 @@ describe("installCopilot — agent composition", () => {
       assert.deepEqual([...order].sort((a, b) => a - b), order, "frontmatter fields in committed order");
       assert.match(content, /tools: \["bash", "view"\]/, "copilot tools kept as a YAML array (no translation)");
       assert.ok(content.includes("Use view to read."), "{{TOOL:view}} substituted");
-      assert.ok(content.includes("Spawn with task."), "{{SECTION:polling}} composed from copilot/polling.md");
+      assert.ok(content.includes("Spawn with task."), "{{SECTION:wake}} composed from copilot/wake.md");
       assert.ok(!/{{/.test(content), "no literal tokens remain");
       assert.equal(result.agents.length, 1);
       assert.deepEqual(result.agents, ["alpha"]);
@@ -233,7 +233,7 @@ describe("installCopilot — output & dry-run", () => {
     try {
       await seedCopilotPackage(fx, {
         agents: {
-          alpha: { body: "# alpha\n{{SECTION:polling}}", sections: { polling: "Poll with {{TOOL:task}}." } },
+          alpha: { body: "# alpha\n{{SECTION:wake}}", sections: { wake: "Poll with {{TOOL:task}}." } },
           beta: { body: "# beta" },
         },
       });

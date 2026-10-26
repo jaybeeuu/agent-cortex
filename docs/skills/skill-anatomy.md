@@ -11,7 +11,11 @@ Required fields:
 
 Optional fields:
 - `argument-hint`: input prompt shown to users at invocation.
-- `disable-model-invocation`: for deterministic prompt-injection skills that should not be summarized/interpreted.
+- `disable-model-invocation`: hides the skill from automatic model routing; explicit
+  `/skill-name` invocation still works. Set it when the danger is a fuzzy description
+  match, e.g. a skill whose steps are destructive. Preserved and honoured by pi and
+  Claude Code; Copilot CLI suppresses auto-routing but then cannot reach the skill
+  through its model-facing tool. See `docs/research/disable-model-invocation.md`.
 
 ## Description format rules
 

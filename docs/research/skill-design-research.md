@@ -35,7 +35,7 @@ The headline finding: **agent-cortex skills are well-structured but systematical
 | Cross-skill references | Explicit inline calls: "run `/grill-with-docs`" | Implicit — no inline cross-refs | agent-cortex weaker |
 | Shared vocabulary file | `CONTEXT.md` at repo root; skills told to read it | None | Missing in agent-cortex |
 | Skill manifest | Flat JSON array of skill paths | Same | ✅ Aligned |
-| `disable-model-invocation` | Used for pure prompt-injection skills | Not used | Feature gap |
+| `disable-model-invocation` | Used for pure prompt-injection skills | Used by `teach`; semantics now documented in `docs/skills/skill-anatomy.md` | Field adopted; rationale corrected |
 | Missing SKILL.md | 0 | 1 (`prd-to-epics`) | Bug in agent-cortex |
 
 ### 2.2 Tone and Voice
@@ -251,7 +251,7 @@ These are patterns present in `mattpocock/skills` that have no equivalent here a
 
 2. **Philosophy sections in skills** — `tdd` doesn't just describe TDD, it argues *why* horizontal slicing is wrong. This bakes intent into the skill so the agent handles novel cases correctly (backed by CoT rationale evidence).
 
-3. **`disable-model-invocation: true`** — for skills that *are* the prompt (pure injection, no interpretation). Prevents the model from summarising/transforming the skill content before executing it.
+3. **`disable-model-invocation: true`** — hides a skill from automatic model routing so only an explicit `/skill-name` invocation reaches it. See `docs/research/disable-model-invocation.md` for per-harness behaviour and caveats.
 
 4. **Composability by design** — skills reference each other by slash-command inline. This keeps each skill shorter and creates a network of reusable primitives rather than monolithic blobs.
 

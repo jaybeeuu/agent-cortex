@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 import { installClaude } from "../bin/installers/claude.mjs";
+import { composeAgent } from "../scripts/lib/compose-agent.mjs";
 import { makeFakeClaude, registrationActions } from "./helpers/fake-claude.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -109,14 +110,41 @@ describe("install claude", () => {
     assert.match(ralphPlan, /\nname: ralph-plan\n/);
   });
 
-  it("copies native agents verbatim (ralph stays native, no composed counterpart)", async () => {
+  it("composes ralph from agents/ralph/ instead of a native copy", async () => {
     const out = await makeTmp();
-    await runCli(["install", "claude", "--output", out]);
-    const native = await readFile(join(ROOT, "agents-native", "ralph.md"), "utf-8");
-    assert.equal(await readFile(join(out, "agents", "ralph.md"), "utf-8"), native);
+    const { exitCode } = await runCli(["install", "claude", "--output", out]);
+    assert.equal(exitCode, 0);
+
+    const ralph = await readFile(join(out, "agents", "ralph.md"), "utf-8");
+    // provenance header + composed Claude frontmatter
+    assert.match(ralph, /^---\n# GENERATED from agents\/ralph\/ /);
+    assert.match(ralph, /\nname: ralph\n/);
+    assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, TaskList, TaskGet, TaskStop\n/);
+    // the harness-neutral body arrives with its wake section resolved
+    assert.match(ralph, /^## Wake mechanism \(Claude Code — event-driven\)$/m);
+    assert.doesNotMatch(ralph, /\{\{(TOOL|PATH|SECTION):/);
   });
 
-  it("copies skill dirs flat with substituted tokens, no symlinks, excluding ralph-coupled skills", async () => {
+  it("composes one ralph body for all three harnesses (modulo frontmatter and the wake section)", async () => {
+    const stripped = {};
+    for (const harness of ["copilot", "pi", "claude"]) {
+      const { body } = await composeAgent(ROOT, "ralph", harness);
+      const wake = (await readFile(join(ROOT, "agents", "ralph", harness, "wake.md"), "utf-8")).trim();
+      assert.ok(body.includes(wake), `${harness} body carries its own wake section`);
+      stripped[harness] = body.replace(wake, "").trim();
+    }
+
+    assert.equal(stripped.pi, stripped.copilot, "pi and copilot share the shared body");
+    assert.equal(stripped.claude, stripped.copilot, "claude shares the same body, not a divergent native copy");
+    // Guard the strip itself: the wake sections are harness-specific, so they
+    // must genuinely differ — otherwise the equality above proves less.
+    const wakes = await Promise.all(
+      ["copilot", "pi", "claude"].map((h) => readFile(join(ROOT, "agents", "ralph", h, "wake.md"), "utf-8")),
+    );
+    assert.equal(new Set(wakes).size, 3, "each harness's wake section is distinct");
+  });
+
+  it("copies skill dirs flat with substituted tokens, no symlinks, including the ralph-coupled skills", async () => {
     const out = await makeTmp();
     const { exitCode } = await runCli(["install", "claude", "--output", out]);
     assert.equal(exitCode, 0);
@@ -125,8 +153,15 @@ describe("install claude", () => {
     const names = await readdir(skills);
     assert.ok(names.includes("tdd"));
     assert.ok(names.includes("plan"));
-    assert.ok(!names.includes("ralph"));
-    assert.ok(!names.includes("run-pipeline-stage"));
+    assert.ok(names.includes("ralph"));
+    assert.ok(names.includes("run-pipeline-stage"));
+
+    // the chore machinery ships with substituted tokens, not literal ones
+    const ralphSkill = await readFile(join(skills, "ralph", "SKILL.md"), "utf-8");
+    assert.match(ralphSkill, /run-pipeline-stage/);
+    assert.doesNotMatch(ralphSkill, /\{\{TOOL:|\{\{PATH:/);
+    const stageSkill = await readFile(join(skills, "run-pipeline-stage", "SKILL.md"), "utf-8");
+    assert.doesNotMatch(stageSkill, /\{\{TOOL:|\{\{PATH:/);
 
     // skills are real directories (copies), not symlinks
     assert.ok((await stat(join(skills, "tdd"))).isDirectory());

@@ -11,8 +11,7 @@
 //                                           agent.md + claude/ harness dirs,
 //                                           {{TOOL:...}}/{{PATH:...}}
 //                                           substituted against token-map.json's
-//                                           claude column) plus agents-native
-//                                           (ralph verbatim)
+//                                           claude column)
 //   <output>/skills/<name>/                 skill dirs COPIED flat (one dir per
 //                                           skill, as Claude's <name>/SKILL.md
 //                                           plugin scan expects) with .md files
@@ -92,25 +91,15 @@ const CLAUDE = "claude";
 
 const DEFAULT_WARN = (msg) => console.warn(`[claude-installer] ${msg}`);
 
-// Agents NOT transformed from the composable sources. `ralph` is authored natively for Claude
-// instead (agents-native/ralph.md) — its event-driven orchestration can't be produced by
-// section composition from the poll-loop sources.
-const DEFER = new Set(["ralph"]);
-
-// Ralph-coupled Copilot skills that don't apply to the lean Claude Ralph (and carry dead
-// ~/.copilot orchestration paths). Not copied into the Claude plugin.
-const SKILL_EXCLUDE = new Set(["ralph", "run-pipeline-stage"]);
-
 const NAME_PREFIX = "agent-cortex:";
 
 function byName(a, b) {
   return a.localeCompare(b);
 }
 
-/** Compose agents from agents/<name>/; DEFERed agents come from agents-native/ instead. */
+/** Compose every agent from agents/<name>/ — all harnesses share the composable sources. */
 async function buildAgents(root) {
   const files = [];
-  const skipped = [];
   const entries = (await readdir(join(root, "agents"), { withFileTypes: true })).sort((a, b) =>
     byName(a.name, b.name),
   );
@@ -119,11 +108,6 @@ async function buildAgents(root) {
     if (!entry.isDirectory()) continue;
     const dir = join(root, "agents", entry.name);
     if (!(await isFile(join(dir, "agent.md"))) || !(await isFile(join(dir, "claude", "frontmatter.json")))) continue;
-
-    if (DEFER.has(entry.name)) {
-      skipped.push(entry.name);
-      continue;
-    }
 
     const fm = await composeAgent(root, entry.name, CLAUDE);
     const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
@@ -136,18 +120,7 @@ async function buildAgents(root) {
       `---\n`;
     files.push({ file: `${slug}.md`, content: `${header}\n${fm.body}\n` });
   }
-  return { files, skipped };
-}
-
-/** Copy hand-authored Claude-native agents into agents/ verbatim. */
-async function buildNatives(root, nativeSrc) {
-  const files = [];
-  if (!(await isDirectory(nativeSrc))) return files;
-  const names = (await readdir(nativeSrc)).filter((f) => f.endsWith(".md")).sort(byName);
-  for (const file of names) {
-    files.push({ file, content: await readFile(join(nativeSrc, file), "utf-8") });
-  }
-  return files;
+  return { files };
 }
 
 /**
@@ -171,7 +144,6 @@ async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn 
     for (const name of (await readdir(groupDir)).sort(byName)) {
       const skillDir = join(groupDir, name);
       if (!(await isFile(join(skillDir, "SKILL.md")))) continue;
-      if (SKILL_EXCLUDE.has(name)) continue;
       if (seen.has(name)) {
         throw new Error(`duplicate skill name "${name}" (${seen.get(name)} and ${group}) — names must be unique when flattened`);
       }
@@ -452,7 +424,7 @@ async function isSymlink(filePath) {
  *                                       --output — the test/CI seam.
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
  * @returns {{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
- *             marketplaceManifest: object|null, agents: string[], natives: string[],
+ *             marketplaceManifest: object|null, agents: string[],
  *             skills: {names: string[], md: number, files: number, dir: string},
  *             hooks: boolean, hookFiles: string[], handAuthored: string[],
  *             settings: {path: string, action: string, removedSymlink: boolean}|null,
@@ -508,7 +480,6 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
       : null;
 
   const agents = await buildAgents(root);
-  const natives = await buildNatives(root, join(root, "agents-native"));
   const skillOut = join(out, "skills");
   const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
   const pluginJson = await buildPluginJson(root);
@@ -524,7 +495,6 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     marketplaceManifest,
     pluginVersion: JSON.parse(pluginJson).version,
     agents: agents.files.map((f) => f.file.replace(/\.md$/, "")),
-    natives: natives.map((f) => f.file.replace(/\.md$/, "")),
     skills: { names: skills.names, md: skills.md, files: skills.files, dir: skillOut },
     hooks: hooksJson !== null,
     hookFiles: hookFiles.map((f) => f.rel),
@@ -534,12 +504,9 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     dryRun,
   };
 
-  if (agents.skipped.length) console.log(`Skipped composable source(s): ${agents.skipped.join(", ")}`);
-
   if (dryRun) {
     console.log(`DRY-RUN — would generate into ${out}, no files written:`);
     console.log(`  agents: ${summary.agents.join(", ")}`);
-    if (summary.natives.length) console.log(`  native agents: ${summary.natives.join(", ")}`);
     console.log(`  skills: ${summary.skills.names.length} copied → ${skillOut}/<name>/ (token-substituted)`);
     console.log(`  .claude-plugin/plugin.json (version ${JSON.parse(pluginJson).version})`);
     if (isDefaultInstall && manifestPath) {
@@ -558,11 +525,10 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   if (settings) console.log(`Materialised Claude settings → ${settings.path} (${settings.action})`);
   const agentOut = join(out, "agents");
   await mkdir(agentOut, { recursive: true });
-  for (const { file, content } of [...agents.files, ...natives]) {
+  for (const { file, content } of agents.files) {
     await writeFile(join(agentOut, file), content);
   }
   console.log(`Generated ${summary.agents.length} Claude agent(s): ${summary.agents.join(", ")}`);
-  if (summary.natives.length) console.log(`Copied ${summary.natives.length} native Claude agent(s): ${summary.natives.join(", ")}`);
 
   await mkdir(skillOut, { recursive: true });
   console.log(

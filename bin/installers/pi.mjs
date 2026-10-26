@@ -190,7 +190,12 @@ function renderPiAgent(name, fm, tools) {
     `# GENERATED from agents/${name}/ by bin/installers/pi.mjs — DO NOT EDIT.`,
     `name: ${JSON.stringify(fm.name)}`,
     `description: ${JSON.stringify(fm.description)}`,
-    `tools: ${JSON.stringify(tools.join(" "))}`,
+    // pi's parseFrontmatter hands back the scalar as one string, so the tool
+    // list must use the separator its consumers split on. The subagent extension
+    // (extensions/subagent/agents.ts) turns this into `pi --tools`, whose
+    // parser is comma-separated — a space-separated list collapsed to a single
+    // bogus name and produced an allowlist matching no tool at all.
+    `tools: ${JSON.stringify(tools.join(", "))}`,
   ];
   if (fm.model) lines.push(`model: ${JSON.stringify(fm.model)}`);
   if (fm.argumentHint) lines.push(`argument-hint: ${JSON.stringify(fm.argumentHint)}`);

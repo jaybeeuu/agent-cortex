@@ -187,13 +187,47 @@ describe("installPi — agent composition", () => {
       assert.ok(content.startsWith("---\n"), "yaml frontmatter");
       assert.match(content, /name: "agent-cortex:alpha"/);
       assert.match(content, /description: "Reads things\."/);
-      assert.match(content, /tools: "bash read find"/, "tools translated to pi names, ask_user omitted");
+      assert.match(content, /tools: "bash, read, find"/, "tools translated to pi names, ask_user omitted");
       assert.match(content, /argument-hint: "Read something"/);
       assert.ok(content.includes("Use read to read."), "{{TOOL:view}} substituted");
       assert.ok(content.includes("Spawn with task."), "{{SECTION:polling}} composed from pi/polling.md");
       assert.ok(!/{{/.test(content), "no literal tokens remain");
       assert.equal(result.agents.length, 1);
       assert.deepEqual(result.agents[0], { name: "alpha", filePath: file });
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("renders the tool list with the separator its consumers split on (round trip)", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: {
+          alpha: {
+            frontmatter: {
+              name: "agent-cortex:alpha",
+              description: "Delegates.",
+              tools: ["bash", "view", "glob", "task", "read_agent"],
+            },
+          },
+        },
+      });
+
+      await installPi({ root: fx.root, output: fx.output });
+      const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
+
+      // pi's parseFrontmatter hands the tools value back as one scalar string.
+      const scalar = JSON.parse(content.match(/^tools: (.*)$/m)[1]);
+      assert.equal(typeof scalar, "string");
+
+      // extensions/subagent/agents.ts turns that scalar into `pi --tools`, and pi's
+      // flag parser splits on commas — so the rendered form must survive a comma
+      // split with the tool names intact, or the subagent starts with no tools.
+      assert.deepEqual(
+        scalar.split(",").map((t) => t.trim()),
+        ["bash", "read", "find", "task", "read_agent"],
+      );
     } finally {
       await fx.cleanup();
     }
@@ -734,7 +768,7 @@ describe("installPi — real repo integration", () => {
       // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents"]
       const ralph = await readFile(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
       assert.match(ralph, /name: "agent-cortex:ralph"/);
-      assert.match(ralph, /tools: "bash read grep find task read_agent wait_for_agents"/);
+      assert.match(ralph, /tools: "bash, read, grep, find, task, read_agent, wait_for_agents"/);
       assert.ok(ralph.includes("## Spawning subagents (PI)"), "{{SECTION:polling}} composed from pi/polling.md");
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");
@@ -744,7 +778,7 @@ describe("installPi — real repo integration", () => {
       // runtime agent-modes translateTools which sorts): ask_user → ask_questions,
       // skill → read (last position).
       const plan = await readFile(join(fx.output, "agents", "plan.agent.md"), "utf-8");
-      assert.match(plan, /tools: "bash read edit write grep find ask_questions task read_agent read"/);
+      assert.match(plan, /tools: "bash, read, edit, write, grep, find, ask_questions, task, read_agent, read"/);
       assert.ok(
         plan.includes("~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex/skills/workflow/plan/SKILL.md"),
         "plan PATH token resolved against token-map plugin root",
@@ -763,7 +797,7 @@ describe("installPi — real repo integration", () => {
       // (authoring order preserved: bash, view→read, rg→grep, glob→find, ask_user→
       // ask_questions, web_fetch→fetch_content, skill→read, edit, create)
       const strategy = await readFile(join(fx.output, "agents", "strategy.agent.md"), "utf-8");
-      assert.match(strategy, /tools: "bash read grep find ask_questions fetch_content read edit write"/);
+      assert.match(strategy, /tools: "bash, read, grep, find, ask_questions, fetch_content, read, edit, write"/);
     } finally {
       await fx.cleanup();
     }

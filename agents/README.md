@@ -153,6 +153,16 @@ composes agent prompts on the fly from `agent.md` + `pi/frontmatter.json`, subst
 tokens against `token-map.json`'s pi column with no install step. See
 `extensions/agent-modes/README.md`.
 
+### Rendered tool lists are comma-separated
+
+pi's `parseFrontmatter` returns the `tools` scalar as one string, and its consumers split
+that string on commas — the subagent extension forwards it straight to `pi --tools`, whose
+parser is comma-separated too. Generated pi agents therefore render
+`tools: "bash, read, task"`; a space-separated list collapses to a single bogus name and
+leaves the agent with an allowlist matching no tool. Both parsers
+(`extensions/subagent/agents.ts`, `extensions/agent-modes/discover.ts`) accept whitespace
+as well, so either form round-trips safely.
+
 ## Composition Rules
 
 ### For Harnesses with Sections

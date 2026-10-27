@@ -110,7 +110,7 @@
 
 ### D5: Knocked-on invocation changes (F4/F5)
 
-- create-task chore creation: `<skill-scripts>/node_modules/.bin/tsx create-chores.ts` →
+- create-task chore creation: `<skill-scripts>/node_modules/.bin/tsx create-chores.mjs` →
   `node <abs>/create-chores.mjs`.
 
 ## Options considered

@@ -1,43 +1,59 @@
+// @ts-check
+// Validator for the composable agent directory layout: `agent.md` plus at
+// least one harness subdirectory with a valid `frontmatter.json`.
+//
+// Zero dependencies: import the pure functions, or run the test suite at
+// `test/validate-agent-dir.test.mjs`.
+
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface Frontmatter {
-  name: string;
-  description: string;
-  tools: string[];
-  model?: string;
-  argumentHint?: string;
-  [key: string]: unknown;
-}
+/**
+ * @typedef {object} Frontmatter
+ * @property {string} name
+ * @property {string} description
+ * @property {string[]} tools
+ * @property {string} [model]
+ * @property {string} [argumentHint]
+ */
 
-export interface AgentDir {
-  name: string;
-  agentMdPath: string;
-  harnesses: Map<string, { frontmatter: Frontmatter; sections: string[] }>;
-}
+/**
+ * @typedef {object} AgentDir
+ * @property {string} name
+ * @property {string} agentMdPath
+ * @property {Map<string, { frontmatter: Frontmatter, sections: string[] }>} harnesses
+ */
 
-export interface ValidationResult {
-  ok: boolean;
-  errors: string[];
-}
+/**
+ * @typedef {object} ValidationResult
+ * @property {boolean} ok
+ * @property {string[]} errors
+ */
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const REQUIRED_FIELDS = ["name", "description", "tools"] as const;
-const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"] as const;
+/** @type {readonly string[]} */
+const REQUIRED_FIELDS = ["name", "description", "tools"];
+/** @type {readonly string[]} */
+const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
-export function validateFrontmatter(fm: unknown): ValidationResult {
-  const errors: string[] = [];
+/**
+ * @param {unknown} fm
+ * @returns {ValidationResult}
+ */
+export function validateFrontmatter(fm) {
+  /** @type {string[]} */
+  const errors = [];
 
   if (typeof fm !== "object" || fm === null) {
     return { ok: false, errors: ["frontmatter must be an object"] };
   }
 
-  const record = fm as Record<string, unknown>;
+  const record = /** @type {Record<string, unknown>} */ (fm);
 
   // Check required fields
   for (const field of REQUIRED_FIELDS) {
@@ -70,7 +86,7 @@ export function validateFrontmatter(fm: unknown): ValidationResult {
   // Check for unknown fields
   const knownFields = new Set([...REQUIRED_FIELDS, ...KNOWN_OPTIONAL_FIELDS]);
   for (const key of Object.keys(record)) {
-    if (!knownFields.has(key as any)) {
+    if (!knownFields.has(/** @type {any} */ (key))) {
       errors.push(`unknown field: ${key}`);
     }
   }
@@ -78,8 +94,13 @@ export function validateFrontmatter(fm: unknown): ValidationResult {
   return { ok: errors.length === 0, errors };
 }
 
-export function validateAgentDir(agentDirPath: string): ValidationResult {
-  const errors: string[] = [];
+/**
+ * @param {string} agentDirPath
+ * @returns {ValidationResult}
+ */
+export function validateAgentDir(agentDirPath) {
+  /** @type {string[]} */
+  const errors = [];
 
   // Check agent.md exists
   const agentMdPath = join(agentDirPath, "agent.md");
@@ -118,7 +139,7 @@ export function validateAgentDir(agentDirPath: string): ValidationResult {
           errors.push(`${harnessDir}/frontmatter.json: ${err}`);
         }
       }
-    } catch (e) {
+    } catch {
       errors.push(`${harnessDir}/frontmatter.json: invalid JSON`);
     }
   }

@@ -42,9 +42,9 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 
 ### 2. Expansion guard (stage chores are pre-created)
 
-A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, so it is not dispatched as work. Expand it first: dispatch a worker in the feature worktree that runs `create-chores.ts --parent <id> --priority <parent-priority>` against the existing bead and reports the returned `code`/`verify`/`review`/`document`/`featurePrReview` mapping — the next `bd ready` pass then picks up `stage:code` (see REFERENCE.md, _Expansion Guard_).
+A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, so it is not dispatched as work. Expand it first: dispatch a worker in the feature worktree that runs `create-chores.mjs --parent <id> --priority <parent-priority>` against the existing bead and reports the returned `code`/`verify`/`review`/`document`/`featurePrReview` mapping — the next `bd ready` pass then picks up `stage:code` (see REFERENCE.md, _Expansion Guard_).
 
-**Never expand an existing bead with `create-task`.** It creates a bead first and expands second, so the original would stay chore-less and gain a **second parent** beside it. `create-chores.ts` expands; only `create-task` creates parents.
+**Never expand an existing bead with `create-task`.** It creates a bead first and expands second, so the original would stay chore-less and gain a **second parent** beside it. `create-chores.mjs` expands; only `create-task` creates parents.
 
 ### 3. Event loop
 
@@ -110,7 +110,7 @@ bd show <id>                   # full detail, including the worker's notes
 | "One more task in flight won't hurt" | The 5-task cap bounds log polling, state bookkeeping, and PR sequencing; exceeding it loses track of in-flight work. |
 | "The review passed, so I can merge" | Feature and epic PR merges are human-controlled; the gate exists so a person sees every change. |
 | "The worker left the chore open — I'll close it" | The worker owns that bead; an open one means it died mid-stage, so read its notes and re-dispatch instead of closing over the missing record. |
-| "This bead has no chores — I'll create them as I go" | The whole chain is pre-created with `blocks` deps; hand-creating stages duplicates chores and loses the order. Expand with `create-chores.ts` instead. |
+| "This bead has no chores — I'll create them as I go" | The whole chain is pre-created with `blocks` deps; hand-creating stages duplicates chores and loses the order. Expand with `create-chores.mjs` instead. |
 
 ## Philosophy / rationale
 
@@ -138,6 +138,6 @@ bd show <id>                   # full detail, including the worker's notes
 - [ ] In-flight count never exceeded 5, and the read-only cap backstop ran before every `stage:*` dispatch.
 - [ ] Every in-flight, dispatchable-work, HITL-pause, and shutdown predicate was read from `state.json`'s `inflight` (stage **and** expansion workers) plus `bd ready`, with the ready, claimable scope of a chore-less AFK task bead — never from a chore-only `bd` query, and never counting a bead an open `lifecycle:feature-pr` gate blocks from being claimed.
 - [ ] Ralph closed no leaf execution bead and created no fix bead; every closed chore carries its worker's close reason.
-- [ ] Any chore-less AFK task bead was expanded with `create-chores.ts` (one parent bead), never with `create-task`.
+- [ ] Any chore-less AFK task bead was expanded with `create-chores.mjs` (one parent bead), never with `create-task`.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.
 - [ ] `bd dolt push` ran before HITL Pause/Shutdown, status was reported from `bd` commands rather than a generated file, and the chat received no empty poll updates.

@@ -58,8 +58,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
    ```bash
    # Run from the TARGET project's directory — bd resolves its beads DB from cwd;
    # the skill's own location or `pnpm --prefix <scripts>` would target the wrong tree.
-   <skill-scripts>/node_modules/.bin/tsx \
-     <skill-scripts>/create-chores.ts \
+   node <skill-scripts>/create-chores.mjs \
      --parent <parent-id> [--priority <priority>]
    ```
 
@@ -69,9 +68,9 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 ### Expanding an existing bead
 
-Steps 1–3 create a bead; step 4 expands one. A bead that already exists but has no `stage:*` chore children — an AFK task filed before the pipeline existed, or one ralph found chore-less — is a supported entry point: run step 4's `create-chores.ts --parent <existing-id> --priority <its-own-priority>` directly, then report the mapping. No steps 1–3, no new description, no re-classification.
+Steps 1–3 create a bead; step 4 expands one. A bead that already exists but has no `stage:*` chore children — an AFK task filed before the pipeline existed, or one ralph found chore-less — is a supported entry point: run step 4's `create-chores.mjs --parent <existing-id> --priority <its-own-priority>` directly, then report the mapping. No steps 1–3, no new description, no re-classification.
 
-**Never re-run `create-task` for an existing bead.** It creates a bead first and expands second, so the run leaves a **second parent** beside the original, which stays chore-less — the duplicate ralph's expansion guard exists to prevent. `create-chores.ts` expands a bead that already exists; only step 1 creates a parent.
+**Never re-run `create-task` for an existing bead.** It creates a bead first and expands second, so the run leaves a **second parent** beside the original, which stays chore-less — the duplicate ralph's expansion guard exists to prevent. `create-chores.mjs` expands a bead that already exists; only step 1 creates a parent.
 
 ## Red Flags
 
@@ -80,7 +79,7 @@ Steps 1–3 create a bead; step 4 expands one. A bead that already exists but ha
 - **Spawning the `classify-bead` subagent when the classifier already resolved the bead.** The deterministic script is the short-circuit; a subagent is only for `escalate: true`.
 - **Skipping the classifier and classifying by hand.** The rubric is a subagent's job; a hand-rolled guess drifts from it.
 - **Expanding an HITL bead.** If classification is HITL, stop — creating a chore tree for human-driven work is wrong.
-- **Expanding an existing bead by re-running `create-task`.** That step creates a bead, so the original stays chore-less and gains a second parent beside it. Run `create-chores.ts --parent <existing-id>` instead.
+- **Expanding an existing bead by re-running `create-task`.** That step creates a bead, so the original stays chore-less and gains a second parent beside it. Run `create-chores.mjs --parent <existing-id>` instead.
 - **Hardcoding `<skill-scripts>`.** The install path differs per harness (plugin cache, installed-plugins, dev checkout); resolve it at runtime.
 
 ## Common Rationalizations
@@ -120,4 +119,4 @@ The full bead-property contract (titles, labels, dependencies per chore and for 
 - [ ] Chore titles/labels/dependencies match the contract (`[<parent-id>] <stage title>`, `stage:<id>`, `parent-child` to parent, `blocks` per `dependsOn`), verified against `REFERENCE.md`.
 - [ ] PR gate task exists and blocks the final document stage chore, carrying **exactly one** `implementation-type` label — `implementation-type:hitl` (never an inherited `implementation-type:afk` alongside it) — plus `lifecycle:feature-pr`.
 - [ ] Report returned the parent bead ID, classification, and all child bead IDs.
-- [ ] Expansion-only run (existing bead): steps 1–3 skipped, `create-chores.ts` expanded that bead, and the tree still holds exactly one parent.
+- [ ] Expansion-only run (existing bead): steps 1–3 skipped, `create-chores.mjs` expanded that bead, and the tree still holds exactly one parent.

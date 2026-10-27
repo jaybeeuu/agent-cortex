@@ -1,4 +1,4 @@
-// Shared test helper: a stateful fake `bd` binary for create-chores.ts.
+// Shared test helper: a stateful fake `bd` binary for create-chores.mjs.
 // `bd` is a genuine external system (its real database must never be touched
 // by tests), so the script is driven against this fake via the BD_PATH
 // override. The fake reproduces the real behaviours the tests depend on —

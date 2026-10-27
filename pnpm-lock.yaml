@@ -93,29 +93,9 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  skills/planning/create-task/scripts:
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.20
-      tsx:
-        specifier: ^4.0.0
-        version: 4.22.4
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
+  skills/planning/create-task/scripts: {}
 
-  skills/productivity/validate-agent-dir/scripts:
-    devDependencies:
-      '@types/node':
-        specifier: ^22.20.1
-        version: 22.20.1
-      tsx:
-        specifier: ^4.23.0
-        version: 4.23.12
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
+  skills/productivity/validate-agent-dir/scripts: {}
 
 packages:
 
@@ -1160,11 +1140,6 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  tsx@4.23.12:
-    resolution: {integrity: sha512-FDf4L4sYzKtzWYhU/Xm0AQFdTjdIxNo9ElTf2mxXM6k8YMHXzYUe4yODVaXP4V9uMFbVg8c0qyBccK2OOxb45Q==}
-    engines: {node: '>=18.0.0'}
-    hasBin: true
-
   typebox@1.1.38:
     resolution: {integrity: sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==}
 
@@ -1932,6 +1907,7 @@ snapshots:
   '@types/node@22.20.1':
     dependencies:
       undici-types: 6.21.0
+    optional: true
 
   '@types/retry@0.12.0': {}
 
@@ -2409,12 +2385,6 @@ snapshots:
   tslib@2.8.1: {}
 
   tsx@4.22.4:
-    dependencies:
-      esbuild: 0.28.0
-    optionalDependencies:
-      fsevents: 2.3.3
-
-  tsx@4.23.12:
     dependencies:
       esbuild: 0.28.0
     optionalDependencies:

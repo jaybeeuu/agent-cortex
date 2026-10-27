@@ -1,3 +1,9 @@
+// @ts-check
+// Pre-create the pipeline stage chores for a task bead, plus the feature PR
+// review gate, from `pipeline.json`.
+//
+// Zero dependencies: run with `node create-chores.mjs --parent <bead-id>`.
+
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -5,23 +11,30 @@ import { fileURLToPath } from 'node:url';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Stage {
-  id: string;
-  title: string;
-  description: string;
-  template: string;
-  dependsOn: string[];
-}
+/**
+ * @typedef {object} Stage
+ * @property {string} id
+ * @property {string} title
+ * @property {string} description
+ * @property {string} template
+ * @property {string[]} dependsOn
+ */
 
-interface Pipeline {
-  maxFixRounds: number;
-  stages: Stage[];
-}
+/**
+ * @typedef {object} Pipeline
+ * @property {number} maxFixRounds
+ * @property {Stage[]} stages
+ */
 
 // ─── Args ─────────────────────────────────────────────────────────────────────
 
-function parseArgs(args: string[]): { parentId: string; priority: string } {
-  let parentId: string | undefined;
+/**
+ * @param {string[]} args
+ * @returns {{ parentId: string, priority: string }}
+ */
+function parseArgs(args) {
+  /** @type {string | undefined} */
+  let parentId;
   let priority = '2';
 
   for (let i = 0; i < args.length; i++) {
@@ -30,7 +43,7 @@ function parseArgs(args: string[]): { parentId: string; priority: string } {
   }
 
   if (!parentId) {
-    console.error('Usage: create-chores.ts --parent <bead-id> [--priority <0-4>]');
+    console.error('Usage: create-chores.mjs --parent <bead-id> [--priority <0-4>]');
     process.exit(1);
   }
 
@@ -43,7 +56,11 @@ function parseArgs(args: string[]): { parentId: string; priority: string } {
 // Defaults to `bd`, resolved via PATH.
 const BD_PATH = process.env.BD_PATH || 'bd';
 
-function run(args: string[]): string {
+/**
+ * @param {string[]} args
+ * @returns {string}
+ */
+function run(args) {
   const cmd = args[0] === 'bd' ? [BD_PATH, ...args.slice(1)] : args;
   return execSync(cmd.join(' '), { encoding: 'utf-8' }).trim();
 }
@@ -56,9 +73,11 @@ const __dirname = dirname(__filename);
 const { parentId, priority } = parseArgs(process.argv.slice(2));
 
 const pipelinePath = resolve(__dirname, '..', 'pipeline.json');
-const pipeline: Pipeline = JSON.parse(readFileSync(pipelinePath, 'utf-8'));
+/** @type {Pipeline} */
+const pipeline = JSON.parse(readFileSync(pipelinePath, 'utf-8'));
 
-const stageToBeadId = new Map<string, string>();
+/** @type {Map<string, string>} */
+const stageToBeadId = new Map();
 
 for (const stage of pipeline.stages) {
   const title = `[${parentId}] ${stage.title}`;
@@ -117,7 +136,8 @@ const prGateBeadId = run([
 ]);
 run(['bd', 'dep', 'add', prGateBeadId, documentStageBeadId, '--type', 'blocks']);
 
-const result: Record<string, string> = {
+/** @type {Record<string, string>} */
+const result = {
   ...Object.fromEntries(stageToBeadId),
   featurePrReview: prGateBeadId,
 };

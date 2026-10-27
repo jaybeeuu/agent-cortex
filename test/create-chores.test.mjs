@@ -9,9 +9,9 @@ import { dirname, join } from "node:path";
 import { makeFakeBd } from "./helpers/fake-bd.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const CREATE_CHORES = join(testDir, "..", "skills", "planning", "create-task", "scripts", "create-chores.ts");
+const CREATE_CHORES = join(testDir, "..", "skills", "planning", "create-task", "scripts", "create-chores.mjs");
 
-/** Run create-chores.ts against the fake `bd` with a parent that already
+/** Run create-chores.mjs against the fake `bd` with a parent that already
  * carries implementation-type:afk — the label `bd create --parent` inherits.
  * @param {string[]} parentLabels  Labels seeded on the parent bead
  * @returns {Promise<{ ids: Record<string, string>, beads: Array<{ id: string, title: string, labels: string[] }> }>} */
@@ -36,7 +36,7 @@ async function createChoresAgainstFakeBd(parentLabels) {
   }
 }
 
-/** Run create-chores.ts with the given env overrides. */
+/** Run create-chores.mjs with the given env overrides. */
 function runScript(args, env) {
   return new Promise((resolve) => {
     execFile(

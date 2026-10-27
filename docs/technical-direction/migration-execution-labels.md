@@ -17,10 +17,14 @@
   `bd list --label-pattern/regex [--json]`, `bd label add/remove` (batch multiple ids).
 - `bd list` supports `--label-pattern`/`--json`; `bd count` does NOT support `--label-pattern`.
 - `bd ready --label-pattern 'stage:*'` works; `bd ready -l execution:afk` verified.
-- 2 script packages remain (create-task, validate-agent-dir), each with its own `package.json`
-  and `pnpm-lock.yaml`. The root `skills/**/scripts` glob makes both workspace members — both
-  appear as importers in the root `pnpm-lock.yaml`. A third, `run-pipeline-stage/scripts`, was
-  deleted with the generated progress view.
+- Zero skill script packages remain: every `skills/*/*/scripts/` manifest (`package.json`,
+  `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and the stray `tsconfig.json`) is deleted, so the
+  root `pnpm-lock.yaml` has no script-dir importers and `pnpm-workspace.yaml` no longer carries
+  the `skills/**/scripts` glob. Planning recorded "3 script packages, NOT members of the root
+  workspace"; that was wrong — the glob made all of them members (`pnpm ls -r` listed them and
+  each had a root lockfile importer). `run-pipeline-stage/scripts` went with the generated
+  progress view; create-task and validate-agent-dir followed in F8. The root `tsconfig.json`
+  typechecks the `.mjs` scripts and each one runs on bare `node`.
 - All scripts are stdlib-only (`node:child_process`, `node:fs`, `node:path`, `node:url`).
 - Extensions (`extensions/skill-stats`) have real peer deps on `@earendil-works/pi-coding-agent`
   — they remain workspace members with their own package.json.
@@ -43,8 +47,8 @@
 
 ### D2: Single package.json (root workspace consolidation)
 
-- Fold the per-skill script packages into the root workspace (3 at planning time, 2 remain):
-  delete their `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`; convert scripts to
+- Fold the per-skill script packages into the root workspace (3 at planning time, all now
+  deleted): delete their `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`; convert scripts to
   `.mjs` (D1); root `package.json` owns typecheck/test wiring. The `skills/**/scripts` glob
   already made them workspace members, so what remains is deleting the per-package files.
 - Extensions stay as workspace members (`extensions/*` glob) — their package.jsons are

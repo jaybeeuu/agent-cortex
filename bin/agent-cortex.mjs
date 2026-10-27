@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
-import { join } from "node:path";
-import { installPi, registerPi } from "./installers/pi.mjs";
+import { join, dirname } from "node:path";
+import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mjs";
 
 const argv = process.argv.slice(2);
 const parsed = parseArgs(argv);
@@ -44,12 +44,17 @@ if (parsed.command === "install") {
       });
       printPiInstall(result);
       if (parsed.output === undefined) {
-        await registerPi({
+        const registration = await registerPi({
           output: result.output,
           dryRun: parsed.dryRun ?? false,
           requireRegister: parsed.requireRegister ?? false,
           warn: (msg) => process.stdout.write(`  ⚠ ${msg}\n`),
         });
+        // The old installer's rendered copies are only stale once the staged
+        // package is what pi loads — and nothing is deleted on a dry run.
+        if (registration.registered && !(parsed.dryRun ?? false)) {
+          printPiSweep(await sweepLegacyPiUserDirs({ piUserDir: dirname(registration.settingsPath) }));
+        }
       } else {
         process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
       }
@@ -116,6 +121,16 @@ if (parsed.command === "install") {
   }
 
   process.exit(0);
+}
+
+function printPiSweep({ removed }) {
+  if (removed.length === 0) return;
+  process.stdout.write(
+    `  ✓ Swept ${removed.length} artifact(s) the old installer rendered into pi's user directory — the staged package is now the only source\n`,
+  );
+  for (const path of removed) {
+    process.stdout.write(`    - ${path}\n`);
+  }
 }
 
 function printPiInstall(result) {

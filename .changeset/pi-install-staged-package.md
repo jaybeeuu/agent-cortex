@@ -15,8 +15,8 @@ The committed `pi/settings.json` template drops its `npm:pi-questions` and
 carries those tools, the `packages` array holds only the optional personal
 toolset (`@getpipher/vision`, `@hypabolic/pi-hypa`, `context-mode`), so there is
 one source of truth for `ask_questions` / `fetch_content` instead of two that can
-drift. The `../../src/agent-cortex` source entry stays until the repo stops being
-registered as a pi package.
+drift. Its `../../src/agent-cortex` entry goes too, so the staged package is the
+only agent-cortex source pi loads.
 
 The `subagent` extension discovers agents from the package it ships inside as
 well as from pi's own user agent dir, so a staged package supplies the agents it

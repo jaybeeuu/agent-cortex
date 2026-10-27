@@ -6,10 +6,6 @@
   },
   "lastChangelogVersion": "0.87.1",
   "packages": [
-    {
-      "source": "../../src/agent-cortex",
-      "skills": []
-    },
     "npm:@getpipher/vision",
     "npm:@hypabolic/pi-hypa",
     "npm:context-mode"

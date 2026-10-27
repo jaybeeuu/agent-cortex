@@ -146,8 +146,10 @@ are sourced entirely from `main`.
 `agent-cortex install pi` materialises agent-cortex as a self-contained pi
 package in `~/.agent-cortex/pi` — the pi analogue of `~/.agent-cortex/claude` —
 and registers that directory with pi through pi's own `pi install`. Nothing is
-written into pi's own directories (`~/.pi/agent/…`): pi owns its settings file,
-so the installer only reads it to decide the plan and lets the `pi` CLI write it.
+generated into pi's own directories (`~/.pi/agent/…`): pi owns its settings
+file, so the installer only reads it to decide the plan and lets the `pi` CLI
+write it. Once the staged package is registered, the artifacts an older
+installer rendered there are swept (see below).
 
 ```sh
 agent-cortex install pi          # stage ~/.agent-cortex/pi + register it with pi
@@ -161,6 +163,17 @@ The installer decides that plan by reading pi's settings at
 `~/.pi/agent/settings.json`, so a pi agent dir relocated with
 `PI_CODING_AGENT_DIR` is not inspected — a superseded raw-repo source configured
 there has to be removed by hand with `pi remove <path>`.
+
+Under the old model the same installer rendered agents, skills, and extensions
+into `~/.pi/agent/{agents,skills,extensions}`. Those copies are a second source
+of the same resource — the skill-collision diagnostics the staged model exists
+to remove — so once registration succeeds the installer deletes the ones it can
+attribute to agent-cortex: `agents/<name>.agent.md` and `skills/<group>/<name>`
+for agents and skills this package ships, `extensions/<entry>` for the
+`extensions/` tree it ships, a short list of orphans it once shipped, and the
+old installer's own `.agent-cortex-install.json`. pi's config files, and your
+own agents, skills, and extensions, are never touched. `--output <dir>` and
+`--dry-run` sweep nothing.
 
 The staged package contains:
 

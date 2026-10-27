@@ -46,7 +46,31 @@ working on the same thing, use a shared branch and workspace instead.
 not spin up a separate worktree — work in the same checkout so you both see
 the same state.
 
-### 3. Pull requests for review
+### 3. Never stack branches — put the dependency in the tracker
+
+Every branch is based on the **integration branch**: `main`, or `epic/<id>` for
+multi-feature work. Never base one feature branch on another.
+
+```
+❌ git worktree add ../b -b feature/b feature/a    # b silently carries a
+✅ git worktree add ../b -b feature/b origin/main
+```
+
+If `b` needs `a`, that is a **dependency**, not a branch. Record it in the
+tracker — `bd dep add <b> <a>` ("b depends on a") — and let the tracker keep `b`
+out of the ready queue until `a` merges and closes. Then branch `b` from the
+integration branch, which by then contains `a`.
+
+Why: this repo squash-merges, so `feature/a`'s commits never become ancestors of
+the integration branch. The moment `a` merges, `b` carries all of `a`'s content
+as if it were new work, GitHub reports `CONFLICTING` on byte-identical files, and
+the repair costs a `git rebase --onto <integration> <old-base>` plus a full
+re-verification. Waiting for the merge is always cheaper.
+
+Wanting to "get ahead" while a dependency is in review is the signal the
+dependency is real — stop and check the tracker instead.
+
+### 4. Pull requests for review
 
 Every feature branch ends in a GitHub PR. Open the PR early (draft if unfinished) so the diff is visible.
 
@@ -55,7 +79,7 @@ gh pr create --title "..." --body "..."
 gh pr create --draft  # early
 ```
 
-### 4. Sync before branching
+### 5. Sync before branching
 
 Before creating a feature branch, sync with upstream:
 
@@ -66,7 +90,7 @@ git pull
 
 This avoids avoidable merge conflicts.
 
-### 5. Worktree lifecycle
+### 6. Worktree lifecycle
 
 After the PR is merged or closed, clean up the worktree:
 

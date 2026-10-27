@@ -92,16 +92,6 @@ The `release` job in `.github/workflows/ci.yml` handles everything automatically
 must be a single unquoted command token — keep release logic in pnpm scripts
 (`version-packages`, `publish-package`, `publish-noop`), never inline shell strings.
 
-### Merge method and commit signatures
-
-Land a Version Packages PR with `gh pr merge <n> --squash`. Agent and human commits here are
-GPG-signed by the environment and verify as `valid`; the `github-actions[bot]` commit is
-`unsigned` because `GITHUB_TOKEN` cannot sign. Squash merge is what makes that harmless —
-GitHub signs the squash commit as committer (PR #161 landed as `dd347471b1`, `verified=true`),
-so the unsigned branch commit never reaches `main`. Rebase- and merge-commit are not the path.
-See `docs/commit-signing.md` for the evidence, which ruleset may still enforce signatures, and
-the human-only follow-ups.
-
 Which of the two publish scripts runs is decided per push, not hard-coded: labels are
 invisible on a push event, so the job resolves the PR merged for the pushed commit via
 the GitHub API and reads its labels — `publish-noop` when the PR carried `no-publish`,
@@ -109,6 +99,24 @@ the GitHub API and reads its labels — `publish-noop` when the PR carried `no-p
 `GITHUB_TOKEN` and `pull-requests: write`. A direct push with no merged PR resolves to
 no labels and so publishes, which keeps a genuine publish of an already-published
 version failing loudly — there is deliberately no idempotency guard.
+
+### Merge method and commit signatures
+
+Land a Version Packages PR with `gh pr merge <n> --squash`. Agent and human commits here are
+GPG-signed by the environment and verify as `valid`; the `github-actions[bot]` commit is
+`unsigned` because `GITHUB_TOKEN` cannot sign. The commit that lands is signed by GitHub,
+which is why `main`'s history reads `valid`: PR #161's unsigned head `fe7ef84` landed as
+`dd347471b1` with `committer=GitHub`, `verified=true`.
+
+Squash re-signs the landing commit; it does not escape an enforced signature rule. GitHub
+evaluates a pull request by creating a test merge commit and checking the commits it
+introduces — head-branch commits included — so an enforced `required_signatures` rule blocks
+a squash merge too, and the remedy is then a signed commit on the branch, not another merge
+method. `allow_merge_commit` is off and `required_linear_history` is on, so squash (or
+rebase) is the only path regardless.
+
+See `docs/commit-signing.md` for the evidence, the ruleset reads that cannot rule out an
+organization-level rule, and the human-only follow-ups.
 
 ### Version lockstep
 
@@ -128,8 +136,10 @@ All version numbers stay in lockstep automatically:
   opt-out is the `no-publish` label, which must already exist in the repo's settings.
 - **Wrong bump type**: `patch` for fixes, `minor` for additions, `major` for breakage. When in doubt, ask the user.
 - **Wrong package name in frontmatter**: Must be `"@jaybeeuu/agent-cortex"` exactly.
-- **Merging a Version Packages PR with anything but squash**: the bot's commit is unsigned;
-  only a squash merge gets GitHub to sign the commit that lands. See `docs/commit-signing.md`.
+- **Merging a Version Packages PR with anything but squash**: the bot's commit is unsigned,
+  and squash is the path this repo has landed on (a rebase replays the unsigned commit).
+  Squash does not, however, bypass an enforced signature rule — if one is confirmed, the
+  branch needs a signed commit. See `docs/commit-signing.md`.
 
 ## What changed from the old workflow
 

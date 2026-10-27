@@ -129,8 +129,8 @@ describe("installPi — agent composition", () => {
       await seedPackage(fx, {
         agents: {
           alpha: {
-            body: "# alpha\nUse {{TOOL:view}} to read.\n{{SECTION:polling}}\nRead {{PATH:skills_dir}}.",
-            sections: { polling: "Spawn with {{TOOL:task}}." },
+            body: "# alpha\nUse {{TOOL:view}} to read.\n{{SECTION:wake}}\nRead {{PATH:skills_dir}}.",
+            sections: { wake: "Spawn with {{TOOL:task}}." },
             frontmatter: {
               name: "agent-cortex:alpha",
               description: "Reads things.",
@@ -152,7 +152,7 @@ describe("installPi — agent composition", () => {
       assert.match(content, /tools: "bash read find"/, "tools translated to pi names, ask_user omitted");
       assert.match(content, /argument-hint: "Read something"/);
       assert.ok(content.includes("Use read to read."), "{{TOOL:view}} substituted");
-      assert.ok(content.includes("Spawn with task."), "{{SECTION:polling}} composed from pi/polling.md");
+      assert.ok(content.includes("Spawn with task."), "{{SECTION:wake}} composed from pi/wake.md");
       assert.ok(!/{{/.test(content), "no literal tokens remain");
       assert.equal(result.agents.length, 1);
       assert.deepEqual(result.agents[0], { name: "alpha", filePath: file });
@@ -673,7 +673,7 @@ describe("installPi — real repo integration", () => {
       const ralph = await readFile(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
       assert.match(ralph, /name: "agent-cortex:ralph"/);
       assert.match(ralph, /tools: "bash read grep find task read_agent wait_for_agents"/);
-      assert.ok(ralph.includes("## Spawning subagents (PI)"), "{{SECTION:polling}} composed from pi/polling.md");
+      assert.ok(ralph.includes("## Wake mechanism (PI — blocking wait)"), "{{SECTION:wake}} composed from pi/wake.md");
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");
 

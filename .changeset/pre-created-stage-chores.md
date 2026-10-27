@@ -58,7 +58,7 @@ expects rather than demanding exit `0` — `grep -c` exits `1` on zero matches, 
 says to add `|| true` under `set -e` or in an `&&` chain. The stale TDD loop-count line (`stage:test-writing` chore children) is dropped — that
 label is absent from the pre-created chain in `skills/planning/create-task/pipeline.json`.
 
-`agents/ralph/claude/polling.md` is marked explicitly unused: `bin/installers/claude.mjs` DEFERs
+`agents/ralph/claude/wake.md` is marked explicitly unused: `bin/installers/claude.mjs` DEFERs
 `ralph` to `agents-native/ralph.md`, so nothing composes it; its completion-handling text is
 nonetheless aligned to the same `kind` branch so the harness-neutral wake-section work can revive
 it without reintroducing the chore-only predicate, and `agents/README.md` says so in the ralph

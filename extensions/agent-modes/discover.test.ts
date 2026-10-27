@@ -98,14 +98,14 @@ describe("discoverAgents (composable source format)", () => {
   it("discovers agents from <name>/agent.md + <name>/pi/frontmatter.json", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "ralph", {
-      body: "# ralph\nUse {{TOOL:task}} to spawn subagents.\n\n{{SECTION:polling}}",
+      body: "# ralph\nUse {{TOOL:task}} to spawn subagents.\n\n{{SECTION:wake}}",
       frontmatter: {
         name: "agent-cortex:ralph",
         description: "Runs beads end-to-end",
         tools: ["bash", "view", "rg", "glob", "task", "read_agent"],
       },
       sections: {
-        polling: "## PI polling\nPoll with task + read_agent.",
+        wake: "## PI wake\nPoll with task + read_agent.",
       },
     });
 

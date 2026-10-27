@@ -98,9 +98,8 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `enabledPlugins` + `extraKnownMarketplaces`, and every other key is left untouched. Only
   that settings template is committed under `claude/` — the generated plugin subtree is not;
   hand-authored plugin extras live in `claude-extras/` (`.mcp.json`, `scripts/`), and
-  `--output <dir>` is the generate-only form (tests/CI materialiser checks); `ralph`
-  is authored natively in `agents-native/` and copied verbatim; the other agents compose from their
-  `claude/` harness dirs).
+  `--output <dir>` is the generate-only form (tests/CI materialiser checks); every agent,
+  `ralph` included, composes from its `claude/` harness dir).
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
 

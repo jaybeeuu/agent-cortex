@@ -42,7 +42,7 @@ agents/ralph/
 │   └── wake.md                     # Copilot wake: sleep-120 poll timer + read_agent
 └── claude/
     ├── frontmatter.json            # Claude tools: ["bash", "task"]
-    └── wake.md                     # Claude wake: event-driven (UNUSED — ralph's Claude build is DEFERred to agents-native/ralph.md)
+    └── wake.md                     # Claude wake: event-driven re-invocation on worker completion
 ```
 
 ### Wake mechanisms by harness
@@ -226,8 +226,7 @@ flat `agents/*.agent.md` files are built from them:
 - `bin/installers/claude.mjs` (plain `agent-cortex install claude` materialises the plugin
   into `~/.agent-cortex/claude` and registers it with Claude Code; `--output <dir>` is its
   generate-only form, used by tests/CI) composes the plugin's
-  `agents/*.md` from each agent's `claude/` harness dir (except `ralph`, which ships natively
-  from `agents-native/ralph.md`, copied verbatim).
+  `agents/*.md` from each agent's `claude/` harness dir — `ralph` included.
 - The pi harness delivers two ways: the `agent-modes` extension composes `agent.md` +
   `pi/frontmatter.json` at runtime against `token-map.json`, and `agent-cortex install pi`
   materialises composed agents + token-substituted skills into `~/.pi/agent` at install

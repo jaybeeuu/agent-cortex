@@ -15,8 +15,6 @@ agent-cortex/
 │   ├── plan/                 #   "
 │   ├── ralph-plan/           #   "
 │   └── strategy/             #   "
-├── agents-native/            # Claude-only agents with no Copilot equivalent
-│   └── ralph.md              #  the lean Claude Ralph
 ├── skills/                   # Skills (grouped by domain) — shared by all harnesses
 │   ├── engineering/          #  tdd, improve-codebase-architecture, …
 │   ├── planning/             #  write-a-prd, prd-to-tasks, design-an-interface, …
@@ -80,11 +78,9 @@ temp-dir install plus structural checks:
   `copilot/` dirs. Claude only loads agents from a plugin's default `agents/` dir, so the plugin
   ships them at its own root (default `~/.agent-cortex/claude/agents/`) — isolating them from the
   Copilot `.agent.md` files.
-- **Claude-native agents** that have no Copilot equivalent live in `agents-native/*.md` and are
-  copied verbatim into the materialised plugin's `agents/`. `ralph` is one: it is reimplemented
-  for Claude around
-  background workers + an independent review gate (the Copilot Ralph's `task`/`read_agent`
-  poll loop has no Claude equivalent), so it can't be mechanically converted.
+- **Every agent composes, `ralph` included.** There is no Claude-only agent source: the shared
+  body is harness-neutral and each harness supplies only its own wake mechanism
+  (`agents/ralph/<harness>/wake.md`), so one body serves all three harnesses.
 - **Manifests** are generated too: the plugin's `.claude-plugin/plugin.json` (its `version`
   tracks `package.json`, so it never goes stale) and `hooks.json` (copied from the canonical
   `hooks/claude/hooks.json` source), plus any support files under `hooks/claude/` bundled into
@@ -93,7 +89,7 @@ temp-dir install plus structural checks:
   dir, which is their canonical store. See `docs/claude-hooks.md` for the
   extension→hook mapping and the rejections (auto-name, agent-guardrails, skill-stats, subagent, agent-modes).
 
-Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
+Edit the sources (`agents/<name>/` composable dirs, `skills/**`,
 `hooks/claude/`, `claude-extras/`, `package.json`), never the generated
 `agents/*.agent.md` files or anything under the materialised `~/.agent-cortex/claude`.
 
@@ -387,8 +383,7 @@ extension→hook audit.
 
 Edit the **sources** — the composable `agents/<name>/` directories (shared `agent.md` +
 per-harness frontmatter/sections, auto-composed by `scripts/build-copilot-agents.mjs` and
-`bin/installers/claude.mjs`), `agents-native/*.md` (Claude-only
-agents like `ralph` — the canonical bodies the installer copies verbatim), `skills/**`,
+`bin/installers/claude.mjs`), `skills/**`,
 `hooks/claude/hooks.json` (hook config), `claude/settings.json` (the user-settings template
 merged into `~/.claude/settings.json`), `claude-extras/` (hand-authored `.mcp.json` and
 `scripts/`), and `package.json` (plugin

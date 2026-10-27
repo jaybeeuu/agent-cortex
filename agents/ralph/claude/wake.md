@@ -2,16 +2,6 @@
 
 **Mechanism: event-driven — the harness re-invokes you automatically when a background worker completes and delivers that worker's result inline, so there is no poll timer, no sleep, and no log flush.**
 
-<!--
-UNUSED — this section is not composed into any agent. `bin/installers/claude.mjs` DEFERs `ralph`
-to agents-native/ralph.md, which is authored natively for Claude Code (event-driven, no
-`state.json`, no section-token substitution), so `agents/ralph/claude/wake.md` is never
-read by the composer or by any installer. It is kept — and kept aligned with
-`.agent-cortex/ralph/state.json`'s `inflight` invariant — so the harness-neutral body can be
-composed for Claude once the DEFER is lifted (agnt-ctx-s5xd.10.4). If you are reading this
-expecting live behaviour, read agents-native/ralph.md instead.
--->
-
 ### Spawn
 
 RALPH HAS ONLY ONE WAY TO SPAWN SUBAGENTS: call the **`Task`** tool (not bash, not any other tool).

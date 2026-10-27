@@ -11,7 +11,9 @@
 
 ## Stage Outcome
 
+- Commit and push the fix before reporting (see the stage-runner prompt, _Deliver before reporting_).
 - Set `OUTCOME: SUCCESS` when requested changes are successfully applied.
 - Set `OUTCOME: BLOCKED` if unable to apply changes or guidance is unclear.
 - If blocked, list issues under `BLOCKING_ISSUES`.
 - `FILES_CHANGED` lists files updated to address requested changes.
+- Report `COMMIT`, `PUSHED`, and `PR` (`PR: none`).

@@ -49,7 +49,7 @@ On each completion notification (background agent finished, or the poll timer fi
 
 1. Poll that parent's log for new lines — `tail -n +<nextLine> .agent-cortex/ralph/ralph-<parent-id>.log` (logs are keyed by parent bead ID, so every stage of a feature shares one file) — and post only new key events (stage transitions, test/lint results), never empty updates.
 2. Read the completed agent's output with {{TOOL:read_agent}} and parse its `---REPORT---` block for `BEAD_ID`, `STAGE_COMPLETED`, and the outcome.
-3. Close the chore bead: `bd close <bead-id>`.
+3. **Verify the delivery, then close the chore bead.** Run `node scripts/lib/verify-worker-tree.mjs --worktree .agent-cortex/worktrees/<parent-id> --base <base>` (REFERENCE.md, _Verified Completion_) and close only when it exits 0: `bd close <bead-id>`.
 4. Advance the parent per the dispatch table:
 
    | Stage completed | Condition | Next action |
@@ -82,6 +82,8 @@ On each completion notification (background agent finished, or the poll timer fi
 
 - Running as a background or delegated subagent instead of the interactive foreground agent.
 - Spawning a stage runner via {{TOOL:bash}} or running a stage inline instead of {{TOOL:task}}.
+- Substituting a backgrounded CLI run for a missing subagent tool — stop and report instead; that launch has no completion signal.
+- Advancing a parent on a worker's `OUTCOME: SUCCESS` without verifying the worktree — the report is a claim, not evidence.
 - Editing bead files directly instead of using `bd` commands.
 - Auto-merging a PR, or continuing past a feature/epic gate before a human merge.
 
@@ -114,6 +116,7 @@ On each completion notification (background agent finished, or the poll timer fi
 
 - [ ] Init ran once with observable results: `state.json` exists, `bd ready` was parsed, and the first chore beads are claimed.
 - [ ] Every stage runner was spawned with {{TOOL:task}} from the parent's feature worktree, with the `---REPORT---` instruction in its prompt.
+- [ ] Every stage delivery was confirmed with `scripts/lib/verify-worker-tree.mjs` before the parent advanced, and no stage was dispatched from a session with no subagent tool.
 - [ ] In-flight count never exceeded 5, and fix loops respect `maxFixRounds` from `pipeline.json`.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.
 - [ ] `bd dolt push` and a final `progress.md` regeneration ran before HITL Pause/Shutdown, and the chat received no empty poll updates.

@@ -19,7 +19,23 @@ Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
    - Log file path `.agent-cortex/ralph/ralph-<parent-id>.log` — logs are keyed by **parent** bead ID, so every stage chore of a feature appends to the same file
 7. **Call the {{TOOL:task}} tool** with the filled prompt as `prompt` and the worktree path as `cwd`. Store the returned agentId — you need it for step 8 and for log polling.
-8. **Map** the agent ID to the bead ID in memory for lookup on completion.
+
+   If this session has no subagent tool, **stop and say so**. Do not substitute a backgrounded CLI run (`pi -p … &`): that launch has no completion signal, so a finished worker and a killed one look identical, which is how stages came to be reported complete over uncommitted trees. Record the bead for the shutdown summary and tell the human the session needs restarting with the subagent extension loaded.
+8. **Record the base commit** before the worker starts — you verify delivery against it (_Verified Completion_ below):
+   ```bash
+   git -C .agent-cortex/worktrees/<parent-id> rev-parse HEAD
+   ```
+9. **Map** the agent ID to the bead ID in memory for lookup on completion.
+
+### Verified Completion
+
+A worker's `---REPORT---` is a claim about the worktree, not evidence of it. Verify the delivery before advancing the parent:
+
+```bash
+node scripts/lib/verify-worker-tree.mjs --worktree .agent-cortex/worktrees/<parent-id> --base <base>
+```
+
+Exit code 0 means a clean tree with at least one commit ahead of the recorded base. A non-zero exit reports `worktree is dirty` or `no commit ahead of base`, and the stage did **not** deliver whatever its `OUTCOME` line says. Re-dispatch the same chore, or record the failure for the fix chain — never advance the parent, close the chore, or open a feature PR over uncommitted work.
 
 ---
 

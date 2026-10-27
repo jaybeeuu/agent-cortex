@@ -1,11 +1,11 @@
 # Create Task — Reference
 
-Detail behind `skills/planning/create-task/SKILL.md`. The script (`scripts/create-chores.ts`) is the source of truth for this contract; this document mirrors it for verification.
+Detail behind `skills/planning/create-task/SKILL.md`. The script (`scripts/create-chores.mjs`) is the source of truth for this contract; this document mirrors it for verification.
 
 ## Script invocation
 
 ```
-tsx create-chores.ts --parent <bead-id> [--priority <0-4>]
+node <skill-scripts>/create-chores.mjs --parent <bead-id> [--priority <0-4>]
 ```
 
 - Reads `<skill>/pipeline.json`; creates each stage chore via `bd create` and wires dependencies via `bd dep add`.

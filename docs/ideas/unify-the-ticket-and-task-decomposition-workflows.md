@@ -41,7 +41,7 @@ the problem, not a design.
   contract; (b) the refactor is affordable given its blast radius; (c) the duplication is
   causing enough harm to justify it at all.
 - What would invalidate this idea: if ralph's requirements — chore-tree expansion via
-  `create-chores.ts`/`pipeline.json`, epic branches, AFK/HITL classification — cannot be
+  `create-chores.mjs`/`pipeline.json`, epic branches, AFK/HITL classification — cannot be
   expressed as a tracker adapter behind one slicing skill, then the split is load-bearing
   and should stay. It would also be invalidated if the duplication never produces concrete
   drift.

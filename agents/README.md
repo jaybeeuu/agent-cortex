@@ -250,7 +250,7 @@ into `~/.pi/agent`.
 Use the `validate-agent-dir` script to validate agent directories:
 
 ```bash
-node --test --import tsx/esm skills/productivity/validate-agent-dir/scripts/validate-agent-dir.test.ts
+node --test test/validate-agent-dir.test.mjs
 ```
 
 The validator checks:

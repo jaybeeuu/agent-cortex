@@ -40,7 +40,7 @@ count — are not predicates and are fine.
 
 ## Expansion Guard
 
-Stage chores are pre-created, never created on demand. `create-chores.ts` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. Ralph's dispatch is therefore always "claim what `bd ready` returns".
+Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. Ralph's dispatch is therefore always "claim what `bd ready` returns".
 
 A ready AFK task bead with **no** `stage:*` chore children has nothing to dispatch. Expand it, then dispatch the resulting `stage:code` chore:
 
@@ -53,8 +53,7 @@ A ready AFK task bead with **no** `stage:*` chore children has nothing to dispat
    status.
 2. **Dispatch an expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
    ```bash
-   <create-task-scripts>/node_modules/.bin/tsx \
-     <create-task-scripts>/create-chores.ts \
+   node <create-task-scripts>/create-chores.mjs \
      --parent <parent-id> --priority <parent-priority>
    ```
    `<create-task-scripts>` is the absolute path to `skills/planning/create-task/scripts/`, resolved from wherever the skill was loaded — never hardcode one harness's install path. `<parent-priority>` is the parent's own priority from `bd show <parent-id>`, so chores match the task they belong to.
@@ -66,7 +65,7 @@ A ready AFK task bead with **no** `stage:*` chore children has nothing to dispat
 5. **Dispatch normally.** The next `bd ready` pass picks up the `stage:code` chore, and the pre-created chain carries the rest.
 6. **Handle the completion as an expansion completion**, not a stage completion — see below.
 
-**Never expand an existing bead with `create-task`** — or with any other command that creates a bead. `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. The guard exists so an AFK task bead always ends with exactly one parent: `create-chores.ts` expands a bead that already exists; only `create-task` creates parents.
+**Never expand an existing bead with `create-task`** — or with any other command that creates a bead. `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. The guard exists so an AFK task bead always ends with exactly one parent: `create-chores.mjs` expands a bead that already exists; only `create-task` creates parents.
 
 ### Expansion Completion Contract
 
@@ -75,7 +74,7 @@ An expansion worker is dispatched like a stage worker but is **not** one. Nothin
 | Stage worker | Expansion worker |
 |------|------|
 | Correlates to a claimed chore: `kind: "stage"` with a `choreId` | Holds no chore: `kind: "expand"`, `choreId: null` |
-| Emits a `---REPORT---` block | Emits none — it prints the `create-chores.ts` JSON mapping |
+| Emits a `---REPORT---` block | Emits none — it prints the `create-chores.mjs` JSON mapping |
 | Owns its leaf bead, which must read `closed` | Owns nothing — no bead to close, nothing to confirm |
 | Completion advances the parent along the chain | Completion means "chores now exist" — dispatch the ready `stage:code` chore |
 
@@ -86,7 +85,7 @@ bd children <parent-id> --json | grep -c '"stage:'
 ```
 
 Expect a non-zero count — one match per `stage:*` label in the chain. A printed `0` means the
-expansion failed. Surface the worker's output in chat and record the parent for the shutdown summary — **never re-dispatch the expansion**, because `create-chores.ts` is not idempotent and a second run duplicates the chain beside the first. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
+expansion failed. Surface the worker's output in chat and record the parent for the shutdown summary — **never re-dispatch the expansion**, because `create-chores.mjs` is not idempotent and a second run duplicates the chain beside the first. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
 
 ---
 

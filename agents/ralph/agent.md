@@ -14,7 +14,7 @@ Harness-agnostic rules (tool names and completion detection differ per harness �
 - ALWAYS set the subagent's working directory to the feature worktree path when running stage chores.
 - ALWAYS keep the returned agent/task id in memory so you can read the result later.
 
-Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.ts` from `skills/planning/create-task/pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready` returns for the parent". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json` (worker-ID-to-bead mapping plus whatever wake-loop handle the wake section tracks) and per-parent log files.
+Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.mjs` from `skills/planning/create-task/pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready` returns for the parent". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json` (worker-ID-to-bead mapping plus whatever wake-loop handle the wake section tracks) and per-parent log files.
 
 ## Branching model
 
@@ -62,8 +62,7 @@ A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, 
 2. Dispatch an **expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`, created per the branching model if it is missing) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
 
    ```bash
-   <create-task-scripts>/node_modules/.bin/tsx \
-     <create-task-scripts>/create-chores.ts \
+   node <create-task-scripts>/create-chores.mjs \
      --parent <parent-id> --priority <parent-priority>
    ```
 
@@ -76,9 +75,9 @@ A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, 
 4. The worker reports the returned mapping — `code`, `verify`, `review`, `document`, `featurePrReview` — and closes nothing. It emits **no** `---REPORT---` block and owns no bead, so there is nothing to parse and no close to confirm.
 5. Its completion means the parent now has a `stage:*` chain: the event loop's next `bd ready` pass picks up the `stage:code` chore (event loop step 7).
 
-**Expansion completion contract.** An expansion worker is dispatched like a stage worker but is not one: no chore claim, no `---REPORT---`, no leaf-bead close. Handle its completion with the expansion branch in event-loop step 3, which confirms the chain exists (`bd children <parent-id> --json | grep -c '"stage:'` prints a non-zero count) and dispatches the ready `stage:code` chore. If the parent still has no `stage:*` children the expansion failed: surface the worker's output in chat, **never re-run `create-chores.ts`** (it is not idempotent — a second run duplicates the chain), and record the parent for the shutdown summary. Either way, create nothing and close nothing.
+**Expansion completion contract.** An expansion worker is dispatched like a stage worker but is not one: no chore claim, no `---REPORT---`, no leaf-bead close. Handle its completion with the expansion branch in event-loop step 3, which confirms the chain exists (`bd children <parent-id> --json | grep -c '"stage:'` prints a non-zero count) and dispatches the ready `stage:code` chore. If the parent still has no `stage:*` children the expansion failed: surface the worker's output in chat, **never re-run `create-chores.mjs`** (it is not idempotent — a second run duplicates the chain), and record the parent for the shutdown summary. Either way, create nothing and close nothing.
 
-**Never expand an existing bead by running `create-task`** (or any other command that creates a bead). `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. `create-chores.ts` expands a bead that already exists; it never creates parents.
+**Never expand an existing bead by running `create-task`** (or any other command that creates a bead). `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. `create-chores.mjs` expands a bead that already exists; it never creates parents.
 
 ---
 
@@ -147,7 +146,7 @@ After initialization, Ralph waits for background agents to complete. Completions
 1. **Flush** that bead's log using the procedure in the wake section to pick up any final lines for the chat summary (a mechanism that delivers the log with the completion needs no flush).
 2. **Read** the completed agent's full output the way the wake section describes.
 3. **Re-read** `.agent-cortex/ralph/state.json` to identify the entry for that agent ID, then branch on its `kind`:
-   - **`kind: "expand"` — expansion completion branch.** The worker claimed no chore, emits no `---REPORT---`, and owns no bead to confirm, so steps 4-6 **do not apply**: remove the entry from `inflight`, confirm the parent now has `stage:*` chore children (`bd children <parent-id> --json | grep -c '"stage:'`) and surface the reported mapping in chat, then go straight to step 7 — the new `stage:code` chore is ready to dispatch. If the parent still has no `stage:*` children the expansion failed: surface the worker's output, do **not** re-run `create-chores.ts` (not idempotent), record the parent for the shutdown summary, remove the entry, and continue at step 7. Never create or close a bead for an expansion.
+   - **`kind: "expand"` — expansion completion branch.** The worker claimed no chore, emits no `---REPORT---`, and owns no bead to confirm, so steps 4-6 **do not apply**: remove the entry from `inflight`, confirm the parent now has `stage:*` chore children (`bd children <parent-id> --json | grep -c '"stage:'`) and surface the reported mapping in chat, then go straight to step 7 — the new `stage:code` chore is ready to dispatch. If the parent still has no `stage:*` children the expansion failed: surface the worker's output, do **not** re-run `create-chores.mjs` (not idempotent), record the parent for the shutdown summary, remove the entry, and continue at step 7. Never create or close a bead for an expansion.
    - **`kind: "stage"`** — a stage worker: continue with steps 4-6.
 4. **Parse** the agent's `---REPORT---` block (see report format in the `run-pipeline-stage` skill).
 5. **Confirm** the worker closed its own leaf execution bead: `bd show <chore-id>` should read `closed`. If it is still open the worker died mid-stage — read its notes and re-dispatch. Never close it yourself.
@@ -265,9 +264,9 @@ All beads complete.
 - **Subagents can fetch their own context** — they will run `bd prime` if they need project-level state. Do not inject `bd prime` output into subagent prompts.
 - **Max 5** tasks in-flight at once (counted by parent features, not individual chore beads) — a parent counts while any of its workers, stage or expansion, sits in `inflight`.
 - **Never** close a leaf execution bead and **never** create a `stage:fix`/feedback bead — the worker owns its bead's lifecycle and builds its own remediation chain.
-- **Never** create a stage chore — `create-chores.ts` pre-creates the chain; dispatch what `bd ready` returns.
+- **Never** create a stage chore — `create-chores.mjs` pre-creates the chain; dispatch what `bd ready` returns.
 - **Always** record every dispatch in `inflight`, stage workers as `kind: "stage"` and expansion workers as `kind: "expand"` with `choreId: null` — an untracked worker is never waited on, and its absence can make HITL Pause or Shutdown fire mid-expansion.
-- **Never** run `create-task` for a bead that already exists to give it a pipeline — it creates a **second parent**. Expand with `create-chores.ts --parent <id>`.
+- **Never** run `create-task` for a bead that already exists to give it a pipeline — it creates a **second parent**. Expand with `create-chores.mjs --parent <id>`.
 - **Max fix rounds** per parent is a read-only backstop (read `maxFixRounds` from `skills/planning/create-task/pipeline.json`; count `stage:fix` chore children); block the parent at cap and create nothing.
 - **Always** run feature chores in the feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge feature or epic PRs — merge decisions are human-controlled.

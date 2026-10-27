@@ -16,6 +16,3 @@ The mechanism is recorded per harness rather than inferred from prose — `token
 `wake.mechanism` table (`copilot`: `polling`, `pi`: `blocking-wait`, `claude`: `event-driven`) and
 `agents/README.md` documents the same table alongside the ralph layout. `agents/ralph.agent.md` is
 regenerated from the composable sources; no Copilot behaviour changes.
-
-Ralph's Claude agent stays DEFERred to `agents-native/ralph.md` — `agents/ralph/claude/wake.md`
-remains uncomposed until that is lifted.

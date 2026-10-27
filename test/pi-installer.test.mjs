@@ -471,6 +471,142 @@ describe("installPi — skills", () => {
   });
 });
 
+// ─── Pruning stale installs ──────────────────────────────────────────────────
+
+/** The marker line every generated pi agent file opens its frontmatter with. */
+const GENERATED_AGENT_MARKER = "# GENERATED from agents/";
+
+function generatedAgentFile(name) {
+  return ['---', `${GENERATED_AGENT_MARKER}${name}/ by bin/installers/pi.mjs — DO NOT EDIT.`, `name: "agent-cortex:${name}"`, `description: "Description of ${name}"`, 'tools: "bash"', "---", "", `Body of ${name}.`, ""].join(
+    "\n",
+  );
+}
+
+describe("installPi — pruning stale installs", () => {
+  it("removes a skill directory the source no longer contains", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: {
+          "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nEcho body.",
+          "engineering/doomed/SKILL.md": "---\nname: doomed\ndescription: d\n---\n\nDoomed body.",
+        },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      await rm(join(fx.root, "skills", "engineering", "doomed"), { recursive: true, force: true });
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(
+        await pathExists(join(fx.output, "skills", "engineering", "doomed")),
+        false,
+        "skill directory dropped upstream is gone, empty parent left behind is removed too",
+      );
+      assert.ok(await pathExists(join(fx.output, "skills", "engineering", "echo", "SKILL.md")), "live skill kept");
+      assert.deepEqual(result.pruned.files, [join(fx.output, "skills", "engineering", "doomed", "SKILL.md")]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("removes a file dropped from inside a live skill", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: {
+          "planning/create-task/SKILL.md": "---\nname: create-task\ndescription: d\n---\n\nBody.",
+          "planning/create-task/scripts/pnpm-workspace.yaml": "packages: []\n",
+        },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      await rm(join(fx.root, "skills", "planning", "create-task", "scripts"), { recursive: true, force: true });
+      await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(
+        await pathExists(join(fx.output, "skills", "planning", "create-task", "scripts")),
+        false,
+        "orphaned support file and its directory are gone",
+      );
+      assert.ok(await pathExists(join(fx.output, "skills", "planning", "create-task", "SKILL.md")), "live skill kept");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("removes an agent file an earlier install generated but the source dropped", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      // An install from before the ownership manifest existed: the file carries
+      // the GENERATED marker but no record of it survives.
+      await mkdir(join(fx.output, "agents"), { recursive: true });
+      await writeFile(join(fx.output, "agents", "retired.agent.md"), generatedAgentFile("retired"));
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(await pathExists(join(fx.output, "agents", "retired.agent.md")), false, "stale agent pruned");
+      assert.deepEqual(result.pruned.files, [join(fx.output, "agents", "retired.agent.md")]);
+      assert.ok(await pathExists(join(fx.output, "agents", "alpha.agent.md")), "source agent written");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("dry-run reports the planned removals without deleting them", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: {
+          "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nEcho body.",
+          "engineering/doomed/SKILL.md": "---\nname: doomed\ndescription: d\n---\n\nDoomed body.",
+        },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      await rm(join(fx.root, "skills", "engineering", "doomed"), { recursive: true, force: true });
+      const result = await installPi({ root: fx.root, output: fx.output, dryRun: true });
+
+      assert.deepEqual(result.pruned.files, [join(fx.output, "skills", "engineering", "doomed", "SKILL.md")]);
+      assert.deepEqual(result.pruned.dirs, [join(fx.output, "skills", "engineering", "doomed")]);
+      assert.ok(
+        await pathExists(join(fx.output, "skills", "engineering", "doomed", "SKILL.md")),
+        "dry-run deletes nothing",
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("leaves skill and agent files it has no ownership evidence for untouched", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: { "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nEcho body." },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      // A user-authored skill in the same group as an installed one, and a
+      // hand-written agent file (no GENERATED marker).
+      await mkdir(join(fx.output, "skills", "engineering", "mine"), { recursive: true });
+      await writeFile(join(fx.output, "skills", "engineering", "mine", "SKILL.md"), "---\nname: mine\n---\n\nMine.");
+      await writeFile(join(fx.output, "agents", "mine.agent.md"), "---\nname: mine\n---\n\nMine.\n");
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.deepEqual(result.pruned, { files: [], dirs: [] }, "nothing unowned was removed");
+      assert.ok(await pathExists(join(fx.output, "skills", "engineering", "mine", "SKILL.md")), "user skill kept");
+      assert.ok(await pathExists(join(fx.output, "agents", "mine.agent.md")), "hand-written agent kept");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
 // ─── Output / dry-run ────────────────────────────────────────────────────────
 
 describe("installPi — output & dry-run", () => {
@@ -503,6 +639,21 @@ describe("installPi — output & dry-run", () => {
       const deep = join(fx.output, "nested", "deep");
       await installPi({ root: fx.root, output: deep });
       assert.ok(await pathExists(join(deep, "agents", "alpha.agent.md")));
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("installs into a fresh output dir when the source ships no agents and no skills", async () => {
+    const fx = await makeFixture();
+    try {
+      // Nothing creates <output> before the ownership record is written, so the
+      // install must not depend on a write having happened first.
+      await seedPackage(fx);
+      await mkdir(join(fx.root, "agents"), { recursive: true });
+      const deep = join(fx.output, "nested", "deep");
+      await installPi({ root: fx.root, output: deep });
+      assert.ok(await pathExists(join(deep, "settings.json")), "config written into a fresh output dir");
     } finally {
       await fx.cleanup();
     }

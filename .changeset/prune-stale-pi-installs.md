@@ -1,0 +1,5 @@
+---
+"@jaybeeuu/agent-cortex": patch
+---
+
+`agent-cortex install pi` now reconciles the trees it owns instead of only ever adding to them. After writing, it removes the copies the source no longer produces — a skill directory dropped upstream, a support file a skill dropped, a generated agent the source retired — so the installed tree stops accumulating copies that look like live skills to the agent reading them. Ownership is evidenced rather than assumed: the run records the paths it wrote in `~/.pi/agent/.agent-cortex-install.json`, agent files are recognised by their `GENERATED from agents/` marker (which also covers trees installed before the record existed), and files inside a skill the source still ships are the installer's to replace. Everything else in the shared trees is left alone — pi-provisioned npm packages, extensions, and skills or agents the user wrote themselves — and directories are only removed once empty. `--dry-run` lists the planned removals without deleting anything. The future `agent-cortex upgrade` inherits the behaviour by calling the same installer.

@@ -112,6 +112,7 @@ function printPiInstall(result) {
     process.stdout.write(`  ✓ ${agent.name}.agent.md → ${agent.filePath}\n`);
   }
   process.stdout.write(`  ✓ Substituted ${result.skills.md} markdown file(s) across ${result.skills.skills} skill(s) → ${result.skills.dir}\n`);
+  printPruned(result.pruned, result.dryRun);
   printManagedConfig("settings.json", result.settings);
   printManagedConfig("keybindings.json", result.keybindings);
   // A dry run installs nothing, so report the plan — otherwise the documented
@@ -125,6 +126,17 @@ function printPiInstall(result) {
   }
   if (result.dryRun) {
     process.stdout.write("(dry-run — nothing written)\n");
+  }
+}
+
+/** Report the installed copies the source dropped — removed, or planned under --dry-run. */
+function printPruned(pruned, dryRun) {
+  const lead = dryRun ? "→ Would remove" : "✓ Removed";
+  for (const file of pruned.files) {
+    process.stdout.write(`  ${lead} ${file}\n`);
+  }
+  for (const dir of pruned.dirs) {
+    process.stdout.write(`  ${lead} empty dir ${dir}\n`);
   }
 }
 

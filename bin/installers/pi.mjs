@@ -36,9 +36,15 @@
 // shadowing order (user dir loads before package skills). Re-run this installer
 // after any skill edit so the substituted copy in the user dir stays in sync.
 //
+// Installing is also a reconciliation, not just a copy: every run prunes the
+// owned copies the source no longer produces (a skill dropped upstream, a support
+// file a skill dropped) and records what it owns in .agent-cortex-install.json so
+// the next run — and the future `agent-cortex upgrade`, which calls this
+// installer — can tell a stale copy from a user's own skill. See pruneStaleCopies.
+//
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, copyFile, readdir, lstat, rename, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdir, copyFile, readdir, lstat, rename, rm, rmdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -61,6 +67,21 @@ const DEFAULT_OUTPUT = join(homedir(), ".pi", "agent");
 
 const SETTINGS_TEMPLATE = "pi/settings.json";
 const KEYBINDINGS_TEMPLATE = "pi/keybindings.json";
+
+// The trees below <output> this installer materialises — and therefore the only
+// trees its prune may remove from.
+const AGENTS_TREE = "agents";
+const SKILLS_TREE = "skills";
+
+// Ownership record of the paths the last install wrote. It lives beside the
+// generated config files (not in either tree) and is what lets the prune tell a
+// copy left behind by an older source from a skill or agent the user wrote.
+const MANIFEST_FILE = ".agent-cortex-install.json";
+
+// First frontmatter line of every agent file this installer generates. A file
+// carrying it was written by an install, which is the evidence the prune uses
+// for agent files from installs that predate the ownership record.
+const AGENT_MARKER = "# GENERATED from agents/";
 
 // pi parses settings.json / keybindings.json with a bare JSON.parse (see pi's
 // SettingsManager / KeybindingsManager), so JSONC comments are not an option —
@@ -96,6 +117,7 @@ const execFileAsync = promisify(execFile);
  * @returns {{ agents: {name:string, filePath:string}[], skills: {skills:number, md:number, files:number, dir:string},
  *             packages: {planned:string[], installed:string[], failed:{source:string, error:string}[]} | null,
  *             settings: ManagedFileResult|null, keybindings: ManagedFileResult|null,
+ *             pruned: {files:string[], dirs:string[]},
  *             warnings: string[], dryRun: boolean, agentsDir: string, skillsDir: string }}
  */
 export async function installPi(options = {}) {
@@ -116,8 +138,8 @@ export async function installPi(options = {}) {
   }
 
   const pluginRoot = options.pluginRoot ?? tokenMap.paths.plugin_root?.[PI];
-  const agentsDir = join(output, "agents");
-  const skillsDir = join(output, "skills");
+  const agentsDir = join(output, AGENTS_TREE);
+  const skillsDir = join(output, SKILLS_TREE);
 
   // The settings `packages` entry registers a checkout with pi, and pi loads
   // from it at runtime — so it must survive this install. A linked git worktree
@@ -133,6 +155,14 @@ export async function installPi(options = {}) {
 
   const agents = await installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, warn });
   const skills = await installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn });
+  const owned = { [AGENTS_TREE]: agents.owned, [SKILLS_TREE]: skills.owned };
+
+  // Reconcile after writing: a failed copy leaves the tree as it was rather than
+  // half-pruned. The record is written last, so an interrupted install never
+  // claims paths it did not produce.
+  const pruned = await pruneStaleCopies({ output, owned, skillDirs: skills.skillDirs, dryRun, warn });
+  if (!dryRun) await writeInstallManifest(output, owned);
+
   const config = await installConfig({ root, packageRoot: mainRoot ?? root, output, dryRun, warn });
 
   // Third-party packages give the composed agents their pi tools (ask_questions
@@ -148,13 +178,14 @@ export async function installPi(options = {}) {
       })
     : null;
 
-  return { agents, skills, packages, ...config, warnings, dryRun, agentsDir, skillsDir };
+  return { agents: agents.files, skills: skills.stats, packages, pruned, ...config, warnings, dryRun, agentsDir, skillsDir };
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
 
 async function installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, warn }) {
   const written = [];
+  const owned = [];
   const agentsSrc = join(root, "agents");
   for (const entry of (await readdir(agentsSrc, { withFileTypes: true })).sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -180,14 +211,15 @@ async function installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, wa
       await writeFile(filePath, content);
     }
     written.push({ name: entry.name, filePath });
+    owned.push(`${entry.name}.agent.md`);
   }
-  return written;
+  return { files: written, owned };
 }
 
 function renderPiAgent(name, fm, tools) {
   const lines = [
     "---",
-    `# GENERATED from agents/${name}/ by bin/installers/pi.mjs — DO NOT EDIT.`,
+    `${AGENT_MARKER}${name}/ by bin/installers/pi.mjs — DO NOT EDIT.`,
     `name: ${JSON.stringify(fm.name)}`,
     `description: ${JSON.stringify(fm.description)}`,
     // pi's parseFrontmatter hands back the scalar as one string, so the tool
@@ -207,12 +239,16 @@ function renderPiAgent(name, fm, tools) {
 
 async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn }) {
   const skillsSrc = join(root, "skills");
-  if (!(await isDirectory(skillsSrc))) return { skills: 0, md: 0, files: 0, dir: skillsDir };
+  if (!(await isDirectory(skillsSrc))) {
+    return { stats: { skills: 0, md: 0, files: 0, dir: skillsDir }, owned: [], skillDirs: [] };
+  }
 
   const transform = (content) =>
     substituteTokens(content, PI, tokenMap, { dropNullTools: true, pluginRoot, resolveRelativePaths: true, warn });
 
   if (!dryRun) await mkdir(skillsDir, { recursive: true });
+  const owned = [];
+  const skillDirs = [];
   let skills = 0;
   let md = 0;
   let files = 0;
@@ -225,15 +261,19 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
       const stats = await copyTree(join(groupDir, name), join(skillsDir, group, name), transform, dryRun);
       md += stats.md;
       files += stats.files;
+      const dir = `${group}/${name}`;
+      skillDirs.push(dir);
+      owned.push(...stats.paths.map((rel) => `${dir}/${rel}`));
     }
   }
-  return { skills, md, files, dir: skillsDir };
+  return { stats: { skills, md, files, dir: skillsDir }, owned, skillDirs };
 }
 
 /** Recursively copy a tree; transform .md file contents, copy everything else verbatim. */
 async function copyTree(src, dest, transform, dryRun) {
   let md = 0;
   let files = 0;
+  const paths = [];
   const entries = await readdir(src, { withFileTypes: true });
   for (const entry of entries) {
     const from = join(src, entry.name);
@@ -242,16 +282,189 @@ async function copyTree(src, dest, transform, dryRun) {
       const stats = await copyTree(from, to, transform, dryRun);
       md += stats.md;
       files += stats.files;
+      paths.push(...stats.paths.map((rel) => `${entry.name}/${rel}`));
     } else if (entry.isFile()) {
       files += 1;
       if (entry.name.endsWith(".md")) md += 1;
+      paths.push(entry.name);
       if (dryRun) continue;
       await mkdir(dest, { recursive: true });
       if (entry.name.endsWith(".md")) await writeFile(to, transform(await readFile(from, "utf-8")));
       else await copyFile(from, to);
     }
   }
-  return { md, files };
+  return { md, files, paths };
+}
+
+// ─── Pruning stale copies ──────────────────────────────────────────────────────
+
+/**
+ * Remove the copies of the two owned trees that this install no longer produces.
+ *
+ * The trees are shared: pi provisions third-party packages beside them and users
+ * keep their own skills and agents in the very directories that get written, so
+ * "everything the source lacks" would be too broad a rule. Ownership therefore
+ * has to be evidenced:
+ *
+ *   - paths the previous install recorded in MANIFEST_FILE,
+ *   - agent files carrying the GENERATED marker this installer writes into each
+ *     one — evidence that also predates the manifest, so a tree installed by an
+ *     older agent-cortex still sheds the agents the source dropped, and
+ *   - files inside a skill the source still ships: the installer writes that
+ *     whole subtree, so a file it did not write is an orphan from an older
+ *     source rather than something the user added.
+ *
+ * Anything else — an npm package under <output>/npm, pi's extensions, a skill or
+ * hand-written agent the user added — stays. Removing whole directories is
+ * conditional on them being empty, so a directory holding anything unowned also
+ * stays.
+ *
+ * One boundary follows from that: a whole skill directory dropped upstream is
+ * only provable once a manifest exists, so the first run over a tree installed
+ * before the record did keeps such a directory for one install — agent files can
+ * still be judged on their marker, skill copies have no equivalent. That first
+ * run records the manifest, and every run after it is complete; sweeping the
+ * pre-existing tree is a separate, deliberate cleanup rather than something this
+ * prune can do without deleting a user's own skills.
+ *
+ * Returns the plan instead of deleting it under `dryRun`; the report is the
+ * installer's output either way.
+ *
+ * @returns {Promise<{files: string[], dirs: string[]}>} absolute paths
+ */
+async function pruneStaleCopies({ output, owned, skillDirs, dryRun, warn }) {
+  const previous = await readInstallManifest(output, warn);
+  const report = { files: [], dirs: [] };
+  for (const tree of [AGENTS_TREE, SKILLS_TREE]) {
+    const treeDir = join(output, tree);
+    if (!(await isDirectory(treeDir))) continue;
+    const stale = await findStaleCopies({ tree, treeDir, previous: previous[tree], owned: owned[tree], skillDirs });
+    if (stale.length === 0) continue;
+
+    // Computed before deleting, so the dry-run plan and the real run agree.
+    const emptied = await dirsEmptiedBy(treeDir, stale);
+    if (!dryRun) {
+      for (const rel of stale) await rm(fromRel(treeDir, rel), { force: true });
+      for (const rel of emptied) await removeEmptyDir(fromRel(treeDir, rel));
+    }
+    report.files.push(...stale.map((rel) => fromRel(treeDir, rel)));
+    report.dirs.push(...emptied.map((rel) => fromRel(treeDir, rel)));
+  }
+  return report;
+}
+
+/** Paths under one tree that exist on disk and are not part of this install. */
+async function findStaleCopies({ tree, treeDir, previous, owned, skillDirs }) {
+  const keep = new Set(owned);
+  const candidates = new Set((previous ?? []).filter((rel) => !keep.has(rel)));
+  for (const rel of await listFilesDeep(treeDir)) {
+    if (keep.has(rel) || candidates.has(rel)) continue;
+    if (await isAbandonedCopy({ tree, rel, abs: fromRel(treeDir, rel), skillDirs })) candidates.add(rel);
+  }
+  const stale = [];
+  for (const rel of [...candidates].sort()) {
+    // A recorded path can be gone (the user cleaned it) or have become a
+    // directory; only a file is a copy to remove.
+    if (await isFile(fromRel(treeDir, rel))) stale.push(rel);
+  }
+  return stale;
+}
+
+/** Whether a file under an install tree is provably a copy an earlier install wrote. */
+async function isAbandonedCopy({ tree, rel, abs, skillDirs }) {
+  if (tree === AGENTS_TREE) return (await readFileMaybe(abs))?.startsWith(`---\n${AGENT_MARKER}`) ?? false;
+  return skillDirs.some((dir) => rel.startsWith(`${dir}/`));
+}
+
+/**
+ * Directories that hold no file surviving this prune, deepest first.
+ *
+ * The tree root is never included: this returns what may be removed, and the
+ * caller only removes directories that are genuinely empty.
+ */
+async function dirsEmptiedBy(treeDir, stale) {
+  const removing = new Set(stale);
+  const emptied = [];
+  const walk = async (dir, prefix) => {
+    let empty = true;
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (await walk(join(dir, entry.name), rel)) emptied.push(rel);
+        else empty = false;
+      } else if (!removing.has(rel)) {
+        empty = false;
+      }
+    }
+    return empty;
+  };
+  await walk(treeDir, "");
+  return emptied;
+}
+
+/** Remove a directory this prune emptied; one a concurrent writer refilled stays. */
+async function removeEmptyDir(dir) {
+  try {
+    await rmdir(dir);
+  } catch (err) {
+    if (err.code !== "ENOTEMPTY" && err.code !== "ENOENT") throw err;
+  }
+}
+
+/** Every file under `dir`, as "/"-joined paths relative to it. */
+async function listFilesDeep(dir, prefix = "") {
+  const files = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) files.push(...(await listFilesDeep(join(dir, entry.name), rel)));
+    else files.push(rel);
+  }
+  return files;
+}
+
+/** Resolve a "/"-joined path recorded relative to a tree root. */
+function fromRel(treeDir, rel) {
+  return join(treeDir, ...rel.split("/"));
+}
+
+/**
+ * The ownership record of the previous install, or no owned paths when there is
+ * none — pruning then falls back to the evidence rules rather than treating the
+ * whole tree as ours.
+ */
+async function readInstallManifest(output, warn) {
+  const target = join(output, MANIFEST_FILE);
+  const raw = await readFileMaybe(target);
+  const none = { [AGENTS_TREE]: [], [SKILLS_TREE]: [] };
+  if (raw === null) return none;
+  const parsed = tryParseJsonObject(raw);
+  if (parsed === null) {
+    warn(`${target} is not a JSON object — pruning only what it can prove is stale`);
+    return none;
+  }
+  return { [AGENTS_TREE]: stringList(parsed[AGENTS_TREE]), [SKILLS_TREE]: stringList(parsed[SKILLS_TREE]) };
+}
+
+/** Record the paths this install owns, so the next one can prune what the source drops. */
+async function writeInstallManifest(output, owned) {
+  const target = join(output, MANIFEST_FILE);
+  const content = `${JSON.stringify(
+    {
+      [GENERATED_KEY]:
+        "GENERATED by `agent-cortex install pi` — the installed paths a later install may prune. DO NOT EDIT.",
+      ...owned,
+    },
+    null,
+    2,
+  )}\n`;
+  // Nothing else is guaranteed to have created <output> yet: a source with no
+  // agents and no skills writes no copies, so the record is the first write.
+  await mkdir(output, { recursive: true });
+  await writeFile(target, content);
+}
+
+function stringList(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
 }
 // ─── Pi config files ─────────────────────────────────────────────────────────
 

@@ -18,7 +18,7 @@
     "lint": "pnpm typecheck && pnpm check:sync",
     "check:sync": "node scripts/check-no-sync.mjs",
     "test": "node --test test/*.test.mjs && pnpm -r test",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r typecheck",
     "build:copilot": "node scripts/build-copilot-agents.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version && bash scripts/sync-plugin-version.sh && pnpm build:copilot",
@@ -28,7 +28,9 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
+    "@types/node": "^22.20.1",
     "tsx": "^4.0.0",
+    "typescript": "^5.9.3",
     "yaml": "^2.0.0"
   },
   "pi": {

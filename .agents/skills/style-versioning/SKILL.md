@@ -92,6 +92,16 @@ The `release` job in `.github/workflows/ci.yml` handles everything automatically
 must be a single unquoted command token — keep release logic in pnpm scripts
 (`version-packages`, `publish-package`, `publish-noop`), never inline shell strings.
 
+### Merge method and commit signatures
+
+Land a Version Packages PR with `gh pr merge <n> --squash`. Agent and human commits here are
+GPG-signed by the environment and verify as `valid`; the `github-actions[bot]` commit is
+`unsigned` because `GITHUB_TOKEN` cannot sign. Squash merge is what makes that harmless —
+GitHub signs the squash commit as committer (PR #161 landed as `dd347471b1`, `verified=true`),
+so the unsigned branch commit never reaches `main`. Rebase- and merge-commit are not the path.
+See `docs/commit-signing.md` for the evidence, which ruleset may still enforce signatures, and
+the human-only follow-ups.
+
 Which of the two publish scripts runs is decided per push, not hard-coded: labels are
 invisible on a push event, so the job resolves the PR merged for the pushed commit via
 the GitHub API and reads its labels — `publish-noop` when the PR carried `no-publish`,
@@ -118,6 +128,8 @@ All version numbers stay in lockstep automatically:
   opt-out is the `no-publish` label, which must already exist in the repo's settings.
 - **Wrong bump type**: `patch` for fixes, `minor` for additions, `major` for breakage. When in doubt, ask the user.
 - **Wrong package name in frontmatter**: Must be `"@jaybeeuu/agent-cortex"` exactly.
+- **Merging a Version Packages PR with anything but squash**: the bot's commit is unsigned;
+  only a squash merge gets GitHub to sign the commit that lands. See `docs/commit-signing.md`.
 
 ## What changed from the old workflow
 

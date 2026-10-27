@@ -1,3 +1,4 @@
+// @ts-check
 // Deterministic bead classifier — resolves an AFK/HITL classification from
 // evidence already present on a bead before any model judgement is spent.
 //

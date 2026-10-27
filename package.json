@@ -10,6 +10,29 @@
   "bin": {
     "agent-cortex": "./bin/agent-cortex.mjs"
   },
+  "files": [
+    "bin/",
+    "lib/",
+    "scripts/",
+    "skills/",
+    "agents/",
+    "extensions/*.ts",
+    "extensions/lib/",
+    "extensions/*/*.ts",
+    "extensions/*/*.md",
+    "extensions/*/package.json",
+    "extensions/*/agents/",
+    "extensions/*/prompts/",
+    "hooks/",
+    "hooks.json",
+    "claude/",
+    "claude-extras/",
+    "plugin.json",
+    "token-map.json",
+    "token-map.README.md",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "publishConfig": {
     "access": "public"
   },

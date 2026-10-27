@@ -84,6 +84,7 @@ bd show <id>                   # full detail, including the worker's notes
 - **Single-feature epics** (exactly one feature task child — count with `bd children <epic-id>`, excluding chores): no epic branch. `feature/<parent-id>` is based directly on `origin/main`, its feature PR targets `main`, and no epic PR is opened.
 - **Multi-feature epics** (two or more feature task children): the epic runs on `epic/<epic-id>`, based on `origin/main` — never local `main`. Each AFK parent task runs on `feature/<parent-id>`, based from its epic branch, in the dedicated worktree `.agent-cortex/worktrees/<parent-id>`.
 - Feature PR gate: `feature/<parent-id>` → `epic/<epic-id>` (or → `main` for single-feature epics). Epic PR gate: `epic/<epic-id>` → `main`.
+- **Never stack branches.** `feature/<parent-id>` is based on `epic/<epic-id>` (or `origin/main`), never on another `feature/*`. A dependency between two tasks lives in the bead graph (`bd dep add <waiting> <blocked-on>`) so the dependent task stays out of `bd ready` until its dependency has merged — stacking the branch defeats that gate by hand and costs a rebase-on-squash later (see `git-workflow` rule 3).
 - Branch/worktree setup and the PR commands live in REFERENCE.md (_Feature branches and worktrees_, _Feature PR gate_).
 
 ### 6. HITL pause and shutdown

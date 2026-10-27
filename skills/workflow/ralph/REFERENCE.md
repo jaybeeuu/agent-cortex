@@ -127,6 +127,10 @@ For each parent task bead (`<parent-id>`):
    # <base> is epic/<epic-id> for multi-feature epics, origin/main for single-feature
    git worktree add .agent-cortex/worktrees/<parent-id> -b feature/<parent-id> <base>
    ```
+   **`<base>` is `epic/<epic-id>` or `origin/main` — never another `feature/*` branch.** If this
+   task depends on another unmerged task, its `blocks` edge already keeps it out of `bd ready`;
+   do not create the worktree early to get ahead, and never reuse a sibling task's worktree — that
+   silently stacks the branches and turns the dependency into a squash-merge conflict later.
    If `.agent-cortex/worktrees/<parent-id>` already exists, reuse it.
 5. All chores for this parent run in `.agent-cortex/worktrees/<parent-id>`. The `feature/<parent-id>` branch is the agent branch for HITL PRs.
 

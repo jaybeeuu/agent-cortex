@@ -690,6 +690,68 @@ describe("installPi — pruning stale installs", () => {
     }
   });
 
+  it("prunes a skill the source drops while it was degraded, once the source recovers", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: {
+          "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nEcho body.",
+          "engineering/doomed/SKILL.md": "---\nname: doomed\ndescription: d\n---\n\nDoomed body.",
+        },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      // A degraded checkout keeps the installed copies and records nothing of
+      // its own — the record is ownership evidence, so the skip must not erase it.
+      await rm(join(fx.root, "skills"), { recursive: true, force: true });
+      await installPi({ root: fx.root, output: fx.output });
+
+      // The source recovers, shipping one skill fewer than before the degrade.
+      await writeFixture(fx, "skills/engineering/echo/SKILL.md", "---\nname: echo\ndescription: d\n---\n\nEcho body.");
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.equal(
+        await pathExists(join(fx.output, "skills", "engineering", "doomed", "SKILL.md")),
+        false,
+        "a skill dropped upstream is pruned even though a degraded run sat in between",
+      );
+      assert.deepEqual(result.pruned.files, [join(fx.output, "skills", "engineering", "doomed", "SKILL.md")]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("does not delete a copy it just installed through a manifest entry that only differs by normalisation", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: { "g/s/SKILL.md": "---\nname: s\ndescription: d\n---\n\nBody." },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      // Each entry normalises onto the path this run writes, so trusting one
+      // would authorise deleting the copy the source still ships.
+      const manifestPath = join(fx.output, ".agent-cortex-install.json");
+      const manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
+      await writeFile(
+        manifestPath,
+        JSON.stringify({
+          ...manifest,
+          skills: ["g/./s/SKILL.md", "./g/s/SKILL.md", "g//s/SKILL.md", "g/s/./SKILL.md", "g/s/SKILL.md/"],
+        }),
+      );
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.ok(await pathExists(join(fx.output, "skills", "g", "s", "SKILL.md")), "the installed copy survives");
+      assert.deepEqual(result.pruned, { files: [], dirs: [] }, "a normalisation-only entry authorises no deletion");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
   it("leaves a directory it did not empty alone", async () => {
     const fx = await makeFixture();
     try {

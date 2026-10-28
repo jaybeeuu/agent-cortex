@@ -165,8 +165,14 @@ export async function installPi(options = {}) {
   // half-pruned. The record follows the copies it describes — only the config and
   // package writes come after it — so an interrupted install never claims paths
   // it did not produce.
-  const pruned = await pruneStaleCopies({ output, owned, skillDirs: skills.skillDirs, dryRun, warn });
-  if (!dryRun) await writeInstallManifest(output, owned);
+  const { report: pruned, record } = await pruneStaleCopies({
+    output,
+    owned,
+    skillDirs: skills.skillDirs,
+    dryRun,
+    warn,
+  });
+  if (!dryRun) await writeInstallManifest(output, record);
 
   const config = await installConfig({ root, packageRoot: mainRoot ?? root, output, dryRun, warn });
 
@@ -340,14 +346,16 @@ async function copyTree(src, dest, transform, dryRun) {
  * (sparse checkout, a rename mid-flight) proves no copy stale, while deleting on
  * its silence would turn a failed install into a destructive one.
  *
- * Returns the plan instead of deleting it under `dryRun`; the report is the
- * installer's output either way.
+ * Returns the plan instead of deleting it under `dryRun`, plus the ownership
+ * record to persist — a tree whose prune was skipped keeps its previous paths.
  *
- * @returns {Promise<{files: string[], dirs: string[]}>} absolute paths
+ * @returns {Promise<{report: {files: string[], dirs: string[]}, record: {[tree: string]: string[]}}>}
+ *          absolute paths in `report`
  */
 async function pruneStaleCopies({ output, owned, skillDirs, dryRun, warn }) {
   const previous = await readInstallManifest(output, warn);
   const report = { files: [], dirs: [] };
+  const record = { [AGENTS_TREE]: owned[AGENTS_TREE] ?? [], [SKILLS_TREE]: owned[SKILLS_TREE] ?? [] };
   for (const tree of [AGENTS_TREE, SKILLS_TREE]) {
     const expected = owned[tree] ?? [];
     const recorded = previous[tree];
@@ -358,6 +366,12 @@ async function pruneStaleCopies({ output, owned, skillDirs, dryRun, warn }) {
       warn(
         `the source ships no ${tree} while ${recorded.length} installed ${tree} path(s) are recorded — keeping them and skipping the ${tree} prune`,
       );
+      // The record is ownership evidence, not an install log: a skipped prune
+      // proves nothing about what the tree still owns, so carrying the previous
+      // paths forward is what lets the next healthy run prune what this one
+      // could not judge. Overwriting them with this run's empty set would
+      // silently orphan every installed copy in the tree.
+      record[tree] = recorded;
       continue;
     }
     const treeDir = join(output, tree);
@@ -374,7 +388,7 @@ async function pruneStaleCopies({ output, owned, skillDirs, dryRun, warn }) {
     report.files.push(...stale.map((rel) => fromRel(treeDir, rel)));
     report.dirs.push(...emptied.map((rel) => fromRel(treeDir, rel)));
   }
-  return report;
+  return { report, record };
 }
 
 /** Paths under one tree that exist on disk and are not part of this install. */
@@ -504,13 +518,15 @@ async function readInstallManifest(output, warn) {
 /**
  * Whether a recorded path is a plain relative path inside its tree.
  *
- * `fromRel` joins the segments, which normalises `..`, so an absolute,
- * drive-qualified, backslash-separated or parent-relative entry would delete
- * whatever it resolved to. Only the shapes the installer itself records pass.
+ * `fromRel` joins the segments, which normalises `..`, `.`, `//` and a trailing
+ * slash, so an entry carrying any of those could delete a path the record does
+ * not name — including the copy this very run wrote. Only the shapes the
+ * installer itself records pass.
  */
 function isPlainTreePath(rel) {
   if (rel === "" || rel.startsWith("/") || rel.includes("\\") || /^[a-zA-Z]:/.test(rel)) return false;
-  return !rel.split("/").includes("..");
+  const segments = rel.split("/").filter((segment) => segment !== "" && segment !== ".");
+  return segments.length > 0 && !segments.includes("..") && segments.join("/") === rel;
 }
 
 /** Record the paths this install owns, so the next one can prune what the source drops. */

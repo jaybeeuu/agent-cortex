@@ -721,7 +721,10 @@ function runPiCommand(piBin, args) {
  * The migration is recorded only when every artifact was removed: an entry
  * written over a partial migration would claim a directory is the user's while
  * the copies it exists to delete are still in it, so the removal failures are
- * warned about and the next install retries them. Recording is best-effort — a
+ * warned about and the next install retries them. A directory the sweep cannot
+ * read is a failure of the same kind, not an empty one — it cannot attribute
+ * what it cannot see, so it warns and leaves the migration unrecorded rather
+ * than claiming a directory it never looked at. Recording is best-effort — a
  * record that cannot be written warns rather than failing an install whose
  * registration already succeeded.
  *
@@ -770,16 +773,44 @@ export async function sweepLegacyPiUserDirs({
   const shippedAgents = await shippedAgentNames(root);
   const shippedSkills = await shippedSkillPaths(root);
 
+  // A directory this run cannot read is not an empty one. The sweep cannot
+  // attribute what it cannot see, so it warns and counts the directory as a
+  // failure — which is what keeps the migration unrecorded, so the next install
+  // retries once the permissions allow it.
+  const unreadable = (dir) => {
+    warn(
+      `could not list ${dir} — the legacy sweep cannot tell its contents from the user's, ` +
+        `so the migration is not recorded and runs again on the next install`,
+    );
+    failed.push(dir);
+  };
+
+  // Entries of a sweep site: none for a directory that is absent, and a recorded
+  // failure for one that exists but cannot be read.
+  const list = async (dir) => {
+    const entries = await listDir(dir);
+    if (entries === null) unreadable(dir);
+    return entries ?? [];
+  };
+
+  if (shippedAgents === null || shippedSkills === null) {
+    // Attribution resolves from the package root, so an unreadable tree there
+    // makes every copy look like a file this package does not ship: sweeping now
+    // would record a migration that removed nothing.
+    unreadable(join(root, shippedAgents === null ? "agents" : "skills"));
+    return { removed, kept };
+  }
+
   const agentsDir = join(piUserDir, "agents");
   const agentFileSuffix = ".agent.md";
-  for (const entry of await listDir(agentsDir)) {
+  for (const entry of await list(agentsDir)) {
     const name = entry.endsWith(agentFileSuffix) ? entry.slice(0, -agentFileSuffix.length) : null;
     const isLegacy = name !== null && (shippedAgents.has(name) || LEGACY_ORPHAN_AGENTS.includes(name));
     await sweep(join(agentsDir, entry), isLegacy);
   }
 
   const skillsDir = join(piUserDir, "skills");
-  for (const group of await listDir(skillsDir)) {
+  for (const group of await list(skillsDir)) {
     const groupDir = join(skillsDir, group);
     // A symlinked group is a door out of pi's user directory: walking through
     // it would delete the link target's contents, which is not this sweep's.
@@ -788,14 +819,19 @@ export async function sweepLegacyPiUserDirs({
       continue;
     }
     const removedBefore = removed.length;
-    for (const entry of await listDir(groupDir)) {
+    for (const entry of await list(groupDir)) {
       const skill = `${group}/${entry}`;
       await sweep(join(groupDir, entry), shippedSkills.has(skill) || LEGACY_ORPHAN_SKILLS.includes(skill));
     }
     // A group dir this run emptied held the old rendering's copies, so it is
     // part of that rendering. One that was already empty is not: the user may
-    // have made it.
-    if (removed.length > removedBefore && (await listDir(groupDir)).length === 0) await sweep(groupDir, true);
+    // have made it. One that cannot be re-listed is not empty either — removing
+    // it would delete whatever is inside it unseen.
+    if (removed.length > removedBefore) {
+      const remaining = await listDir(groupDir);
+      if (remaining === null) unreadable(groupDir);
+      else if (remaining.length === 0) await sweep(groupDir, true);
+    }
   }
 
   await sweep(join(piUserDir, LEGACY_INSTALL_MANIFEST), await isFile(join(piUserDir, LEGACY_INSTALL_MANIFEST)));
@@ -886,32 +922,46 @@ async function isRealDirectory(path) {
   }
 }
 
-/** Composable agent names the package root ships (`agents/<name>/agent.md`). */
+/** Composable agent names the package root ships (`agents/<name>/agent.md`), or null when it cannot be listed. */
 async function shippedAgentNames(root) {
+  const entries = await listDir(join(root, "agents"));
+  if (entries === null) return null;
   const names = new Set();
-  for (const entry of await listDir(join(root, "agents"))) {
+  for (const entry of entries) {
     if (await isFile(join(root, "agents", entry, "agent.md"))) names.add(entry);
   }
   return names;
 }
 
-/** Skill paths the package root ships (`skills/<group>/<name>/SKILL.md`). */
+/** Skill paths the package root ships (`skills/<group>/<name>/SKILL.md`), or null when it cannot be listed. */
 async function shippedSkillPaths(root) {
+  const groups = await listDir(join(root, "skills"));
+  if (groups === null) return null;
   const paths = new Set();
-  for (const group of await listDir(join(root, "skills"))) {
-    for (const name of await listDir(join(root, "skills", group))) {
+  for (const group of groups) {
+    const names = await listDir(join(root, "skills", group));
+    if (names === null) return null;
+    for (const name of names) {
       if (await isFile(join(root, "skills", group, name, "SKILL.md"))) paths.add(`${group}/${name}`);
     }
   }
   return paths;
 }
 
-/** Sorted names in `dir`; a missing or unreadable directory yields none. */
+/**
+ * Sorted names in `dir`: none for a directory that does not exist, `null` for
+ * one that exists but cannot be read.
+ *
+ * The two must not collapse into one answer: the sweep records a finished
+ * migration, so a listing failure read as an empty directory would record one
+ * that removed nothing and never retry it.
+ */
 async function listDir(dir) {
   try {
     return (await readdir(dir)).sort();
-  } catch {
-    return [];
+  } catch (err) {
+    if (err.code === "ENOENT" || err.code === "ENOTDIR") return [];
+    return null;
   }
 }
 

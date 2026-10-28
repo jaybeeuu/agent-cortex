@@ -174,12 +174,14 @@ path record left there listing those copies. It is a one-time migration:
 attribution is by name, which cannot tell a rendered copy from a file you wrote
 under the same name, so once it has finished it records that in
 `~/.agent-cortex/legacy-sweep.json` — keyed by the pi user directory, never
-inside it, so `~/.pi/agent` is left with no agent-cortex file in it — and never
-removes anything there again. Only a migration in which every copy was removed
-is recorded: a copy that could not be deleted (permissions, `EBUSY`) is warned
-about and retried on the next install, and a record that cannot be written is a
-warning, not a failed install. Anything whose name this package does not ship
-is left alone, and `~/.pi/agent/extensions` is never touched at all — no
+inside it — and never removes anything there again. A completed migration
+leaves `~/.pi/agent` with no agent-cortex file in it. Only a migration that
+removed every copy it attributed, from directories it could read, is recorded:
+a copy that could not be deleted (permissions, `EBUSY`) or a directory that
+could not be listed is warned about and retried on the next install, and a
+record that cannot be written is a warning, not a failed install. Anything
+whose name this package does not ship is left alone, and
+`~/.pi/agent/extensions` is never touched at all — no
 installer has written there, so its contents are yours. `--output <dir>` and
 `--dry-run` sweep nothing.
 The sweep follows the settings file the installer reads (`~/.pi/agent`): a pi

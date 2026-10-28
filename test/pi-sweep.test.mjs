@@ -395,6 +395,112 @@ describe("sweepLegacyPiUserDirs — the migration record", () => {
   });
 });
 
+// A directory the sweep cannot read is not an empty one. These tests make a
+// directory unreadable (mode 000, the leftover-sudo shape) and assert the sweep
+// refuses to record the migration it could not complete, so the next install
+// retries once the permissions allow it. Root ignores file modes, so they skip
+// when the suite runs as root.
+const skipAsRoot = process.getuid?.() === 0 ? "file modes do not restrict root" : false;
+
+describe("sweepLegacyPiUserDirs — a directory the sweep cannot read", () => {
+  it("does not record the migration when a skill group cannot be listed, and retries once it can", { skip: skipAsRoot }, async () => {
+    const tree = await makeSweepTree();
+    const blockedGroup = tree.path("skills/workflow");
+    const warnings = [];
+    try {
+      await chmod(blockedGroup, 0o000);
+      await sweepTree(tree, { warn: (msg) => warnings.push(msg) });
+    } finally {
+      await chmod(blockedGroup, 0o755);
+    }
+    try {
+      assert.equal(await pathExists(tree.path("skills/workflow/ralph")), true, "the copy it could not see survived");
+      assert.equal(await pathExists(tree.recordPath), false, "a migration that could not list is not recorded");
+      assert.ok(
+        warnings.some((warning) => warning.includes(blockedGroup)),
+        "the warning names the directory it could not list",
+      );
+
+      await sweepTree(tree);
+
+      assert.equal(await pathExists(tree.path("skills/workflow/ralph")), false, "the retry removes the copy");
+      assert.equal(await pathExists(tree.recordPath), true, "the completed migration is recorded");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("does not record the migration when pi's skills directory cannot be listed", { skip: skipAsRoot }, async () => {
+    const tree = await makeSweepTree();
+    const skillsDir = tree.path("skills");
+    const warnings = [];
+    try {
+      await chmod(skillsDir, 0o000);
+      await sweepTree(tree, { warn: (msg) => warnings.push(msg) });
+    } finally {
+      await chmod(skillsDir, 0o755);
+    }
+    try {
+      assert.equal(await pathExists(tree.path("skills/workflow/ralph/SKILL.md")), true, "the copies survived");
+      assert.equal(await pathExists(tree.recordPath), false, "a migration that could not list is not recorded");
+      assert.ok(
+        warnings.some((warning) => warning.includes(skillsDir)),
+        "the warning names the directory it could not list",
+      );
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("does not record the migration when pi's agents directory cannot be listed", { skip: skipAsRoot }, async () => {
+    const tree = await makeSweepTree();
+    const agentsDir = tree.path("agents");
+    const warnings = [];
+    try {
+      await chmod(agentsDir, 0o000);
+      await sweepTree(tree, { warn: (msg) => warnings.push(msg) });
+    } finally {
+      await chmod(agentsDir, 0o755);
+    }
+    try {
+      assert.equal(await pathExists(tree.path("agents/plan.agent.md")), true, "the copy it could not see survived");
+      assert.equal(await pathExists(tree.recordPath), false, "a migration that could not list is not recorded");
+      assert.ok(
+        warnings.some((warning) => warning.includes(agentsDir)),
+        "the warning names the directory it could not list",
+      );
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("does not record the migration when the package root cannot be listed", { skip: skipAsRoot }, async () => {
+    const tree = await makeSweepTree();
+    const shippedSkills = join(tree.root, "skills");
+    const warnings = [];
+    try {
+      await chmod(shippedSkills, 0o000);
+      await sweepTree(tree, { warn: (msg) => warnings.push(msg) });
+    } finally {
+      await chmod(shippedSkills, 0o755);
+    }
+    try {
+      assert.equal(
+        await pathExists(tree.path("skills/workflow/ralph")),
+        true,
+        "nothing is removed while attribution is unavailable",
+      );
+      assert.equal(await pathExists(tree.recordPath), false, "a migration that could not attribute is not recorded");
+      assert.ok(
+        warnings.some((warning) => warning.includes(shippedSkills)),
+        "the warning names the package-root directory it could not list",
+      );
+    } finally {
+      await tree.cleanup();
+    }
+  });
+});
+
 describe("sweepLegacyPiUserDirs — the path record left in pi's user directory", () => {
   it("removes a stale `.agent-cortex-install.json` along with the copies it lists, and leaves pi's config alone", async () => {
     const tree = await makeSweepTree();

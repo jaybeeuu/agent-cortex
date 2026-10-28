@@ -51,9 +51,16 @@ if (parsed.command === "install") {
           warn: (msg) => process.stdout.write(`  ⚠ ${msg}\n`),
         });
         // The old installer's rendered copies are only stale once the staged
-        // package is what pi loads — and nothing is deleted on a dry run.
+        // package is what pi loads — and nothing is deleted on a dry run. The
+        // flag is passed through as well, so the sweep's own guarantee does not
+        // depend on this guard staying in place.
         if (registration.registered && !(parsed.dryRun ?? false)) {
-          printPiSweep(await sweepLegacyPiUserDirs({ piUserDir: dirname(registration.settingsPath) }));
+          printPiSweep(
+            await sweepLegacyPiUserDirs({
+              piUserDir: dirname(registration.settingsPath),
+              dryRun: parsed.dryRun ?? false,
+            }),
+          );
         }
       } else {
         process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
@@ -126,7 +133,7 @@ if (parsed.command === "install") {
 function printPiSweep({ removed }) {
   if (removed.length === 0) return;
   process.stdout.write(
-    `  ✓ Swept ${removed.length} artifact(s) the old installer rendered into pi's user directory — the staged package is now the only source\n`,
+    `  ✓ Removed ${removed.length} artifact(s) the pre-staged-model installer rendered into pi's user directory (one-time migration — the staged package is the source from now on)\n`,
   );
   for (const path of removed) {
     process.stdout.write(`    - ${path}\n`);

@@ -5,15 +5,23 @@
 `agent-cortex install pi` now sweeps the artifacts the pre-staged-model
 installer rendered into pi's own user directory. Once the staged package at
 `~/.agent-cortex/pi` is registered, those copies are a second source of the same
-agent/skill/extension — the skill-collision diagnostics the staged model exists
-to remove — so the installer deletes the ones it can attribute to agent-cortex:
-`agents/<name>.agent.md` for agents it ships, `skills/<group>/<name>` for skills
-it ships, `extensions/<entry>` for the extensions tree it ships, the orphans it
-once shipped but no longer has a source for (`pipeline-worker`, the `migration`
-skill), and the old installer's `.agent-cortex-install.json`.
+agent or skill — the skill-collision diagnostics the staged model exists to
+remove — so the installer removes the ones it can attribute to agent-cortex:
+`agents/<name>.agent.md` and `skills/<group>/<name>` for agents and skills it
+ships or once shipped (`pipeline-worker`, the `migration` skill), plus a
+`.agent-cortex-install.json` path record left in that directory listing those
+copies.
 
-pi's own files (`settings.json`, `keybindings.json`) and your own agents, skills,
-and extensions are never touched — attribution is by name from the package root
-rather than by directory, so a skill you added inside a skill group survives.
-The sweep runs only after registration succeeds and is skipped entirely by
-`--dry-run` and `--output <dir>`.
+The sweep is a one-time migration, not a standing rule: attribution is by name
+from the package root, which cannot tell a rendered copy from a file you wrote
+under the same name, so it records that it ran in
+`~/.pi/agent/.agent-cortex-legacy-sweep.json` and removes nothing there again.
+Files whose name this package does not ship are left alone, and pi's
+`extensions/` directory is never touched — no installer has ever written there,
+so its contents are yours. pi's own `settings.json` and `keybindings.json` are
+never touched either.
+
+The sweep runs only after registration succeeds, follows the settings file the
+installer reads (`~/.pi/agent`), and is skipped entirely by `--dry-run` and
+`--output <dir>`. A pi agent dir relocated with `PI_CODING_AGENT_DIR` keeps its
+copies: the installer does not inspect it.

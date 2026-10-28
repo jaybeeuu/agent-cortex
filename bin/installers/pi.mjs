@@ -63,17 +63,19 @@
 // templates remain reference copies.
 //
 // LEGACY SWEEP (sweepLegacyPiUserDirs): the pre-staged-model installer rendered
-// agents, skills, and extensions into pi's own user directory (~/.pi/agent).
-// Those copies are now a second source of the same resource — the collision
-// diagnostic the staged model exists to remove — so once the staged package is
-// registered, the installer deletes the copies it can positively attribute:
-// `agents/<name>.agent.md` for a composable agent this package ships,
-// `skills/<group>/<name>` for a skill it ships, `extensions/<entry>` for an
-// entry it ships, a short list of orphans it once shipped (below), and the old
-// installer's own install manifest. Attribution is by name on purpose: pi's
-// user directory also holds the user's own agents, skills, extensions, and
-// config, and those are never touched — which is also why the sweep is not a
-// wholesale group/skills-dir delete.
+// agents and skills into pi's own user directory (~/.pi/agent). Those copies are
+// now a second source of the same resource — the collision diagnostic the staged
+// model exists to remove — so once the staged package is registered, the
+// installer deletes the copies it can attribute by name: `agents/<name>.agent.md`
+// for a composable agent this package ships or one it once shipped (below), and
+// `skills/<group>/<name>` for a skill it ships or once shipped.
+//
+// It is a ONE-SHOT migration, not a standing rule. Name attribution cannot tell
+// a rendered copy from a file the user wrote under the same name, so the sweep
+// records that it ran (LEGACY_SWEEP_RECORD) and never attributes anything in
+// that directory again — after the migration the directory is the user's. pi's
+// extensions directory is never entered: no installer on this flow has ever
+// written there, so everything in it is the user's.
 //
 // Registration (registerPi) is idempotent by STATE, not by exit code: the
 // configured package sources decide install-vs-no-op, so a re-run after
@@ -99,7 +101,7 @@
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
-import { readFile, writeFile, mkdir, copyFile, readdir, rm, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, copyFile, readdir, rm, stat, lstat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { join, dirname, resolve } from "node:path";
@@ -159,10 +161,18 @@ const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
 const LEGACY_ORPHAN_AGENTS = ["pipeline-worker"];
 const LEGACY_ORPHAN_SKILLS = ["productivity/migration"];
 
-// The old installer's record of the paths it wrote, left in pi's user
-// directory. It describes a tree the old flow owned end to end, so it goes with
-// the artifacts it lists.
+// A path record some install flows leave in pi's user directory, listing the
+// copies they wrote there. It describes the same tree the sweep removes, so it
+// goes with the artifacts it lists — but only as part of the one-shot migration.
 const LEGACY_INSTALL_MANIFEST = ".agent-cortex-install.json";
+
+// Written into pi's user directory once the one-shot migration has run. Its
+// presence ends the sweep: after it, nothing there is attributed to
+// agent-cortex, so an agent or skill the user writes under a shipped name
+// survives every later install.
+const LEGACY_SWEEP_RECORD = ".agent-cortex-legacy-sweep.json";
+const LEGACY_SWEEP_RECORD_NOTE =
+  "Written by `agent-cortex install pi`: the one-time removal of the agents and skills the pre-staged-model installer rendered here has run. Nothing in this directory is attributed to agent-cortex again.";
 
 /**
  * Stage the agent-cortex pi package.
@@ -684,20 +694,24 @@ function runPiCommand(piBin, args) {
  * user directory (~/.pi/agent), now that the staged package is the single
  * source.
  *
- * Only artifacts this package can name are removed:
+ * This is a one-shot migration: it runs once per pi user directory and records
+ * that it did (LEGACY_SWEEP_RECORD), after which it reports nothing and removes
+ * nothing. Only artifacts this package can name are removed, and only on that
+ * single run:
  *
  *   agents/<name>.agent.md        `<name>` is a composable agent the package
  *                                 root ships, or a LEGACY_ORPHAN_AGENTS entry
  *   skills/<group>/<name>/        the package root ships `skills/<group>/<name>`,
  *                                 or it is a LEGACY_ORPHAN_SKILLS entry
- *   skills/<group>/               a group dir the sweep emptied
- *   extensions/<entry>            the package root ships `extensions/<entry>`
- *   .agent-cortex-install.json    the old installer's own manifest
+ *   skills/<group>/               a group dir this run emptied
+ *   .agent-cortex-install.json    a path record listing the copies removed
  *
- * Everything else — pi's config files, and the user's own agents, skills, and
- * extensions — is reported as `kept` and left alone. Nothing is deleted when
- * `dryRun` is set; the plan is reported instead. A pi user directory that does
- * not exist is left uncreated.
+ * pi's extensions directory is not touched at all: no installer on this flow
+ * wrote there, so its contents are the user's. Everything not removed — config
+ * files, the user's own agents and skills — is reported as `kept`.
+ *
+ * Nothing is deleted and no record is written when `dryRun` is set; the plan is
+ * reported instead. A pi user directory that does not exist is left uncreated.
  *
  * @param {object} options
  * @param {string} [options.root]        Package root that names the rendered copies
@@ -711,6 +725,7 @@ export async function sweepLegacyPiUserDirs({ root = PACKAGE_ROOT, piUserDir, dr
   const kept = [];
 
   if (!(await isDirectory(piUserDir))) return { removed, kept };
+  if (await isFile(join(piUserDir, LEGACY_SWEEP_RECORD))) return { removed, kept };
 
   // Commands that record what happened and either delete the path or keep it.
   const sweep = async (path, isLegacy) => {
@@ -733,7 +748,6 @@ export async function sweepLegacyPiUserDirs({ root = PACKAGE_ROOT, piUserDir, dr
 
   const shippedAgents = await shippedAgentNames(root);
   const shippedSkills = await shippedSkillPaths(root);
-  const shippedExtensions = await shippedExtensionNames(root);
 
   const agentsDir = join(piUserDir, "agents");
   const agentFileSuffix = ".agent.md";
@@ -746,28 +760,42 @@ export async function sweepLegacyPiUserDirs({ root = PACKAGE_ROOT, piUserDir, dr
   const skillsDir = join(piUserDir, "skills");
   for (const group of await listDir(skillsDir)) {
     const groupDir = join(skillsDir, group);
-    if (!(await isDirectory(groupDir))) {
+    // A symlinked group is a door out of pi's user directory: walking through
+    // it would delete the link target's contents, which is not this sweep's.
+    if (!(await isRealDirectory(groupDir))) {
       kept.push(groupDir);
       continue;
     }
+    const removedBefore = removed.length;
     for (const entry of await listDir(groupDir)) {
       const skill = `${group}/${entry}`;
       await sweep(join(groupDir, entry), shippedSkills.has(skill) || LEGACY_ORPHAN_SKILLS.includes(skill));
     }
-    // A group dir that exists only to hold the copies this sweep removed is
-    // part of the old rendering, not a container the user needs.
-    if ((await listDir(groupDir)).length === 0) await sweep(groupDir, true);
-  }
-
-  const extensionsDir = join(piUserDir, "extensions");
-  for (const entry of await listDir(extensionsDir)) {
-    const isLegacy = shippedExtensions.has(entry.replace(/\.(ts|js|mjs)$/, ""));
-    await sweep(join(extensionsDir, entry), isLegacy);
+    // A group dir this run emptied held the old rendering's copies, so it is
+    // part of that rendering. One that was already empty is not: the user may
+    // have made it.
+    if (removed.length > removedBefore && (await listDir(groupDir)).length === 0) await sweep(groupDir, true);
   }
 
   await sweep(join(piUserDir, LEGACY_INSTALL_MANIFEST), await isFile(join(piUserDir, LEGACY_INSTALL_MANIFEST)));
 
+  if (!dryRun) {
+    await writeFile(
+      join(piUserDir, LEGACY_SWEEP_RECORD),
+      `${JSON.stringify({ version: 1, note: LEGACY_SWEEP_RECORD_NOTE }, null, 2)}\n`,
+    );
+  }
+
   return { removed, kept };
+}
+
+/** Whether `path` is a directory without following a symlink to one. */
+async function isRealDirectory(path) {
+  try {
+    return (await lstat(path)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /** Composable agent names the package root ships (`agents/<name>/agent.md`). */
@@ -788,11 +816,6 @@ async function shippedSkillPaths(root) {
     }
   }
   return paths;
-}
-
-/** Extension names the package root ships (dir or flat entry, without its extension). */
-async function shippedExtensionNames(root) {
-  return new Set((await listDir(join(root, "extensions"))).map((entry) => entry.replace(/\.(ts|js|mjs)$/, "")));
 }
 
 /** Sorted names in `dir`; a missing or unreadable directory yields none. */

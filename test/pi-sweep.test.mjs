@@ -1,19 +1,23 @@
 // Tests for the legacy sweep step of `agent-cortex install pi`: the
-// pre-staged-model installer wrote rendered agents, skill copies, and extension
-// copies into pi's own user directories (~/.pi/agent/…). Now that the staged
-// package is the single source, those copies are stale — two sources of the
-// same skill is the collision diagnostic the staged model exists to remove. The
-// sweep deletes them, and only them: pi's own config files and anything the
-// user added stay untouched.
+// pre-staged-model installer wrote rendered agents and skill copies into pi's
+// own user directories (~/.pi/agent/…). Now that the staged package is the
+// single source, those copies are stale — two sources of the same skill is the
+// collision diagnostic the staged model exists to remove.
+//
+// The sweep is a one-shot MIGRATION, not a standing rule: it attributes by name
+// from the package root, so a same-name file is indistinguishable from a
+// rendered copy — which is only acceptable once, and is why it records that it
+// ran and never runs again. pi's extensions directory is never touched: no
+// installer ever wrote there, so anything in it is the user's.
 //
 // Every test runs against a throwaway tree: `root` stands in for the package
 // root (what this package still ships), `piUserDir` for pi's own user directory
-// seeded with the old flow's copies plus two entries of the user's own.
+// seeded with the old flow's copies plus entries of the user's own.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, rm, readdir, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, readdir, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,7 +72,6 @@ async function makeSweepTree() {
     "skills/workflow/ralph/SKILL.md": "---\nname: ralph\n---\n\nBody.\n",
     "agents/plan/agent.md": "# plan\n",
     "extensions/skill-stats/index.ts": "export default () => {};\n",
-    "extensions/lib/fs.ts": "export {};\n",
   });
 
   await writeFiles(piUserDir, {
@@ -112,6 +115,49 @@ describe("sweepLegacyPiUserDirs — agents", () => {
   });
 });
 
+// The migration attributes by name, so a copy the user wrote under a name this
+// package ships is indistinguishable from a rendered one. That is accepted for
+// a single run and is exactly why the sweep is one-shot.
+describe("sweepLegacyPiUserDirs — a user's copy of a shipped name", () => {
+  it("removes both a hand-written agent and an edited skill copy in the single migration", async () => {
+    const tree = await makeSweepTree();
+    try {
+      await writeFiles(tree.piUserDir, {
+        // No GENERATED marker: written by the user, not rendered by an install.
+        "agents/plan.agent.md": '---\nname: "my-plan"\n---\n\n# my own plan\n',
+        // Edited after the install that rendered it.
+        "skills/workflow/ralph/SKILL.md": "---\nname: ralph\n---\n\nMy own edits.\n",
+      });
+
+      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+
+      assert.equal(await pathExists(tree.path("agents/plan.agent.md")), false);
+      assert.equal(await pathExists(tree.path("skills/workflow/ralph")), false);
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("keeps a same-name agent and skill written after the migration", async () => {
+    const tree = await makeSweepTree();
+    try {
+      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await writeFiles(tree.piUserDir, {
+        "agents/plan.agent.md": '---\nname: "my-plan"\n---\n\n# my own plan\n',
+        "skills/workflow/ralph/SKILL.md": "---\nname: ralph\n---\n\nMy own ralph.\n",
+      });
+
+      const second = await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+
+      assert.deepEqual(second.removed, []);
+      assert.equal(await pathExists(tree.path("agents/plan.agent.md")), true);
+      assert.equal(await pathExists(tree.path("skills/workflow/ralph/SKILL.md")), true);
+    } finally {
+      await tree.cleanup();
+    }
+  });
+});
+
 describe("sweepLegacyPiUserDirs — skills", () => {
   it("removes the skill copies inside the package's skill groups — including one it no longer ships — and keeps a skill of the user's own", async () => {
     const tree = await makeSweepTree();
@@ -143,16 +189,49 @@ describe("sweepLegacyPiUserDirs — skills", () => {
       await tree.cleanup();
     }
   });
-});
 
-describe("sweepLegacyPiUserDirs — extensions", () => {
-  it("removes the copied extensions and keeps an extension the user added", async () => {
+  it("leaves a group directory that was already empty alone", async () => {
     const tree = await makeSweepTree();
     try {
+      await mkdir(tree.path("skills/planning"), { recursive: true });
+
       await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
 
-      assert.equal(await pathExists(tree.path("extensions/skill-stats")), false, "copied extension removed");
-      assert.equal(await pathExists(tree.path("extensions/mine")), true, "user extension kept");
+      assert.equal(await pathExists(tree.path("skills/planning")), true, "a directory this sweep did not empty stays");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("does not follow a symlinked skill group out of pi's user directory", async () => {
+    const tree = await makeSweepTree();
+    try {
+      await writeFiles(tree.home, { "shared-skills/ralph/SKILL.md": "---\nname: ralph\n---\n\nBody.\n" });
+      await rm(tree.path("skills/workflow"), { recursive: true, force: true });
+      await symlink(join(tree.home, "shared-skills"), tree.path("skills/workflow"), "dir");
+
+      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+
+      assert.equal(await pathExists(join(tree.home, "shared-skills/ralph/SKILL.md")), true, "link target untouched");
+      assert.equal(await pathExists(tree.path("skills/workflow")), true, "the link itself stays");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+});
+
+// No agent-cortex installer has ever written into pi's extensions directory —
+// this repo's own extension READMEs tell users to put the shipped names there —
+// so the directory holds only user state and the sweep does not enter it.
+describe("sweepLegacyPiUserDirs — extensions", () => {
+  it("never touches pi's extensions directory, not even a copy of a shipped extension", async () => {
+    const tree = await makeSweepTree();
+    try {
+      const result = await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+
+      assert.equal(await pathExists(tree.path("extensions/skill-stats/index.ts")), true, "shipped name kept");
+      assert.equal(await pathExists(tree.path("extensions/mine/index.ts")), true, "user extension kept");
+      assert.equal(result.removed.some((path) => path.includes("extensions")), false, "nothing reported in that tree");
     } finally {
       await tree.cleanup();
     }
@@ -174,20 +253,30 @@ describe("sweepLegacyPiUserDirs — run modes", () => {
       assert.ok(result.removed.includes(tree.path("skills/workflow/ralph")));
       assert.equal(await pathExists(tree.path("agents/plan.agent.md")), true, "nothing deleted");
       assert.equal(await pathExists(tree.path("skills/workflow/ralph")), true, "nothing deleted");
+      assert.equal(result.removed.includes(tree.path("extensions/skill-stats")), false);
     } finally {
       await tree.cleanup();
     }
   });
 
-  it("is a no-op once the legacy artifacts are gone", async () => {
+  it("records that the migration ran, so a later sweep has nothing left to attribute", async () => {
     const tree = await makeSweepTree();
     try {
       await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
 
-      const second = await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      assert.equal(await pathExists(tree.path(".agent-cortex-legacy-sweep.json")), true);
+      assert.equal(await pathExists(tree.path("agents/mine.agent.md")), true, "the user's own agent is untouched");
+    } finally {
+      await tree.cleanup();
+    }
+  });
 
-      assert.deepEqual(second.removed, []);
-      assert.ok(second.kept.includes(tree.path("agents/mine.agent.md")), "the user's own agent is still kept");
+  it("writes nothing and records nothing on a dry run", async () => {
+    const tree = await makeSweepTree();
+    try {
+      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, dryRun: true, warn: () => {} });
+
+      assert.equal(await pathExists(tree.path(".agent-cortex-legacy-sweep.json")), false);
     } finally {
       await tree.cleanup();
     }
@@ -206,13 +295,13 @@ describe("sweepLegacyPiUserDirs — run modes", () => {
   });
 });
 
-describe("sweepLegacyPiUserDirs — the old installer's manifest", () => {
-  it("removes the manifest the old installer wrote and leaves pi's own config file alone", async () => {
+describe("sweepLegacyPiUserDirs — the path record left in pi's user directory", () => {
+  it("removes a stale `.agent-cortex-install.json` along with the copies it lists, and leaves pi's config alone", async () => {
     const tree = await makeSweepTree();
     try {
       await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
 
-      assert.equal(await pathExists(tree.path(".agent-cortex-install.json")), false, "manifest removed");
+      assert.equal(await pathExists(tree.path(".agent-cortex-install.json")), false, "stale record removed");
       assert.equal(await pathExists(tree.path("settings.json")), true, "pi's config untouched");
     } finally {
       await tree.cleanup();
@@ -248,6 +337,30 @@ describe("install pi CLI: legacy sweep", () => {
         true,
         "the staged package carries the skill",
       );
+    } finally {
+      await rm(home, { recursive: true, force: true });
+      await rm(bin, { recursive: true, force: true });
+    }
+  });
+
+  it("does not sweep a same-name artifact the user writes after that first migration", async () => {
+    const home = await makeTmp();
+    const bin = await makeTmp();
+    try {
+      await makeFakePi(bin);
+      await seedLegacyArtifacts(home);
+      const env = { HOME: home, PATH: `${bin}:${process.env.PATH}` };
+      await runCli(["install", "pi"], env);
+      await writeFiles(join(home, ".pi", "agent"), {
+        "agents/pipeline-worker.agent.md": '---\nname: "mine"\n---\n',
+        "skills/workflow/ralph/SKILL.md": "---\nname: mine\n---\n",
+      });
+
+      const { exitCode } = await runCli(["install", "pi"], env);
+
+      assert.equal(exitCode, 0);
+      assert.equal(await pathExists(join(home, ".pi", "agent", "agents", "pipeline-worker.agent.md")), true);
+      assert.equal(await pathExists(join(home, ".pi", "agent", "skills", "workflow", "ralph")), true);
     } finally {
       await rm(home, { recursive: true, force: true });
       await rm(bin, { recursive: true, force: true });

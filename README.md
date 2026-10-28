@@ -164,16 +164,21 @@ The installer decides that plan by reading pi's settings at
 `PI_CODING_AGENT_DIR` is not inspected — a superseded raw-repo source configured
 there has to be removed by hand with `pi remove <path>`.
 
-Under the old model the same installer rendered agents, skills, and extensions
-into `~/.pi/agent/{agents,skills,extensions}`. Those copies are a second source
-of the same resource — the skill-collision diagnostics the staged model exists
-to remove — so once registration succeeds the installer deletes the ones it can
-attribute to agent-cortex: `agents/<name>.agent.md` and `skills/<group>/<name>`
-for agents and skills this package ships, `extensions/<entry>` for the
-`extensions/` tree it ships, a short list of orphans it once shipped, and the
-old installer's own `.agent-cortex-install.json`. pi's config files, and your
-own agents, skills, and extensions, are never touched. `--output <dir>` and
-`--dry-run` sweep nothing.
+Under the old model the same installer rendered agents and skills into
+`~/.pi/agent/{agents,skills}`. Those copies are a second source of the same
+resource — the skill-collision diagnostics the staged model exists to remove —
+so once registration succeeds the installer removes the ones it can attribute to
+agent-cortex: `agents/<name>.agent.md` and `skills/<group>/<name>` for agents and
+skills this package ships or once shipped, and a `.agent-cortex-install.json`
+path record left there listing those copies. It is a one-time migration:
+attribution is by name, which cannot tell a rendered copy from a file you wrote
+under the same name, so it records that it ran
+(`~/.pi/agent/.agent-cortex-legacy-sweep.json`) and never removes anything there
+again. Anything whose name this package does not ship is left alone, and
+`~/.pi/agent/extensions` is never touched at all — no installer has written
+there, so its contents are yours. `--output <dir>` and `--dry-run` sweep nothing.
+The sweep follows the settings file the installer reads (`~/.pi/agent`): a pi
+agent dir relocated with `PI_CODING_AGENT_DIR` keeps its copies.
 
 The staged package contains:
 

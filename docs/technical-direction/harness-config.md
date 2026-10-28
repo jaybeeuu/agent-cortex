@@ -1,5 +1,27 @@
 # Technical Direction: Harness config and third-party extensions
 
+## Status
+
+**Partly superseded (2026-10-24) by the staged-package model** (`agnt-ctx-7kru`). Two premises
+below no longer hold:
+
+- **The pi half landed without bundling.** `agent-cortex install pi` stages a self-contained
+  package at `~/.agent-cortex/pi` and copies the required third-party packages — resolved
+  through Node's own resolution — into that tree's `node_modules/`, instead of declaring
+  `bundledDependencies` in the published tarball. pi loads a local directory and resolves no
+  npm packages itself, so a tarball's `node_modules/` reached nobody; bundling also forced a
+  repo-wide `node-linker=hoisted`, surrendering pnpm's isolated resolution for the workspace.
+- **pi's own settings are no longer installer output.** The installer writes nothing into
+  `~/.pi/agent`; it registers the staged package by driving pi's own `pi install` /
+  `pi remove` commands, which own `settings.json` → `packages[]`. `pi/settings.json` and
+  `pi/keybindings.json` are reference templates. Registration's invariant is **one
+  agent-cortex source**: a source pointing at a raw agent-cortex checkout is removed first,
+  and one that survives `pi remove` fails the run rather than leave two sources configured
+  that both load.
+
+`pi.packages` and `lib/pi-packages.mjs` are deleted, so the bespoke-pi-mechanism problem this
+memo was written to settle is closed. The Claude and Copilot analysis stands.
+
 ## Problem and target outcome
 
 - **What we are solving.** agent-cortex ships agents and skills to three harnesses (pi, Claude
@@ -155,7 +177,9 @@ pi extension loads from `node_modules/` and an optional one is materialised from
   `extraKnownMarketplaces`).
 - GitHub Copilot CLI, *Plugin reference* — https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference
   and *Configuration directory* — https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference
-- Code evidence: `package.json` (`pi.packages`), `lib/pi-packages.mjs` (main's provisioner);
+- Code evidence (as of 2026-09 — `pi.packages` and `lib/pi-packages.mjs` were removed in
+  `agnt-ctx-7kru.1`, see Status): `package.json` (`pi.packages`), `lib/pi-packages.mjs` (main's
+  provisioner);
   `pi.extensions.json`, `claude.extensions.json`, `lib/extension-manifest.mjs` (epic F5, `1e0e970`);
   `bin/installers/pi.mjs` settings materialisation (epic F3, `afab2c6`);
   `docs/ideas/extension-manifests.md` (the originating idea).

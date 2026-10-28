@@ -15,14 +15,14 @@ decisions behind the map.
 | id | Platform | Agent format | Plugin root |
 |---|---|---|---|
 | `copilot` | GitHub Copilot CLI | `agents/<name>/` composable dirs → generated `agents/*.agent.md` | `~/.copilot/installed-plugins/_direct/agent-cortex` |
-| `pi` | pi coding agent | `agents/<name>/` composable dirs (composed at runtime by agent-modes, or installed install-time by `agent-cortex install pi`) | `~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex` |
+| `pi` | pi coding agent | `agents/<name>/` composable dirs (composed at runtime by agent-modes, or rendered install-time by `agent-cortex install pi`) | `~/.agent-cortex/pi` |
 | `claude` | Claude Code | `~/.agent-cortex/claude/agents/*.md` (materialised home install) | `${CLAUDE_PLUGIN_ROOT}` (env var) |
 
 The harness ids match the values accepted by `agent-cortex install <harness>` in
-`lib/cli.mjs` (`SUPPORTED_HARNESSES`). The pi `plugin_root` row is the npm-layout
-literal that `agent-cortex install pi` uses by default; local checkout and symlinked
-installs pass `--plugin-root <dir>` to override it (see README "Pi harness agents &
-skills").
+`lib/cli.mjs` (`SUPPORTED_HARNESSES`). The pi `plugin_root` row is the staged package
+directory `agent-cortex install pi` materialises, which pi then loads by path; checkout
+and symlinked installs pass `--plugin-root <dir>` to override it (see README "Pi package
+staging (`agent-cortex install pi`)").
 
 ## Design decisions
 

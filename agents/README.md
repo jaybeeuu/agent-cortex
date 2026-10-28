@@ -226,8 +226,11 @@ flat `agents/*.agent.md` files are built from them:
   from `agents-native/ralph.md`, copied verbatim).
 - The pi harness delivers two ways: the `agent-modes` extension composes `agent.md` +
   `pi/frontmatter.json` at runtime against `token-map.json`, and `agent-cortex install pi`
-  materialises composed agents + token-substituted skills into `~/.pi/agent` at install
-  time (see README "Pi harness agents & skills").
+  renders flat pi agents + token-substituted skills into a self-contained package at
+  `~/.agent-cortex/pi`, which pi loads once registered (see README "Pi package staging
+  (`agent-cortex install pi`)"). `agent-modes` and the `subagent` extension both read agents
+  beside themselves,
+  so the staged package needs no `~/.pi/agent` writes.
 
 Never edit the generated flat materialised files by hand — edit the composable directory.
 Generation is install-time: `claude` ships
@@ -239,8 +242,8 @@ in `claude-extras/`), and CI validates the materialiser with structural checks o
 install; `copilot` ships via
 `bin/installers/copilot.mjs`, the shared code path behind both `agent-cortex install
 copilot` and `scripts/build-copilot-agents.mjs`; `pi` ships via
-`bin/installers/pi.mjs`, which materialises composed agents + token-substituted skills
-into `~/.pi/agent`.
+`bin/installers/pi.mjs`, which stages a self-contained pi package (manifest, rendered
+agents, token-substituted skills, extensions) at `~/.agent-cortex/pi`.
 
 ## Validation
 

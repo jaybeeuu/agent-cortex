@@ -123,11 +123,6 @@ describe("parseArgs", () => {
     assert.deepStrictEqual(result, { command: "install", harness: "pi", pluginRoot: "/tmp/plugin" });
   });
 
-  it("parses --no-provision for install", async () => {
-    const result = parseArgs(["install", "pi", "--no-provision"]);
-    assert.deepStrictEqual(result, { command: "install", harness: "pi", noProvision: true });
-  });
-
   it("combines multiple install options", async () => {
     const result = parseArgs(["install", "pi", "--dry-run", "--output", "/tmp/out", "--plugin-root", "/tmp/plugin"]);
     assert.deepStrictEqual(result, {
@@ -236,14 +231,6 @@ describe("CLI integration", () => {
     }
   });
 
-  it("exits 0 for install pi --no-provision", async () => {
-    // --no-provision keeps this hermetic: without it the CLI would install the
-    // third-party packages declared in the package manifest.
-    const { exitCode, stdout } = await runCli(["install", "pi", "--no-provision"]);
-    assert.equal(exitCode, 0);
-    assert.ok(stdout.includes("pi"));
-  });
-
   it("exits 1 and prints error for install with no harness", async () => {
     const { exitCode, stderr } = await runCli(["install"]);
     assert.equal(exitCode, 1);
@@ -256,6 +243,12 @@ describe("CLI integration", () => {
     assert.ok(stderr.includes("--bogus"));
   });
 
+  it("exits 1 for the removed --no-provision flag", async () => {
+    const { exitCode, stderr } = await runCli(["install", "pi", "--no-provision"]);
+    assert.equal(exitCode, 1);
+    assert.ok(stderr.includes("--no-provision"), "the removed flag is named in the error");
+  });
+
   it("exits 1 and prints error for install with a missing option value", async () => {
     const { exitCode, stderr } = await runCli(["install", "pi", "--output"]);
     assert.equal(exitCode, 1);
@@ -263,30 +256,33 @@ describe("CLI integration", () => {
   });
 
   it("exits 0 for install pi --dry-run and writes nothing", async () => {
-    const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"]);
-    assert.equal(exitCode, 0);
-    assert.ok(stdout.includes("ralph.agent.md"));
-    assert.ok(stdout.includes("dry-run"));
-  });
-
-  it("install pi --dry-run lists the pi packages it would install", async () => {
-    // Fake HOME keeps the pi user scope hermetic: both manifest packages are
-    // missing, so the plan contains exactly the declared sources.
-    const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-home-"));
+    // A throwaway HOME keeps the registration plan (which reads pi's settings)
+    // off the developer's real ~/.pi/agent.
+    const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-dry-run-home-"));
     try {
       const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { HOME: fakeHome });
       assert.equal(exitCode, 0);
-      assert.ok(stdout.includes("Would install pi package npm:pi-questions"), "planned pi-questions shown");
-      assert.ok(
-        stdout.includes("Would install pi package npm:pi-web-access@0.10.7"),
-        "planned pi-web-access shown",
-      );
+      assert.ok(stdout.includes("ralph.agent.md"));
+      assert.ok(stdout.includes("dry-run"));
     } finally {
       await rm(fakeHome, { recursive: true, force: true });
     }
   });
 
-  it("exits 0 for install pi --output <tmp> and writes agent and config files", async () => {
+  it("install pi --dry-run reports the bundled pi packages it would stage", async () => {
+    const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-home-"));
+    try {
+      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { HOME: fakeHome });
+      assert.equal(exitCode, 0);
+      assert.ok(stdout.includes("Bundled pi package pi-questions"), "pi-questions staged");
+      assert.ok(stdout.includes("Bundled pi package pi-web-access"), "pi-web-access staged");
+      assert.ok(stdout.includes(join(fakeHome, ".agent-cortex", "pi")), "default output is the home staging dir");
+    } finally {
+      await rm(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it("exits 0 for install pi --output <tmp> and stages a loadable pi package", async () => {
     const outDir = await mkdtemp(join(tmpdir(), "cli-pi-install-"));
     try {
       const { exitCode, stdout } = await runCli(["install", "pi", "--output", outDir]);
@@ -294,9 +290,10 @@ describe("CLI integration", () => {
       assert.ok(stdout.includes("ralph.agent.md"));
       const ralph = await readFile(join(outDir, "agents", "ralph.agent.md"), "utf-8");
       assert.ok(ralph.includes("agent-cortex:ralph"));
-      const settings = JSON.parse(await readFile(join(outDir, "settings.json"), "utf-8"));
-      assert.ok(Array.isArray(settings.packages));
-      assert.ok(await readFile(join(outDir, "keybindings.json"), "utf-8"));
+      const manifest = JSON.parse(await readFile(join(outDir, "package.json"), "utf-8"));
+      assert.deepEqual(manifest.keywords, ["pi-package"]);
+      assert.ok(manifest.pi.extensions.includes("./extensions"));
+      assert.ok(manifest.pi.skills.includes("./skills"));
     } finally {
       await rm(outDir, { recursive: true, force: true });
     }

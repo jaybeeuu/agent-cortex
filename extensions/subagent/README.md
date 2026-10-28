@@ -58,7 +58,7 @@ This tool executes a separate `pi` subprocess with a delegated system prompt and
 
 **Project-local agents** (`.pi/agents/*.md`) are repo-controlled prompts that can instruct the model to read files, run bash commands, etc.
 
-**Default behavior:** Only loads **user-level agents** from `~/.pi/agent/agents`.
+**Default behavior:** Only loads **user-level agents** — pi's own `~/.pi/agent/agents`, plus the `agents/` tree of the package this extension ships inside when that is a rendered (staged) tree, e.g. `~/.agent-cortex/pi/agents` after `agent-cortex install pi`.
 
 To enable project-local agents, pass `agentScope: "both"` (or `"project"`). Only do this for repositories you trust.
 

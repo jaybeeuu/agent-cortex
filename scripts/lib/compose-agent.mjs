@@ -100,7 +100,7 @@ export function substituteTokens(content, harness, tokenMap, options = {}) {
  * @param {string} root    Package root (contains agents/ and token-map.json)
  * @param {string} name    Agent directory name (e.g. "ralph", "plan")
  * @param {string} harness Harness id: "copilot" | "claude" | "pi"
- * @returns {{ name: string, description: string, tools: string[], model?: string, argumentHint?: string, body: string }}
+ * @returns {Promise<{ name: string, description: string, tools: string[], model?: string, argumentHint?: string, body: string }>}
  */
 export async function composeAgent(root, name, harness, options = {}) {
   const { dropNullTools = false, pluginRoot, resolveRelativePaths = false, warn = noop } = options;

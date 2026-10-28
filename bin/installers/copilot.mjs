@@ -98,7 +98,7 @@ async function buildAgents(root) {
  *                                  (default: <root>/agents — the dir plugin.json's
  *                                  "agents": "agents/" scans for the plugin).
  * @param {boolean} [options.dryRun] Plan and report without writing anything.
- * @returns {{ output: string, agents: string[], dryRun: boolean }}
+ * @returns {Promise<{ output: string, agents: string[], dryRun: boolean }>}
  */
 export async function installCopilot({ root = DEFAULT_ROOT, output, dryRun = false } = {}) {
   const out = output ?? join(root, "agents");

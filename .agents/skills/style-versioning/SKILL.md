@@ -92,6 +92,26 @@ The `release` job in `.github/workflows/ci.yml` handles everything automatically
 must be a single unquoted command token — keep release logic in pnpm scripts
 (`version-packages`, `publish-package`, `publish-noop`), never inline shell strings.
 
+### Approve CI on the Version Packages PR
+
+The version PR arrives `BLOCKED` with an empty check list, and nothing is broken:
+`changesets/action` pushes that branch with `GITHUB_TOKEN`, so GitHub parks the CI
+run the push creates behind **“Approve workflows to run”** (`action_required`, zero
+jobs). A parked run reports no checks, so the five required contexts are
+unsatisfiable until someone approves it. Approve it from the PR's merge box, or:
+
+```bash
+run=$(gh run list --branch changeset-release/main --limit 20 \
+  --json databaseId,conclusion --jq 'map(select(.conclusion=="action_required"))[0].databaseId')
+gh api -X POST "repos/{owner}/{repo}/actions/runs/$run/approve"
+```
+
+An approval is per head commit. Every merge to `main` force-updates the version
+branch and starts a fresh parked run, so approve immediately before merging the
+version PR — not once per release. Do not reach for a PAT or GitHub App token to
+skip this: one click is cheaper than a long-lived credential in repository
+secrets, and the `GITHUB_TOKEN` the job already holds cannot approve its own run.
+
 Which of the two publish scripts runs is decided per push, not hard-coded: labels are
 invisible on a push event, so the job resolves the PR merged for the pushed commit via
 the GitHub API and reads its labels — `publish-noop` when the PR carried `no-publish`,

@@ -53,6 +53,11 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Coding Conventions
 
+- **Landing method**: pull requests are squash-merged. Merge commits are disabled in the
+  repository settings and `main` requires linear history, so a branch's own commit shape never
+  reaches `main` — bring a behind branch up to date by merging `main` in rather than rebasing it.
+  `docs/commit-signing.md` records why squash is the only landing path that produces a signed
+  commit; the rebase-versus-merge reasoning lives in the `git-workflow` skill.
 - **Never block the main thread**: no `*Sync` functions (`readFileSync`, `spawnSync`, …).
   Tooling code in `bin/`, `scripts/`, `lib/`, `hooks/`, and `test/` must be async —
   enforced by `scripts/check-no-sync.mjs` (runs via `pnpm lint`). Skill-owned

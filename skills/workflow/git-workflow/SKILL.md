@@ -66,7 +66,41 @@ git pull
 
 This avoids avoidable merge conflicts.
 
-### 5. Worktree lifecycle
+### 5. Bring a behind branch up to date — merge, don't rebase
+
+When the base branch moves and the PR reports `BEHIND` or `CONFLICTING`, update
+the branch before anything else:
+
+```bash
+git fetch origin
+git merge origin/main
+```
+
+**Never rebase a branch that contains a merge commit.** `git rebase` drops merge
+commits and the patches they carry, so rebasing a branch that already merged the
+base silently reverts what that merge resolved — the conflict resolutions, and
+any fix from the base the merge brought in. The result usually looks like a
+regression in your own change. `--rebase-merges` preserves the structure, but
+it re-opens the same conflicts; only worth it when the branch's history is
+itself the deliverable.
+
+Rebase only a **linear branch that has not been reviewed yet**. Rewriting
+commits under review discards the review context and invalidates approvals, and
+it requires `git push --force-with-lease` — never `--force`, which overwrites
+work you have not seen.
+
+Which one you owe the repository depends on its landing method, not on taste:
+
+- **Squash merge**: the branch is collapsed on landing, so its shape never
+  reaches the base branch. Merge the base in and move on — rebasing here is
+  cosmetic, and the risky kind of cosmetic.
+- **Rebase-and-merge**: a linear branch is mandatory, so rebase *before* the
+  first review. Once a merge has landed on the branch, that option is gone.
+
+After any update, re-run the checks. A merge that resolved conflicts by hand is
+not verified by the base branch's green CI.
+
+### 6. Worktree lifecycle
 
 After the PR is merged or closed, clean up the worktree:
 

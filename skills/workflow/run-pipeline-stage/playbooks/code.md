@@ -11,7 +11,9 @@
 
 ## Stage Outcome
 
+- Commit and push the stage's work before reporting (see the stage-runner prompt, _Deliver before reporting_).
 - Set `OUTCOME: SUCCESS` when implementation passes all tests and meets requirements.
 - Set `OUTCOME: BLOCKED` if tests fail or requirements cannot be met.
 - If blocked, list issues under `BLOCKING_ISSUES`.
 - `FILES_CHANGED` lists all modified source/test files.
+- Report `COMMIT`, `PUSHED`, and `PR` (`PR: none` outside the document stage).

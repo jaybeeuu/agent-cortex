@@ -24,6 +24,25 @@ export interface AgentDiscoveryResult {
 	projectAgentsDir: string | null;
 }
 
+/**
+ * Parse a frontmatter `tools` value into PI tool names.
+ *
+ * `parseFrontmatter` returns the scalar as a single string, and agent files are
+ * written with either a comma-separated list (`tools: read, grep`) or a
+ * whitespace-separated one. Splitting on commas alone collapses the whitespace
+ * form into one bogus name, which becomes a `--tools` allowlist matching no
+ * tool — the subagent then runs with an empty tool block. Accept both
+ * separators so neither form can zero out the tool list.
+ *
+ * @param {string | undefined} tools  Raw frontmatter `tools` scalar
+ * @returns {string[] | undefined} Tool names, or undefined when there are none
+ */
+export function parseToolList(tools: string | undefined): string[] | undefined {
+	const parsed = tools?.split(/[,\s]+/).filter(Boolean);
+
+	return parsed && parsed.length > 0 ? parsed : undefined;
+}
+
 function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {
 	const agents: AgentConfig[] = [];
 
@@ -71,16 +90,18 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 }
 
 /**
- * Tool lists are written either as a YAML scalar (`bash, read`) or as a YAML
- * sequence (`["bash", "read"]`); both name the same tools.
+ * The tools of a frontmatter `tools` value, which is written either as a YAML
+ * scalar (one string) or as a YAML sequence (an array).
  */
 function readTools(value: unknown): string[] | undefined {
-	const list = typeof value === "string" ? value.split(",") : Array.isArray(value) ? value : [];
-	const tools = list
-		.filter((tool): tool is string => typeof tool === "string")
-		.map((tool) => tool.trim())
-		.filter(Boolean);
-	return tools.length > 0 ? tools : undefined;
+	if (Array.isArray(value)) {
+		const tools = value
+			.filter((tool): tool is string => typeof tool === "string")
+			.map((tool) => tool.trim())
+			.filter(Boolean);
+		return tools.length > 0 ? tools : undefined;
+	}
+	return parseToolList(typeof value === "string" ? value : undefined);
 }
 
 function isDirectory(p: string): boolean {

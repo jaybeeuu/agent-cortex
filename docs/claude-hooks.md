@@ -14,7 +14,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 
 | pi extension | Claude port | Decision |
 |---|---|---|
-| `session-start.ts` | `SessionStart` hook commands | **Port** (extended) |
+| `session-start/` | `SessionStart` hook commands | **Port** (extended) |
 | `auto-name.ts` | — | **Reject** — built-in |
 | `agent-guardrails/` | — | **Reject** — pi-only (no system-prompt hook) |
 | `notify/` | `Notification` hook + `scripts/notify.mjs` | **Port** |
@@ -22,10 +22,11 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `subagent/` | — | **Reject** — native |
 | `agent-modes/` | — | **Reject** — no equivalent |
 
-## `session-start.ts` → SessionStart (port)
+## `session-start/` → SessionStart (port)
 
-pi injects skill-availability hints + project context files (AGENTS.md,
-`docs/user-preferences.md`) into every session. Claude Code already loads
+pi injects the project context files (AGENTS.md, `docs/user-preferences.md`)
+into every session; it lists no skills, since pi's system prompt already names
+every skill with its `SKILL.md` path. Claude Code already loads
 `AGENTS.md` natively and the existing SessionStart hook nudge ("Load AGENTS.md
 and active beads context…") plus the style-skill policy (PR #57) cover the
 context side. This bead closes the remaining gap: a skill-policy command listing

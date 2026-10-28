@@ -290,6 +290,21 @@ interface FlatParsed {
   prompt: string;
 }
 
+/**
+ * Split a scalar `tools` value into tool names.
+ *
+ * Accepts the quoted string the pi installer renders (`tools: "bash, read"`)
+ * as well as an unquoted whitespace-separated list (`tools: bash read`).
+ * Commas alone are not enough: a whitespace-separated list would collapse to
+ * one bogus name and the agent would run with no usable tool allowlist.
+ */
+function splitToolList(raw: string): string[] {
+  return raw
+    .replace(/^["']|["']$/g, "")
+    .split(/[,\s]+/)
+    .filter(Boolean);
+}
+
 function parseFlatFrontmatter(raw: string): FlatParsed {
   const lines = raw.split(/\r?\n/);
   if (lines[0] !== "---") return { prompt: raw };
@@ -327,11 +342,16 @@ function parseFlatFrontmatter(raw: string): FlatParsed {
   }
 
   // Parse tools from the tools frontmatter.
-  // Supports two formats:
-  //   tools: ["bash", "view"]        (JSON array, single line)
-  //   tools:                         (YAML list, subsequent lines)
+  // Supports three formats:
+  //   tools: ["bash", "view"]          (JSON array, single line)
+  //   tools: "bash, view"              (scalar list, comma or whitespace separated)
+  //   tools:                           (YAML list, subsequent lines)
   //     - bash
   //     - view
+  //
+  // The scalar form is what the pi installer renders for generated agents, so
+  // it must be read here rather than dropped to DEFAULT_TOOLS (which lifts the
+  // restriction instead of applying it).
   let inToolsBlock = false;
   for (const line of yamlLines) {
     const trimmed = line.trim();
@@ -354,6 +374,8 @@ function parseFlatFrontmatter(raw: string): FlatParsed {
           tools = [];
           continue;
         }
+        tools = splitToolList(val);
+        continue;
       }
     }
 

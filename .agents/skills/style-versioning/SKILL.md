@@ -100,6 +100,25 @@ the GitHub API and reads its labels — `publish-noop` when the PR carried `no-p
 no labels and so publishes, which keeps a genuine publish of an already-published
 version failing loudly — there is deliberately no idempotency guard.
 
+### Merge method and commit signatures
+
+Land a Version Packages PR with `gh pr merge <n> --squash`. Agent and human commits here are
+GPG-signed by the environment and verify as `valid`; the `github-actions[bot]` commit is
+`unsigned` because `GITHUB_TOKEN` cannot sign. The commit that lands is signed by GitHub,
+which is why `main`'s history reads `valid`: PR #161's unsigned head `fe7ef84` landed as
+`dd347471b1` with `committer=GitHub`, `verified=true`.
+
+Squash re-signs the landing commit; it does not escape an enforced signature rule. GitHub
+evaluates a pull request by creating a test merge commit and checking the commits it
+introduces — head-branch commits included — so an enforced `required_signatures` rule blocks
+a squash merge too, and the remedy is then a signed commit on the branch, not another merge
+method. `allow_merge_commit` is off and `required_linear_history` is on, so a merge commit is
+not an option — squash or rebase only, and only squash lands a commit GitHub signs.
+
+See `docs/commit-signing.md` for the evidence, the ruleset reads that show only
+repository-level rules applying to `main` (a read that covers organization rules too), and the
+human-only follow-ups, including the merge probe that closes AC1.
+
 ### Version lockstep
 
 All version numbers stay in lockstep automatically:
@@ -118,6 +137,11 @@ All version numbers stay in lockstep automatically:
   opt-out is the `no-publish` label, which must already exist in the repo's settings.
 - **Wrong bump type**: `patch` for fixes, `minor` for additions, `major` for breakage. When in doubt, ask the user.
 - **Wrong package name in frontmatter**: Must be `"@jaybeeuu/agent-cortex"` exactly.
+- **Merging a Version Packages PR with anything but squash**: the bot's commit is unsigned,
+  and squash is the path this repo has landed on (a rebase merge adds the head-branch commit
+  without signature verification).
+  Squash does not, however, bypass an enforced signature rule — if one is confirmed, the
+  branch needs a signed commit. See `docs/commit-signing.md`.
 
 ## What changed from the old workflow
 

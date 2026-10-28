@@ -555,6 +555,28 @@ describe("installPi — pruning stale installs", () => {
     }
   });
 
+  it("leaves an agent another harness generated untouched", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await mkdir(join(fx.output, "agents"), { recursive: true });
+      await writeFile(
+        join(fx.output, "agents", "copilot.agent.md"),
+        '---\n# GENERATED from agents/copilot/ by scripts/build-copilot-agents.mjs — DO NOT EDIT.\nname: "copilot"\n---\n\nBody.\n',
+      );
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.ok(
+        await pathExists(join(fx.output, "agents", "copilot.agent.md")),
+        "the marker alone is not evidence this installer wrote the file",
+      );
+      assert.deepEqual(result.pruned, { files: [], dirs: [] });
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
   it("dry-run reports the planned removals without deleting them", async () => {
     const fx = await makeFixture();
     try {
@@ -601,6 +623,96 @@ describe("installPi — pruning stale installs", () => {
       assert.deepEqual(result.pruned, { files: [], dirs: [] }, "nothing unowned was removed");
       assert.ok(await pathExists(join(fx.output, "skills", "engineering", "mine", "SKILL.md")), "user skill kept");
       assert.ok(await pathExists(join(fx.output, "agents", "mine.agent.md")), "hand-written agent kept");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("does not delete files through a manifest entry that escapes its tree", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: { "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nEcho body." },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      // The record is hand-editable and is the one input that authorises
+      // deletion, so a traversal entry must never reach the filesystem.
+      const manifestPath = join(fx.output, ".agent-cortex-install.json");
+      const manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
+      await writeFile(
+        manifestPath,
+        JSON.stringify({ ...manifest, skills: [...manifest.skills, "../victim.txt", "../../victim2.txt"] }),
+      );
+      await writeFile(join(fx.output, "victim.txt"), "beside the skills tree");
+      await writeFile(join(fx.root, "victim2.txt"), "outside the output dir");
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.ok(await pathExists(join(fx.output, "victim.txt")), "entry escaping the skills tree deleted nothing");
+      assert.ok(await pathExists(join(fx.root, "victim2.txt")), "entry escaping the output dir deleted nothing");
+      assert.deepEqual(result.pruned, { files: [], dirs: [] }, "rejected entries are not reported as removed");
+      assert.ok(
+        result.warnings.some((warning) => warning.includes("../victim.txt")),
+        "the rejected entries are reported",
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("keeps the installed skills when the source yields none", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: { "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nEcho body." },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      // A degraded checkout (sparse, mid-flight rename) must not be able to
+      // wipe a working install just because it produced nothing this run.
+      await rm(join(fx.root, "skills"), { recursive: true, force: true });
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.ok(
+        await pathExists(join(fx.output, "skills", "engineering", "echo", "SKILL.md")),
+        "installed skill survives a source that ships no skills",
+      );
+      assert.deepEqual(result.pruned, { files: [], dirs: [] }, "nothing is pruned from the skipped tree");
+      assert.ok(
+        result.warnings.some((warning) => warning.includes("skills")),
+        "the skipped prune is reported",
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("leaves a directory it did not empty alone", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { body: "# alpha" } },
+        skills: {
+          "engineering/echo/SKILL.md": "---\nname: echo\ndescription: d\n---\n\nEcho body.",
+          "engineering/doomed/SKILL.md": "---\nname: doomed\ndescription: d\n---\n\nDoomed body.",
+        },
+      });
+      await installPi({ root: fx.root, output: fx.output });
+
+      await rm(join(fx.root, "skills", "engineering", "doomed"), { recursive: true, force: true });
+      // Empty before the prune ran, and never written by the installer.
+      await mkdir(join(fx.output, "skills", "engineering", "user-empty"), { recursive: true });
+
+      const result = await installPi({ root: fx.root, output: fx.output });
+
+      assert.ok(
+        await pathExists(join(fx.output, "skills", "engineering", "user-empty")),
+        "a directory the prune did not empty is not removed",
+      );
+      assert.deepEqual(result.pruned.dirs, [join(fx.output, "skills", "engineering", "doomed")]);
     } finally {
       await fx.cleanup();
     }

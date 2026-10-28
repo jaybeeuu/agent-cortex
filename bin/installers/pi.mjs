@@ -78,10 +78,14 @@ const SKILLS_TREE = "skills";
 // copy left behind by an older source from a skill or agent the user wrote.
 const MANIFEST_FILE = ".agent-cortex-install.json";
 
-// First frontmatter line of every agent file this installer generates. A file
-// carrying it was written by an install, which is the evidence the prune uses
-// for agent files from installs that predate the ownership record.
+// First frontmatter line of every agent file this installer generates, up to the
+// agent name. A file carrying it was written by an install, which is the evidence
+// the prune uses for agent files from installs that predate the ownership record.
+// The provenance suffix that follows the name in the full line is what keeps that
+// evidence pi-specific: the copilot installer generates agents with the same
+// prefix, and one of its files under <output>/agents is not a stale pi copy.
 const AGENT_MARKER = "# GENERATED from agents/";
+const AGENT_PROVENANCE = " by bin/installers/pi.mjs — DO NOT EDIT.";
 
 // pi parses settings.json / keybindings.json with a bare JSON.parse (see pi's
 // SettingsManager / KeybindingsManager), so JSONC comments are not an option —
@@ -158,8 +162,9 @@ export async function installPi(options = {}) {
   const owned = { [AGENTS_TREE]: agents.owned, [SKILLS_TREE]: skills.owned };
 
   // Reconcile after writing: a failed copy leaves the tree as it was rather than
-  // half-pruned. The record is written last, so an interrupted install never
-  // claims paths it did not produce.
+  // half-pruned. The record follows the copies it describes — only the config and
+  // package writes come after it — so an interrupted install never claims paths
+  // it did not produce.
   const pruned = await pruneStaleCopies({ output, owned, skillDirs: skills.skillDirs, dryRun, warn });
   if (!dryRun) await writeInstallManifest(output, owned);
 
@@ -219,7 +224,7 @@ async function installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, wa
 function renderPiAgent(name, fm, tools) {
   const lines = [
     "---",
-    `${AGENT_MARKER}${name}/ by bin/installers/pi.mjs — DO NOT EDIT.`,
+    `${AGENT_MARKER}${name}/${AGENT_PROVENANCE}`,
     `name: ${JSON.stringify(fm.name)}`,
     `description: ${JSON.stringify(fm.description)}`,
     // pi's parseFrontmatter hands back the scalar as one string, so the tool
@@ -307,17 +312,17 @@ async function copyTree(src, dest, transform, dryRun) {
  * has to be evidenced:
  *
  *   - paths the previous install recorded in MANIFEST_FILE,
- *   - agent files carrying the GENERATED marker this installer writes into each
- *     one — evidence that also predates the manifest, so a tree installed by an
- *     older agent-cortex still sheds the agents the source dropped, and
+ *   - agent files carrying the provenance line this installer writes under the
+ *     agent name — evidence that also predates the manifest, so a tree installed
+ *     by an older agent-cortex still sheds the agents the source dropped, and
  *   - files inside a skill the source still ships: the installer writes that
  *     whole subtree, so a file it did not write is an orphan from an older
  *     source rather than something the user added.
  *
  * Anything else — an npm package under <output>/npm, pi's extensions, a skill or
- * hand-written agent the user added — stays. Removing whole directories is
- * conditional on them being empty, so a directory holding anything unowned also
- * stays.
+ * hand-written agent the user added — stays. A directory is removed only once
+ * this prune has emptied it, so one holding anything unowned stays, and so does
+ * one that was already empty.
  *
  * One boundary follows from that: a whole skill directory dropped upstream is
  * only provable once a manifest exists, so the first run over a tree installed
@@ -326,6 +331,14 @@ async function copyTree(src, dest, transform, dryRun) {
  * run records the manifest, and every run after it is complete; sweeping the
  * pre-existing tree is a separate, deliberate cleanup rather than something this
  * prune can do without deleting a user's own skills.
+ *
+ * Two inputs are refused rather than acted on. A recorded path that is not a
+ * plain relative path inside its tree would resolve anywhere once joined, so it
+ * is ignored with a warning — the record is hand-editable and is the one input
+ * that authorises deletion. And a tree whose source resolves to nothing while
+ * the record lists paths in it is kept whole with a warning: a degraded source
+ * (sparse checkout, a rename mid-flight) proves no copy stale, while deleting on
+ * its silence would turn a failed install into a destructive one.
  *
  * Returns the plan instead of deleting it under `dryRun`; the report is the
  * installer's output either way.
@@ -336,9 +349,20 @@ async function pruneStaleCopies({ output, owned, skillDirs, dryRun, warn }) {
   const previous = await readInstallManifest(output, warn);
   const report = { files: [], dirs: [] };
   for (const tree of [AGENTS_TREE, SKILLS_TREE]) {
+    const expected = owned[tree] ?? [];
+    const recorded = previous[tree];
+    // A degraded source — sparse checkout, a rename mid-flight — resolves to
+    // nothing for a tree it used to populate, which would make every recorded
+    // path look dropped. Nothing proves it better than the copies on disk do.
+    if (expected.length === 0 && recorded.length > 0) {
+      warn(
+        `the source ships no ${tree} while ${recorded.length} installed ${tree} path(s) are recorded — keeping them and skipping the ${tree} prune`,
+      );
+      continue;
+    }
     const treeDir = join(output, tree);
     if (!(await isDirectory(treeDir))) continue;
-    const stale = await findStaleCopies({ tree, treeDir, previous: previous[tree], owned: owned[tree], skillDirs });
+    const stale = await findStaleCopies({ tree, treeDir, previous: recorded, owned: expected, skillDirs });
     if (stale.length === 0) continue;
 
     // Computed before deleting, so the dry-run plan and the real run agree.
@@ -372,25 +396,34 @@ async function findStaleCopies({ tree, treeDir, previous, owned, skillDirs }) {
 
 /** Whether a file under an install tree is provably a copy an earlier install wrote. */
 async function isAbandonedCopy({ tree, rel, abs, skillDirs }) {
-  if (tree === AGENTS_TREE) return (await readFileMaybe(abs))?.startsWith(`---\n${AGENT_MARKER}`) ?? false;
+  if (tree === AGENTS_TREE) {
+    const [opening, marker] = ((await readFileMaybe(abs)) ?? "").split("\n", 2);
+    return opening === "---" && marker.startsWith(AGENT_MARKER) && marker.endsWith(AGENT_PROVENANCE);
+  }
   return skillDirs.some((dir) => rel.startsWith(`${dir}/`));
 }
 
 /**
  * Directories that hold no file surviving this prune, deepest first.
  *
+ * Only directories on the path to a removed file are candidates: one that was
+ * empty before the prune ran, or that holds something the prune keeps, was not
+ * emptied by this run and is not the installer's to remove. The set is computed
+ * from the plan, so a dry run reports exactly what a real run would delete.
+ *
  * The tree root is never included: this returns what may be removed, and the
  * caller only removes directories that are genuinely empty.
  */
 async function dirsEmptiedBy(treeDir, stale) {
   const removing = new Set(stale);
+  const candidates = ancestorDirs(stale);
   const emptied = [];
   const walk = async (dir, prefix) => {
     let empty = true;
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        if (await walk(join(dir, entry.name), rel)) emptied.push(rel);
+        if (candidates.has(rel) && (await walk(join(dir, entry.name), rel))) emptied.push(rel);
         else empty = false;
       } else if (!removing.has(rel)) {
         empty = false;
@@ -400,6 +433,16 @@ async function dirsEmptiedBy(treeDir, stale) {
   };
   await walk(treeDir, "");
   return emptied;
+}
+
+/** Every directory a set of "/"-joined paths sits under, the tree root excluded. */
+function ancestorDirs(rels) {
+  const dirs = new Set();
+  for (const rel of rels) {
+    const parts = rel.split("/").slice(0, -1);
+    for (let depth = 1; depth <= parts.length; depth += 1) dirs.add(parts.slice(0, depth).join("/"));
+  }
+  return dirs;
 }
 
 /** Remove a directory this prune emptied; one a concurrent writer refilled stays. */
@@ -442,7 +485,32 @@ async function readInstallManifest(output, warn) {
     warn(`${target} is not a JSON object — pruning only what it can prove is stale`);
     return none;
   }
-  return { [AGENTS_TREE]: stringList(parsed[AGENTS_TREE]), [SKILLS_TREE]: stringList(parsed[SKILLS_TREE]) };
+  const rejected = [];
+  const trustedPaths = (tree) =>
+    stringList(parsed[tree]).filter((rel) => {
+      if (isPlainTreePath(rel)) return true;
+      rejected.push(`${tree}/${rel}`);
+      return false;
+    });
+  const manifest = { [AGENTS_TREE]: trustedPaths(AGENTS_TREE), [SKILLS_TREE]: trustedPaths(SKILLS_TREE) };
+  if (rejected.length > 0) {
+    // The record is hand-editable and is the one input that authorises a
+    // deletion, so a path that could resolve outside its tree is not trusted.
+    warn(`${target} records paths that leave the trees this installer owns — ignoring them: ${rejected.join(", ")}`);
+  }
+  return manifest;
+}
+
+/**
+ * Whether a recorded path is a plain relative path inside its tree.
+ *
+ * `fromRel` joins the segments, which normalises `..`, so an absolute,
+ * drive-qualified, backslash-separated or parent-relative entry would delete
+ * whatever it resolved to. Only the shapes the installer itself records pass.
+ */
+function isPlainTreePath(rel) {
+  if (rel === "" || rel.startsWith("/") || rel.includes("\\") || /^[a-zA-Z]:/.test(rel)) return false;
+  return !rel.split("/").includes("..");
 }
 
 /** Record the paths this install owns, so the next one can prune what the source drops. */

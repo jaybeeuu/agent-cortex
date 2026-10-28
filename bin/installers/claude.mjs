@@ -423,12 +423,12 @@ async function isSymlink(filePath) {
  *                                       explicitly materialises settings even with
  *                                       --output — the test/CI seam.
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
- * @returns {{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
+ * @returns {Promise<{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
  *             marketplaceManifest: object|null, agents: string[],
  *             skills: {names: string[], md: number, files: number, dir: string},
  *             hooks: boolean, hookFiles: string[], handAuthored: string[],
  *             settings: {path: string, action: string, removedSymlink: boolean}|null,
- *             warnings: string[], dryRun: boolean }}
+ *             warnings: string[], dryRun: boolean }>}
  */
 export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, warn = DEFAULT_WARN } = {}) {
   const tokenMap = await loadTokenMap(root);
@@ -629,7 +629,8 @@ async function readMaterialisedPluginVersion(root, manifest) {
   }
 }
 
-/** Run one claude plugin command, inheriting its output; rejects on failure. */
+/** Run one claude plugin command, inheriting its output; rejects on failure.
+ * @returns {Promise<void>} */
 function runClaudeCommand(claudeBin, args) {
   const label = `${claudeBin} ${args.join(" ")}`;
   return new Promise((resolve, reject) => {
@@ -756,8 +757,8 @@ async function installedPluginVersion(claudeBin, pluginId) {
  * @param {string} [options.pluginVersion]   Materialised plugin version (default: read from plugin.json)
  * @param {boolean} [options.requireRegister] Exit non-zero when registration cannot run
  * @param {(msg: string) => void} [options.warn] Warning sink (default: console.warn)
- * @returns {{ marketplace: string, plugin: string, commands: string[][],
- *             dryRun: boolean, registered: boolean, skipped: string[] }}
+ * @returns {Promise<{ marketplace: string, plugin: string, commands: string[][],
+ *             dryRun: boolean, registered: boolean, skipped: string[] }>}
  */
 export async function registerClaude({
   root = PACKAGE_ROOT,

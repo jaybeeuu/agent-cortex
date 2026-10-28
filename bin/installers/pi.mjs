@@ -62,6 +62,17 @@ const KEYBINDINGS_TEMPLATE = "pi/keybindings.json";
 // pi ignores on load and preserves on write.
 const GENERATED_KEY = "//";
 
+/**
+ * Result of writing a managed config file (settings.json, keybindings.json):
+ * the target path, the action taken (or planned, under dry-run), and whether a
+ * legacy symlink was replaced. Produced by `writeManagedJson`.
+ *
+ * @typedef {object} ManagedFileResult
+ * @property {string} path            Target file path
+ * @property {string} action          "written" | "unchanged" | "removed-symlink" | "would-write" | "would-remove-symlink"
+ * @property {boolean} removedSymlink Whether a legacy symlink was (or would be) replaced
+ */
+
 const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
 
 /**
@@ -84,10 +95,10 @@ const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
  * @param {(source: string) => Promise<{ok: boolean, error: string | null}>} [options.runInstall]
  *                                       Installer for one package source (default: pi install)
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`
- * @returns {{ agents: {name:string, filePath:string}[], skills: {skills:number, md:number, files:number, dir:string},
+ * @returns {Promise<{ agents: {name:string, filePath:string}[], skills: {skills:number, md:number, files:number, dir:string},
  *             packages: {planned:string[], installed:string[], failed:{source:string, error:string}[]} | null,
  *             settings: ManagedFileResult|null, keybindings: ManagedFileResult|null,
- *             warnings: string[], dryRun: boolean, agentsDir: string, skillsDir: string }}
+ *             warnings: string[], dryRun: boolean, agentsDir: string, skillsDir: string }>}
  */
 export async function installPi(options = {}) {
   const root = options.root ?? PACKAGE_ROOT;

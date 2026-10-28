@@ -14,7 +14,11 @@ const SELF = "scripts/check-no-sync.mjs";
 
 const SYNC_CALL = /\b\w*Sync\s*\(/;
 
-/** Recursively collect files under dir, skipping this script and node_modules. */
+/**
+ * Recursively collect files under dir, skipping this script and node_modules.
+ * @param {string} dir
+ * @returns {Promise<string[]>}
+ */
 async function collect(dir) {
   const out = [];
   const entries = await readdir(dir, { withFileTypes: true });

@@ -72,8 +72,11 @@
 //
 // It is a ONE-SHOT migration, not a standing rule. Name attribution cannot tell
 // a rendered copy from a file the user wrote under the same name, so the sweep
-// records that it ran (LEGACY_SWEEP_RECORD) and never attributes anything in
-// that directory again — after the migration the directory is the user's. pi's
+// records a finished migration (DEFAULT_LEGACY_SWEEP_RECORD, keyed by the pi
+// user directory) and never attributes anything in that directory again — after
+// the migration the directory is the user's. The record lives under the home
+// install root, beside the staged package, never inside the directory it
+// describes: ~/.pi/agent is left with no agent-cortex artifact in it. pi's
 // extensions directory is never entered: no installer on this flow has ever
 // written there, so everything in it is the user's.
 //
@@ -166,13 +169,15 @@ const LEGACY_ORPHAN_SKILLS = ["productivity/migration"];
 // goes with the artifacts it lists — but only as part of the one-shot migration.
 const LEGACY_INSTALL_MANIFEST = ".agent-cortex-install.json";
 
-// Written into pi's user directory once the one-shot migration has run. Its
-// presence ends the sweep: after it, nothing there is attributed to
-// agent-cortex, so an agent or skill the user writes under a shipped name
-// survives every later install.
-const LEGACY_SWEEP_RECORD = ".agent-cortex-legacy-sweep.json";
-const LEGACY_SWEEP_RECORD_NOTE =
-  "Written by `agent-cortex install pi`: the one-time removal of the agents and skills the pre-staged-model installer rendered here has run. Nothing in this directory is attributed to agent-cortex again.";
+// Record of the one-shot migration, keyed by the resolved pi user directory:
+//   { "<piUserDir>": { "version": 1, "migratedAt": "<ISO>" } }
+// It sits under the home install root (~/.agent-cortex), not in the directory it
+// describes — after the migration that directory holds no agent-cortex artifact.
+// An entry ends the sweep for its directory: from then on nothing there is
+// attributed to agent-cortex, so an agent or skill the user writes under a
+// shipped name survives every later install. Only a fully successful migration
+// gets an entry, so a copy that could not be removed is retried next install.
+const DEFAULT_LEGACY_SWEEP_RECORD = join(homedir(), ".agent-cortex", "legacy-sweep.json");
 
 /**
  * Stage the agent-cortex pi package.
@@ -695,9 +700,9 @@ function runPiCommand(piBin, args) {
  * source.
  *
  * This is a one-shot migration: it runs once per pi user directory and records
- * that it did (LEGACY_SWEEP_RECORD), after which it reports nothing and removes
- * nothing. Only artifacts this package can name are removed, and only on that
- * single run:
+ * the finished migration in `recordPath` — outside that directory — after which
+ * it reports nothing and removes nothing. Only artifacts this package can name
+ * are removed, and only on that single run:
  *
  *   agents/<name>.agent.md        `<name>` is a composable agent the package
  *                                 root ships, or a LEGACY_ORPHAN_AGENTS entry
@@ -713,19 +718,34 @@ function runPiCommand(piBin, args) {
  * Nothing is deleted and no record is written when `dryRun` is set; the plan is
  * reported instead. A pi user directory that does not exist is left uncreated.
  *
+ * The migration is recorded only when every artifact was removed: an entry
+ * written over a partial migration would claim a directory is the user's while
+ * the copies it exists to delete are still in it, so the removal failures are
+ * warned about and the next install retries them. Recording is best-effort — a
+ * record that cannot be written warns rather than failing an install whose
+ * registration already succeeded.
+ *
  * @param {object} options
  * @param {string} [options.root]        Package root that names the rendered copies
  * @param {string} options.piUserDir     pi's own user directory (~/.pi/agent)
+ * @param {string} [options.recordPath]  Migration record (default ~/.agent-cortex/legacy-sweep.json)
  * @param {boolean} [options.dryRun]     Report the plan without deleting anything
  * @param {(msg: string) => void} [options.warn] Warning sink
  * @returns {Promise<{ removed: string[], kept: string[] }>} Absolute paths
  */
-export async function sweepLegacyPiUserDirs({ root = PACKAGE_ROOT, piUserDir, dryRun = false, warn = DEFAULT_WARN } = {}) {
+export async function sweepLegacyPiUserDirs({
+  root = PACKAGE_ROOT,
+  piUserDir,
+  recordPath = DEFAULT_LEGACY_SWEEP_RECORD,
+  dryRun = false,
+  warn = DEFAULT_WARN,
+} = {}) {
   const removed = [];
   const kept = [];
+  const failed = [];
 
   if (!(await isDirectory(piUserDir))) return { removed, kept };
-  if (await isFile(join(piUserDir, LEGACY_SWEEP_RECORD))) return { removed, kept };
+  if (await hasMigrated({ recordPath, piUserDir, warn })) return { removed, kept };
 
   // Commands that record what happened and either delete the path or keep it.
   const sweep = async (path, isLegacy) => {
@@ -743,6 +763,7 @@ export async function sweepLegacyPiUserDirs({ root = PACKAGE_ROOT, piUserDir, dr
     } catch (err) {
       warn(`could not remove the legacy artifact ${path}: ${err.message}`);
       kept.push(path);
+      failed.push(path);
     }
   };
 
@@ -780,13 +801,80 @@ export async function sweepLegacyPiUserDirs({ root = PACKAGE_ROOT, piUserDir, dr
   await sweep(join(piUserDir, LEGACY_INSTALL_MANIFEST), await isFile(join(piUserDir, LEGACY_INSTALL_MANIFEST)));
 
   if (!dryRun) {
-    await writeFile(
-      join(piUserDir, LEGACY_SWEEP_RECORD),
-      `${JSON.stringify({ version: 1, note: LEGACY_SWEEP_RECORD_NOTE }, null, 2)}\n`,
-    );
+    if (failed.length === 0) {
+      await recordMigration({ recordPath, piUserDir, warn });
+    } else {
+      warn(
+        `the legacy sweep of ${piUserDir} is incomplete — ${failed.length} artifact(s) could not be removed, ` +
+          `so the migration is not recorded and runs again on the next install`,
+      );
+    }
   }
 
   return { removed, kept };
+}
+
+/**
+ * Whether this pi user directory has already been migrated.
+ *
+ * A record that exists but cannot be read is treated as "already migrated":
+ * the state is ambiguous and a deletion is not recoverable, so the sweep never
+ * runs on an unreadable record.
+ */
+async function hasMigrated({ recordPath, piUserDir, warn }) {
+  let raw;
+  try {
+    raw = await readFile(recordPath, "utf-8");
+  } catch (err) {
+    if (err.code === "ENOENT") return false;
+    warn(`could not read the legacy sweep record ${recordPath}: ${err.message} — the migration will not run again`);
+    return true;
+  }
+  const entries = parseRecordEntries(raw);
+  if (entries === null) {
+    warn(`ignoring the unreadable legacy sweep record ${recordPath} — the migration will not run again`);
+    return true;
+  }
+  return entries[resolve(piUserDir)] !== undefined;
+}
+
+/**
+ * Add this pi user directory to the migration record. Existing entries are kept
+ * — another pi config may have migrated already and must not be re-run. A write
+ * failure warns instead of throwing: registration already succeeded, so an
+ * unwritable record is not a reason to fail the install.
+ */
+async function recordMigration({ recordPath, piUserDir, warn }) {
+  const entries = await readRecordEntries(recordPath);
+  entries[resolve(piUserDir)] = { version: 1, migratedAt: new Date().toISOString() };
+  try {
+    await mkdir(dirname(recordPath), { recursive: true });
+    await writeFile(recordPath, `${JSON.stringify(entries, null, 2)}\n`);
+  } catch (err) {
+    warn(
+      `could not record the legacy sweep at ${recordPath}: ${err.message} — a later install may run the migration again`,
+    );
+  }
+}
+
+/** Record entries keyed by pi user directory; `{}` when it is absent or unusable. */
+async function readRecordEntries(recordPath) {
+  try {
+    return parseRecordEntries(await readFile(recordPath, "utf-8")) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** The record's `{ "<piUserDir>": entry }` object, or null when the text is not one. */
+function parseRecordEntries(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : null;
 }
 
 /** Whether `path` is a directory without following a symlink to one. */

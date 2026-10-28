@@ -17,7 +17,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, rm, readdir, stat, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, readdir, stat, symlink, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,9 +91,23 @@ async function makeSweepTree() {
     home,
     root,
     piUserDir,
+    // The migration record lives outside pi's user directory, under the home
+    // install root (~/.agent-cortex) — never inside the directory it describes.
+    recordPath: join(home, ".agent-cortex", "legacy-sweep.json"),
     path: (rel) => join(piUserDir, rel),
     cleanup: () => rm(home, { recursive: true, force: true }),
   };
+}
+
+/** Sweep the throwaway pi user directory, recording the migration outside it. */
+function sweepTree(tree, options = {}) {
+  return sweepLegacyPiUserDirs({
+    root: tree.root,
+    piUserDir: tree.piUserDir,
+    recordPath: tree.recordPath,
+    warn: () => {},
+    ...options,
+  });
 }
 
 // ─── sweepLegacyPiUserDirs ───────────────────────────────────────────────────
@@ -102,7 +116,7 @@ describe("sweepLegacyPiUserDirs — agents", () => {
   it("removes the rendered agent copies and the orphan the old flow shipped, keeping the user's own agent", async () => {
     const tree = await makeSweepTree();
     try {
-      const result = await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      const result = await sweepTree(tree);
 
       assert.equal(await pathExists(tree.path("agents/plan.agent.md")), false, "rendered copy removed");
       assert.equal(await pathExists(tree.path("agents/pipeline-worker.agent.md")), false, "orphan removed");
@@ -129,7 +143,7 @@ describe("sweepLegacyPiUserDirs — a user's copy of a shipped name", () => {
         "skills/workflow/ralph/SKILL.md": "---\nname: ralph\n---\n\nMy own edits.\n",
       });
 
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await sweepTree(tree);
 
       assert.equal(await pathExists(tree.path("agents/plan.agent.md")), false);
       assert.equal(await pathExists(tree.path("skills/workflow/ralph")), false);
@@ -141,13 +155,13 @@ describe("sweepLegacyPiUserDirs — a user's copy of a shipped name", () => {
   it("keeps a same-name agent and skill written after the migration", async () => {
     const tree = await makeSweepTree();
     try {
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await sweepTree(tree);
       await writeFiles(tree.piUserDir, {
         "agents/plan.agent.md": '---\nname: "my-plan"\n---\n\n# my own plan\n',
         "skills/workflow/ralph/SKILL.md": "---\nname: ralph\n---\n\nMy own ralph.\n",
       });
 
-      const second = await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      const second = await sweepTree(tree);
 
       assert.deepEqual(second.removed, []);
       assert.equal(await pathExists(tree.path("agents/plan.agent.md")), true);
@@ -162,7 +176,7 @@ describe("sweepLegacyPiUserDirs — skills", () => {
   it("removes the skill copies inside the package's skill groups — including one it no longer ships — and keeps a skill of the user's own", async () => {
     const tree = await makeSweepTree();
     try {
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await sweepTree(tree);
 
       assert.equal(await pathExists(tree.path("skills/workflow/ralph")), false, "rendered copy removed");
       assert.equal(
@@ -181,7 +195,7 @@ describe("sweepLegacyPiUserDirs — skills", () => {
     try {
       await writeFiles(tree.piUserDir, { "skills/workflow/mine/SKILL.md": "---\nname: mine\n---\n" });
 
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await sweepTree(tree);
 
       assert.equal(await pathExists(tree.path("skills/productivity")), false, "emptied group dir removed");
       assert.equal(await pathExists(tree.path("skills/workflow")), true, "group dir holding a user skill kept");
@@ -195,7 +209,7 @@ describe("sweepLegacyPiUserDirs — skills", () => {
     try {
       await mkdir(tree.path("skills/planning"), { recursive: true });
 
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await sweepTree(tree);
 
       assert.equal(await pathExists(tree.path("skills/planning")), true, "a directory this sweep did not empty stays");
     } finally {
@@ -210,7 +224,7 @@ describe("sweepLegacyPiUserDirs — skills", () => {
       await rm(tree.path("skills/workflow"), { recursive: true, force: true });
       await symlink(join(tree.home, "shared-skills"), tree.path("skills/workflow"), "dir");
 
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await sweepTree(tree);
 
       assert.equal(await pathExists(join(tree.home, "shared-skills/ralph/SKILL.md")), true, "link target untouched");
       assert.equal(await pathExists(tree.path("skills/workflow")), true, "the link itself stays");
@@ -227,7 +241,7 @@ describe("sweepLegacyPiUserDirs — extensions", () => {
   it("never touches pi's extensions directory, not even a copy of a shipped extension", async () => {
     const tree = await makeSweepTree();
     try {
-      const result = await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      const result = await sweepTree(tree);
 
       assert.equal(await pathExists(tree.path("extensions/skill-stats/index.ts")), true, "shipped name kept");
       assert.equal(await pathExists(tree.path("extensions/mine/index.ts")), true, "user extension kept");
@@ -242,12 +256,7 @@ describe("sweepLegacyPiUserDirs — run modes", () => {
   it("reports the removals without deleting anything on a dry run", async () => {
     const tree = await makeSweepTree();
     try {
-      const result = await sweepLegacyPiUserDirs({
-        root: tree.root,
-        piUserDir: tree.piUserDir,
-        dryRun: true,
-        warn: () => {},
-      });
+      const result = await sweepTree(tree, { dryRun: true });
 
       assert.ok(result.removed.includes(tree.path("agents/plan.agent.md")));
       assert.ok(result.removed.includes(tree.path("skills/workflow/ralph")));
@@ -259,24 +268,12 @@ describe("sweepLegacyPiUserDirs — run modes", () => {
     }
   });
 
-  it("records that the migration ran, so a later sweep has nothing left to attribute", async () => {
-    const tree = await makeSweepTree();
-    try {
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
-
-      assert.equal(await pathExists(tree.path(".agent-cortex-legacy-sweep.json")), true);
-      assert.equal(await pathExists(tree.path("agents/mine.agent.md")), true, "the user's own agent is untouched");
-    } finally {
-      await tree.cleanup();
-    }
-  });
-
   it("writes nothing and records nothing on a dry run", async () => {
     const tree = await makeSweepTree();
     try {
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, dryRun: true, warn: () => {} });
+      await sweepTree(tree, { dryRun: true });
 
-      assert.equal(await pathExists(tree.path(".agent-cortex-legacy-sweep.json")), false);
+      assert.equal(await pathExists(tree.recordPath), false);
     } finally {
       await tree.cleanup();
     }
@@ -285,7 +282,12 @@ describe("sweepLegacyPiUserDirs — run modes", () => {
   it("leaves pi's own user directory alone when nothing was written there", async () => {
     const home = await makeTmp();
     try {
-      const result = await sweepLegacyPiUserDirs({ root: join(home, "package-root"), piUserDir: join(home, "absent"), warn: () => {} });
+      const result = await sweepLegacyPiUserDirs({
+        root: join(home, "package-root"),
+        piUserDir: join(home, "absent"),
+        recordPath: join(home, ".agent-cortex", "legacy-sweep.json"),
+        warn: () => {},
+      });
 
       assert.deepEqual(result.removed, []);
       assert.deepEqual(await readdir(home), [], "nothing created");
@@ -295,11 +297,109 @@ describe("sweepLegacyPiUserDirs — run modes", () => {
   });
 });
 
+// The record is what makes the sweep one-shot, so it must live outside the
+// directory it describes (~/.pi/agent may hold no agent-cortex artifact after
+// the migration) and must only claim a migration that actually finished.
+describe("sweepLegacyPiUserDirs — the migration record", () => {
+  it("records the migration outside pi's user directory, leaving no agent-cortex artifact in it", async () => {
+    const tree = await makeSweepTree();
+    try {
+      await sweepTree(tree);
+
+      assert.equal(
+        await pathExists(tree.path(".agent-cortex-legacy-sweep.json")),
+        false,
+        "nothing is written into pi's user directory",
+      );
+      assert.equal(await pathExists(tree.recordPath), true, "the migration is recorded outside it");
+      assert.equal(await pathExists(tree.path("agents/mine.agent.md")), true, "the user's own agent is untouched");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("gates per pi user directory, so a second directory still migrates once", async () => {
+    const tree = await makeSweepTree();
+    try {
+      await sweepTree(tree);
+      const otherPiUserDir = join(tree.home, "other-pi", "agent");
+      await writeFiles(otherPiUserDir, { "agents/plan.agent.md": '---\nname: "agent-cortex:plan"\n---\n' });
+
+      const other = await sweepLegacyPiUserDirs({
+        root: tree.root,
+        piUserDir: otherPiUserDir,
+        recordPath: tree.recordPath,
+        warn: () => {},
+      });
+
+      assert.deepEqual(other.removed, [join(otherPiUserDir, "agents", "plan.agent.md")]);
+      assert.deepEqual((await sweepTree(tree)).removed, [], "the first directory stays migrated");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("does not re-run the migration when the record cannot be read", async () => {
+    const tree = await makeSweepTree();
+    try {
+      await writeFiles(tree.home, { ".agent-cortex/legacy-sweep.json": "{ not json" });
+
+      const result = await sweepTree(tree);
+
+      assert.deepEqual(result.removed, [], "an ambiguous record never deletes");
+      assert.equal(await pathExists(tree.path("agents/plan.agent.md")), true);
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("warns instead of failing when the record cannot be written", async () => {
+    const tree = await makeSweepTree();
+    const recordDir = dirname(tree.recordPath);
+    const warnings = [];
+    try {
+      await mkdir(recordDir, { recursive: true });
+      await chmod(recordDir, 0o555);
+
+      const result = await sweepTree(tree, { warn: (msg) => warnings.push(msg) });
+
+      assert.ok(result.removed.includes(tree.path("agents/plan.agent.md")), "the migration still ran");
+      assert.equal(warnings.length, 1);
+      assert.ok(warnings[0].includes(tree.recordPath), "the warning names the record that could not be written");
+    } finally {
+      await chmod(recordDir, 0o755);
+      await tree.cleanup();
+    }
+  });
+
+  it("records nothing when an artifact could not be removed, and retries the remainder on the next install", async () => {
+    const tree = await makeSweepTree();
+    const blockedGroup = tree.path("skills/workflow");
+    try {
+      await chmod(blockedGroup, 0o555);
+      await sweepTree(tree);
+
+      assert.equal(await pathExists(tree.path("skills/workflow/ralph")), true, "the copy survived");
+      assert.equal(await pathExists(tree.recordPath), false, "an incomplete migration is not recorded");
+    } finally {
+      await chmod(blockedGroup, 0o755);
+    }
+    try {
+      await sweepTree(tree);
+
+      assert.equal(await pathExists(tree.path("skills/workflow/ralph")), false, "the retry removes the remainder");
+      assert.equal(await pathExists(tree.recordPath), true, "the completed migration is recorded");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+});
+
 describe("sweepLegacyPiUserDirs — the path record left in pi's user directory", () => {
   it("removes a stale `.agent-cortex-install.json` along with the copies it lists, and leaves pi's config alone", async () => {
     const tree = await makeSweepTree();
     try {
-      await sweepLegacyPiUserDirs({ root: tree.root, piUserDir: tree.piUserDir, warn: () => {} });
+      await sweepTree(tree);
 
       assert.equal(await pathExists(tree.path(".agent-cortex-install.json")), false, "stale record removed");
       assert.equal(await pathExists(tree.path("settings.json")), true, "pi's config untouched");
@@ -336,6 +436,16 @@ describe("install pi CLI: legacy sweep", () => {
         await pathExists(join(home, ".agent-cortex", "pi", "skills", "workflow", "ralph", "SKILL.md")),
         true,
         "the staged package carries the skill",
+      );
+      assert.equal(
+        await pathExists(join(home, ".pi", "agent", ".agent-cortex-legacy-sweep.json")),
+        false,
+        "pi's user directory holds no agent-cortex artifact after the migration",
+      );
+      assert.equal(
+        await pathExists(join(home, ".agent-cortex", "legacy-sweep.json")),
+        true,
+        "the migration is recorded under the home install root",
       );
     } finally {
       await rm(home, { recursive: true, force: true });

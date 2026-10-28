@@ -14,9 +14,14 @@ copies.
 
 The sweep is a one-time migration, not a standing rule: attribution is by name
 from the package root, which cannot tell a rendered copy from a file you wrote
-under the same name, so it records that it ran in
-`~/.pi/agent/.agent-cortex-legacy-sweep.json` and removes nothing there again.
-Files whose name this package does not ship are left alone, and pi's
+under the same name, so a finished migration is recorded in
+`~/.agent-cortex/legacy-sweep.json` — keyed by the pi user directory, never
+inside it — and nothing there is removed again. Consequently `~/.pi/agent` is
+left with no agent-cortex file in it. Only a migration that removed everything
+it attributed is recorded: a copy that could not be deleted is warned about and
+retried on the next install, and a record that cannot be written warns without
+failing an install that has already registered. Files whose name this package
+does not ship are left alone, and pi's
 `extensions/` directory is never touched — no installer has ever written there,
 so its contents are yours. pi's own `settings.json` and `keybindings.json` are
 never touched either.

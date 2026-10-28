@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  # Fallback path for the Version Packages PR. GitHub parks the pull_request run
+  # that follows changesets/action's GITHUB_TOKEN push behind an approval prompt,
+  # so if that run cannot be approved the release job dispatches this workflow on
+  # the version branch instead — workflow_dispatch always creates a run, and the
+  # dispatch must exist on the default branch to be callable.
+  workflow_dispatch:
   pull_request:
     # The default types (opened/synchronize/reopened) would make the documented
     # `no-publish` opt-out unreachable: labelling a PR after the check failed
@@ -233,6 +239,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Approving the version PR's parked run, or dispatching CI on it, is an
+      # Actions write. Both are self-scoped to this repository.
+      actions: write
       # npm Trusted Publishing (OIDC): npm exchanges this id-token for a
       # short-lived npm token at publish time — no token config or secret.
       id-token: write
@@ -307,3 +316,17 @@ jobs:
           # Requires the one-time npm-side setup: npmjs.com → @jaybeeuu/
           # agent-cortex → Access → Trusted Publishing, tied to GitHub repo
           # jaybeeuu/agent-cortex + workflow .github/workflows/ci.yml.
+
+      # The version PR is pushed and opened by changesets/action with
+      # secrets.GITHUB_TOKEN. GitHub does not skip the pull_request run that
+      # follows: it creates it parked in an `action_required` state with no jobs,
+      # waiting for someone with write access to approve it. Nothing reports
+      # while it waits, so the PR is BLOCKED with an empty statusCheckRollup and
+      # every release would stall on a manual click. Approve that run — or, when
+      # this token may not approve its own run, dispatch CI on the branch, which
+      # workflow_dispatch always allows.
+      - name: Start CI on the version PR
+        if: steps.changesets.outputs.pullRequestNumber != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/start-version-pr-ci.mjs "${{ steps.changesets.outputs.pullRequestNumber }}"

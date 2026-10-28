@@ -142,6 +142,17 @@ GitHub secret is needed, only the one-time npm-side setup on npmjs.com (package 
 Access → Trusted Publishing for the `jaybeeuu/agent-cortex` repo). Releases
 are sourced entirely from `main`.
 
+The version PR does not get its checks on its own. `changesets/action` writes it
+with `GITHUB_TOKEN`, and GitHub answers the resulting `pull_request` event with a
+run parked behind **“Approve workflows to run”** — a run with no jobs — rather
+than a completed check suite, so the PR sits `BLOCKED` with an empty
+`statusCheckRollup`. The release job therefore starts that CI itself: it approves
+the parked run, and if the token may not approve its own run it dispatches the
+workflow on the version branch, which `GITHUB_TOKEN` is always allowed to do. No
+secret is involved either way. If a version PR does arrive without checks, that
+step failed: approve the parked run from the PR's merge box, or run
+`GITHUB_TOKEN=<token> node scripts/start-version-pr-ci.mjs <pr-number>`.
+
 ## Installation
 
 ### Pi config files (`settings.json` + `keybindings.json`)

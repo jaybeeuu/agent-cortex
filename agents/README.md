@@ -250,7 +250,7 @@ The validator checks:
 
 - JSON has strict syntax (no comments, no ambiguity)
 - Easier to validate with JSON Schema
-- Consistent with existing tooling (package.json, plugin.json)
+- Consistent with existing tooling (package.json)
 - No need for YAML parser dependency
 
 ### Why separate section files instead of inline sections?

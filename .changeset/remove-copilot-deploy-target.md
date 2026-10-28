@@ -1,5 +1,5 @@
 ---
-"@jaybeeuu/agent-cortex": minor
+"@jaybeeuu/agent-cortex": major
 ---
 
 Remove Copilot CLI as a deploy target. `agent-cortex install copilot` is gone (the

@@ -54,11 +54,6 @@ describe("parseArgs", () => {
     assert.deepStrictEqual(result, { command: "help" });
   });
 
-  it("returns { command: 'install', harness: 'copilot' } for install copilot", async () => {
-    const result = parseArgs(["install", "copilot"]);
-    assert.deepStrictEqual(result, { command: "install", harness: "copilot" });
-  });
-
   it("returns { command: 'install', harness: 'claude' } for install claude", async () => {
     const result = parseArgs(["install", "claude"]);
     assert.deepStrictEqual(result, { command: "install", harness: "claude" });
@@ -169,9 +164,15 @@ describe("buildHelpText", () => {
 
 describe("validateHarness", () => {
   it("returns ok for supported harnesses", async () => {
-    for (const h of ["copilot", "claude", "pi"]) {
+    for (const h of ["claude", "pi"]) {
       assert.deepStrictEqual(validateHarness(h), { ok: true });
     }
+  });
+
+  it("returns error for copilot, which is no longer a deploy target", async () => {
+    const result = validateHarness("copilot");
+    assert.equal(result.ok, false);
+    assert.ok(result.error.includes("Unknown harness"));
   });
 
   it("returns error when harness is null", async () => {
@@ -207,10 +208,10 @@ describe("CLI integration", () => {
     assert.ok(stdout.includes("Usage:"));
   });
 
-  it("exits 0 for install copilot", async () => {
-    const { exitCode, stdout } = await runCli(["install", "copilot"]);
-    assert.equal(exitCode, 0);
-    assert.ok(stdout.includes("copilot"));
+  it("exits 1 for install copilot, which is no longer a deploy target", async () => {
+    const { exitCode, stderr } = await runCli(["install", "copilot"]);
+    assert.equal(exitCode, 1);
+    assert.ok(stderr.includes("Unknown harness"));
   });
 
   it("exits 0 for install claude (into a temp output dir)", async () => {

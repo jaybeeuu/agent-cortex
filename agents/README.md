@@ -4,7 +4,7 @@ This document defines the canonical format for composable agent directories in a
 
 ## Motivation
 
-The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Copilot, Claude) with different tool names and polling mechanisms.
+The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Claude) with different tool names and polling mechanisms.
 
 The composable directory format separates concerns:
 
@@ -21,9 +21,6 @@ agents/
 │   ├── pi/
 │   │   ├── frontmatter.json        # PI-specific metadata
 │   │   └── <section>.md            # Optional: PI-specific sections
-│   ├── copilot/
-│   │   ├── frontmatter.json        # Copilot-specific metadata
-│   │   └── <section>.md            # Optional: Copilot-specific sections
 │   └── claude/
 │       ├── frontmatter.json        # Claude-specific metadata
 │       └── <section>.md            # Optional: Claude-specific sections
@@ -37,9 +34,6 @@ agents/ralph/
 ├── pi/
 │   ├── frontmatter.json            # PI tools: ["bash", "task", "read_agent", "wait_for_agents"]
 │   └── polling.md                  # PI completion: blocking wait_for_agents (no poll timer)
-├── copilot/
-│   ├── frontmatter.json            # Copilot tools: ["bash", "task", "read_agent"]
-│   └── polling.md                  # Copilot completion: sleep-120 poll timer + read_agent
 └── claude/
     ├── frontmatter.json            # Claude tools: ["bash", "task"]
     └── polling.md                  # Claude event-driven (no polling)
@@ -52,8 +46,6 @@ agents/plan/
 ├── agent.md                        # Shared body (planning workflow)
 ├── pi/
 │   └── frontmatter.json            # PI tools
-├── copilot/
-│   └── frontmatter.json            # Copilot tools
 └── claude/
     └── frontmatter.json            # Claude tools
 ```
@@ -143,9 +135,8 @@ When composing the final agent file for a specific harness:
 2. Replace `{{SECTION:name}}` with content from `<harness>/<name>.md`
 3. `{{TOOL:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
    canonical tool/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
-   `build:copilot` and by `bin/installers/claude.mjs` / `bin/installers/pi.mjs`) resolves them when
-   generating the flat files / installing for claude and pi; pi's `agent-modes` extension does the
-   same at runtime. See the `contract` section of `token-map.json` and
+   `bin/installers/claude.mjs` / `bin/installers/pi.mjs`) resolves them when generating the flat
+   files / installing for claude and pi; pi's `agent-modes` extension does the same at runtime. See the `contract` section of `token-map.json` and
    `token-map.README.md` for the rules.
 
 The pi harness's `agent-modes` extension is a runtime consumer of this format: it
@@ -201,7 +192,6 @@ Agents like `plan`, `ralph-plan`, and `strategy` that have identical behavior ac
 agents/plan/
 ├── agent.md              # Shared body (same for all harnesses)
 ├── pi/frontmatter.json   # PI tools
-├── copilot/frontmatter.json  # Copilot tools
 └── claude/frontmatter.json    # Claude tools
 ```
 
@@ -211,14 +201,12 @@ agents/plan/
 2. Migrate ralph agent first (proves the pattern) — DONE
 3. Migrate plan, ralph-plan, strategy agents — DONE
 4. Update the installer/composer to handle the new format
-5. Remove old `*.agent.md` files — DONE (the flat files are now **generated output**, see below)
+5. Remove old `*.agent.md` files — DONE (the composable directories are the only committed
+   form; every harness composes or renders its own agent files at install time)
 
-All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout and the
-flat `agents/*.agent.md` files are built from them:
+All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout, and no
+flat agent file is committed:
 
-- `scripts/build-copilot-agents.mjs` (`pnpm build:copilot`) composes `agents/*.agent.md` from
-  each agent's `copilot/` harness dir — committed for Copilot CLI, which loads `*.agent.md`
-  from `plugin.json`'s `agents: "agents/"` path.
 - `bin/installers/claude.mjs` (plain `agent-cortex install claude` materialises the plugin
   into `~/.agent-cortex/claude` and registers it with Claude Code; `--output <dir>` is its
   generate-only form, used by tests/CI) composes the plugin's
@@ -239,9 +227,7 @@ via `bin/installers/claude.mjs`, the generator behind plain `agent-cortex instal
 `claude/settings.json` into `~/.claude/settings.json`, and registers the plugin with Claude
 Code); the only committed `claude/` file is that settings template (hand-authored extras live
 in `claude-extras/`), and CI validates the materialiser with structural checks on a temp-dir
-install; `copilot` ships via
-`bin/installers/copilot.mjs`, the shared code path behind both `agent-cortex install
-copilot` and `scripts/build-copilot-agents.mjs`; `pi` ships via
+install; `pi` ships via
 `bin/installers/pi.mjs`, which stages a self-contained pi package (manifest, rendered
 agents, token-substituted skills, extensions) at `~/.agent-cortex/pi`.
 

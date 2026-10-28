@@ -97,8 +97,8 @@ const DEFAULT_WARN = (msg) => console.warn(`[claude-installer] ${msg}`);
 // section composition from the poll-loop sources.
 const DEFER = new Set(["ralph"]);
 
-// Ralph-coupled Copilot skills that don't apply to the lean Claude Ralph (and carry dead
-// ~/.copilot orchestration paths). Not copied into the Claude plugin.
+// Ralph-coupled pipeline skills that don't apply to the lean Claude Ralph (its completion
+// handling is event-driven, not the pi orchestrator's). Not copied into the Claude plugin.
 const SKILL_EXCLUDE = new Set(["ralph", "run-pipeline-stage"]);
 
 const NAME_PREFIX = "agent-cortex:";

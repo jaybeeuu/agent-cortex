@@ -19,13 +19,11 @@
     "check:sync": "node scripts/check-no-sync.mjs",
     "test": "node --test test/*.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build:copilot": "node scripts/build-copilot-agents.mjs",
     "changeset": "changeset",
-    "version-packages": "changeset version && bash scripts/sync-plugin-version.sh && pnpm build:copilot",
+    "version-packages": "changeset version",
     "publish-package": "TARBALL=$(pnpm pack | tail -n 1) && npm publish \"$TARBALL\" --provenance --access public",
     "publish-noop": "echo 'No publish: the merged PR carries the no-publish label.'",
-    "release": "changeset publish",
-    "postinstall": "bash scripts/install-instructions.sh"
+    "release": "changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",

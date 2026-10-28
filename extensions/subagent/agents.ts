@@ -155,8 +155,7 @@ function isRenderedAgentsTree(agentsDir: string): boolean {
  * renders the flat pi agents into `<package>/agents`.
  *
  * A source checkout contributes nothing: its `agents/` tree is the composable
- * source (composed at runtime by the agent-modes extension) alongside flat
- * renders for other harnesses — Copilot's, whose tool names pi does not have.
+ * source, composed at runtime by the agent-modes extension.
  */
 export function resolveUserAgentDirs(packageRoot: string = PACKAGE_ROOT): string[] {
 	const dirs: string[] = [];

@@ -1,7 +1,7 @@
 # token-map.json — multi-harness token substitution
 
 `token-map.json` is the central, single-source mapping of **tool names**, **paths**, and
-**agent naming conventions** across the three harnesses this repo ships to. It is the
+**agent naming conventions** across the two harnesses this repo ships to. It is the
 foundation for the install-time generation system: each harness installer (`agent-cortex
 install <harness>`) reads the map and substitutes `{{TOOL:...}}` / `{{PATH:...}}` tokens in
 the files it generates.
@@ -14,7 +14,6 @@ decisions behind the map.
 
 | id | Platform | Agent format | Plugin root |
 |---|---|---|---|
-| `copilot` | GitHub Copilot CLI | `agents/<name>/` composable dirs → generated `agents/*.agent.md` | `~/.copilot/installed-plugins/_direct/agent-cortex` |
 | `pi` | pi coding agent | `agents/<name>/` composable dirs (composed at runtime by agent-modes, or rendered install-time by `agent-cortex install pi`) | `~/.agent-cortex/pi` |
 | `claude` | Claude Code | `~/.agent-cortex/claude/agents/*.md` (materialised home install) | `${CLAUDE_PLUGIN_ROOT}` (env var) |
 
@@ -44,9 +43,9 @@ rather than inventing a dotted form:
 ### 2. What is mapped
 
 - **`tools`** — the twelve canonical tool names as authored in `agents/<name>/agent.md`
-  (copilot names are the authoring names). Each row gives the equivalent tool name per
-  harness. Source of truth for the copilot → claude half is `token-map.json`'s own claude
-  column, consumed by `bin/installers/claude.mjs` (the install-time generator — PR #91, #92); the pi column is grounded
+  (the canonical authoring names). Each row gives the equivalent tool name per harness.
+  The claude column is consumed by `bin/installers/claude.mjs` (the install-time
+  generator — PR #91, #92); the pi column is grounded
   in pi's documented built-in tool surface (`read`, `bash`, `edit`, `write`, `grep`, `find`,
   `ls`) plus `ask_questions` — added by the pi-questions package (mapped from
   `ask_user`) — and `task` / `read_agent` / `wait_for_agents` subagent tools, the last three
@@ -101,7 +100,7 @@ so the warn-and-omit path applies only to future null entries. See
 
 The full contract is embedded in `token-map.json` under `contract`. In summary, installers:
 
-1. Bind a harness id (`copilot` | `claude` | `pi`).
+1. Bind a harness id (`claude` | `pi`).
 2. Substitute in order: `SECTION` (left for the composer), then `TOOL`, then `PATH`.
 3. For `TOOL`: look up the canonical key, replace with the harness name; null → drop/omit;
    unknown → throw.
@@ -111,7 +110,7 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
 
 ## Authoring guidance
 
-- Write tokens with the **canonical (copilot) names**: `Use {{TOOL:task}} to spawn
+- Write tokens with the **canonical authoring names**: `Use {{TOOL:task}} to spawn
   subagents`, `Read {{PATH:skills/workflow/plan/SKILL.md}}`.
 - Never embed a harness-specific name in the canonical sources (`agents/<name>/agent.md`,
   `skills/**/SKILL.md`) — that defeats the map. The materialised Claude plugin
@@ -125,11 +124,9 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
 
 - `agents/README.md` — composable agent directory format (ADR #63), defines the token
   grammar the map implements.
-- `scripts/build-copilot-agents.mjs` / `bin/installers/copilot.mjs` — the copilot
-  harness token composer (scripts/lib/compose-agent.mjs) resolves `{{TOOL:...}}` /
-  `{{PATH:...}}` against the map and `{{SECTION:...}}` from the per-harness section
-  files; `bin/installers/copilot.mjs` is the shared generator both `pnpm build:copilot`
-  and `agent-cortex install copilot` run.
+- `scripts/lib/compose-agent.mjs` — the shared token composer: resolves `{{TOOL:...}}` /
+  `{{PATH:...}}` against the map and `{{SECTION:...}}` from the per-harness section files
+  for `bin/installers/claude.mjs` and `bin/installers/pi.mjs`.
 - `bin/installers/claude.mjs` — the single Claude generator: plain
   `agent-cortex install claude` materialises the plugin into `~/.agent-cortex/claude`
   with token-substituted skills, merges the committed `claude/settings.json` into

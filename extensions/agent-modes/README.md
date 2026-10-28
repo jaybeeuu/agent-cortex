@@ -39,9 +39,9 @@ contract:
    from the tool set with a warning.
 
 Flat `agents/*.agent.md` files are parsed as a fallback when an agent has no
-composable directory — they are generated output (scripts/build-copilot-agents.mjs)
-but may exist for non-migrated agents. A composable directory always wins over its
-flat counterpart for the same agent id.
+composable directory — a staged pi package carries flat renders, and a hand-written
+agent may be a single flat file. A composable directory always wins over its flat
+counterpart for the same agent id.
 
 ## Development
 

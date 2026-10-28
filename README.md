@@ -250,6 +250,25 @@ templates** for your own pi configuration. They are not installer output: pi's
 `settings.json` and `keybindings.json` are pi's own user config, so
 `agent-cortex install pi` leaves them alone.
 
+### Removing a stale Copilot install
+
+Copilot CLI is no longer a deploy target: `agent-cortex install copilot` and the
+`plugin.json` manifest are gone, and nothing in this package reads or writes `~/.copilot`
+any more. No installer sweeps an existing install, so a machine that used the old target
+keeps a stale plugin, a cached marketplace, and an instruction block until you remove them
+by hand:
+
+```sh
+rm -rf ~/.copilot/installed-plugins/_direct/agent-cortex
+rm -rf ~/.cache/copilot/marketplaces/https---github-com-jaybeeuu-agent-cortex
+sed -i.bak '/<!-- agent-cortex:start -->/,/<!-- agent-cortex:end -->/d' \
+  ~/.copilot/copilot-instructions.md
+```
+
+The first two paths are the old install and its marketplace cache. The `sed` deletes only
+the agent-cortex block the removed `postinstall` hook appended to Copilot's own
+instructions file, leaving the rest of that file — and a `.bak` copy — intact.
+
 ### Claude Code plugin (separate)
 
 A plain `agent-cortex install claude` **materialises** the plugin into the home install

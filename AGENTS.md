@@ -102,6 +102,16 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `--output <dir>` is the generate-only form (tests/CI materialiser checks); `ralph`
   is authored natively in `agents-native/` and copied verbatim; the other agents compose from their
   `claude/` harness dirs).
+- The pi package is materialised by `bin/installers/pi.mjs`: `agent-cortex install pi` stages a
+  self-contained pi package in `~/.agent-cortex/pi` (manifest, flat rendered agents, token-substituted
+  skills, a copy of `extensions/`, `token-map.json`, and the bundled `pi.packages` closure under
+  `node_modules/`) and registers that directory with pi through the `pi` CLI — pi's own
+  `~/.pi/agent/settings.json` is read, never written. `--output <dir>` stages only (no registration,
+  no sweep) and `--dry-run` reports the plan. Once registration succeeds, a one-shot migration sweeps
+  the copies the pre-staged-model installer rendered into `~/.pi/agent`, attributing them by name from
+  the package root and recording completion in `~/.agent-cortex/legacy-sweep.json`; `~/.pi/agent/extensions`
+  is never touched. Run it from the main checkout: the staged package is a snapshot of the checkout you
+  invoked, so a run from a ralph worktree stages that worktree's content.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
 

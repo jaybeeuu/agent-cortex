@@ -221,12 +221,24 @@ Flags:
 
 | Flag | Meaning |
 | --- | --- |
-| `--dry-run` | Show what would be installed without writing anything |
+| `--dry-run` | Show what would be installed and removed without writing anything |
 | `--output <dir>` | Install into `<dir>/agents`, `<dir>/skills` and the config files (default `~/.pi/agent`) |
 | `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
 | `--no-provision` | Skip provisioning the third-party pi packages declared in `package.json` `pi.packages` (default: install them via the `pi` CLI) |
 
 Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).
+Installing **reconciles** rather than only adds: after writing, it removes the copies the
+source no longer produces — a skill dropped upstream, a support file a skill dropped, a
+generated agent the source retired — so `~/.pi/agent` stops accumulating copies that look
+like live skills to pi. Ownership is evidenced, not assumed: the run records the paths it
+wrote in `~/.pi/agent/.agent-cortex-install.json`, agent files are recognised by the
+provenance line this installer writes, and files inside a skill the source still ships are
+the installer's to replace. Everything else — npm packages pi provisioned, extensions, and
+skills or agents you wrote yourself — is left alone, and a directory is removed only once
+this prune emptied it; `--dry-run` lists the planned removals without deleting. The first
+run over a tree installed before the record existed keeps any whole skill directory the
+source has since dropped, because nothing there proves it is a copy; the record that run
+writes makes every later run complete, so sweep such leftovers by hand once.
 
 ### Copilot plugin (separate)
 

@@ -35,7 +35,8 @@ created, so by the time a bead reaches `bd ready` here it should already carry a
 `classify-bead` from the ralph loop:
 
 - `implementation-type:afk` present → **AFK**. Done.
-- `implementation-type:hitl` present → **HITL**. Skip; record for the pending-action summary.
+- `execution:hitl` (or the legacy `implementation-type:hitl`) present → **HITL**. Skip; record for the
+  pending-action summary.
 - Neither present → treat as **NEEDS-REFINEMENT**: skip; record for the summary. A missing label
   here means the bead skipped planning-stage classification — flag it, don't classify inline.
 
@@ -52,8 +53,8 @@ Run once at startup:
 5. Read `maxFixRounds` from `${CLAUDE_PLUGIN_ROOT}/skills/create-task/pipeline.json` if present;
    otherwise default to **4**.
 6. Dispatch up to 5 AFK features (see below). Then end your turn — you will be woken on the
-   first completion. If there are zero AFK features but HITL/PR gates are pending, go straight
-   to **Idle**.
+   first completion. If there are zero AFK features but an **unblocked** `lifecycle:feature-pr`
+   gate is pending (see **Idle**), go straight to **Idle**.
 
 ## Dispatching a feature
 
@@ -105,7 +106,10 @@ beads per **Classifying a bead**, and promote AFK features into free slots.
 
 When no workers are running and no AFK features remain:
 
-- **PR gates pending** (open `lifecycle:feature-pr` beads): run `bd dolt push`, then print a
+- **PR gates pending**: `bd ready -l lifecycle:feature-pr --label-any execution:hitl,implementation-type:hitl`
+  returns a gate, so it is **unblocked** — its feature's document chore has closed and the PR awaits a
+  human merge. A gate that query does *not* return is still blocked behind its own pipeline (parked)
+  and must not pause you. Run `bd dolt push`, then print a
   **Pending Human Action** table (bead id, title, PR URL, "review & merge, then `bd close <gate>`"),
   and **stop completely** — output nothing further. Do not poll. The user re-invokes you after
   merging; you will resume from `bd ready`.

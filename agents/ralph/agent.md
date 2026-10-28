@@ -59,7 +59,7 @@ Run once at startup:
    b. Claim the parent bead: `bd update <parent-id> --claim`.
    c. Create the first stage chore bead and dispatch it (see _Creating and dispatching a stage chore_ below).
 8. Record each launched agent in `.agent-cortex/ralph/state.json` (see format below).
-9. Hand over to the completion-detection mechanism in the polling section: it starts the Copilot poll loop, blocks with `wait_for_agents` (PI), or waits for event-driven wake-ups (Claude), and proceeds to **HITL Pause** directly when no agent work was dispatched and HITL gate beads are pending.
+9. Hand over to the completion-detection mechanism in the polling section: it starts the Copilot poll loop, blocks with `wait_for_agents` (PI), or waits for event-driven wake-ups (Claude), and proceeds to **HITL Pause** directly when no agent work was dispatched and `pending-gates.mjs` reports a non-empty `pendingHumanAction`.
 
 ---
 
@@ -142,13 +142,13 @@ After initialization, Ralph waits for background agents to complete. Completion 
    - **Failure paths** (verify BLOCKED, review CHANGES_REQUESTED): check loop cap (see below), then create a feedback bead per the _Feedback Beads_ section in `run-pipeline-stage`. Do **not** dispatch immediately — the feedback bead appears in `bd ready` and is picked up in step 7. Remove the inflight entry for this chore; the feedback bead will create a new entry when dispatched.
 7. **Check for newly ready beads**: run `bd ready`. For each bead not yet tracked:
    - **Chore bead with `stage:*` label** (a feedback bead): find its parent via `bd show <chore-id>` (follow the `parent-child` dep). Check loop cap (see below). If under cap: dispatch it via _Creating and dispatching a stage chore_. If at cap: block it (`bd update <chore-id> --status blocked --notes "<cap> cap reached"`) and record for shutdown.
-   - **Task bead, AFK, in-flight count < 5, no open feature PR HITL gate**: claim the parent, create its first code chore, dispatch it.
+   - **Task bead, AFK, in-flight count < 5, no pending human action**: claim the parent, create its first code chore, dispatch it. Check `pendingHumanAction` with `node skills/workflow/ralph/scripts/pending-gates.mjs` — an unblocked `lifecycle:feature-pr` gate means a feature is awaiting a human merge, so hold new parent features. Gates still blocked behind their own pipeline are parked and do not count.
    - **Task bead, AFK, in-flight count at 5**: hold in memory as Waiting.
    - **HITL task bead**: note for **Pending Human Action** shutdown summary.
    - **NEEDS-REFINEMENT bead**: note for **Needs Refinement** shutdown summary.
    When a parent is removed from `inflight` (completed or failed), immediately promote the first Waiting AFK parent.
 8. **If no tasks remain in-flight** and `bd ready` returns no chore beads with `stage:*` labels and no AFK task beads:
-   - If HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see below).
+   - If `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), proceed to **HITL Pause** (see below).
    - Otherwise, proceed to **Shutdown** (see below).
 
 ### Loop cap check
@@ -167,15 +167,14 @@ Block command: `bd update <parent-id> --status blocked --notes "<cap> cap reache
 
 ## HITL Pause
 
-Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
+Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and `pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate (a feature genuinely awaiting human merge) or an epic tagged `awaiting-epic-pr-merge`. Gates still parked behind their own pipeline do not count. Ralph stops rather than burning requests on idle polls.
 
 1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
 2. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — their feature branch PRs already target `main` directly.
 3. Run `bd dolt push`.
-4. Collect pending HITL gate beads and their PR URLs:
-   - Run `bd list -l lifecycle:feature-pr -l implementation-type:hitl`
-   - Run `bd list -l awaiting-epic-pr-merge`
-   - For each bead, run `bd show <id>` to retrieve the PR URL from bead notes.
+4. Collect the table rows from the script's `pendingHumanAction` list:
+   - Run `node skills/workflow/ralph/scripts/pending-gates.mjs`
+   - For each entry, run `bd show <id>` to retrieve the PR URL from bead notes. `kind: "feature-pr"` rows read "review and merge the feature PR"; `kind: "epic-pr"` rows read "review and merge the epic PR into main".
 5. Output the **Pending Human Action** summary:
    ```
    ⏸️  Ralph is paused — human action required before work can continue.

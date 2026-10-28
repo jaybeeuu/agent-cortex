@@ -149,6 +149,18 @@ GitHub secret is needed, only the one-time npm-side setup on npmjs.com (package 
 Access → Trusted Publishing for the `jaybeeuu/agent-cortex` repo). Releases
 are sourced entirely from `main`.
 
+Merge the version PR whenever its plan and diff look right, but approve its CI
+first: `changesets/action` pushes that branch with `GITHUB_TOKEN`, so GitHub parks
+the CI run the push creates behind **“Approve workflows to run”** — a run with no
+jobs, which reports nothing, so the merge box shows `BLOCKED` with an empty check
+list even though no gate has run or failed. Approving it from the merge box (or
+`gh api -X POST repos/{owner}/{repo}/actions/runs/<run-id>/approve`) starts the five
+required checks. Do it after the last merge to `main`, not once at the start of a
+release: every subsequent merge force-updates the version branch, and a new head
+brings a new parked run. This stays manual by design — letting the bot's push
+trigger CI on its own means a personal access token or GitHub App token, a
+long-lived credential in repository secrets to save one click per release.
+
 ## Installation
 
 ### Pi package staging (`agent-cortex install pi`)

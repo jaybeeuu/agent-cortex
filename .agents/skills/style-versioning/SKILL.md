@@ -112,11 +112,12 @@ Squash re-signs the landing commit; it does not escape an enforced signature rul
 evaluates a pull request by creating a test merge commit and checking the commits it
 introduces — head-branch commits included — so an enforced `required_signatures` rule blocks
 a squash merge too, and the remedy is then a signed commit on the branch, not another merge
-method. `allow_merge_commit` is off and `required_linear_history` is on, so squash (or
-rebase) is the only path regardless.
+method. `allow_merge_commit` is off and `required_linear_history` is on, so a merge commit is
+not an option — squash or rebase only, and only squash lands a commit GitHub signs.
 
-See `docs/commit-signing.md` for the evidence, the ruleset reads that cannot rule out an
-organization-level rule, and the human-only follow-ups.
+See `docs/commit-signing.md` for the evidence, the ruleset reads that show only
+repository-level rules applying to `main` (a read that covers organization rules too), and the
+human-only follow-ups, including the merge probe that closes AC1.
 
 ### Version lockstep
 
@@ -137,7 +138,8 @@ All version numbers stay in lockstep automatically:
 - **Wrong bump type**: `patch` for fixes, `minor` for additions, `major` for breakage. When in doubt, ask the user.
 - **Wrong package name in frontmatter**: Must be `"@jaybeeuu/agent-cortex"` exactly.
 - **Merging a Version Packages PR with anything but squash**: the bot's commit is unsigned,
-  and squash is the path this repo has landed on (a rebase replays the unsigned commit).
+  and squash is the path this repo has landed on (a rebase merge adds the head-branch commit
+  without signature verification).
   Squash does not, however, bypass an enforced signature rule — if one is confirmed, the
   branch needs a signed commit. See `docs/commit-signing.md`.
 

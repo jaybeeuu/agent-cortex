@@ -63,6 +63,12 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Skill Conventions
 
+- **Skills are portable, not repo documentation.** `skills/` is installed onto arbitrary machines
+  (Copilot, pi, Claude Code), so it describes general practice and the author's portable
+  preferences — never how this repository is configured or how to work in it. Facts about this
+  checkout (branch bases, merge method, signature rules, required checks, release mechanics) belong
+  in `AGENTS.md`, `docs/`, or the tracker. Repo-local `.agents/skills/` follows the same rule: a
+  skill is a skill, not a place for this repo's configuration.
 - `SKILL.md` must include a YAML front-matter block with `name` and `description`.
 - `description` must be ≤ 1024 characters. First sentence: what it does. Second: "Use when…".
 - Keep `SKILL.md` near the ~150-line target in `docs/skills/skill-anatomy.md`, overflowing into

@@ -1,5 +1,171 @@
 # Changelog
 
+## 1.43.0
+
+### Minor Changes
+
+- b6fe713: `agent-cortex install pi` now sweeps the artifacts the pre-staged-model
+  installer rendered into pi's own user directory. Once the staged package at
+  `~/.agent-cortex/pi` is registered, those copies are a second source of the same
+  agent or skill — the skill-collision diagnostics the staged model exists to
+  remove — so the installer removes the ones it can attribute to agent-cortex:
+  `agents/<name>.agent.md` and `skills/<group>/<name>` for agents and skills it
+  ships or once shipped (`pipeline-worker`, the `migration` skill), plus a
+  `.agent-cortex-install.json` path record left in that directory listing those
+  copies.
+
+  The sweep is a one-time migration, not a standing rule: attribution is by name
+  from the package root, which cannot tell a rendered copy from a file you wrote
+  under the same name, so a finished migration is recorded in
+  `~/.agent-cortex/legacy-sweep.json` — keyed by the pi user directory, never
+  inside it — and nothing there is removed again. A completed migration leaves
+  `~/.pi/agent` with no agent-cortex file in it. Only a migration that removed
+  everything it attributed, from directories it could read, is recorded: a copy
+  that could not be deleted, or a directory that could not be listed, is warned
+  about and retried on the next install, and a record that cannot be written
+  warns without failing an install that has already registered. Files whose name this package
+  does not ship are left alone, and pi's
+  `extensions/` directory is never touched — no installer has ever written there,
+  so its contents are yours. pi's own `settings.json` and `keybindings.json` are
+  never touched either.
+
+  The sweep runs only after registration succeeds, follows the settings file the
+  installer reads (`~/.pi/agent`), and is skipped entirely by `--dry-run` and
+  `--output <dir>`. A pi agent dir relocated with `PI_CODING_AGENT_DIR` keeps its
+  copies: the installer does not inspect it.
+
+- b6fe713: `agent-cortex install pi` now registers the staged package with pi: after
+  staging `~/.agent-cortex/pi` it drives pi's own `pi install` so pi loads the
+  agents, skills, and extensions from that directory. Registration is idempotent
+  by state — a re-run after `git pull && agent-cortex install pi` changes nothing —
+  and a source pointing at a raw agent-cortex checkout is removed first, so exactly
+  one agent-cortex source stays configured. A superseded source that `pi remove`
+  cannot drop fails the install rather than reporting success — two configured
+  sources both load, so leaving both in place is a failed registration, not a
+  warning. The installer still writes nothing into `~/.pi/agent`; it only reads
+  pi's `settings.json` to decide the plan. A missing `pi` CLI warns and prints the
+  exact commands (failing only with `--require-register`), and `--dry-run` prints
+  the registration plan without writing or spawning anything. `--output <dir>`
+  remains the stage-only form.
+- b6fe713: `agent-cortex install pi` now stages a self-contained pi package at
+  `~/.agent-cortex/pi` (manifest, agents, skills, extensions, and the bundled
+  pi-questions / pi-web-access trees) instead of writing into pi's own
+  `~/.pi/agent` directories. Register the staged package with `pi install
+~/.agent-cortex/pi`. `--no-provision` is gone — the required packages travel
+  inside the staged tree — and the installer no longer materialises pi's
+  `settings.json` / `keybindings.json`.
+
+  The committed `pi/settings.json` template drops its `npm:pi-questions` and
+  `npm:pi-web-access@0.10.7` entries for the same reason: once the staged package
+  carries those tools, the `packages` array holds only the optional personal
+  toolset (`@getpipher/vision`, `@hypabolic/pi-hypa`, `context-mode`), so there is
+  one source of truth for `ask_questions` / `fetch_content` instead of two that can
+  drift. Its `../../src/agent-cortex` entry goes too, so the staged package is the
+  only agent-cortex source pi loads.
+
+  The `subagent` extension discovers agents from the package it ships inside as
+  well as from pi's own user agent dir, so a staged package supplies the agents it
+  ships instead of depending on `~/.pi/agent` copies. A source checkout's
+  composable `agents/` tree is left to `agent-modes`, which composes it at runtime;
+  the flat renders committed there are for other harnesses and are not read as pi
+  agents. Frontmatter `tools` written as a YAML sequence is accepted alongside the
+  scalar form.
+
+### Patch Changes
+
+- e15cf37: Stop documenting a fixed local-bin `bd` path as the authoritative bd binary. The migration technical-direction doc now describes `bd` as resolved from `PATH` with `BD_PATH` as the override, warns against pinning an orphaned binary (schema-version mismatch risk), and its script-package constraint reflects the post-D2 root workspace membership.
+- 937f610: Document the commit-signing expectation behind the "Commits must have verified signatures"
+  merge block. Agent commits are GPG-signed by the environment and verify as `valid`; the
+  `github-actions[bot]` commit on a Version Packages PR is `unsigned` because `GITHUB_TOKEN`
+  cannot sign. The squash merge GitHub performs re-signs the commit that lands, which is why
+  `main`'s history reads `valid` — but a squash merge does **not** escape an enforced signature
+  rule, since GitHub checks head-branch commits through its test merge, so the remedy in that
+  case is a signed commit rather than a different merge method. The new `docs/commit-signing.md`
+  records the evidence, the ruleset reads that show no signature rule applied to `main` at
+  either repository or organization level (while org ruleset definitions stay unreadable), the
+  open acceptance criterion with its human merge probe, and the release policy: land Version
+  Packages by squash merge, never put a signing key in CI secrets, with an explicit
+  contingency if an organization-level signature rule turns out to be enforced.
+  `style-versioning` points at it.
+- 0f9b7f8: Drop the hardcoded skill blurb from the pi `session-start` extension. The blurb advertised three
+  skills with `/skill:<name>` syntax that pi cannot resolve, and pi's own system prompt already lists
+  every discovered skill with its absolute `SKILL.md` path, so the local copy was incomplete and
+  drifted from `skills/` silently — verbatim text an agent reads first each session (and on
+  2026-10-27 misread a missing-extension outage as a missing-skills problem). Session start now
+  injects only the project context files (AGENTS.md, `docs/user-preferences.md`). The extension moves
+  to `extensions/session-start/` (`index.ts`, `package.json`, `README.md`, `index.test.ts`) per the
+  one-directory-per-extension convention; the new test pins the contract: no `/skill:` syntax, no
+  hardcoded skill names, context files injected when present, nothing injected when absent.
+- 6be3679: Stop the Release job re-publishing an already-published version. Every PR now
+  has to add a changeset unless it is labelled `no-publish` (the changesets bot's
+  Version Packages PR is exempt), and the Release job resolves the merged PR's
+  labels for the pushed commit before choosing between `publish-package` and the
+  new `publish-noop` script. `README.md` and the `style-versioning` skill document
+  the gate, including the out-of-band requirement that the `no-publish` label exists
+  in the repository's label settings before the opt-out can work.
+- f86c767: `agent-cortex install pi` no longer registers the git worktree it was invoked from as the pi package source. When the package root is a linked worktree (its `.git` is a file and `git rev-parse --git-common-dir` differs from `--git-dir`), the settings `packages` entry now resolves to the main checkout, with a warning naming the checkout that was registered instead. Previously a run inside `.agent-cortex/worktrees/<id>` left `~/.pi/agent/settings.json` pointing at that gitignored, ephemeral worktree — which dangles as soon as the worktree is removed.
+- 0ad2576: Fix subagents starting with no tools at all. `agent-cortex install pi` rendered
+  each generated agent's tool list as one space-separated scalar
+  (`tools: "bash read grep find task …"`), but every consumer splits that scalar on
+  commas: the subagent extension turned it into `pi --tools "<one bogus name>"`,
+  whose allowlist matched no tool, so delegated agents (ralph, pipeline workers)
+  ran with only MCP tools and reported the `task` tool — and every other tool — as
+  missing. The pi renderer now emits the comma-separated form that
+  `parseFrontmatter`, the subagent extension, and `pi --tools` all agree on;
+  `parseToolList` in the subagent extension and agent-modes' flat-frontmatter
+  parser accept comma- and whitespace-separated lists so a re-render cannot
+  silently zero out a tool list again; and a round-trip test asserts a rendered
+  agent's tools survive the parse.
+- 65cb7f8: The `git-workflow` skill now says how to bring a behind branch up to date, and
+  why the answer is usually "merge the base in" rather than "rebase". `git rebase`
+  drops merge commits and the patches they carry, so rebasing a branch that has
+  already merged the base silently reverts what that merge resolved — the conflict
+  resolutions, and any fix from the base the merge brought in — and the result
+  reads like a regression in the branch's own change. `--rebase-merges` keeps the
+  structure but re-opens the same conflicts, so it earns its cost only when the
+  branch history is the deliverable. Rebasing stays right for a linear branch that
+  has not been reviewed yet, and then it needs `--force-with-lease`.
+
+  The choice follows from the repository's landing method, not from taste: a squash
+  merge collapses the branch, so its shape never reaches the base branch, while a
+  rebase-and-merge requires linear history and therefore a rebase before the first
+  review rather than after a merge. `AGENTS.md` now records this repository's
+  answer — squash merge, merge commits disabled, `main` requires linear history —
+  because that is a fact about this checkout, not portable practice.
+
+- 2ae24da: Document what `disable-model-invocation` actually does and how each harness handles it: preserved and honoured by pi and Claude Code, honoured by Copilot CLI but at the cost of model-mediated invocation. Corrects the front-matter guidance in `docs/skills/skill-anatomy.md`, which described the field as affecting how the body is interpreted.
+- 5da1d45: Make pipeline-stage workers prove they delivered, and stop dispatch from being
+  improvised.
+
+  A stage worker's `---REPORT---` was taken at face value: nothing instructed it to
+  commit or push, and nothing checked the worktree afterwards. A worker could
+  report `OUTCOME: SUCCESS` and leave its changes uncommitted, and ralph would
+  advance the parent and open the feature PR from a branch holding none of the
+  work. Six runs needed a human to finish the tree by hand.
+
+  - The stage contract now requires delivery: the stage-runner prompt and the
+    code, fix, and document playbooks commit and push before reporting, and the
+    REPORT gained `COMMIT`, `PUSHED`, and `PR` fields.
+  - `scripts/lib/verify-worker-tree.mjs` checks the worktree itself — clean tree,
+    at least one commit ahead of the recorded base — so ralph gates each stage on
+    evidence rather than on the worker's prose.
+  - ralph stops and reports a missing subagent tool instead of backgrounding
+    `pi -p … &`. That substitution has no completion signal, so a finished worker
+    and a killed one look identical — the trap that produced the buffered-log and
+    post-exit liveness misreadings.
+  - `token-map.json` records that pi's `task`/`read_agent`/`wait_for_agents` come
+    from this repo's `extensions/subagent`, not from pi.
+
+- 931a20e: Document the one manual step in the release loop: the Version Packages PR arrives
+  `BLOCKED` with an empty check list because `changesets/action` pushes that branch
+  with `GITHUB_TOKEN`, so GitHub parks the CI run the push creates behind "Approve
+  workflows to run" and a parked run reports nothing. Approve it — merge box click,
+  or the documented `gh api … /approve` one-liner — and the five required checks
+  start. The approval is per head commit, so it is needed again after any further
+  merge to `main`, which force-updates the version branch. Adding a PAT or GitHub App
+  token would let the bot trigger its own CI, but one click per release is a better
+  trade than a long-lived credential in repository secrets.
+
 ## 1.42.0
 
 ### Minor Changes

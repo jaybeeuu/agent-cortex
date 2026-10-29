@@ -15,8 +15,9 @@
   },
   "scripts": {
     "build": "echo 'Build complete — no compilation needed for PI package'",
-    "lint": "pnpm typecheck && pnpm check:sync",
+    "lint": "pnpm typecheck && pnpm check:sync && pnpm check:skills",
     "check:sync": "node scripts/check-no-sync.mjs",
+    "check:skills": "node scripts/check-skill-frontmatter.mjs",
     "test": "node --test test/*.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "changeset": "changeset",

@@ -18,9 +18,9 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
  *      and symlinked installs).
  *
  * Flat `agents/*.agent.md` files are parsed as a fallback for agents that have
- * no composable directory (they are generated output for Copilot, so they may
- * exist for any agent). A composable directory always wins over its flat
- * counterpart.
+ * no composable directory (a staged pi package ships flat renders, and a
+ * hand-written agent may be a single flat file). A composable directory always
+ * wins over its flat counterpart.
  */
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ export interface AgentDef {
   prompt: string;
 }
 
-export type HarnessId = "copilot" | "claude" | "pi";
+export type HarnessId = "claude" | "pi";
 
 export interface PathSpec {
   base: string;
@@ -431,8 +431,8 @@ function readFlatAgent(filePath: string, tokenMap: TokenMap | null): AgentDef | 
  * Discover agents from the agents directory.
  *
  * Composable directories (`<name>/agent.md` + `<name>/pi/frontmatter.json`) are
- * the primary source. Flat `*.agent.md` files (generated output for Copilot) are
- * read only when no composable directory exists for that agent id. When
+ * the primary source. Flat `*.agent.md` files (a staged package's renders, or a
+ * hand-written agent) are read only when no composable directory exists for that agent id. When
  * `tokenMap` is omitted, token-map.json is loaded from the package root;
  * missing/unreadable maps fall back to the built-in copilot→pi translation.
  */

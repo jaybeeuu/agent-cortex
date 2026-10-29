@@ -4,20 +4,17 @@ Instructions for agents working on this repository.
 
 ## What This Repo Is
 
-A personal Copilot CLI plugin containing custom agents and skills, shipped to Copilot, pi,
-and Claude Code, plus PI extensions and Claude hooks for enhancing the coding agent
-runtime. Changes here affect the behaviour of every agent, skill, and PI extension
-available in the author's coding sessions.
+A personal collection of custom agents and skills, shipped to pi and Claude Code, plus PI
+extensions and Claude hooks for enhancing the coding agent runtime. Changes here affect the
+behaviour of every agent, skill, and PI extension available in the author's coding sessions.
 
 ## Structure
 
 ```
 agent-cortex/
 ├── package.json           # PI package manifest (pi: { extensions, skills }) + pi runtime deps
-├── plugin.json            # GitHub Copilot plugin manifest — agents, skills, MCP servers
 ├── agents/                # Custom agents — canonical composable <name>/ dirs
-│   ├── *.agent.md         #   generated from <name>/ by scripts/build-copilot-agents.mjs
-│   ├── ralph/             #   composable format — see agents/README.md
+│   ├── ralph/             #   composable format (shared agent.md + pi/, claude/) — see agents/README.md
 │   ├── plan/              #   "
 │   ├── ralph-plan/        #   "
 │   └── strategy/          #   "
@@ -44,7 +41,7 @@ agent-cortex/
 ## Versioning
 
 Use `pnpm changeset` for all version bumps. Never edit versions manually.
-`package.json`, `plugin.json`, and `CHANGELOG.md` stay in lockstep automatically.
+`package.json` and `CHANGELOG.md` stay in lockstep automatically.
 See the `style-versioning` skill for the full workflow.
 
 ## Changelog
@@ -69,7 +66,7 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 ## Skill Conventions
 
 - **Skills are portable, not repo documentation.** `skills/` is installed onto arbitrary machines
-  (Copilot, pi, Claude Code), so it describes general practice and the author's portable
+  (pi, Claude Code), so it describes general practice and the author's portable
   preferences — never how this repository is configured or how to work in it. Facts about this
   checkout (branch bases, merge method, signature rules, required checks, release mechanics) belong
   in `AGENTS.md`, `docs/`, or the tracker. Repo-local `.agents/skills/` follows the same rule: a
@@ -88,13 +85,10 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 ## Agent Conventions
 
 - Agents live in composable `<name>/` directories under `agents/`: a shared `agent.md` body plus
-  per-harness subdirectories `pi/`, `copilot/`, `claude/` (frontmatter.json and optional section
-  files) per the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, and `strategy` all use
-  the composable layout. The flat `agents/*.agent.md` files are **generated output** — composed
-  from the canonical directories by the shared `bin/installers/copilot.mjs` code path behind both
-  `agent-cortex install copilot` and `scripts/build-copilot-agents.mjs` (thin wrapper), and
-  committed for Copilot CLI (plugin.json `agents: "agents/"` scans for `*.agent.md`); never edit
-  them by hand. The Claude plugin is materialised by the install-time generator
+  per-harness subdirectories `pi/` and `claude/` (frontmatter.json and optional section files) per
+  the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, and `strategy` all use the
+  composable layout, and no flat agent file is committed — each harness renders its own at install
+  time. The Claude plugin is materialised by the install-time generator
   `bin/installers/claude.mjs`: a plain `agent-cortex install claude` copies it into
   `~/.agent-cortex/claude` (skills copied flat with `{{TOOL:...}}`/`{{PATH:...}}` substituted,
   never symlinked), writes the marketplace manifest at

@@ -111,8 +111,8 @@ fire-and-forget orchestration:
 - **`read_agent`** — fallback: read one specific agent's output once you know it has
   finished (or query its `STILL RUNNING` state directly).
 
-These mirror Copilot CLI's `task`/`read_agent` model; `wait_for_agents` adds the
-blocking wait that Copilot's poll loop does manually. Abort (Ctrl+C) propagates: a
+These mirror the `task`/`read_agent` model the skills are authored against;
+`wait_for_agents` adds the blocking wait that a `read_agent` poll loop does manually. Abort (Ctrl+C) propagates: a
 pending `wait_for_agents` returns immediately with whatever is known so far.
 
 ## Output Display

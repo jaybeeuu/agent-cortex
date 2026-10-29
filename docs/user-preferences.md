@@ -1,8 +1,8 @@
 # User Preferences
 
 This file records personal development preferences for the author (**jaybeeuu**).
-Both Copilot CLI agents and PI coding agents should read this file for user-level
-context when making tooling and workflow decisions.
+Both pi and Claude Code agents should read this file for user-level context when
+making tooling and workflow decisions.
 
 ## Package manager
 

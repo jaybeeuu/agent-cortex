@@ -20,13 +20,14 @@ below no longer hold:
   that both load.
 
 `pi.packages` and `lib/pi-packages.mjs` are deleted, so the bespoke-pi-mechanism problem this
-memo was written to settle is closed. The Claude and Copilot analysis stands.
+memo was written to settle is closed. The Claude analysis stands; Copilot CLI is no longer a
+deploy target (`agnt-ctx-2rl`).
 
 ## Problem and target outcome
 
-- **What we are solving.** agent-cortex ships agents and skills to three harnesses (pi, Claude
-  Code, Copilot CLI) and needs a declared, reproducible set of *third-party* extensions those
-  agents depend on (pi packages / Claude plugins). Two bespoke mechanisms currently exist and
+- **What we are solving.** agent-cortex ships agents and skills to two harnesses (pi, Claude
+  Code) and needs a declared, reproducible set of *third-party* extensions those agents depend
+  on (pi packages / Claude plugins). Two bespoke mechanisms currently exist and
   disagree: `main` declares packages in `package.json` → `pi.packages` and provisions them from
   `lib/pi-packages.mjs`; the unmerged pi-harness epic (`agnt-ctx-dfq3`) declares them in
   `pi.extensions.json` / `claude.extensions.json` and provisions them via `agent-cortex ext
@@ -51,9 +52,6 @@ memo was written to settle is closed. The Claude and Copilot analysis stands.
 - **Claude is idiomatic two ways.** Machine state is `~/.claude/settings.json` → `enabledPlugins`
   + `extraKnownMarketplaces`. A plugin declares other plugins in `.claude-plugin/plugin.json` →
   `dependencies`, which Claude Code resolves and auto-installs.
-- **Copilot has no dependency mechanism.** `copilot plugin install/list/uninstall` exists, but its
-  state is auto-managed `~/.copilot/config.json` (not committable) and `plugin.json` declares no
-  dependencies.
 - **The epic already built two-thirds of the target.** Unmerged commit `afab2c6` (F3) materialises
   `pi/settings.json` + `pi/keybindings.json` from committed templates with merge-keep-personal and
   the CLI owning `packages`; `1ff212d` (F4) makes bundled pi extensions load via package
@@ -86,7 +84,7 @@ memo was written to settle is closed. The Claude and Copilot analysis stands.
   --json` are the exact machine-state comparison; drift self-heals on install.
 - **Cons.** pi bundling shifts update cadence to agent-cortex releases and grows the tarball;
   Claude cross-marketplace deps need an allowlist; the committed template also carries personal
-  settings; Copilot gets nothing.
+  settings.
 - **Risks.** Loading TS extensions from bundled `node_modules/`; maintaining the Claude
   cross-marketplace allowlist.
 
@@ -128,8 +126,6 @@ the epic, and delete `pi.packages` + `lib/pi-packages.mjs` from `main`.
 - **Committed personal settings.** `pi/settings.json` already carries models/theme; the template
   model makes the repo own the whole pi settings surface. Accepted; F3's merge preserves personal
   keys and only `packages` is CLI-owned.
-- **Copilot gets no mechanism.** Documented exception — the README says `copilot plugin install`.
-  Accepted because Copilot has no dependency field and no committable config.
 - **No dedicated diff command.** A read-only `status` is deferred until drift is shown to hurt.
 
 ## Validation plan
@@ -160,8 +156,6 @@ pi extension loads from `node_modules/` and an optional one is materialised from
   speculative and should be dropped rather than maintained.
 - Bundling `pi-web-access`'s native-ish dependency tree (unpdf, linkedom) proves brittle or
   unacceptable on a fresh machine.
-- Copilot gains a committable config or a plugin dependency field — revisit the documented
-  exception.
 - Drift between the committed template and the machine becomes a recurring annoyance — add the
   deferred read-only `status`.
 
@@ -175,8 +169,6 @@ pi extension loads from `node_modules/` and an optional one is materialised from
   (auto-install, cross-marketplace allowlist, tag naming).
 - Claude Code, *Settings* — https://code.claude.com/docs/en/settings (`enabledPlugins`,
   `extraKnownMarketplaces`).
-- GitHub Copilot CLI, *Plugin reference* — https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference
-  and *Configuration directory* — https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference
 - Code evidence (as of 2026-09 — `pi.packages` and `lib/pi-packages.mjs` were removed in
   `agnt-ctx-7kru.1`, see Status): `package.json` (`pi.packages`), `lib/pi-packages.mjs` (main's
   provisioner);

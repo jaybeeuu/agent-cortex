@@ -112,22 +112,6 @@ if (parsed.command === "install") {
       process.exit(1);
     }
   }
-
-  // copilot regenerates the flat agents/*.agent.md files the Copilot plugin
-  // loads via plugin.json ("agents": "agents/") — the same code path
-  // `pnpm build:copilot` runs.
-  if (parsed.harness === "copilot") {
-    const { installCopilot } = await import("./installers/copilot.mjs");
-    try {
-      await installCopilot({ output: parsed.output, dryRun: parsed.dryRun });
-      process.exit(0);
-    } catch (err) {
-      process.stderr.write(`Install failed: ${err.message}\n`);
-      process.exit(1);
-    }
-  }
-
-  process.exit(0);
 }
 
 function printPiSweep({ removed }) {

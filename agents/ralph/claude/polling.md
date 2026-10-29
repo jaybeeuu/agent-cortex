@@ -20,7 +20,7 @@ Rules:
 
 Claude Code **re-invokes you automatically when a background worker completes** — the worker's result is delivered to you inline on the wake-up. **Do not poll and do not `sleep`.** React to completions as they arrive.
 
-- There is **no poll timer on Claude**: skip the PI/Copilot timer start and restart steps in initialization, and there is nothing to kill in **HITL Pause** — when you stop, you simply stop. The harness wakes you again when the user re-invokes you.
+- There is **no poll timer anywhere in this pipeline**: nothing in initialization starts one, and there is nothing to kill in **HITL Pause** — when you stop, you simply stop. The harness wakes you again when the user re-invokes you.
 - There is **no log tailing on Claude**: workers' progress lines (`.agent-cortex/ralph/ralph-<parentId>.log`) are written by the workers themselves and surfaced by the harness with the completion — nothing to flush, nothing to poll. Produce the shared chat summaries from the delivered result instead.
 - On each completion, apply the shared handling in the **Event loop** section of agent.md (steps 3–8: correlate the task ID to its bead via `state.json`, parse the REPORT, close the chore, advance the parent, check for newly ready beads, run the shutdown check). `state.json` `logLine` tracking is not used on Claude.
 

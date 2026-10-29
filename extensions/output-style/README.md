@@ -31,7 +31,8 @@ the task wins.
 output-style/
 ├── README.md              # This file
 ├── index.ts               # Extension entry point — appends on before_agent_start
-├── output-style.ts        # The block text + appendOutputStyle composition
+├── output-style.ts        # Loads the block + appendOutputStyle composition
+├── output-style.md        # The block text (single source, also shipped to Claude)
 ├── output-style.test.ts   # Composition tests
 ├── package.json
 └── tsconfig.json
@@ -52,3 +53,6 @@ node --test --import tsx/esm output-style.test.ts
   returned unchanged, so a duplicate extension load cannot double the rules.
 - Separate from `agent-guardrails` because it is a different failure: guardrails
   govern *whether* work continues, this governs *how the result is reported*.
+- The prose lives in `output-style.md`, not in the TypeScript, because there is a
+  second consumer: `agent-cortex install claude` wraps that file in the managed
+  `~/.claude/CLAUDE.md` section. One file, two harnesses, no drift.

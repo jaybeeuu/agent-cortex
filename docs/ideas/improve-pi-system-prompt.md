@@ -3,7 +3,8 @@
 ## Status
 Backlog idea (not implementation-ready) — two slices implemented as pi extensions:
 `agent-guardrails` (circuit-breakers, check-in triggers, atomic-change discipline) and
-`output-style` (action-first reply shape, Simplified Technical English, restated context).
+`output-style` (action-first reply shape, Simplified Technical English, restated context,
+shipped to pi via the system prompt and to Claude via a managed `CLAUDE.md` section).
 The rest of the idea is unscoped.
 
 ## Why it might be useful

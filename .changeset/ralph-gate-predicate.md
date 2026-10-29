@@ -21,9 +21,17 @@ were invisible and pending human action was under-reported.
   never appear in the Pending Human Action table.
 - Gate queries match `lifecycle:feature-pr` on either HITL axis, so gates
   created on either side of the two-axis migration are counted.
-- ralph's agent files (canonical source and the generated Copilot flat file),
-  `agents-native/ralph.md`, and the ralph skill and REFERENCE now point at the
-  script instead of restating ad-hoc `bd` queries that had already drifted.
+- ralph's agent files (canonical source and the generated Copilot flat file) and
+  the ralph skill and REFERENCE now point at the script instead of restating
+  ad-hoc `bd` queries that had already drifted.
+- `agents-native/ralph.md` (the Claude harness) keeps the **open**-gate form and
+  only takes the dual-axis query: its gates stay blocked for their whole life —
+  `create-task` blocks them behind a `document` chore no Claude ralph closes, and
+  the native route deps them onto the still-open feature bead — so the unblocked
+  predicate would never fire there and ralph would report "All beads complete."
+  with PRs unmerged. REFERENCE.md now states the invariant: a gate blocked by its
+  parent feature bead is not parked in any harness, so a gate must not carry a
+  `blocks` dependency onto its own feature.
 
 Reconcile with agnt-ctx-s5xd.10 (ralph harness unification) when that rewrites
-ralph's agent files.
+ralph's agent files — it owns collapsing the two predicates into one.

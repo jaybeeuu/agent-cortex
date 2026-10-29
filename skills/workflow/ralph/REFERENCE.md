@@ -98,6 +98,13 @@ node skills/workflow/ralph/scripts/pending-gates.mjs
 
 Gate queries match the HITL axis on either `execution:hitl` (current) or `implementation-type:hitl` (legacy), so gates created on either side of the two-axis migration are counted.
 
+**Invariant — what may block a gate.** `parked` means "blocked by its own pipeline". A gate blocked by its parent **feature** bead is not parked in any harness: that bead stays open until after the merge, so the gate never reaches `bd ready`, never appears in `pendingHumanAction`, and a human merge is silently never requested. Keep the two shapes apart:
+
+- A `create-chores` gate unblocks exactly once, when its `document` chore closes. Until then it is parked and must not stop dispatch.
+- A gate must never carry a `blocks` dependency onto its own feature bead (the native-Claude shape: `bd create ... --labels ...lifecycle:feature-pr` then dep it to `<id>`). Remove it with `bd dep rm <gate> <id>` if present, so the gate is unblocked while its PR awaits merge.
+
+So the predicate is sensitive to *what* blocks a gate, not only whether something does. `agents-native/ralph.md` (the Claude harness) keeps the open-gate form for this reason: its gates stay blocked by design, and its `document` chores never close; F10 (agnt-ctx-s5xd.10) unifies the two predicates.
+
 ---
 
 ## Fix Loop

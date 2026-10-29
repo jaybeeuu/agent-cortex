@@ -53,8 +53,8 @@ Run once at startup:
 5. Read `maxFixRounds` from `${CLAUDE_PLUGIN_ROOT}/skills/create-task/pipeline.json` if present;
    otherwise default to **4**.
 6. Dispatch up to 5 AFK features (see below). Then end your turn — you will be woken on the
-   first completion. If there are zero AFK features but an **unblocked** `lifecycle:feature-pr`
-   gate is pending (see **Idle**), go straight to **Idle**.
+   first completion. If there are zero AFK features but an open `lifecycle:feature-pr` gate is
+   pending (see **Idle**), go straight to **Idle**.
 
 ## Dispatching a feature
 
@@ -106,13 +106,19 @@ beads per **Classifying a bead**, and promote AFK features into free slots.
 
 When no workers are running and no AFK features remain:
 
-- **PR gates pending**: `bd ready -l lifecycle:feature-pr --label-any execution:hitl,implementation-type:hitl`
-  returns a gate, so it is **unblocked** — its feature's document chore has closed and the PR awaits a
-  human merge. A gate that query does *not* return is still blocked behind its own pipeline (parked)
-  and must not pause you. Run `bd dolt push`, then print a
+- **PR gates pending** (open `lifecycle:feature-pr` beads on either HITL axis):
+  `bd list -l lifecycle:feature-pr --label-any execution:hitl,implementation-type:hitl --limit 0`.
+  This harness keys the pause on a gate being **open**, not unblocked, because its gates stay
+  blocked for their whole life: `create-task` blocks each gate behind the feature's `document`
+  chore, which no Claude ralph claims or closes, and the native route in _When a reviewer
+  worker completes_ step 2 deps the gate onto the still-open feature bead. So never assume a gate
+  here is blocked only by its own pipeline, and never treat "no unblocked gate" as "no human
+  action owed" — that clears the loop with PRs unmerged. Run `bd dolt push`, then print a
   **Pending Human Action** table (bead id, title, PR URL, "review & merge, then `bd close <gate>`"),
   and **stop completely** — output nothing further. Do not poll. The user re-invokes you after
-  merging; you will resume from `bd ready`.
+  merging; you will resume from `bd ready`. The pi harness uses the unblocked-gate predicate
+  (`skills/workflow/ralph/scripts/pending-gates.mjs`); F10 (agnt-ctx-s5xd.10) unifies ralph's
+  agent files — reconcile the two predicates there rather than half-migrating this one.
 - **Nothing pending**: run `bd dolt push`, print any recorded HITL / needs-refinement / blocked
   beads as tables, then print **All beads complete.**
 

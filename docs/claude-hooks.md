@@ -17,6 +17,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `session-start/` | `SessionStart` hook commands | **Port** (extended) |
 | `auto-name.ts` | — | **Reject** — built-in |
 | `agent-guardrails/` | — | **Reject** — pi-only (no system-prompt hook) |
+| `output-style/` | — | **Reject** — pi-only (no system-prompt hook) |
 | `notify/` | `Notification` hook + `scripts/notify.mjs` | **Port** |
 | `skill-stats/` | — | **Reject** — no equivalent |
 | `subagent/` | — | **Reject** — native |
@@ -88,6 +89,13 @@ its nearest surface, `SessionStart` `additionalContext`, injects conversation
 context rather than system instructions. The rules are harness-agnostic prose, so
 a future port could append them to the existing ported SessionStart hook — out of
 scope for this pi-first slice.
+
+## `output-style/` → Reject (pi-only)
+
+pi appends the reply shape (action first, Simplified Technical English, restated
+context) to the system prompt through the same `before_agent_start` hook, so the
+rejection is the same: Claude Code cannot modify the system prompt from a hook, and
+`SessionStart` `additionalContext` injects conversation context, not instructions.
 
 ## `skill-stats/` → Reject (no equivalent)
 

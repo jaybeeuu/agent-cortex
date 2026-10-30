@@ -24,6 +24,7 @@ agent-cortex/
 ├── extensions/               # pi extensions (pi only)
 │   ├── agent-guardrails/     #   behavioural circuit-breakers in the system prompt
 │   ├── agent-modes/          #   switchable agent modes (reads composable agents/)
+│   ├── output-style/         #   reply shape: STE, action-first, restated context
 │   ├── skill-stats/
 │   └── notify/
 ├── pi/                       # Committed pi config templates (see below)
@@ -279,7 +280,10 @@ manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude
 registers it with Claude Code, and merges the committed `claude/settings.json` template into
 `~/.claude/settings.json`: the template supplies defaults, personal values win, and the
 installer owns exactly `enabledPlugins` + `extraKnownMarketplaces` — every other key
-(`permissions`, `hooks`, `env`, `statusLine`, unknown keys) is preserved. The only committed
+(`permissions`, `hooks`, `env`, `statusLine`, unknown keys) is preserved. It also writes the
+managed section of `~/.claude/CLAUDE.md` — the reply-shape block the pi `output-style`
+extension appends, taken from the same source file — and leaves every other line of that
+file alone. The only committed
 Claude config is that template plus the hand-authored extras in `claude-extras/`
 (`.mcp.json`, `scripts/`); the plugin subtree is generated at install time — there is nothing
 to drift.
@@ -340,6 +344,12 @@ supplies defaults and personal values win; the installer owns exactly `enabledPl
 `extraKnownMarketplaces`, so `permissions`, `hooks`, `env`, `statusLine` and unknown keys are
 never touched. A legacy symlinked `settings.json` is replaced with a real file rather than
 written through, and `--output` leaves the user's Claude config alone.
+
+It also writes the managed section of `~/.claude/CLAUDE.md` (Claude's user memory), delimited
+by `<!-- BEGIN agent-cortex:output-style -->` / `<!-- END agent-cortex:output-style -->`. The
+content is `extensions/output-style/output-style.md` — the same file the pi extension appends
+to its system prompt — so both harnesses carry one copy of the rules. Text outside the
+markers is never touched; a file with only one marker is left unchanged with a warning.
 
 The equivalent manual registration adds a marketplace root by **absolute path** (a bare `.` is
 rejected) — the home install root (`~/.agent-cortex`) is the marketplace root written by
@@ -419,7 +429,8 @@ extension→hook audit.
 #### Not ported / follow-ups
 
 - Only `session-start` and `notify` had Claude equivalents (both ported to hooks); the other
-  pi `extensions/` (auto-name, agent-guardrails, skill-stats, subagent, agent-modes) have none — the audit and
+  pi `extensions/` (auto-name, agent-guardrails, skill-stats, subagent, agent-modes) have none — `output-style`
+  reaches Claude through the managed `CLAUDE.md` section instead; the audit and
   rejection rationale live in `docs/claude-hooks.md`.
 - Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume
   after a PR merge (instead of manual re-invocation).

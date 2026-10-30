@@ -32,7 +32,8 @@ We use labels to track state. Key patterns:
 | Label | Purpose | Example |
 |---|---|---|
 | `stage:<id>` | Pipeline stage for chore beads | `stage:code`, `stage:verify` |
-| `implementation-type:<type>` | Who works it | `afk`, `hitl` |
+| `execution:<class>` | Who works it — `afk` is agent-routable, `hitl` needs a human | `afk`, `hitl` |
+| `kind:idea` | Unscoped backlog idea, always `execution:hitl` | `kind:idea` |
 | `lifecycle:<phase>` | Lifecycle gate | `feature-pr` |
 | `epic:<id>` | Parent epic link | `epic:abc-123` |
 | `priority:<level>` | Priority (0-3) | `priority:1` |
@@ -102,7 +103,13 @@ Optional — beads work locally. Sync at session end when it's convenient.
 ## Key conventions
 
 - **Priority**: 0 = critical, 1 = high, 2 = medium, 3 = low, 4 = backlog. Aliased as P0-P4.
-- **HITL beads**: require human action — do not claim or implement them. Inform the user.
+- **`execution:afk` / `execution:hitl`**: the execution axis, and a query filter only — no
+  auto-claim. `bd ready -l execution:afk` is the agent-workable view; an `execution:hitl` bead
+  needs a human, so do not claim or implement it. Inform the user.
+- **Idea beads** (`kind:idea`): an open, unscoped idea (`execution:hitl`) that is promoted to an
+  epic once fleshed out. They stay `open` and carry no `execution:afk`, so a scoped
+  `bd ready -l execution:afk` view never lists them — but a bare `bd ready` does. Filter a
+  plain ready listing with `bd ready --exclude-label kind:idea`.
 - **Chore beads** (`--type chore`): auto-created pipeline stages. Do not create them manually — use `create-task`. Not ephemeral — they must stay visible to plain `bd ready` for ralph to discover them.
 
 ## Cross-skill references
@@ -112,4 +119,6 @@ Optional — beads work locally. Sync at session end when it's convenient.
 | Creating a new task with pipeline expansion | `create-task` |
 | Executing a single pipeline stage | `run-pipeline-stage` |
 | Running the full end-to-end pipeline | `ralph` |
-| Classifying a bead's implementation type | `classify-bead` |
+| Classifying a bead's execution class | `classify-bead` |
+| Capturing an unscoped idea as a bead | `record-idea` |
+| Deepening or promoting an idea bead | `flesh-out-idea` |

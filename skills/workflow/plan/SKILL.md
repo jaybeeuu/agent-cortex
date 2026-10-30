@@ -249,6 +249,7 @@ Deliver a handoff bead and instructions for running ralph.
 
 - [write-a-prd](../../planning/write-a-prd/SKILL.md) — owns the PRD template and interview workflow that Phase 1 folds in.
 - [prd-to-tasks](../../planning/prd-to-tasks/SKILL.md) — load when the PRD is already written and only decomposition is needed.
+- [spec-to-tickets](../../planning/spec-to-tickets/SKILL.md) — load instead when the PRD must become external tickets rather than beads.
 - [create-task](../../planning/create-task/SKILL.md) — Phase 3's per-task bead creation and pipeline expansion; it invokes `classify-bead` internally, so this skill never classifies directly.
 - [ralph](../ralph/SKILL.md) — the downstream consumer of the handoff bead — hand off by running a separate agent with "Use the ralph skill. Start from bead #<handoff-id>".
 

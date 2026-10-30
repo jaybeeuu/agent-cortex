@@ -12,7 +12,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const CREATE_CHORES = join(testDir, "..", "skills", "planning", "create-task", "scripts", "create-chores.mjs");
 
 /** Run create-chores.mjs against the fake `bd` with a parent that already
- * carries implementation-type:afk — the label `bd create --parent` inherits.
+ * carries execution:afk — the label `bd create --parent` inherits.
  * @param {string[]} parentLabels  Labels seeded on the parent bead
  * @returns {Promise<{ ids: Record<string, string>, beads: Array<{ id: string, title: string, labels: string[] }> }>} */
 async function createChoresAgainstFakeBd(parentLabels) {
@@ -51,28 +51,28 @@ function runScript(args, env) {
 }
 
 describe("create-chores", () => {
-  it("gives the PR gate exactly its declared labels, without the parent's inherited implementation-type:afk", async () => {
-    const { ids, beads } = await createChoresAgainstFakeBd(["implementation-type:afk"]);
+  it("gives the PR gate exactly its declared labels, without the parent's inherited execution:afk", async () => {
+    const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
 
     const gate = beads.find((b) => b.id === ids.featurePrReview);
     assert.deepEqual(
       [...gate.labels].sort(),
-      ["implementation-type:hitl", "lifecycle:feature-pr"],
+      ["execution:hitl", "lifecycle:feature-pr"],
     );
   });
 
-  it("still lets stage chores inherit implementation-type:afk from the parent", async () => {
-    const { ids, beads } = await createChoresAgainstFakeBd(["implementation-type:afk"]);
+  it("still lets stage chores inherit execution:afk from the parent", async () => {
+    const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
 
     const codeChore = beads.find((b) => b.id === ids.code);
     assert.deepEqual(
       [...codeChore.labels].sort(),
-      ["implementation-type:afk", "stage:code"],
+      ["execution:afk", "stage:code"],
     );
   });
 
   it("validates the PR gate task but not the stage chores", async () => {
-    const { ids, beads } = await createChoresAgainstFakeBd(["implementation-type:afk"]);
+    const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
 
     const gate = beads.find((b) => b.id === ids.featurePrReview);
     assert.equal(gate.type, "task");

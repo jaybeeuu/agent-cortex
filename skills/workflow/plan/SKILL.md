@@ -119,19 +119,30 @@ For each task (within each epic), create a bead, classify it, and expand AFK tas
     ```bash
     # create-task handles: bead creation → classify → AFK: expand into pipeline stages → HITL: stop
     ```
-    Pass the parent epic ID (if epics are used) so tasks are nested under their epic.
+    Pass the parent epic ID (if epics are used) so tasks are nested under their epic — `--parent`
+    records ownership. Work that needs sequencing instead of nesting gets `bd dep add`.
 
-14. After all tasks in an epic are created, tag the parent epic with the aggregate classification:
-    - If **any** task is HITL: `bd tag <epic-id> implementation-type:hitl`
-    - If **all** tasks are AFK: `bd tag <epic-id> implementation-type:afk`
+14. When a task in the breakdown is really several deliverables, create it with the feature shape
+    rather than fattening it: a feature bead (`execution:hitl`) owning one planning bead
+    (`execution:hitl`, "Plan: <title>") that blocks one `execution:afk` impl child per deliverable.
+    `create-task` steps 5–6 run this sequence; the planning bead's description carries the
+    cold-start contract (what and why, decisions made, open questions, references).
 
-15. Present the full bead tree to the user:
+15. Do not aggregate a child's execution class onto its parent. An epic or feature is a container
+    that a human owns, so it is `execution:hitl` in its own right; each task states its own
+    `execution:afk` or `execution:hitl`. Copying `execution:afk` upward because every child is AFK
+    labels a human-owned container as agent work.
+
+16. Present the full bead tree to the user:
     ```
-    Epic: "Phase 1 Title" (#epic-abc)
+    Epic: "Phase 1 Title" (#epic-abc) — HITL
       ├── Task 1: "..." (#task-123) — AFK
       ├── Task 2: "..." (#task-456) — HITL (visual review)
-      └── Task 3: "..." (#task-789) — AFK
-    Epic: "Phase 2 Title" (#epic-def)
+      ├── Task 3: "..." (#task-789) — AFK
+      └── Feature 4: "..." (#feat-012) — HITL
+            ├── Plan: Feature 4 (#task-013) — HITL, blocks #task-014
+            └── Task 5 (#task-014) — AFK
+    Epic: "Phase 2 Title" (#epic-def) — HITL
       ├── ...
     ```
 
@@ -140,14 +151,15 @@ For each task (within each epic), create a bead, classify it, and expand AFK tas
 - [ ] All tasks created via `create-task`
 - [ ] All tasks classified (AFK or HITL)
 - [ ] AFK tasks expanded into pipeline-stage chore beads plus PR gate
-- [ ] Parent epics tagged with aggregate `implementation-type`
+- [ ] Epics and features carry `execution:hitl`; no execution label aggregated from children
 - [ ] Full bead tree presented to the user
 
 ### Phase 4 — Prepare handoff to ralph
 
 Deliver a handoff bead and instructions for running ralph.
 
-16. Determine the entry point:
+17. Determine the entry point:
+
     - **Single epic**: the epic ID is the handoff bead.
     - **Multiple independent epics**: create a parent meta-epic that groups them:
       ```bash
@@ -165,17 +177,17 @@ Deliver a handoff bead and instructions for running ralph.
       The meta-epic ID is the handoff bead.
     - **Sequentially dependent epics**: the first unblocked epic is the handoff bead — ralph will discover the rest via `bd ready` as dependencies clear.
 
-17. Tag the handoff bead for ralph's discovery:
+18. Tag the handoff bead for ralph's discovery:
     ```bash
     bd tag <handoff-id> workflow:ralph
     ```
 
-18. Push the bead state:
+19. Push the bead state:
     ```bash
     bd dolt push
     ```
 
-19. Present the handoff summary:
+20. Present the handoff summary:
     ```
     ✅ Plan complete. Ready for ralph.
 
@@ -189,7 +201,7 @@ Deliver a handoff bead and instructions for running ralph.
 
     | Bead ID | Title | Type | Classification |
     |---------|-------|------|---------------|
-    | #epic   | Phase 1 | epic | AFK |
+    | #epic   | Phase 1 | epic | HITL |
     | #task   | Task 1 | task | AFK (4 chore beads + PR gate) |
     | #task   | Task 2 | task | HITL |
     | ...     | ...    | ...  | ... |
@@ -261,7 +273,7 @@ Full bead tree:
 
 | Bead ID | Title | Type | Classification |
 |---------|-------|------|---------------|
-| #epic-abc123  | Webhook Notification System — PRD | epic | AFK |
+| #epic-abc123  | Webhook Notification System — PRD | epic | HITL |
 | #task-456 | Create webhook subscription schema + API | task | AFK (4 chore beads + PR gate) |
 | #task-789 | Implement event dispatch and retry logic | task | AFK (4 chore beads + PR gate) |
 | #task-012 | Build subscriber management UI | task | HITL (visual review) |
@@ -277,7 +289,8 @@ Full bead tree:
 - [ ] Task breakdown uses vertical slices (each task covers all layers — schema, API, logic, UI if applicable, tests)
 - [ ] Task breakdown approved by the user before moving to Phase 3
 - [ ] All tasks created via `create-task` (which handles classification, pipeline expansion, and PR gate creation)
-- [ ] Parent epics tagged with aggregate `implementation-type` (AFK if all children AFK, HITL if any child is HITL)
+- [ ] Epics and features carry `execution:hitl`; every task states its own `execution:afk`/`execution:hitl`
+- [ ] No execution label aggregated from children onto a parent
 - [ ] Full bead tree presented to the user before handoff
 - [ ] Handoff bead tagged `workflow:ralph`
 - [ ] Bead state pushed with `bd dolt push`

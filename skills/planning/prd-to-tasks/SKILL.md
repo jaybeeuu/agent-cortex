@@ -63,9 +63,11 @@ execute. The epic bead is the source of truth — no intermediate plan file.
    `## Success Criteria`; `--validate` rejects it otherwise:
 
    ```bash
-   bd create "<Phase Title>" --type epic --description "<epic body from REFERENCE.md>" --validate
+   bd create "<Phase Title>" --type epic -l execution:hitl --description "<epic body from REFERENCE.md>" --validate
    bd lint <epic-id>
    ```
+
+   An epic is a container and a person decides when it closes, so it is `execution:hitl` in its own right — not because of what its children are.
 
 8. Tag each epic with a priority (`p3` default; adjust for p4/p5), and `workflow:ralph`
    when running under ralph-plan or ralph.
@@ -76,13 +78,13 @@ execute. The epic bead is the source of truth — no intermediate plan file.
    invoke `create-task` for each — it handles AFK/HITL classification and pipeline
    expansion. Pass the task body template from REFERENCE.md, the priority, and the parent
    epic ID.
-10. Once all tasks exist, tag the epic with the aggregate classification: HITL if any task
-    is HITL, otherwise AFK.
+10. Do not aggregate a child's classification onto its epic. Every bead states its own execution class, and a container's class is `execution:hitl` because a human owns it — copying `execution:afk` upward because the children happen to be AFK labels a human-owned container as agent work.
+11. When a slice is really several deliverables, use the feature shape from `create-task` steps 5–6 instead of fattening one task: a feature bead owns a planning bead that blocks one impl child per deliverable (`REFERENCE.md` → Feature → planning → impl sequence). The planning bead is where the design the PRD left open gets settled, so `bd ready` surfaces the impl children only once planning closes.
 
 ### Phase 5 — Report
 
-11. Present the full bead tree: each epic with its tasks, classifications, and IDs.
-12. If invoked by `ralph-plan`, signal completion so it can proceed; if invoked directly,
+12. Present the full bead tree: each epic with its tasks, classifications, and IDs.
+13. If invoked by `ralph-plan`, signal completion so it can proceed; if invoked directly,
     summarise the tree and confirm the user is happy before finishing.
 
 ## Red Flags
@@ -122,8 +124,11 @@ Output: a dependency-ordered tree of epic and task beads:
 Epic: "Phase 1 — Auth" (#123) — HITL
   ├── Task 1 (#124) — AFK
   ├── Task 2 (#125) — HITL (visual review)
-  └── Task 3 (#126) — AFK
-Epic: "Phase 2 — Dashboard" (#127) — AFK (blocked by #123)
+  ├── Task 3 (#126) — AFK
+  └── Feature 4 (#128) — HITL
+        ├── Plan: Feature 4 (#129) — HITL, blocks #130
+        └── Task 5 (#130) — AFK
+Epic: "Phase 2 — Dashboard" (#127) — HITL (blocked by #123)
 ```
 
 ## Phase-gate checklists
@@ -132,8 +137,8 @@ Epic: "Phase 2 — Dashboard" (#127) — AFK (blocked by #123)
 - [ ] Phase 2 complete: phases drafted and approved by the user.
 - [ ] Phase 3 complete: epics created in dependency order and tagged (priority, plus
       `workflow:ralph` under ralph-plan/ralph), and `bd lint` clean.
-- [ ] Phase 4 complete: tasks created via `create-task`; epics carry the aggregate
-      `implementation-type` tag.
+- [ ] Phase 4 complete: tasks created via `create-task`; no execution label aggregated from
+      children onto a parent.
 - [ ] Phase 5 complete: full bead tree presented and confirmed.
 
 ## Verification checklist
@@ -143,6 +148,9 @@ Epic: "Phase 2 — Dashboard" (#127) — AFK (blocked by #123)
 - [ ] All epics are tagged with a priority (and `workflow:ralph` when under ralph).
 - [ ] Epics created with `--validate`; `bd lint` reports no missing sections for the created tree.
 - [ ] All tasks are classified AFK/HITL via `create-task`.
-- [ ] Parent epics carry the aggregate `implementation-type` tag.
+- [ ] Every epic and feature container carries `execution:hitl`, and every task states its own
+      `execution:afk`/`execution:hitl`.
+- [ ] Every impl child of a feature depends on that feature's planning bead.
+- [ ] No execution label was aggregated from children onto a parent.
 - [ ] No intermediate plan file was created — epics are the source of truth.
 - [ ] The full bead tree was presented to the user, or to ralph-plan for its next step.

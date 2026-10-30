@@ -25,9 +25,54 @@ One per stage in `pipeline.json` (currently `code`, `verify`, `review`, `documen
 
 - **Type**: `task`
 - **Title**: `[<parent-id>] PR Review and Merge`
-- **Labels**: `implementation-type:hitl`, `lifecycle:feature-pr` — exactly one `implementation-type` label. The gate declares its own labels, so the script passes `--no-inherit-labels` and it never picks up the parent's `implementation-type:afk`. Stage chores do **not** opt out; they keep inheriting `:afk`.
+- **Labels**: `execution:hitl`, `lifecycle:feature-pr` — exactly one `execution` label. The gate declares its own labels, so the script passes `--no-inherit-labels` and it never picks up the parent's `execution:afk`. Stage chores do **not** opt out; they keep inheriting `execution:afk` from the parent.
+- **Parent contract**: the parent must carry `execution:afk`. Stage chores inherit the parent's labels, so a parent labelled `execution:hitl` (or unlabelled) produces a chore tree that no executor routes. The script does not classify — it only checks that it was given a parent ID.
 - **Dependencies**: `parent-child` to the parent bead; `blocks` on the final document stage chore (`document`, falling back to the last stage in `pipeline.json`).
 - **Purpose**: human review of the agent PR (agent branch → feature branch) before the feature closes.
+
+## Hierarchy
+
+Ownership is `--parent` at create time; ordering is `bd dep add`. The full shape for a
+workstream, from container down to stage chore:
+
+| Level | Type | Execution | Created by | Ownership |
+|---|---|---|---|---|
+| Feature | `feature` | `execution:hitl` | `create-task` step 3 | — |
+| Planning bead ("Plan: <feature title>") | `task` | `execution:hitl` | `create-task` step 3 | `--parent <feature>` |
+| Impl task (one per deliverable) | `task` | `execution:afk` | `create-task` step 3 | `--parent <feature>` |
+| Stage chore | `chore` | inherited `execution:afk` | `create-chores.mjs` | `--parent <impl-task>` |
+| PR gate | `task` | `execution:hitl` | `create-chores.mjs` | `--parent <impl-task>`, `--no-inherit-labels` |
+
+Every impl task depends on the planning bead (`bd dep add <impl-task> <planning-bead>`), so
+`bd ready` withholds them until planning closes. Nothing aggregates a child's execution class
+onto its parent: the container is human-owned because a person decides when it is done, and
+each child states the class of its own work.
+
+### Planning bead body
+
+Cold-start ready — another person picks it up with no chat history:
+
+```markdown
+## What and why
+
+The deliverable this feature produces and the problem it solves.
+
+## Decisions already made
+
+- Decision — rationale
+
+## Open questions / risks
+
+- Question — who answers it
+
+## References
+
+- Bead IDs, files, docs consulted
+
+## Acceptance Criteria
+
+- [ ] The user confirms planning is sufficient for this feature.
+```
 
 ## Current pipeline stages
 

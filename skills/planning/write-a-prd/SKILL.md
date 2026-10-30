@@ -52,7 +52,7 @@ Run the steps in order. Skip a step only when the user confirms it is unnecessar
 
 - [ ] Gate 1 — shared understanding: every design-tree branch resolved and the user confirms the summary.
 - [ ] Gate 2 — modules agreed: the module list and test expectations match the user's model of the solution.
-- [ ] Gate 3 — PRD filed: the epic bead contains the rendered template, carries an implementation-type label, and lints clean.
+- [ ] Gate 3 — PRD filed: the epic bead contains the rendered template, carries `execution:hitl`, and lints clean.
 
 ## Cross-skill references
 
@@ -75,4 +75,4 @@ Output: an epic bead whose description is the rendered PRD — problem, solution
 - [ ] Every user story follows "As an <actor>, I want <feature>, so that <benefit>".
 - [ ] Codebase assertions verified against the repo before writing.
 - [ ] Implementation Decisions contains no file paths or code snippets.
-- [ ] Epic bead filed with type `epic`, priority P1, the rendered PRD as description, and an implementation-type label applied.
+- [ ] Epic bead filed with type `epic`, priority P1, the rendered PRD as description, and `execution:hitl` applied — a PRD epic is human-owned by definition.

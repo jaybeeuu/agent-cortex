@@ -2,6 +2,10 @@
 // Pre-create the pipeline stage chores for a task bead, plus the feature PR
 // review gate, from `pipeline.json`.
 //
+// The parent is an `execution:afk` bead. Stage chores inherit that label from it, so
+// create-chores does not classify: a parent that is hitl or unlabelled silently yields
+// a chore tree no executor routes. Check the parent's labels before invoking this.
+//
 // Zero dependencies: run with `node create-chores.mjs --parent <bead-id>`.
 
 import { execSync } from 'node:child_process';
@@ -126,11 +130,12 @@ const prGateBeadId = run([
   // section. Stage chores require no sections and deliberately omit the flag.
   '--validate',
   '--priority', priority,
-  '--labels', 'implementation-type:hitl,lifecycle:feature-pr',
+  '--labels', 'execution:hitl,lifecycle:feature-pr',
   '--parent', parentId,
-  // The gate declares its own labels; opt out of bd's create-time parent-label
-  // inheritance so its explicit :hitl is never joined by an inherited :afk.
-  // Stage chores deliberately keep inheriting :afk -- do not add this there.
+  // The gate declares its own execution class (it is human-owned review work), so opt
+  // out of bd's create-time parent-label inheritance and its explicit :hitl is never
+  // joined by an inherited :afk. Stage chores deliberately keep inheriting the parent's
+  // :afk -- do not add this flag there.
   '--no-inherit-labels',
   '--silent',
 ]);

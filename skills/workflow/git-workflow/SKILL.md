@@ -93,11 +93,11 @@ This avoids avoidable merge conflicts.
 ### 6. Bring a behind branch up to date — rebase, don't merge
 
 When the base branch moves and the PR reports `BEHIND` or `CONFLICTING`, rebase
-your branch onto it before anything else — never merge the base in:
+your branch onto its base branch before anything else — never merge the base in:
 
 ```bash
 git fetch origin
-git rebase origin/main
+git rebase origin/main        # or epic/<id> for a feature branch inside an epic
 git push --force-with-lease
 ```
 
@@ -108,13 +108,20 @@ before it lands, so these are separate decisions, not rivals. Keeping the branch
 linear is what makes the rebase safe: `git rebase` drops merge commits and the
 patches they resolved, so never rebase a branch that already merged the base.
 
+One exception: an **integration branch** that other branches are based on
+(`main`, or an `epic/<id>` branch) is not yours to rewrite. Sync it by merging
+the base in — under squash-merge that merge never reaches the landing diff, and
+the branches based on it stay linear by rebasing onto it.
+
 Rewritten commits are re-signed automatically when `commit.gpgsign` is set. Pass
 no `--gpg-sign`, and do not set `rebase.gpgSign` — both are redundant.
 
-Scope: rebase only your **own unmerged feature branch**. Never rebase `main`, and
-never rebase a branch another person or agent is working on — it discards their
-context and invalidates review. Force-push with `--force-with-lease`, never
-`--force`, which overwrites work you have not seen.
+Scope: rebase only your **own unmerged feature branch**. Never rebase `main` or an
+`epic/<id>` branch others are based on, and never rebase a branch another person
+or agent is working on — it discards their context and invalidates review.
+Force-push with `--force-with-lease`, never `--force`, which overwrites work you
+have not seen. Rewriting a reviewed branch discards the review context and
+invalidates approvals, so re-request review after a sync.
 
 After any update, re-run the checks: a conflict resolved by hand is not verified
 by the base branch's green CI.

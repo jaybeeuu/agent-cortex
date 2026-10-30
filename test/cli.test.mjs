@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -21,11 +21,11 @@ async function pathExists(p) {
 }
 
 /** Run the CLI; optionally pass a custom env (e.g. a fake HOME) or cwd. */
-function runCli(args, { env = {}, cwd = process.cwd() } = {}) {
+function runCli(args, { env = {}, cwd = process.cwd(), cli = CLI_PATH } = {}) {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
-      [CLI_PATH, ...args],
+      [cli, ...args],
       { env: { ...process.env, ...env }, cwd },
       (error, stdout, stderr) => {
         resolve({
@@ -293,11 +293,39 @@ describe("CLI integration", () => {
     const manifest = JSON.parse(await readFile(join(__dirname, "..", "package.json"), "utf-8"));
     const elsewhere = await mkdtemp(join(tmpdir(), "agent-cortex-version-"));
     try {
+      // A decoy manifest in the cwd must never win: the version comes from the
+      // package the binary lives in, not from wherever it was invoked.
+      await writeFile(join(elsewhere, "package.json"), JSON.stringify({ version: "9.9.9" }));
       const { exitCode, stdout } = await runCli(["--version"], { cwd: elsewhere });
       assert.equal(exitCode, 0);
       assert.equal(stdout, `${manifest.version}\n`);
     } finally {
       await rm(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("exits 1 without printing a version when the manifest beside the binary is broken", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agent-cortex-broken-install-"));
+    try {
+      for (const dir of ["bin", "lib", "scripts"]) {
+        await cp(join(__dirname, "..", dir), join(root, dir), { recursive: true });
+      }
+      const cli = join(root, "bin", "agent-cortex.mjs");
+      const manifestPath = join(root, "package.json");
+      const cases = [
+        { name: "missing", setup: () => rm(manifestPath, { force: true }) },
+        { name: "malformed", setup: () => writeFile(manifestPath, "{ not json") },
+        { name: "version-less", setup: () => writeFile(manifestPath, "{}") },
+      ];
+      for (const { name, setup } of cases) {
+        await setup();
+        const { exitCode, stdout, stderr } = await runCli(["--version"], { cli });
+        assert.equal(exitCode, 1, `exit 1 for a ${name} manifest`);
+        assert.equal(stdout, "", `no version on stdout for a ${name} manifest`);
+        assert.match(stderr, /Cannot read the package version from .*package\.json/, `diagnostic for a ${name} manifest`);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

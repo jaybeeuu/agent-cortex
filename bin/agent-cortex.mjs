@@ -22,16 +22,33 @@ if (parsed.command === "help") {
  * the package root, in the repo checkout and in the published tarball alike.
  * Resolved from this file's own location, never from the cwd or node_modules
  * resolution, so an installed CLI reports the version it was installed at.
+ * Throws when that manifest is missing, unreadable, malformed, or has no version
+ * string, so a broken install never prints a bogus version with a success exit.
  * @returns {Promise<string>}
  */
 async function readPackageVersion() {
   const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-  const manifest = /** @type {{ version: string }} */ (JSON.parse(await readFile(manifestPath, "utf-8")));
-  return manifest.version;
+  /** @type {unknown} */
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
+  } catch (err) {
+    throw new Error(`Cannot read the package version from ${manifestPath}: ${/** @type {Error} */ (err).message}`);
+  }
+  const version = /** @type {{ version?: unknown }} */ (manifest).version;
+  if (typeof version !== "string" || version === "") {
+    throw new Error(`Cannot read the package version from ${manifestPath}: the manifest has no "version" string.`);
+  }
+  return version;
 }
 
 if (parsed.command === "version") {
-  process.stdout.write(`${await readPackageVersion()}\n`);
+  try {
+    process.stdout.write(`${await readPackageVersion()}\n`);
+  } catch (err) {
+    process.stderr.write(`${/** @type {Error} */ (err).message}\n`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 

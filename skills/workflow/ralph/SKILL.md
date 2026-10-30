@@ -98,8 +98,10 @@ bd show <id>                   # full detail, including the worker's notes
 
 ### 7. HITL pause and shutdown
 
-- **HITL Pause** — when nothing is in flight (no stage, decomposition or expansion workers), nothing is dispatchable (nothing returned by `bd ready -l execution:afk`, including no ready, claimable chore-less task awaiting expansion), and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l execution:hitl` or `bd list -l awaiting-epic-pr-merge`): open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
-- **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
+Both paths end in a **gated** `bd dolt push`: on a non-zero exit, retry once, then stop and report the command, exit code and stderr as a sync blocker instead of printing any completion or Pending Human Action summary. A sync that never reached the remote is a failed shutdown, not a finished one.
+
+- **HITL Pause** — when nothing is in flight (no stage, decomposition or expansion workers), nothing is dispatchable (nothing returned by `bd ready -l execution:afk`, including no ready, claimable chore-less task awaiting expansion), and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l execution:hitl` or `bd list -l awaiting-epic-pr-merge`): open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run the gated `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
+- **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run the gated `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
 
 ## Red Flags
 
@@ -154,4 +156,4 @@ bd show <id>                   # full detail, including the worker's notes
 - [ ] Ralph closed no leaf execution bead and created no fix bead; every closed chore carries its worker's close reason.
 - [ ] Any chore-less `execution:afk` task bead was expanded with `create-chores.mjs` (one parent bead), never with `create-task`.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.
-- [ ] `bd dolt push` ran before HITL Pause/Shutdown, status was reported from `bd` commands rather than a generated file, and the chat received no empty poll updates.
+- [ ] Every `bd dolt push` before HITL Pause/Shutdown exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no completion or Pending Human Action summary printed; status was reported from `bd` commands rather than a generated file, and the chat received no empty poll updates.

@@ -202,7 +202,7 @@ Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. If `fix_ro
 Proceed here when no agent work is in flight (no stage, decomposition or expansion workers in `inflight`), no work is dispatchable (nothing returned by `bd ready -l execution:afk` — no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less `execution:afk` task bead awaiting expansion — claimability is part of dispatchability: an `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it does not keep ralph awake), and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
 
 1. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — their feature branch PRs already target `main` directly.
-2. Run `bd dolt push`.
+2. Run `bd dolt push` and gate it on the exit status: non-zero, retry once, then stop and report the command, exit code and stderr as a sync blocker — no Pending Human Action table.
 3. Collect pending HITL gate beads and their PR URLs:
    - Run `bd list -l lifecycle:feature-pr -l execution:hitl`
    - Run `bd list -l awaiting-epic-pr-merge`
@@ -232,6 +232,7 @@ When nothing is in flight AND nothing is dispatchable — `inflight` holds no en
    ```bash
    bd dolt push
    ```
+   **Gate on the exit status.** Non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker — no completion summary, no "All beads complete.", and the remaining shutdown steps are not run.
 3. If any HITL beads were noted during the session, output:
    ```
    All agent work is complete. The following steps require human action before work can continue:

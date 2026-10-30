@@ -272,6 +272,7 @@ Proceed here when no agent work is in flight (no stage, decomposition or expansi
    ```bash
    bd dolt push
    ```
+   **Gate on the exit status.** Non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker — no Pending Human Action table, and ralph does not claim a clean pause.
 3. Collect pending HITL gate beads and their PR URLs:
    ```bash
    bd list -l lifecycle:feature-pr -l execution:hitl
@@ -307,6 +308,7 @@ When nothing is in flight AND nothing is dispatchable — `inflight` holds no en
    ```bash
    bd dolt push
    ```
+   **Gate on the exit status.** Non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker — no completion summary, no "All beads complete.", and the remaining shutdown steps are not run.
 3. If any HITL beads were noted during the session, output:
    ```
    All agent work is complete. The following steps require human action before work can continue:

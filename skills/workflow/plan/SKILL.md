@@ -186,6 +186,7 @@ Deliver a handoff bead and instructions for running ralph.
     ```bash
     bd dolt push
     ```
+    **Gate on the exit status.** Non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker — the handoff has not left this machine, so do not present the handoff summary.
 
 20. Present the handoff summary:
     ```
@@ -211,7 +212,7 @@ Deliver a handoff bead and instructions for running ralph.
 
 - [ ] Handoff bead identified and tagged `workflow:ralph`
 - [ ] Every handoff-path bead lints clean (`bd lint`)
-- [ ] Bead state pushed with `bd dolt push`
+- [ ] Bead state pushed with `bd dolt push`, and the push exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no handoff summary presented
 - [ ] Handoff summary presented with the exact instruction to give an agent
 
 ## Phase-gate checklist
@@ -293,5 +294,5 @@ Full bead tree:
 - [ ] No execution label aggregated from children onto a parent
 - [ ] Full bead tree presented to the user before handoff
 - [ ] Handoff bead tagged `workflow:ralph`
-- [ ] Bead state pushed with `bd dolt push`
+- [ ] Bead state pushed with `bd dolt push`, and the push exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no handoff summary presented
 - [ ] Handoff summary includes the exact instruction to give an agent

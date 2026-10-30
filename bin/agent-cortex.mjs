@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
-import { installPi } from "./installers/pi.mjs";
+import { join, dirname } from "node:path";
+import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mjs";
 
 const argv = process.argv.slice(2);
 const parsed = parseArgs(argv);
@@ -29,18 +30,41 @@ if (parsed.command === "install") {
   }
 
   if (parsed.harness === "pi") {
+    // A plain `agent-cortex install pi` stages the package into the home
+    // install root (~/.agent-cortex/pi) and registers that directory with pi
+    // through pi's own `pi install` (idempotent by state: a re-run is a no-op
+    // update); `--output <dir>` is the stage-only form (tests/CI) and prints
+    // the registration command instead.
     try {
       const result = await installPi({
         dryRun: parsed.dryRun ?? false,
-        // Third-party pi packages are only provisioned for a real install:
-        // --output is the generate-only form, --no-provision opts an offline
-        // machine out explicitly.
-        provisionPackages: parsed.output === undefined && !parsed.noProvision,
         warn: () => {}, // warnings surface once in the printed summary
         ...(parsed.output ? { output: parsed.output } : {}),
         ...(parsed.pluginRoot ? { pluginRoot: parsed.pluginRoot } : {}),
       });
       printPiInstall(result);
+      if (parsed.output === undefined) {
+        const registration = await registerPi({
+          output: result.output,
+          dryRun: parsed.dryRun ?? false,
+          requireRegister: parsed.requireRegister ?? false,
+          warn: (msg) => process.stdout.write(`  ⚠ ${msg}\n`),
+        });
+        // The old installer's rendered copies are only stale once the staged
+        // package is what pi loads — and nothing is deleted on a dry run. The
+        // flag is passed through as well, so the sweep's own guarantee does not
+        // depend on this guard staying in place.
+        if (registration.registered && !(parsed.dryRun ?? false)) {
+          printPiSweep(
+            await sweepLegacyPiUserDirs({
+              piUserDir: dirname(registration.settingsPath),
+              dryRun: parsed.dryRun ?? false,
+            }),
+          );
+        }
+      } else {
+        process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
+      }
     } catch (err) {
       process.stderr.write(`Install failed: ${err.message}\n`);
       process.exit(1);
@@ -88,22 +112,16 @@ if (parsed.command === "install") {
       process.exit(1);
     }
   }
+}
 
-  // copilot regenerates the flat agents/*.agent.md files the Copilot plugin
-  // loads via plugin.json ("agents": "agents/") — the same code path
-  // `pnpm build:copilot` runs.
-  if (parsed.harness === "copilot") {
-    const { installCopilot } = await import("./installers/copilot.mjs");
-    try {
-      await installCopilot({ output: parsed.output, dryRun: parsed.dryRun });
-      process.exit(0);
-    } catch (err) {
-      process.stderr.write(`Install failed: ${err.message}\n`);
-      process.exit(1);
-    }
+function printPiSweep({ removed }) {
+  if (removed.length === 0) return;
+  process.stdout.write(
+    `  ✓ Removed ${removed.length} artifact(s) the pre-staged-model installer rendered into pi's user directory (one-time migration — the staged package is the source from now on)\n`,
+  );
+  for (const path of removed) {
+    process.stdout.write(`    - ${path}\n`);
   }
-
-  process.exit(0);
 }
 
 if (parsed.command === "migrate") {
@@ -125,40 +143,24 @@ if (parsed.command === "migrate") {
 
 function printPiInstall(result) {
   process.stdout.write(`Installing agent-cortex for "pi" harness…\n`);
+  process.stdout.write(`  ✓ Staged pi package → ${result.output}\n`);
   for (const agent of result.agents) {
     process.stdout.write(`  ✓ ${agent.name}.agent.md → ${agent.filePath}\n`);
   }
   process.stdout.write(`  ✓ Substituted ${result.skills.md} markdown file(s) across ${result.skills.skills} skill(s) → ${result.skills.dir}\n`);
-  printManagedConfig("settings.json", result.settings);
-  printManagedConfig("keybindings.json", result.keybindings);
-  // A dry run installs nothing, so report the plan — otherwise the documented
-  // "show what would be installed" contract prints no packages at all.
-  const packages = result.packages ?? { planned: [], installed: [] };
-  for (const source of result.dryRun ? packages.planned : packages.installed) {
-    process.stdout.write(`  ✓ ${result.dryRun ? "Would install" : "Installed"} pi package ${source}\n`);
+  process.stdout.write(`  ✓ Copied ${result.extensions.files} extension file(s) → ${result.extensions.dir}\n`);
+  for (const name of result.packages.bundled) {
+    process.stdout.write(`  ✓ Bundled pi package ${name} → ${join(result.packages.dir, name)}\n`);
   }
+  const transitive = result.packages.staged.length - result.packages.bundled.length;
+  if (transitive > 0) {
+    process.stdout.write(`  ✓ Copied ${transitive} transitive dependency tree(s) → ${result.packages.dir}\n`);
+  }
+  process.stdout.write(`  ✓ ${result.dryRun ? "Would write" : "Wrote"} ${result.manifest.path} (version ${result.manifest.manifest.version})\n`);
   for (const warning of result.warnings) {
     process.stdout.write(`  ⚠ ${warning}\n`);
   }
   if (result.dryRun) {
     process.stdout.write("(dry-run — nothing written)\n");
-  }
-}
-
-/** Report one managed pi config file (settings.json / keybindings.json). */
-function printManagedConfig(label, info) {
-  if (!info) return;
-  if (info.action === "would-remove-symlink") {
-    process.stdout.write(`  → would remove symlink ${info.path} and write ${label}\n`);
-  } else if (info.action === "would-write") {
-    process.stdout.write(`  → would write ${label} → ${info.path}\n`);
-  } else if (info.action === "unchanged") {
-    process.stdout.write(`  · ${label} → ${info.path} (unchanged)\n`);
-  } else if (info.action === "skipped") {
-    process.stdout.write(`  ⚠ ${label} modified after install — left untouched → ${info.path}\n`);
-  } else if (info.action === "removed-symlink") {
-    process.stdout.write(`  ✓ ${label} → ${info.path} (removed legacy symlink)\n`);
-  } else {
-    process.stdout.write(`  ✓ ${label} → ${info.path}\n`);
   }
 }

@@ -11,6 +11,7 @@
 
 ## Stage Outcome
 
+- Commit and push the fix before reporting (see the stage-runner prompt, _Deliver before reporting_).
 - Set `OUTCOME: SUCCESS` when requested changes are successfully applied.
 - Set `OUTCOME: BLOCKED` if unable to apply changes or guidance is unclear.
 - If blocked, list issues under `BLOCKING_ISSUES`.
@@ -27,3 +28,4 @@
   `stage:fix` chore carrying what remains **plus a fresh `stage:fix` chore** blocked on it
   (`bd dep add <fresh> <fix> --type blocks`) and leave the downstream re-run chore blocked on
   the fresh fix. At cap, block the parent and create nothing.
+- Report `COMMIT`, `PUSHED`, and `PR` (`PR: none`).

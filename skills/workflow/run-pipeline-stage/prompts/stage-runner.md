@@ -78,6 +78,17 @@ A fresh instance of this stage is required: the bead you are closing cannot re-r
    Skip stages that already ran (closed) and the HITL PR gate bead.
 5. Do **not** dispatch anything yourself — the new beads flow through `bd ready`.
 
+## Deliver before reporting
+
+A stage is delivered when its work is committed and pushed — not when the REPORT says so. The
+orchestrator opens the feature PR from this branch, so uncommitted work never reaches review, and a
+dirty worktree counts as a failed stage whatever the outcome line claims.
+
+1. Commit on the current branch: `git add -A && git commit -m "<stage>(<parent-id>): <summary>"`.
+2. Push the branch: `git push -u origin HEAD`.
+3. Report `COMMIT`, `PUSHED`, and `PR`. The `document` stage also opens or updates the feature PR
+   and reports its URL; every earlier stage reports `PR: none`.
+
 ## Instructions
 1. Read and follow the playbook file listed above.
 2. Treat the bead as the source-of-truth specification (not a prompt script).
@@ -93,6 +104,9 @@ BEAD_ID: <id>
 STAGE_COMPLETED: <code|verify|review|document|fix>
 SUMMARY: <2-3 sentence summary of what was done>
 FILES_CHANGED: <comma-separated list, or "none">
+COMMIT: <sha of the stage commit, or "none">
+PUSHED: <yes|no>
+PR: <feature PR url, or "none">
 OUTCOME: <SUCCESS|BLOCKED>
 BLOCKING_ISSUES:                              <- only if OUTCOME is BLOCKED
 - <specific blocking issue>

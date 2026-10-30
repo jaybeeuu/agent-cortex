@@ -4,7 +4,7 @@ This document defines the canonical format for composable agent directories in a
 
 ## Motivation
 
-The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Copilot, Claude) with different tool names and wake mechanisms.
+The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Claude) with different tool names and wake mechanisms.
 
 The composable directory format separates concerns:
 
@@ -21,9 +21,6 @@ agents/
 │   ├── pi/
 │   │   ├── frontmatter.json        # PI-specific metadata
 │   │   └── <section>.md            # Optional: PI-specific sections
-│   ├── copilot/
-│   │   ├── frontmatter.json        # Copilot-specific metadata
-│   │   └── <section>.md            # Optional: Copilot-specific sections
 │   └── claude/
 │       ├── frontmatter.json        # Claude-specific metadata
 │       └── <section>.md            # Optional: Claude-specific sections
@@ -37,9 +34,6 @@ agents/ralph/
 ├── pi/
 │   ├── frontmatter.json            # PI tools: ["bash", "task", "read_agent", "wait_for_agents"]
 │   └── wake.md                     # PI wake: blocking wait_for_agents (no poll timer)
-├── copilot/
-│   ├── frontmatter.json            # Copilot tools: ["bash", "task", "read_agent"]
-│   └── wake.md                     # Copilot wake: sleep-120 poll timer + read_agent
 └── claude/
     ├── frontmatter.json            # Claude tools: ["bash", "task"]
     └── wake.md                     # Claude wake: event-driven re-invocation on worker completion
@@ -55,8 +49,7 @@ shape), **completion arrival**, **id tracking**, **log flush**, and **stop** beh
 
 | Harness | `wake.mechanism` | Completion arrives via | Id tracking | Stop means |
 |---------|------------------|------------------------|-------------|------------|
-| `copilot` | `polling` | `sleep 120` poll timer + log tailing; output read with `read_agent` | `agentId` + `timerShellId` | kill `timerShellId`, set it `null` |
-| `pi` | `blocking-wait` | `wait_for_agents` returns as soon as a worker finishes, result inline | `agentId` only (`timerShellId` stays `null`) | stop calling `wait_for_agents` — nothing to kill |
+| `pi` | `blocking-wait` | `wait_for_agents` returns as soon as a worker finishes, result inline | `agentId` only | stop calling `wait_for_agents` — nothing to kill |
 | `claude` | `event-driven` | harness re-invokes ralph with the result inline | task ID only, no `logLine` | simply stop — nothing to kill |
 
 ### Example: plan agent (no per-harness sections)
@@ -66,8 +59,6 @@ agents/plan/
 ├── agent.md                        # Shared body (planning workflow)
 ├── pi/
 │   └── frontmatter.json            # PI tools
-├── copilot/
-│   └── frontmatter.json            # Copilot tools
 └── claude/
     └── frontmatter.json            # Claude tools
 ```
@@ -157,15 +148,24 @@ When composing the final agent file for a specific harness:
 2. Replace `{{SECTION:name}}` with content from `<harness>/<name>.md`
 3. `{{TOOL:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
    canonical tool/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
-   `build:copilot` and by `bin/installers/claude.mjs` / `bin/installers/pi.mjs`) resolves them when
-   generating the flat files / installing for claude and pi; pi's `agent-modes` extension does the
-   same at runtime. See the `contract` section of `token-map.json` and
+   `bin/installers/claude.mjs` / `bin/installers/pi.mjs`) resolves them when generating the flat
+   files / installing for claude and pi; pi's `agent-modes` extension does the same at runtime. See the `contract` section of `token-map.json` and
    `token-map.README.md` for the rules.
 
 The pi harness's `agent-modes` extension is a runtime consumer of this format: it
 composes agent prompts on the fly from `agent.md` + `pi/frontmatter.json`, substituting
 tokens against `token-map.json`'s pi column with no install step. See
 `extensions/agent-modes/README.md`.
+
+### Rendered tool lists are comma-separated
+
+pi's `parseFrontmatter` returns the `tools` scalar as one string, and its consumers split
+that string on commas — the subagent extension forwards it straight to `pi --tools`, whose
+parser is comma-separated too. Generated pi agents therefore render
+`tools: "bash, read, task"`; a space-separated list collapses to a single bogus name and
+leaves the agent with an allowlist matching no tool. Both parsers
+(`extensions/subagent/agents.ts`, `extensions/agent-modes/discover.ts`) accept whitespace
+as well, so either form round-trips safely.
 
 ## Composition Rules
 
@@ -205,7 +205,6 @@ Agents like `plan`, `ralph-plan`, and `strategy` that have identical behavior ac
 agents/plan/
 ├── agent.md              # Shared body (same for all harnesses)
 ├── pi/frontmatter.json   # PI tools
-├── copilot/frontmatter.json  # Copilot tools
 └── claude/frontmatter.json    # Claude tools
 ```
 
@@ -215,22 +214,23 @@ agents/plan/
 2. Migrate ralph agent first (proves the pattern) — DONE
 3. Migrate plan, ralph-plan, strategy agents — DONE
 4. Update the installer/composer to handle the new format
-5. Remove old `*.agent.md` files — DONE (the flat files are now **generated output**, see below)
+5. Remove old `*.agent.md` files — DONE (the composable directories are the only committed
+   form; every harness composes or renders its own agent files at install time)
 
-All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout and the
-flat `agents/*.agent.md` files are built from them:
+All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout, and no
+flat agent file is committed:
 
-- `scripts/build-copilot-agents.mjs` (`pnpm build:copilot`) composes `agents/*.agent.md` from
-  each agent's `copilot/` harness dir — committed for Copilot CLI, which loads `*.agent.md`
-  from `plugin.json`'s `agents: "agents/"` path.
 - `bin/installers/claude.mjs` (plain `agent-cortex install claude` materialises the plugin
   into `~/.agent-cortex/claude` and registers it with Claude Code; `--output <dir>` is its
   generate-only form, used by tests/CI) composes the plugin's
   `agents/*.md` from each agent's `claude/` harness dir — `ralph` included.
 - The pi harness delivers two ways: the `agent-modes` extension composes `agent.md` +
   `pi/frontmatter.json` at runtime against `token-map.json`, and `agent-cortex install pi`
-  materialises composed agents + token-substituted skills into `~/.pi/agent` at install
-  time (see README "Pi harness agents & skills").
+  renders flat pi agents + token-substituted skills into a self-contained package at
+  `~/.agent-cortex/pi`, which pi loads once registered (see README "Pi package staging
+  (`agent-cortex install pi`)"). `agent-modes` and the `subagent` extension both read agents
+  beside themselves,
+  so the staged package needs no `~/.pi/agent` writes.
 
 Never edit the generated flat materialised files by hand — edit the composable directory.
 Generation is install-time: `claude` ships
@@ -239,11 +239,9 @@ via `bin/installers/claude.mjs`, the generator behind plain `agent-cortex instal
 `claude/settings.json` into `~/.claude/settings.json`, and registers the plugin with Claude
 Code); the only committed `claude/` file is that settings template (hand-authored extras live
 in `claude-extras/`), and CI validates the materialiser with structural checks on a temp-dir
-install; `copilot` ships via
-`bin/installers/copilot.mjs`, the shared code path behind both `agent-cortex install
-copilot` and `scripts/build-copilot-agents.mjs`; `pi` ships via
-`bin/installers/pi.mjs`, which materialises composed agents + token-substituted skills
-into `~/.pi/agent`.
+install; `pi` ships via
+`bin/installers/pi.mjs`, which stages a self-contained pi package (manifest, rendered
+agents, token-substituted skills, extensions) at `~/.agent-cortex/pi`.
 
 ## Validation
 
@@ -264,7 +262,7 @@ The validator checks:
 
 - JSON has strict syntax (no comments, no ambiguity)
 - Easier to validate with JSON Schema
-- Consistent with existing tooling (package.json, plugin.json)
+- Consistent with existing tooling (package.json)
 - No need for YAML parser dependency
 
 ### Why separate section files instead of inline sections?

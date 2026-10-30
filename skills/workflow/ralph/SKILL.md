@@ -9,7 +9,7 @@ Ralph is a parallel orchestration loop. It advances AFK task beads through pipel
 
 Each leaf execution bead belongs to the worker that ran it: the worker appends its milestone notes, closes the bead on both outcomes, and builds its own `stage:fix` + fresh-stage remediation chain when it fails. Ralph reads beads and routes — it never closes a leaf bead and never creates a fix bead. Its only retry control is a read-only cap backstop.
 
-State model: task state lives in beads (ready/in_progress via `bd`); the only local file is `.agent-cortex/ralph/state.json`, holding the poll-timer shellId and the agent-ID→bead mapping. Pipeline configuration comes from `skills/planning/create-task/pipeline.json`, and stage execution belongs to the `run-pipeline-stage` skill. Stage chores are pre-created from that pipeline when a task is expanded — with `blocks` deps encoding the order — so ralph's dispatch is always "claim what `bd ready` returns"; it never creates a stage chore.
+State model: task state lives in beads (ready/in_progress via `bd`); the only local file is `.agent-cortex/ralph/state.json`, holding the agent-ID→bead mapping. Pipeline configuration comes from `skills/planning/create-task/pipeline.json`, and stage execution belongs to the `run-pipeline-stage` skill. Stage chores are pre-created from that pipeline when a task is expanded — with `blocks` deps encoding the order — so ralph's dispatch is always "claim what `bd ready` returns"; it never creates a stage chore.
 
 ## When to use
 
@@ -30,7 +30,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 1. Run `bd prime` and hold the output verbatim in memory.
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
 3. Create the workspace: `mkdir -p .agent-cortex/ralph`.
-4. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "timerShellId": null, "inflight": [] }`.
+4. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "inflight": [] }`.
 5. Read `skills/planning/create-task/pipeline.json` and hold it in memory — you need its `maxFixRounds` for the read-only cap backstop.
 6. Run `bd ready` and classify each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
@@ -38,7 +38,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
    - **Task or other type without an `implementation-type:*` label**: unexpected here — classification happens at planning time via `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note it for the shutdown summary.
    - **Task labelled `implementation-type:hitl`**: skip — record the ID for the Pending Human Action summary at shutdown.
 7. For each ready chore bead (up to 5), dispatch it from its parent's feature worktree (see _Dispatching a chore bead_ in REFERENCE.md — create branches/worktrees first). For a ready AFK task bead with no `stage:*` chore children, dispatch an expansion worker instead (see _Expansion guard_ below); its `stage:code` chore is dispatchable as soon as the worker reports.
-8. Hand over to your harness's completion-detection mechanism: Copilot keeps a `sleep 120` poll timer running in the background; PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no **agent work** was dispatched — `state.json`'s `inflight` holds no entries, so neither a stage worker nor an expansion worker is running — and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md). An expansion-only init is in flight, not idle: keep the completion mechanism running and continue at the event loop.
+8. Hand over to your harness's completion-detection mechanism: PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID, and Claude re-invokes you as each worker completes. If no **agent work** was dispatched — `state.json`'s `inflight` holds no entries, so neither a stage worker nor an expansion worker is running — and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md). An expansion-only init is in flight, not idle: keep the completion mechanism running and continue at the event loop.
 
 ### 2. Expansion guard (stage chores are pre-created)
 
@@ -48,7 +48,7 @@ A ready AFK task bead with no `stage:*` chore children has nothing to dispatch, 
 
 ### 3. Event loop
 
-On each completion notification (background agent finished, or the poll timer fired):
+On each completion notification (a background agent finished):
 
 1. Poll that parent's log for new lines — `tail -n +<nextLine> .agent-cortex/ralph/ralph-<parent-id>.log` (logs are keyed by parent bead ID, so every stage of a feature shares one file) — and post only new key events (stage transitions, test/lint results), never empty updates.
 2. Read the completed agent's output with {{TOOL:read_agent}} and parse its `---REPORT---` block for `BEAD_ID`, `STAGE_COMPLETED`, and the outcome. An **expansion worker** (`kind: "expand"` in `state.json`, no chore) has no REPORT and no leaf bead to confirm — confirm the parent now has `stage:*` chores (`bd children <parent-id> --json | grep -c '"stage:'`) and skip to step 5 to dispatch its ready `stage:code` chore.
@@ -114,7 +114,7 @@ bd show <id>                   # full detail, including the worker's notes
 
 ## Philosophy / rationale
 
-- Orchestration state derives from beads so a crash loses nothing but an in-memory ID mapping: `state.json` holds only the poll-timer shellId and the agent-ID→bead mapping, never task state.
+- Orchestration state derives from beads so a crash loses nothing but an in-memory ID mapping: `state.json` holds only the agent-ID→bead mapping, never task state.
 - Every control-flow predicate — is anything in flight, is there work, is there room, may we pause or shut down — derives from `state.json`'s `inflight` (`kind: "stage"` or `kind: "expand"`) plus `bd ready`, never from a chore-type `bd` query: an expansion worker owns no chore, so a chore-only predicate reports idle while an agent is running (REFERENCE.md, _The in-flight invariant_).
 - Classification happens up-front at planning time (`create-task`), so the loop can trust `bd ready` instead of re-interpreting each bead's intent.
 - Human review gates are non-negotiable because agent-authored changes still need a person to merge them.

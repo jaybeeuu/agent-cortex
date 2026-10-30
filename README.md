@@ -1,17 +1,14 @@
 # agent-cortex
 
-A personal collection of custom agents and skills, shipped to three harnesses from one
-source: the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-creating),
-pi, and [Claude Code](https://code.claude.com/docs) (as a plugin).
+A personal collection of custom agents and skills, shipped to two harnesses from one
+source: pi and [Claude Code](https://code.claude.com/docs) (as a plugin).
 
 ## Structure
 
 ```
 agent-cortex/
-├── plugin.json               # Copilot plugin manifest
 ├── agents/                   # Canonical agents — composable <name>/ dirs (see agents/README.md)
-│   ├── *.agent.md            #   ralph, ralph-plan, plan, strategy — GENERATED from <name>/ by scripts/build-copilot-agents.mjs
-│   ├── ralph/                #   composable form (shared agent.md + per-harness pi/, copilot/, claude/)
+│   ├── ralph/                #   composable form (shared agent.md + per-harness pi/, claude/)
 │   ├── plan/                 #   "
 │   ├── ralph-plan/           #   "
 │   └── strategy/             #   "
@@ -35,23 +32,18 @@ agent-cortex/
 ├── bin/
 │   ├── agent-cortex.mjs      # CLI entrypoint
 │   └── installers/
-│       ├── copilot.mjs       # shared generator: agent-cortex install copilot + scripts/build-copilot-agents.mjs
-│       └── claude.mjs        # materialises ~/.agent-cortex/claude + ~/.claude/settings.json, registers with Claude Code (--output <dir> = generate-only)
-├── scripts/
-│   └── build-copilot-agents.mjs  # thin wrapper over bin/installers/copilot.mjs (regenerates agents/*.agent.md)
+│       ├── claude.mjs        # materialises ~/.agent-cortex/claude + ~/.claude/settings.json, registers with Claude Code (--output <dir> = generate-only)
+│       └── pi.mjs            # stages ~/.agent-cortex/pi + registers it with pi (--output <dir> = stage-only)
 ├── claude/                   # Committed Claude user-settings template (settings.json) — merged into ~/.claude/settings.json
 └── claude-extras/            # Hand-authored Claude plugin extras
     ├── .mcp.json             #  MCP servers (context7, github) — copied into installs
     └── scripts/              #  statusline-command.sh — copied into installs (executable)
 ```
 
-The same `agents/` and `skills/` power three harnesses (Copilot, pi, Claude Code).
-The composable `agents/<name>/` directories are the single source of truth; the flat
-`agents/*.agent.md` files are **generated** by the shared copilot installer
-(`agent-cortex install copilot`, or `scripts/build-copilot-agents.mjs` via
-`pnpm build:copilot` — both run the same `bin/installers/copilot.mjs` code path, so
-install-time and build-time output can never diverge) and committed so Copilot CLI
-(plugin.json `agents: "agents/"`) and pi keep loading the agents — don't hand-edit them.
+The same `agents/` and `skills/` power two harnesses (pi and Claude Code). The composable
+`agents/<name>/` directories are the single source of truth, and no flat agent file is
+committed: `agent-cortex install claude` and `agent-cortex install pi` each render their own
+from the canonical directories, so install-time output can never drift from the sources.
 The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
 canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
@@ -74,13 +66,11 @@ temp-dir install plus structural checks:
 - **Agents** can't be shared files (the frontmatter formats differ), so the materialised
   plugin's `agents/*.md` are composed from the canonical `agents/<name>/` directories' `claude/`
   harness dirs
-  (frontmatter.json + section files), exactly like the Copilot flats are composed from their
-  `copilot/` dirs. Claude only loads agents from a plugin's default `agents/` dir, so the plugin
-  ships them at its own root (default `~/.agent-cortex/claude/agents/`) — isolating them from the
-  Copilot `.agent.md` files.
+  (frontmatter.json + section files). Claude only loads agents from a plugin's default `agents/`
+  dir, so the plugin ships them at its own root (default `~/.agent-cortex/claude/agents/`).
 - **Every agent composes, `ralph` included.** There is no Claude-only agent source: the shared
   body is harness-neutral and each harness supplies only its own wake mechanism
-  (`agents/ralph/<harness>/wake.md`), so one body serves all three harnesses.
+  (`agents/ralph/<harness>/wake.md`), so one body serves both harnesses.
 - **Manifests** are generated too: the plugin's `.claude-plugin/plugin.json` (its `version`
   tracks `package.json`, so it never goes stale) and `hooks.json` (copied from the canonical
   `hooks/claude/hooks.json` source), plus any support files under `hooks/claude/` bundled into
@@ -90,8 +80,8 @@ temp-dir install plus structural checks:
   extension→hook mapping and the rejections (auto-name, agent-guardrails, skill-stats, subagent, agent-modes).
 
 Edit the sources (`agents/<name>/` composable dirs, `skills/**`,
-`hooks/claude/`, `claude-extras/`, `package.json`), never the generated
-`agents/*.agent.md` files or anything under the materialised `~/.agent-cortex/claude`.
+`hooks/claude/`, `claude-extras/`, `package.json`), never anything under the materialised
+`~/.agent-cortex/claude`.
 
 ## CI
 
@@ -101,122 +91,179 @@ does its own checkout and `pnpm install` rather than sharing build artifacts fro
 the `setup` job — pnpm workspace symlinks don't survive artifact upload/download,
 so artifact sharing would break the workspace resolution that the build depends on.
 
+The root `pnpm-workspace.yaml` carries a strict `allowBuilds` map: on pnpm 12 (what CI
+pins) any dependency with install or build scripts that is not named there aborts
+`pnpm install` with `ERR_PNPM_IGNORED_BUILDS`. pnpm 10 only warns, so a newly pulled-in
+native dependency surfaces as a red `Setup` job before it surfaces locally. Adding one
+therefore means deciding its build policy in that map — `false` unless it genuinely
+needs to compile, with a comment saying why.
+
 The repo commits no generated `claude/` plugin output, so the `claude-plugin-check` job
 validates the Claude plugin **materialiser** instead of diffing a committed mirror:
 it runs `node bin/agent-cortex.mjs install claude --output <tmp dir>` and checks the
 result structurally — `plugin.json` version tracks `package.json`, every generated and
 hand-authored piece is present, no literal `{{TOOL:...}}`/`{{PATH:...}}` tokens survive,
-and no symlinks leak into the copied tree. The Copilot drift check
-(`pnpm build:copilot` + `git diff --exit-code -- 'agents/*.agent.md'`) still guards the
-committed flat agent files.
+and no symlinks leak into the copied tree. There is no committed agent file to drift-check:
+the `agents/` tree holds the composable sources only, and both installers render from them.
 
-A separate `changeset-check` job runs only on pull requests and fails any PR that
-touches a versioned path (`extensions/`, `skills/`, `agents/`, `package.json`, or
-`plugin.json`) without a changeset in `.changeset/`. Add one with `pnpm changeset` —
-the `style-versioning` skill documents the format.
+A separate `changeset-check` job runs on every pull request and fails it unless the
+PR adds a `.changeset/*.md` file. **Publishing is the default and `no-publish` is the
+only opt-out**, so shipping nothing has to be a deliberate, reviewable act rather
+than an accident. Two exemptions: the changesets bot's Version Packages PR (it
+consumes changesets and adds none) and PRs labelled `no-publish`. The `no-publish`
+label must exist in the repository's label settings — a one-off repo-settings step
+that no PR can ship. The `style-versioning` skill documents the format of a
+changeset.
 
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when
 changesets are pending, then publishes to npm once it lands. The version step runs
-`pnpm version-packages` — bumping `package.json`, syncing `plugin.json`, and
-regenerating the committed Copilot agent files (the Claude plugin is materialised at
-install time with the package version, so it has no committed output to regenerate)
-so the drift gates stay green; the
-publish step runs `pnpm publish-package` (pack + provenance publish). Publish
-authenticates via npm Trusted Publishing (OIDC) — no npm token or GitHub
-secret is needed, only the one-time npm-side setup on npmjs.com (package →
+`pnpm version-packages` — `changeset version`, which bumps `package.json` and rewrites
+`CHANGELOG.md` and touches nothing else (both plugins are materialised at install time
+with the package version, so there is no committed output to regenerate); the publish
+step runs `pnpm publish-package` (pack + provenance publish), or
+`pnpm publish-noop` when the merged PR carried `no-publish`. Labels are invisible on
+a push event, so the job resolves the PR merged for the pushed commit through the
+GitHub API and reads its labels — no extra secret or scope, since the job already
+holds `GITHUB_TOKEN` and `pull-requests: write`. A direct push with no merged PR
+resolves to no labels and therefore publishes, so attempting to publish an
+already-published version still fails loudly; there is deliberately no idempotency
+guard. Publishing authenticates via npm Trusted Publishing (OIDC) — no npm token or
+GitHub secret is needed, only the one-time npm-side setup on npmjs.com (package →
 Access → Trusted Publishing for the `jaybeeuu/agent-cortex` repo). Releases
 are sourced entirely from `main`.
 
+Merge the version PR whenever its plan and diff look right, but approve its CI
+first: `changesets/action` pushes that branch with `GITHUB_TOKEN`, so GitHub parks
+the CI run the push creates behind **“Approve workflows to run”** — a run with no
+jobs, which reports nothing, so the merge box shows `BLOCKED` with an empty check
+list even though no gate has run or failed. Approving it from the merge box (or
+`gh api -X POST repos/{owner}/{repo}/actions/runs/<run-id>/approve`) starts the five
+required checks. Do it after the last merge to `main`, not once at the start of a
+release: every subsequent merge force-updates the version branch, and a new head
+brings a new parked run. This stays manual by design — letting the bot's push
+trigger CI on its own means a personal access token or GitHub App token, a
+long-lived credential in repository secrets to save one click per release.
+
 ## Installation
 
-### Pi config files (`settings.json` + `keybindings.json`)
+### Pi package staging (`agent-cortex install pi`)
 
-`agent-cortex install pi` materialises `~/.pi/agent/settings.json` and
-`~/.pi/agent/keybindings.json` as real CLI-managed files — the legacy symlinks
-into this repo's `pi/` directory are gone. `pi/settings.json` and
-`pi/keybindings.json` are the committed **templates**; the live files exist only
-on the machine, so re-run the installer after pulling changes.
+`agent-cortex install pi` materialises agent-cortex as a self-contained pi
+package in `~/.agent-cortex/pi` — the pi analogue of `~/.agent-cortex/claude` —
+and registers that directory with pi through pi's own `pi install`. Nothing is
+generated into pi's own directories (`~/.pi/agent/…`): pi owns its settings
+file, so the installer only reads it to decide the plan and lets the `pi` CLI
+write it. Once the staged package is registered, the artifacts an older
+installer rendered there are swept (see below).
 
-`settings.json` is merged. The template supplies defaults for keys the live file
-lacks, every value already present in the live file wins, and keys the template
-does not know about are preserved — so personal config (and anything pi itself
-wrote) survives re-install. The one key the CLI owns outright is `packages`: it
-is rebuilt from the template with the repo path entry resolved against the live
-settings file.
+```sh
+agent-cortex install pi          # stage ~/.agent-cortex/pi + register it with pi
+```
 
-Two consequences follow from that precedence:
+Registration is idempotent by state: the staged path is registered once (a
+re-run is a true no-op — a local package source is read from disk on every pi
+start, so nothing needs refreshing), and a source pointing at a raw agent-cortex
+checkout is removed first, so exactly one agent-cortex source stays configured.
+The installer decides that plan by reading pi's settings at
+`~/.pi/agent/settings.json`, so a pi agent dir relocated with
+`PI_CODING_AGENT_DIR` is not inspected — a superseded raw-repo source configured
+there has to be removed by hand with `pi remove <path>`.
 
-- **Template changes to non-`packages` keys never reach an existing install.**
-  Because the live value always wins, editing a default in `pi/settings.json`
-  only affects a fresh install (or a manually deleted live file) — edit the live
-  file to adopt a new default.
-- **`pi install npm:<pkg>` entries do not survive re-install.** `packages` is
-  rebuilt from the template, so any `npm:` package pi added to the live file is
-  dropped on the next `agent-cortex install pi`. Declare long-lived packages in
-  the repo template instead.
+Under the old model the same installer rendered agents and skills into
+`~/.pi/agent/{agents,skills}`. Those copies are a second source of the same
+resource — the skill-collision diagnostics the staged model exists to remove —
+so once registration succeeds the installer removes the ones it can attribute to
+agent-cortex: `agents/<name>.agent.md` and `skills/<group>/<name>` for agents and
+skills this package ships or once shipped, and a `.agent-cortex-install.json`
+path record left there listing those copies. It is a one-time migration:
+attribution is by name, which cannot tell a rendered copy from a file you wrote
+under the same name, so once it has finished it records that in
+`~/.agent-cortex/legacy-sweep.json` — keyed by the pi user directory, never
+inside it — and never removes anything there again. A completed migration
+leaves `~/.pi/agent` with no agent-cortex file in it. Only a migration that
+removed every copy it attributed, from directories it could read, is recorded:
+a copy that could not be deleted (permissions, `EBUSY`) or a directory that
+could not be listed is warned about and retried on the next install, and a
+record that cannot be written is a warning, not a failed install. Anything
+whose name this package does not ship is left alone, and
+`~/.pi/agent/extensions` is never touched at all — no
+installer has written there, so its contents are yours. `--output <dir>` and
+`--dry-run` sweep nothing.
+The sweep follows the settings file the installer reads (`~/.pi/agent`): a pi
+agent dir relocated with `PI_CODING_AGENT_DIR` keeps its copies.
 
-An unparseable live `settings.json` is warned about and overwritten.
-`keybindings.json` follows a checksum rule: written from the template, refreshed
-when the template changes, and left untouched once you edit it by hand (delete
-it to re-adopt the template).
+The staged package contains:
 
-### Pi package dependencies
+| Path | Contents |
+| --- | --- |
+| `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`; the version tracks the package |
+| `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
+| `skills/` | token-substituted skill copies (real files, never symlinks) |
+| `extensions/` | copy of the repo `extensions/` tree |
+| `token-map.json` | the token map `agent-modes` reads from the package root |
+| `node_modules/` | the required third-party pi packages and their transitive closure |
 
-These packages are declared in the package manifest (`package.json` → `pi.packages`) and
-provisioned by `agent-cortex install pi`, so a clean `~/.pi` gets the tools they provide
-without a manual `pi install`. They are also declared in the template `pi/settings.json`,
-so the materialised `settings.json` registers them with pi.
+The third-party packages supply the tools the agents need — `pi-questions`
+(`ask_questions`) and `pi-web-access` (`fetch_content`). They are ordinary
+runtime dependencies of this package and travel inside the staged tree, so pi
+loads them from a local directory without any npm resolution of its own. An
+unresolvable dependency fails the install rather than staging a package that
+cannot provide those tools. Re-staging clears the children the installer owns, so
+a re-run never accumulates stale copies.
 
-| Package | Version | Purpose |
-|---|---|---|
-| [`pi-web-access`](https://www.npmjs.com/package/pi-web-access) | 0.10.7 | Web search, URL fetching, GitHub repo access, PDF/YouTube/video analysis (`fetch_content`) |
-| [`pi-questions`](https://www.npmjs.com/package/pi-questions) | latest | Structured interactive questions (`ask_questions`) |
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Show what would be staged and registered without writing or spawning anything |
+| `--output <dir>` | Stage into `<dir>` only — no registration (tests/CI) |
+| `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
+| `--require-register` | Fail the install when the `pi` CLI cannot drive registration; by default a missing CLI warns and prints the commands to run |
 
-Pass `--no-provision` to skip the package install step (e.g. offline machines); a
-missing `pi` CLI or failed install warns and leaves the rest of the install intact.
+If the `pi` CLI is not on `PATH`, the staged package is correct but unregistered:
+the installer warns and prints the exact commands (`pi install
+~/.agent-cortex/pi`, plus a `pi remove` for any superseded raw-repo source).
+
+A superseded raw-repo source that `pi remove` cannot drop fails the install
+(non-zero, naming the source still configured): pi would load both sources, so
+reporting success would leave the two-source state registration exists to
+prevent. Nothing is installed on that path — remove the source by hand and re-run.
+
+Re-run `agent-cortex install pi` after every `git pull` to refresh the staged
+package; registration is already in place, so that re-run changes nothing in
+pi's settings. Verify with `pi list` and `pi config` (restart pi to apply).
+
+### Desktop notifications
 
 Desktop notifications are handled by the local `extensions/notify/` extension
 (replaces the former `pi-notify` dependency). It sends an OSC desktop
 notification on multi-turn tasks, labelled with the tmux session:window.pane
 if available, or the project directory name otherwise.
 
-### Pi harness agents & skills (`agent-cortex install pi`)
+### Pi config files
 
-The agents are already available to pi through the package (`pi.skills` + the
-`agent-modes` extension compose them at runtime), but the raw package files carry
-literal `{{TOOL:...}}` / `{{PATH:...}}` tokens. Run the pi installer to materialise
-composed agents and token-substituted skills into pi's user scope:
+`pi/settings.json` and `pi/keybindings.json` are committed **reference
+templates** for your own pi configuration. They are not installer output: pi's
+`settings.json` and `keybindings.json` are pi's own user config, so
+`agent-cortex install pi` leaves them alone.
 
-```sh
-agent-cortex install pi
-# → ~/.pi/agent/agents/<name>.agent.md (ralph, plan, ralph-plan, strategy)
-# → ~/.pi/agent/skills/  (token-substituted skill tree)
-# → ~/.pi/agent/settings.json + keybindings.json (merged from the repo templates)
-```
+### Removing a stale Copilot install
 
-Flags:
-
-| Flag | Meaning |
-| --- | --- |
-| `--dry-run` | Show what would be installed without writing anything |
-| `--output <dir>` | Install into `<dir>/agents`, `<dir>/skills` and the config files (default `~/.pi/agent`) |
-| `--plugin-root <dir>` | Override the plugin root used for `{{PATH:...}}` tokens (default: token-map.json's pi value — use it for checkout or symlinked installs) |
-| `--no-provision` | Skip provisioning the third-party pi packages declared in `package.json` `pi.packages` (default: install them via the `pi` CLI) |
-
-Re-run whenever you pull changes (`git pull` + reinstall, or after `pnpm build:copilot`).
-
-### Copilot plugin (separate)
+Copilot CLI is no longer a deploy target: `agent-cortex install copilot` and the
+`plugin.json` manifest are gone, and nothing in this package reads or writes `~/.copilot`
+any more. No installer sweeps an existing install, so a machine that used the old target
+keeps a stale plugin, a cached marketplace, and an instruction block until you remove them
+by hand:
 
 ```sh
-copilot plugin install jaybeeuu/agent-cortex
+rm -rf ~/.copilot/installed-plugins/_direct/agent-cortex
+rm -rf ~/.cache/copilot/marketplaces/https---github-com-jaybeeuu-agent-cortex
+sed -i.bak '/<!-- agent-cortex:start -->/,/<!-- agent-cortex:end -->/d' \
+  ~/.copilot/copilot-instructions.md
 ```
 
-Or install a local checkout:
-
-```sh
-copilot plugin install ./agent-cortex
-```
+The first two paths are the old install and its marketplace cache. The `sed` deletes only
+the agent-cortex block the removed `postinstall` hook appended to Copilot's own
+instructions file, leaving the rest of that file — and a `.bak` copy — intact.
 
 ### Claude Code plugin (separate)
 
@@ -237,10 +284,6 @@ The generate-only `--output <dir>` form is for previewing and CI validation; the
 documented path is the plain install to `~/.agent-cortex/claude`:
 
 ```sh
-pnpm build:copilot   # or: node scripts/build-copilot-agents.mjs (regenerates agents/*.agent.md)
-node bin/agent-cortex.mjs install copilot          # regenerates agents/*.agent.md in place
-node bin/agent-cortex.mjs install copilot --dry-run       # plan only, no writes
-node bin/agent-cortex.mjs install copilot --output /tmp/x # preview the flat files elsewhere
 node bin/agent-cortex.mjs install claude           # materialises ~/.agent-cortex/claude + marketplace manifest AND registers it with Claude Code (user scope, idempotent)
 node bin/agent-cortex.mjs install claude --dry-run       # plan generation + registration, no writes/spawns
 node bin/agent-cortex.mjs install claude --require-register  # fail (non-zero exit) when the claude CLI can't drive registration
@@ -376,14 +419,13 @@ extension→hook audit.
   rejection rationale live in `docs/claude-hooks.md`.
 - Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume
   after a PR merge (instead of manual re-invocation).
-- The Copilot/pi Ralph (the 4-stage `run-pipeline-stage` pipeline) is unchanged; those two
-  ralph-coupled skills (`ralph`, `run-pipeline-stage`) are intentionally not shipped to Claude.
+- Ralph's per-task pipeline is shared, not ported: `ralph` and `run-pipeline-stage` ship to
+  Claude and compose from the same harness-neutral body as pi, differing only in the wake section.
 
 #### Contributing to the Claude plugin
 
 Edit the **sources** — the composable `agents/<name>/` directories (shared `agent.md` +
-per-harness frontmatter/sections, auto-composed by `scripts/build-copilot-agents.mjs` and
-`bin/installers/claude.mjs`), `skills/**`,
+per-harness frontmatter/sections, composed by `bin/installers/claude.mjs`), `skills/**`,
 `hooks/claude/hooks.json` (hook config), `claude/settings.json` (the user-settings template
 merged into `~/.claude/settings.json`), `claude-extras/` (hand-authored `.mcp.json` and
 `scripts/`), and `package.json` (plugin
@@ -392,10 +434,8 @@ version — picked up at install time) — then run
 re-registers it; `--output <dir>` generates a preview only). The only committed file under
 `claude/` is the settings template; `~/.agent-cortex/claude` is generated in full
 (`.claude-plugin/plugin.json`, `agents/`, `skills/`, `hooks.json`, `.mcp.json`, `scripts/`)
-so never edit anything under it. The generated `agents/*.agent.md` files are still
-drift-checked by CI (`git diff --exit-code -- 'agents/*.agent.md'`), and CI validates the
-Claude materialiser (structural checks on a temp-dir install) so sources and installer can
-never silently diverge.
+so never edit anything under it. CI validates the Claude materialiser (structural checks on
+a temp-dir install) so sources and installer can never silently diverge.
 
 ## Migrating a beads workspace
 

@@ -23,8 +23,8 @@ decides claimable: while a `lifecycle:feature-pr` HITL gate bead is open, ralph 
 parent features (_Feature PR gate_, step 6), so a queued unexpanded AFK bead in that state is
 paused work, not dispatchable work. Scoping the predicate both ways is what makes HITL Pause
 reachable in the canonical post-PR state — gate open, unexpanded AFK beads queued, `inflight`
-empty, no ready `stage:*` chore — instead of restarting the Copilot timer (or re-arming a PI
-wait over an empty agent set) forever on an idle poll.
+empty, no ready `stage:*` chore — instead of re-arming a PI
+wait over an empty agent set forever on an idle poll.
 
 **Why:** an expansion worker claims no chore. A chore-only predicate therefore reports "nothing
 in flight" while an agent is running, which makes ralph pause or shut down mid-expansion and
@@ -106,7 +106,23 @@ Chores already exist, so dispatch never creates one:
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
    - Log file path `.agent-cortex/ralph/ralph-<parent-id>.log` — logs are keyed by **parent** bead ID, so every stage chore of a feature appends to the same file
 7. **Call the {{TOOL:task}} tool** with the filled prompt as `prompt` and the worktree path as `cwd`. Store the returned agentId — you need it for step 8 and for log polling.
-8. **Map** the agent ID to the bead ID in memory for lookup on completion.
+
+   If this session has no subagent tool, **stop and say so**. Do not substitute a backgrounded CLI run (`pi -p … &`): that launch has no completion signal, so a finished worker and a killed one look identical, which is how stages came to be reported complete over uncommitted trees. Record the bead for the shutdown summary and tell the human the session needs restarting with the subagent extension loaded.
+8. **Record the base commit** before the worker starts — you verify delivery against it (_Verified Completion_ below):
+   ```bash
+   git -C .agent-cortex/worktrees/<parent-id> rev-parse HEAD
+   ```
+9. **Map** the agent ID to the bead ID in memory for lookup on completion.
+
+### Verified Completion
+
+A worker's `---REPORT---` is a claim about the worktree, not evidence of it. Verify the delivery before advancing the parent:
+
+```bash
+node scripts/lib/verify-worker-tree.mjs --worktree .agent-cortex/worktrees/<parent-id> --base <base>
+```
+
+Exit code 0 means a clean tree with at least one commit ahead of the recorded base. A non-zero exit reports `worktree is dirty` or `no commit ahead of base`, and the stage did **not** deliver whatever its `OUTCOME` line says. Re-dispatch the same chore, or record the failure for the fix chain — never advance the parent, close the chore, or open a feature PR over uncommitted work.
 
 ---
 
@@ -178,7 +194,7 @@ Ralph never builds remediation. The worker that fails a stage creates its own `s
 
 ## Log Polling
 
-Run whenever polling is triggered (timer or agent completion):
+Run whenever completion handling is triggered (an agent completion):
 
 1. **Read in-flight entries**: `inflight` in `.agent-cortex/ralph/state.json` — every dispatched worker, stage (`kind: "stage"`) or expansion (`kind: "expand"`). Each entry carries `parentId` and `logLine`.
 2. For each in-flight entry, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file:
@@ -228,7 +244,7 @@ Proceed here when no agent work is in flight (no stage workers and no expansion 
 
    When you've completed the above, prompt me to continue.
    ```
-5. **Stop completely.** Do not restart the poll timer. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
+5. **Stop completely.** Stop the wake mechanism as the wake section describes. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
 
 ---
 
@@ -276,7 +292,7 @@ bd show <id>                   # full detail, including the worker's notes
 
 | File | Purpose |
 |------|---------|
-| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the poll-timer shellId (Copilot) and the in-flight agent-ID→bead mapping. Shape: `{ "timerShellId": null, "inflight": [ { "kind": "stage", "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. An expansion worker is recorded with `"kind": "expand"` and `"choreId": null` — it holds no chore but still occupies the wait set and the in-flight check. Initialise at startup with `{ "timerShellId": null, "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
+| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the in-flight agent-ID→bead mapping. Shape: `{ "inflight": [ { "kind": "stage", "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. An expansion worker is recorded with `"kind": "expand"` and `"choreId": null` — it holds no chore but still occupies the wait set and the in-flight check. Initialise at startup with `{ "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
 | `.agent-cortex/ralph/ralph-*.log` | Per-parent log files written by subagents — every stage chore of a feature appends to `.agent-cortex/ralph/ralph-<parent-id>.log` (e.g. `ralph-abc-123.log`). |
 
 All task state is derived from beads; `state.json` holds only runtime bookkeeping:

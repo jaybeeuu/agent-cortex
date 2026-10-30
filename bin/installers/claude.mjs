@@ -91,6 +91,7 @@ const CLAUDE = "claude";
 
 const DEFAULT_WARN = (msg) => console.warn(`[claude-installer] ${msg}`);
 
+
 const NAME_PREFIX = "agent-cortex:";
 
 function byName(a, b) {

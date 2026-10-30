@@ -273,4 +273,3 @@ All beads complete.
 - **Never** continue past feature completion until PR `feature/<parent-id> -> epic/<epic-id>` is merged and the child HITL PR gate bead is closed by a human.
 - **Never** continue past epic completion until PR `epic/<epic-id> -> main` is merged.
 - **When a feature hits the HITL PR gate, push and open the PR immediately and report the URL — do not wait for explicit approval to push or create the PR.**
-- **Always** bump the patch version in `plugin.json` as part of any commit that changes agent or skill files.

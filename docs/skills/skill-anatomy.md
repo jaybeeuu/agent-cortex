@@ -11,7 +11,10 @@ Required fields:
 
 Optional fields:
 - `argument-hint`: input prompt shown to users at invocation.
-- `disable-model-invocation`: for deterministic prompt-injection skills that should not be summarized/interpreted.
+- `disable-model-invocation`: hides the skill from automatic model routing; explicit
+  `/skill-name` invocation still works. Set it when the danger is a fuzzy description
+  match, e.g. a skill whose steps are destructive. Preserved and honoured by pi and
+  Claude Code. See `docs/research/disable-model-invocation.md`.
 
 ## Description format rules
 
@@ -31,7 +34,7 @@ Optional fields:
 
 ## Tool references
 
-Reference agent tools by `{{TOOL:name}}` token (canonical copilot name), never a
+Reference agent tools by `{{TOOL:name}}` token (canonical authoring name), never a
 hardcoded harness-specific name such as `bash`, `task`, or `read_agent` — installers
 substitute the per-harness name from `token-map.json` at install time. Add any new tool
 to the map's `tools` section in the same change; unknown tokens are hard errors. See

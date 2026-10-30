@@ -4,6 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
 export type AgentScope = "user" | "project" | "both";
@@ -21,6 +22,25 @@ export interface AgentConfig {
 export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
 	projectAgentsDir: string | null;
+}
+
+/**
+ * Parse a frontmatter `tools` value into PI tool names.
+ *
+ * `parseFrontmatter` returns the scalar as a single string, and agent files are
+ * written with either a comma-separated list (`tools: read, grep`) or a
+ * whitespace-separated one. Splitting on commas alone collapses the whitespace
+ * form into one bogus name, which becomes a `--tools` allowlist matching no
+ * tool — the subagent then runs with an empty tool block. Accept both
+ * separators so neither form can zero out the tool list.
+ *
+ * @param {string | undefined} tools  Raw frontmatter `tools` scalar
+ * @returns {string[] | undefined} Tool names, or undefined when there are none
+ */
+export function parseToolList(tools: string | undefined): string[] | undefined {
+	const parsed = tools?.split(/[,\s]+/).filter(Boolean);
+
+	return parsed && parsed.length > 0 ? parsed : undefined;
 }
 
 function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {
@@ -49,22 +69,17 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			continue;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
+		const { frontmatter, body } = parseFrontmatter<Record<string, unknown>>(content);
 
-		if (!frontmatter.name || !frontmatter.description) {
+		if (typeof frontmatter.name !== "string" || typeof frontmatter.description !== "string") {
 			continue;
 		}
-
-		const tools = frontmatter.tools
-			?.split(",")
-			.map((t: string) => t.trim())
-			.filter(Boolean);
 
 		agents.push({
 			name: frontmatter.name,
 			description: frontmatter.description,
-			tools: tools && tools.length > 0 ? tools : undefined,
-			model: frontmatter.model,
+			tools: readTools(frontmatter.tools),
+			model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
 			systemPrompt: body,
 			source,
 			filePath,
@@ -72,6 +87,21 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 	}
 
 	return agents;
+}
+
+/**
+ * The tools of a frontmatter `tools` value, which is written either as a YAML
+ * scalar (one string) or as a YAML sequence (an array).
+ */
+function readTools(value: unknown): string[] | undefined {
+	if (Array.isArray(value)) {
+		const tools = value
+			.filter((tool): tool is string => typeof tool === "string")
+			.map((tool) => tool.trim())
+			.filter(Boolean);
+		return tools.length > 0 ? tools : undefined;
+	}
+	return parseToolList(typeof value === "string" ? value : undefined);
 }
 
 function isDirectory(p: string): boolean {
@@ -94,11 +124,71 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
+/**
+ * The package this extension ships inside: `<extension>/../..`, i.e. the repo
+ * checkout or the staged pi package.
+ */
+const PACKAGE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/**
+ * True when `agentsDir` is a rendered tree — flat `*.agent.md` files and no
+ * composable `<name>/agent.md` source directories.
+ */
+function isRenderedAgentsTree(agentsDir: string): boolean {
+	if (!isDirectory(agentsDir)) return false;
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(agentsDir, { withFileTypes: true });
+	} catch {
+		return false;
+	}
+	return !entries.some((entry) => entry.isDirectory() && fs.existsSync(path.join(agentsDir, entry.name, "agent.md")));
+}
+
+/**
+ * Directories the "user" scope discovers agents from, in precedence order.
+ *
+ * pi's own user agent dir comes first: it holds hand-written personal agents
+ * and the copies older installers made, so existing setups keep resolving what
+ * they did before. Second is the package this extension ships inside, which is
+ * what makes a staged pi package self-contained — `agent-cortex install pi`
+ * renders the flat pi agents into `<package>/agents`.
+ *
+ * A source checkout contributes nothing: its `agents/` tree is the composable
+ * source, composed at runtime by the agent-modes extension.
+ */
+export function resolveUserAgentDirs(packageRoot: string = PACKAGE_ROOT): string[] {
+	const dirs: string[] = [];
+	const add = (dir: string) => {
+		const resolved = path.resolve(dir);
+		if (!dirs.includes(resolved) && isDirectory(resolved)) dirs.push(resolved);
+	};
+
+	add(path.join(getAgentDir(), "agents"));
+	const packageAgentsDir = path.join(packageRoot, "agents");
+	if (isRenderedAgentsTree(packageAgentsDir)) add(packageAgentsDir);
+
+	return dirs;
+}
+
+/**
+ * Load the user-scope agents from `dirs`, first directory wins on a name
+ * collision. Missing directories contribute nothing.
+ */
+export function loadUserAgents(dirs: string[]): AgentConfig[] {
+	const byName = new Map<string, AgentConfig>();
+	for (const dir of dirs) {
+		for (const agent of loadAgentsFromDir(dir, "user")) {
+			if (!byName.has(agent.name)) byName.set(agent.name, agent);
+		}
+	}
+	return Array.from(byName.values());
+}
+
 export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
-	const userDir = path.join(getAgentDir(), "agents");
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
-	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
+	const userAgents = scope === "project" ? [] : loadUserAgents(resolveUserAgentDirs());
 	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
 
 	const agentMap = new Map<string, AgentConfig>();

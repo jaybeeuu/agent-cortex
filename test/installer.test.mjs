@@ -125,23 +125,22 @@ describe("install claude", () => {
     assert.doesNotMatch(ralph, /\{\{(TOOL|PATH|SECTION):/);
   });
 
-  it("composes one ralph body for all three harnesses (modulo frontmatter and the wake section)", async () => {
+  it("composes one ralph body for both harnesses (modulo frontmatter and the wake section)", async () => {
     const stripped = {};
-    for (const harness of ["copilot", "pi", "claude"]) {
+    for (const harness of ["pi", "claude"]) {
       const { body } = await composeAgent(ROOT, "ralph", harness);
       const wake = (await readFile(join(ROOT, "agents", "ralph", harness, "wake.md"), "utf-8")).trim();
       assert.ok(body.includes(wake), `${harness} body carries its own wake section`);
       stripped[harness] = body.replace(wake, "").trim();
     }
 
-    assert.equal(stripped.pi, stripped.copilot, "pi and copilot share the shared body");
-    assert.equal(stripped.claude, stripped.copilot, "claude shares the same body, not a divergent native copy");
+    assert.equal(stripped.claude, stripped.pi, "claude shares the same body, not a divergent native copy");
     // Guard the strip itself: the wake sections are harness-specific, so they
     // must genuinely differ — otherwise the equality above proves less.
     const wakes = await Promise.all(
-      ["copilot", "pi", "claude"].map((h) => readFile(join(ROOT, "agents", "ralph", h, "wake.md"), "utf-8")),
+      ["pi", "claude"].map((h) => readFile(join(ROOT, "agents", "ralph", h, "wake.md"), "utf-8")),
     );
-    assert.equal(new Set(wakes).size, 3, "each harness's wake section is distinct");
+    assert.equal(new Set(wakes).size, 2, "each harness's wake section is distinct");
   });
 
   it("copies skill dirs flat with substituted tokens, no symlinks, including the ralph-coupled skills", async () => {

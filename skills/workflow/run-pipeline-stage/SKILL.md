@@ -42,10 +42,11 @@ A leaf bead is the worker's record of what happened. The orchestrator reads it; 
 bd tag <id> stage:<stage>
 ```
 
-7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}}. The prompt already ends with the REPORT contract; never compose one without it.
-8. On the REPORT: route forward per _Routing_ below. Do **not** close the leaf bead — the worker closed it before reporting.
+7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}}. The prompt already ends with the REPORT contract; never compose one without it. A session with no subagent tool cannot dispatch: stop and say so rather than substituting a backgrounded CLI run, which has no completion signal.
+8. Verify the delivery against the worktree — `node scripts/lib/verify-worker-tree.mjs --worktree <abs-worktree> --base <base>` exits 0 only for a clean tree with a commit ahead of base. A worker whose REPORT claims `OUTCOME: SUCCESS` over a dirty tree has not delivered; re-dispatch it instead of advancing.
+9. On the REPORT: route forward per _Routing_ below. Do **not** close the leaf bead — the worker closed it before reporting.
 
-Each step leaves observable state — a claimed bead, a `stage:` tag, worker notes and a closed bead, and a REPORT that drives the next action.
+Each step leaves observable state — a claimed bead, a `stage:` tag, worker notes and a closed bead, a verified commit, and a REPORT that drives the next action.
 
 ## Routing (read-only)
 
@@ -114,12 +115,17 @@ BEAD_ID: <id>
 STAGE_COMPLETED: <code|verify|review|document|fix>
 SUMMARY: <2-3 sentence summary of what was done>
 FILES_CHANGED: <comma-separated list, or "none">
+COMMIT: <sha of the stage commit, or "none">
+PUSHED: <yes|no>
+PR: <feature PR url, or "none">
 OUTCOME: <SUCCESS|BLOCKED>
 BLOCKING_ISSUES:                              ← only if OUTCOME is BLOCKED
 - <specific blocking issue>
 ```
 
-Subagents report facts — do not ask them to suggest or predict the next step.
+Subagents report facts — do not ask them to suggest or predict the next step. A REPORT claiming
+`OUTCOME: SUCCESS` with `PUSHED: no`, or a `COMMIT` that is not on the branch, records a failed
+stage: the commit is the evidence, the report is the claim.
 
 ## Red Flags
 
@@ -128,6 +134,7 @@ Subagents report facts — do not ask them to suggest or predict the next step.
 - Creating a feedback or fix bead from the orchestrator — that is the worker's contract and bypasses its cap accounting.
 - Composing a subagent prompt without the REPORT contract — the output cannot be routed.
 - Skipping the playbook "because the stage is simple" — playbooks carry the per-stage discipline the pipeline relies on.
+- Advancing on `OUTCOME: SUCCESS` without verifying the worktree — the commit is the evidence, the report is the claim.
 - Leaving bead notes to the end of the stage — a session that dies mid-stage then loses the whole trail.
 
 ## Common Rationalizations

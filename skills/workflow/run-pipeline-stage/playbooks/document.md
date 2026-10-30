@@ -12,6 +12,8 @@
 
 ## Stage Outcome
 
+- Commit and push the docs before reporting (see the stage-runner prompt, _Deliver before reporting_).
+- Open or update the feature PR (`gh pr create --base <base> --head <branch>` when none is open yet).
 - Set `OUTCOME: SUCCESS` when docs are updated as needed (or none needed).
 - Set `OUTCOME: BLOCKED` if unable to update or content guidance is unclear.
 - If blocked, list issues under `BLOCKING_ISSUES`.
@@ -28,3 +30,4 @@
   `stage:fix` chore **plus a fresh `stage:document` chore** blocked on it
   (`bd dep add <fresh> <fix> --type blocks`) so documentation is retried after the fix. At cap,
   block the parent and create nothing.
+- Report `COMMIT`, `PUSHED`, and the feature `PR` URL.

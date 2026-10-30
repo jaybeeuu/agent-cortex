@@ -18,9 +18,9 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
  *      and symlinked installs).
  *
  * Flat `agents/*.agent.md` files are parsed as a fallback for agents that have
- * no composable directory (they are generated output for Copilot, so they may
- * exist for any agent). A composable directory always wins over its flat
- * counterpart.
+ * no composable directory (a staged pi package ships flat renders, and a
+ * hand-written agent may be a single flat file). A composable directory always
+ * wins over its flat counterpart.
  */
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ export interface AgentDef {
   prompt: string;
 }
 
-export type HarnessId = "copilot" | "claude" | "pi";
+export type HarnessId = "claude" | "pi";
 
 export interface PathSpec {
   base: string;
@@ -290,6 +290,21 @@ interface FlatParsed {
   prompt: string;
 }
 
+/**
+ * Split a scalar `tools` value into tool names.
+ *
+ * Accepts the quoted string the pi installer renders (`tools: "bash, read"`)
+ * as well as an unquoted whitespace-separated list (`tools: bash read`).
+ * Commas alone are not enough: a whitespace-separated list would collapse to
+ * one bogus name and the agent would run with no usable tool allowlist.
+ */
+function splitToolList(raw: string): string[] {
+  return raw
+    .replace(/^["']|["']$/g, "")
+    .split(/[,\s]+/)
+    .filter(Boolean);
+}
+
 function parseFlatFrontmatter(raw: string): FlatParsed {
   const lines = raw.split(/\r?\n/);
   if (lines[0] !== "---") return { prompt: raw };
@@ -327,11 +342,16 @@ function parseFlatFrontmatter(raw: string): FlatParsed {
   }
 
   // Parse tools from the tools frontmatter.
-  // Supports two formats:
-  //   tools: ["bash", "view"]        (JSON array, single line)
-  //   tools:                         (YAML list, subsequent lines)
+  // Supports three formats:
+  //   tools: ["bash", "view"]          (JSON array, single line)
+  //   tools: "bash, view"              (scalar list, comma or whitespace separated)
+  //   tools:                           (YAML list, subsequent lines)
   //     - bash
   //     - view
+  //
+  // The scalar form is what the pi installer renders for generated agents, so
+  // it must be read here rather than dropped to DEFAULT_TOOLS (which lifts the
+  // restriction instead of applying it).
   let inToolsBlock = false;
   for (const line of yamlLines) {
     const trimmed = line.trim();
@@ -354,6 +374,8 @@ function parseFlatFrontmatter(raw: string): FlatParsed {
           tools = [];
           continue;
         }
+        tools = splitToolList(val);
+        continue;
       }
     }
 
@@ -409,8 +431,8 @@ function readFlatAgent(filePath: string, tokenMap: TokenMap | null): AgentDef | 
  * Discover agents from the agents directory.
  *
  * Composable directories (`<name>/agent.md` + `<name>/pi/frontmatter.json`) are
- * the primary source. Flat `*.agent.md` files (generated output for Copilot) are
- * read only when no composable directory exists for that agent id. When
+ * the primary source. Flat `*.agent.md` files (a staged package's renders, or a
+ * hand-written agent) are read only when no composable directory exists for that agent id. When
  * `tokenMap` is omitted, token-map.json is loaded from the package root;
  * missing/unreadable maps fall back to the built-in copilot→pi translation.
  */

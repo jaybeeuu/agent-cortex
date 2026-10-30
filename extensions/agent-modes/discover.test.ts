@@ -244,6 +244,25 @@ describe("discoverAgents (flat fallback)", () => {
     assert.deepEqual(strategy.tools, ["bash", "fetch_content", "read"]);
     assert.match(strategy.prompt, /Flat body of strategy\./);
   });
+  it("reads a space-separated scalar tools list instead of falling back to defaults", () => {
+    const fx = track(makeFixture());
+    writeFlatAgent(fx, "ralph", FLAT_FRONTMATTER("ralph", '"bash read grep task"'));
+
+    const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+
+    // A collapsed scalar would land on DEFAULT_TOOLS, lifting the restriction
+    // rather than applying it — the tool names must survive the parse.
+    assert.deepEqual(agents[0].tools, ["bash", "grep", "read", "task"]);
+  });
+
+  it("reads a comma-separated scalar tools list", () => {
+    const fx = track(makeFixture());
+    writeFlatAgent(fx, "ralph", FLAT_FRONTMATTER("ralph", '"bash, view, task"'));
+
+    const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+
+    assert.deepEqual(agents[0].tools, ["bash", "read", "task"]);
+  });
 });
 
 // ─── loadTokenMap ────────────────────────────────────────────────────────────

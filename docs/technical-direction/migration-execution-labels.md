@@ -13,8 +13,14 @@
 
 ## Current-state constraints
 
-- bd CLI is a global binary (`~/.local/bin/bd`); label ops: `bd label list-all [--json]`,
-  `bd list --label-pattern/regex [--json]`, `bd label add/remove` (batch multiple ids).
+- bd is a globally installed CLI resolved from `PATH` (whatever single `bd` is on PATH —
+  Homebrew, npm, or the install script); `BD_PATH` is the override for machines where `bd` is
+  not on PATH. Skill scripts invoke `BD_PATH || 'bd'` and never hardcode an install path.
+  Label ops: `bd label list-all [--json]`, `bd list --label-pattern/regex [--json]`,
+  `bd label add/remove` (batch multiple ids).
+- A `bd` whose install target has been removed (`~/.local/bin` orphans, dangling pnpm shims)
+  must not be pinned: it can be a schema behind the workspace DB and fail with a schema
+  version mismatch. Keep exactly one `bd` on PATH so `bd` and the DB version agree.
 - `bd list` supports `--label-pattern`/`--json`; `bd count` does NOT support `--label-pattern`.
 - `bd ready --label-pattern 'stage:*'` works; `bd ready -l execution:afk` verified.
 - Zero skill script packages remain: every `skills/*/*/scripts/` manifest (`package.json`,
@@ -101,14 +107,14 @@
   extensions are TS by pi contract (`index.ts` entrypoint, loader transpiles; the pi runtime
   import is type-only). Root build script is deliberately a no-op.
 - Chosen: (1) `files` whitelist in package.json — ship only runtime assets (skills/, agents/,
-  extensions/, bin/, lib/, scripts/, AGENTS.md, plugin.json, README, LICENSE); (2) `prepublishOnly`
+  extensions/, bin/, lib/, scripts/, hooks/, claude/, claude-extras/, token-map.json, README,
+  CHANGELOG); (2) `prepublishOnly`
   gate running `pnpm typecheck && pnpm test`; (3) wire `test/cli.test.mjs` into root `test`.
 - `scripts/` is a runtime asset despite its build-tooling name, and the whitelist must include
-  it: all three installers statically import `scripts/lib/{compose-agent,fs}.mjs`,
-  `bin/agent-cortex.mjs` lazily imports `scripts/lib/migrate.mjs` for `migrate`, and the
-  published `postinstall` hook runs `scripts/install-instructions.sh`. Omitting it ships a
-  package whose install and migration paths fail only for consumers — every local run stays
-  green, so nothing catches it before publish.
+  it: both installers statically import `scripts/lib/{compose-agent,fs}.mjs`, and
+  `bin/agent-cortex.mjs` lazily imports `scripts/lib/migrate.mjs` for `migrate`. Omitting it
+  ships a package whose install and migration paths fail only for consumers — every local run
+  stays green, so nothing catches it before publish.
 - Revisit trigger: if an extension ever gains real runtime deps, bundle that extension with
   esbuild at prepack — not a repo-wide build.
 
@@ -172,7 +178,8 @@
 ## References
 
 - Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface), `skills/*/*/scripts/
-  package.json` (2 remaining), root `package.json` + `pnpm-workspace.yaml`, bd CLI help
+  package.json` (none remain — all folded into the root workspace), root `package.json` +
+  `pnpm-workspace.yaml`, bd CLI help
   (`bd list`, `bd label`, `bd create`), epic `agnt-ctx-s5xd` notes.
 - Idea file: `docs/ideas/ctx-alias-version-and-update-commands.md` (ctx alias + version/update
   surface that `migrate` joins).

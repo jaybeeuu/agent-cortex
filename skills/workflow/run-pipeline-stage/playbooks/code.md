@@ -11,6 +11,7 @@
 
 ## Stage Outcome
 
+- Commit and push the stage's work before reporting (see the stage-runner prompt, _Deliver before reporting_).
 - Set `OUTCOME: SUCCESS` when implementation passes all tests and meets requirements.
 - Set `OUTCOME: BLOCKED` if tests fail or requirements cannot be met.
 - If blocked, list issues under `BLOCKING_ISSUES`.
@@ -26,3 +27,4 @@
   `stage:fix` chore **plus a fresh `stage:code` chore** blocked on it (`bd dep add <fresh>
   <fix> --type blocks`), and re-block later stages behind the fresh bead. At cap, block the
   parent and create nothing.
+- Report `COMMIT`, `PUSHED`, and `PR` (`PR: none` outside the document stage).

@@ -1,8 +1,8 @@
 // Shared composer: reads a composable agent directory (agents/<name>/) and emits
-// the harness-specific agent content defined by agents/README.md. The Copilot
-// generator (scripts/build-copilot-agents.mjs) and the Claude install-time generator
-// (bin/installers/claude.mjs) compose from here, so the composable dirs are
-// the single source of truth and the flat/generated files stay in lockstep.
+// the harness-specific agent content defined by agents/README.md. The Claude and pi
+// install-time generators (bin/installers/claude.mjs, bin/installers/pi.mjs) compose
+// from here, so the composable dirs are the single source of truth and the generated
+// files stay in lockstep.
 //
 // Composition per the agents/README.md contract:
 //   1. {{SECTION:name}} is replaced with <dir>/<harness>/<name>.md content.
@@ -15,15 +15,15 @@
 // silently dropped section.
 //
 // Options (the pi installer passes `dropNullTools`, `pluginRoot` and
-// `resolveRelativePaths`; the copilot generator and claude installer use the strict defaults):
+// `resolveRelativePaths`; the claude installer uses the strict defaults):
 //   dropNullTools          replace null-mapped tool tokens with an empty string and
 //                          warn instead of throwing (pi's prose rule per the
 //                          token-map contract)
 //   pluginRoot             override the plugin_root used for resolved paths
 //                          (installers compute it from the actual install layout)
 //   resolveRelativePaths   non-keyed {{PATH:...}} args resolve to pluginRoot/arg
-//                          instead of staying verbatim (install time; the build
-//                          scripts leave them bare for Copilot CLI resolution)
+//                          instead of staying verbatim (install time; without it
+//                          they stay bare for runtime resolution)
 //   warn                   callback for drop/omit warnings (default: no-op; the
 //                          pi installer collects them into its result)
 //
@@ -61,7 +61,7 @@ function noop() {}
  *   the harness's section files before calling this.
  *
  * @param {string} content  Source text containing {{TOOL:...}}/{{PATH:...}} tokens
- * @param {string} harness  Harness id: "copilot" | "claude" | "pi"
+ * @param {string} harness  Harness id: "claude" | "pi"
  * @param {object} tokenMap Parsed token-map.json (from loadTokenMap)
  * @param {object} options  { dropNullTools, pluginRoot, resolveRelativePaths, warn, context }
  * @returns {string}
@@ -99,7 +99,7 @@ export function substituteTokens(content, harness, tokenMap, options = {}) {
  *
  * @param {string} root    Package root (contains agents/ and token-map.json)
  * @param {string} name    Agent directory name (e.g. "ralph", "plan")
- * @param {string} harness Harness id: "copilot" | "claude" | "pi"
+ * @param {string} harness Harness id: "claude" | "pi"
  * @returns {Promise<{ name: string, description: string, tools: string[], model?: string, argumentHint?: string, body: string }>}
  */
 export async function composeAgent(root, name, harness, options = {}) {
@@ -218,7 +218,7 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
  *
  * @param {string[]} tools  Canonical tool names from a harness frontmatter.json
  * @param {object} tokenMap Parsed token-map.json (from loadTokenMap)
- * @param {string} harness  Harness id: "copilot" | "claude" | "pi"
+ * @param {string} harness  Harness id: "claude" | "pi"
  * @param {object} options  { warn }
  * @returns {string[]}
  */

@@ -8,8 +8,11 @@
 // SKILL.md must parse, declare a non-empty `name` and `description`, and keep
 // the description within PI's 1024-character limit.
 //
-// Frontmatter extraction mirrors PI's parseFrontmatter (dist/utils/frontmatter.js)
-// so the check rejects exactly what PI rejects.
+// Frontmatter extraction mirrors PI's parseFrontmatter (dist/utils/frontmatter.js), so a
+// SKILL.md that PI drops — frontmatter that will not parse, or no description — fails here
+// too. The check is stricter than PI in two places PI only warns about: `name` must be a
+// non-empty frontmatter field (PI falls back to the directory name), and a description over
+// 1024 characters is an error.
 
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";

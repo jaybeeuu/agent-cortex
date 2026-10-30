@@ -1,5 +1,392 @@
 # Changelog
 
+## 2.2.0
+
+### Minor Changes
+
+- 3dd6ba1: Add `agent-cortex migrate`, a repo-agnostic, versioned migration command for beads
+  workspaces. It detects the workspace's current migration version from its own state, prints
+  a per-bead dry-run plan by default, and `--apply` renames `implementation-type:afk|hitl`
+  labels to `execution:afk|hitl` (step v1) across every bead including closed ones, verifying
+  each step and no-opping on a re-run.
+- 3dd6ba1: Add the `migration` skill (`skills/productivity/migration/`). It documents how any workspace
+  runs the versioned `agent-cortex migrate` command to move from `implementation-type:afk|hitl` to
+  `execution:afk|hitl`: preflight and current-version detection, a pre-migration export snapshot, a
+  gated dry-run review, `--apply` with batched add-then-remove label writes, the four post-checks
+  (`bd label list-all` clean, the `bd list --label-pattern` group empty, the `bd ready -l
+execution:afk` smoke, the stale-reference sweep), and an idempotence re-run. `REFERENCE.md`
+  records the command interface the skill depends on, the v1 label-rename and v2 idea-file steps,
+  rollback recipes, and the manual fallback for pinned versions. The two-axis model (bead type ×
+  execution) is stated as the rationale, including why a half-migrated workspace silently starves
+  ralph's queue.
+
+  The skill sets `disable-model-invocation: true`, so it is reachable only through its explicit
+  command and never auto-routed from a description match — `--apply` renames labels across a whole
+  workspace, which is not something a fuzzy match should be able to trigger. On Claude Code and pi
+  that hides the skill from automatic selection while `/skill-name` still works; on Copilot CLI the
+  field suppresses auto-routing _and_ model-mediated invocation, leaving only the interactive
+  `/migration` slash command (see `docs/research/disable-model-invocation.md`).
+
+- 3dd6ba1: Ship the real ralph to Claude Code. `agents-native/ralph.md` is deleted along with the `DEFER` and
+  `buildNatives` path in `bin/installers/claude.mjs`, so every harness now composes the same ralph body
+  and differs only in its wake mechanism (`agents/ralph/<harness>/wake.md`). `SKILL_EXCLUDE` is gone too,
+  so the Claude plugin gains the `ralph` and `run-pipeline-stage` skills it previously stripped.
+
+  The native copy was authored before the chore model existed and had drifted: it ignored chore beads,
+  counted fix rounds in its own prose, and ran an implement → review loop with no verify or document
+  stage — while pi and Copilot ran the real orchestrator. Its description advertised that stale cycle.
+  `agents/ralph/claude/frontmatter.json` now matches the composed agent, and a test asserts the three
+  composed bodies are identical once frontmatter and the wake section are removed.
+
+### Patch Changes
+
+- 3dd6ba1: Ban stacked branches, and make a stacked PR fail CI.
+
+  `git-workflow` gains rule 3: every branch is based on the integration branch (`main`, or
+  `epic/<id>` for multi-feature work), never on another `feature/*`. A dependency between two tasks
+  belongs in the bead graph — `bd dep add <waiting> <blocked-on>` keeps the dependent task out of
+  `bd ready` until its dependency merges — not in the branch base. `ralph`'s branching model and its
+  _Feature Branches and Worktrees_ procedure now say so explicitly, including not creating a worktree
+  early while a `blocks` dependency is unmerged and not reusing a sibling task's worktree.
+
+  A new `No stacked PRs` CI job fails any pull request whose base matches `feature/*`, because the
+  rule only holds if forgetting it is visible. The job must be added to the main branch ruleset's
+  required checks to actually block a merge.
+
+  The cost of the old behaviour: this repo squash-merges, so a lower branch's commits never become
+  ancestors of the integration branch. Once it merges, the upper PR carries that whole diff as new
+  work and reports conflicts on byte-identical files — three occurrences in two days, each repaired
+  with a manual `rebase --onto` plus a full re-verification.
+
+- 3dd6ba1: Delete the generated `.agent-cortex/ralph/progress.md` view and its renderer. Beads are the
+  view: ralph now reports status straight from `bd list --parent <id>`, `bd ready`, and `bd show`,
+  and the ralph skill documents those commands for humans instead of a regeneration step. Removes
+  `generate-progress.ts`, its test, the `skills/workflow/run-pipeline-stage/scripts` workspace that
+  existed only to run them, and every regeneration instruction in the ralph agent, `ralph` skill,
+  `run-pipeline-stage` skill, and the Copilot poll tick.
+- 74601a3: Add `agent-cortex --version` / `-V`, which prints the version of the package the CLI is running
+  from — a bare semver, nothing else — and exits 0. The version is resolved from the CLI's own
+  `package.json` relative to `bin/agent-cortex.mjs`, not from the cwd or `node_modules`, so a
+  published install reports the version it was installed at and two installs on one machine can be
+  told apart. Like `--help`, the flags are only recognised as the first argument, so they never
+  shadow a command's own options. A manifest that is missing, unreadable, malformed, or has no
+  `version` string is a broken install: it prints a one-line diagnostic on stderr and exits 1
+  rather than reporting a bogus version with a success exit. `--help` lists the new flags.
+- 3dd6ba1: Move the skill guidance onto the two-axis model. `classify-bead` applies `execution:afk` /
+  `execution:hitl` instead of the retired `implementation-type:` namespace — in the skill, its
+  `REFERENCE.md`, the deterministic classifier's constants, and its tests — while its rubric,
+  tiers, legacy `## Type` read, and CLI stay unchanged. `record-idea` captures ideas as `kind:idea`
+  beads (`execution:hitl`, priority, `--acceptance` promotion criteria) instead of scaffold files
+  through `new-idea.sh`; its interview adds three bounded implementation questions and a
+  `## Design so far / provenance` section, and `FORMAT.md` becomes the bead field mapping that keeps
+  `##` section markers inside the description, design, and notes. `bd-tool` documents the
+  `execution:<class>` and `kind:idea` rows, the query-filter-only semantics, the measured fact that a
+  bare `bd ready` does list idea beads (so it needs `--exclude-label kind:idea`), and the new
+  `record-idea` / `flesh-out-idea` cross-references. New `flesh-out-idea` skill answers "which ideas
+  are ready?" with `bd ready -l kind:idea`, drives a deepening interview, writes section markers back
+  with `--design` / `--append-notes`, and documents the promotion path (idea bead becomes the
+  `kind:epic` epic node, `execution:afk` children joined by `--parent`, ordering by dependency).
+- 3dd6ba1: create-task, prd-to-tasks and plan now express the feature → planning → implementation hierarchy: a feature or epic is `execution:hitl`, its planning bead blocks one `execution:afk` implementation child per deliverable, and the PR gate carries `execution:hitl`. Aggregate execution labels are no longer copied from children onto parents.
+- 3dd6ba1: Correct the type annotations the widened tooling typecheck surfaced. Measuring what a repo-wide
+  `checkJs` pass would report (the widening itself is tracked separately) turned up a handful of
+  genuine JSDoc defects rather than merely missing annotations, all fixed here with no runtime
+  change: `bin/installers/pi.mjs` referenced a `ManagedFileResult` type that was never defined, now
+  declared as a proper `@typedef` matching what `writeManagedJson` returns; five `async` functions
+  declared `@returns` without wrapping them in `Promise<…>`, so `tsc` rejected the declared type
+  (`installClaude`, `registerClaude`, `installCopilot`, `installPi`, `composeAgent`);
+  `runClaudeCommand`'s `new Promise()` needed a `Promise<void>` hint before `resolve()` could be
+  called without an argument; and the two shared predicates in `scripts/lib/fs.mjs` plus
+  `collect` in `scripts/check-no-sync.mjs` had untyped parameters and an inferred recursive return
+  type. Widening the typecheck to `bin/ lib/ hooks/ scripts/` reports 12 fewer errors afterwards.
+- 1e81c4b: Fix `See Also` links in the materialised Claude plugin. `install claude` copies skills flat
+  (`skills/<name>/`), so a handoff authored against the grouped tree (`../../style/style-code/SKILL.md`)
+  lost its group segment and 404'd. The flat copy now rewrites cross-skill links to the sibling path
+  (`../style-code/SKILL.md`) via `scripts/lib/skill-links.mjs`; the pi install, which keeps the
+  grouping, is unchanged.
+- 3dd6ba1: Fold the skill scripts into the root workspace. The two remaining per-skill script packages
+  (`skills/planning/create-task/scripts`, `skills/productivity/validate-agent-dir/scripts`) lose
+  their `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` and stray `tsconfig.json`, and the
+  dead `skills/**/scripts` glob is dropped from `pnpm-workspace.yaml`, so the root `pnpm-lock.yaml`
+  no longer lists script-dir importers. A new root `tsconfig.json` typechecks
+  `skills/**/scripts/**/*.mjs` with `checkJs` + `strict`, and the root `typecheck` script now runs
+  `tsc --noEmit -p tsconfig.json` before recursing into the extensions — so `pnpm lint` covers every
+  script, each of which still runs on bare `node`. `typescript` and `@types/node` join the root
+  devDependencies; `tsx` stays for the extensions' `node --test --import tsx/esm` runs. The
+  "3 script packages / NOT members of the root workspace" constraint in the migration memo is
+  corrected: the glob did make them members, and they are now deleted rather than listed.
+- 3dd6ba1: Gate every `bd dolt push` in the `ralph` and `plan` skills on its exit status. Both skills ran
+  the push as a completion step and proceeded straight to the Pending Human Action / completion
+  summaries, so a failed sync — an unconfigured or corrupt Dolt remote exits non-zero — looked like
+  a clean shutdown while bead state never reached the remote.
+
+  Every push site now carries the same gate: on a non-zero exit, retry once, then stop and report
+  the command, exit code and stderr as a sync blocker instead of printing any completion summary.
+  The gate is stated once per path — the ralph skill's _HITL pause and shutdown_ section and its
+  verification checklist, the ralph REFERENCE _HITL Pause_ and _Shutdown_ steps, the ralph agent
+  body's equivalents, and the plan skill's push step and its Phase 4 and verification checklists —
+  and the checklists now require the push to have exited 0 rather than merely to have run.
+
+- 3dd6ba1: Gate publishing on typecheck and tests.
+
+  Nothing ships unless both pass: a new `verify` script (`pnpm typecheck && pnpm test`) is the
+  single definition of the gate, and two paths enforce it. `prepublishOnly` runs it for a
+  directory publish, and `publish-package` runs it before `pnpm pack`, because
+  `npm publish <tarball>` — the path changesets/action execs, and therefore the one every release
+  takes — runs no npm publish lifecycle hook at all. `pnpm pack` is untouched, so packing locally
+  is still fast.
+
+  `test/release-gates.test.mjs` proves it by executing those script bodies in a real shell against
+  a stub `pnpm`/`npm` pair: a failing typecheck or test aborts before the tarball is packed, and a
+  green pair reaches `npm publish` with the packed tarball.
+
+- 3dd6ba1: Make the ralph agent body harness-neutral and rename its `{{SECTION:polling}}` seam to
+  `{{SECTION:wake}}`. `agents/ralph/agent.md` no longer names a harness (Copilot, PI, Claude) or a
+  harness-specific tool (`wait_for_agents`, `read_agent`, `Task`): every such fact — the spawn call
+  and its argument shape, how a completion arrives, the ids tracked (`agentId`, `timerShellId`),
+  what stopping means, and whether a log must be flushed — now lives in that harness's
+  `agents/ralph/<harness>/wake.md`. The shared body refers to the wake section instead, so composing
+  it for one harness can never emit instructions about another harness's tools.
+
+  The section name now matches what it does: `wake` covers polling, blocking wait, and event-driven
+  wake-ups, whereas `polling` was simply wrong for the event-driven harness, where no polling exists.
+  The mechanism is recorded per harness rather than inferred from prose — `token-map.json` gains a
+  `wake.mechanism` table (`copilot`: `polling`, `pi`: `blocking-wait`, `claude`: `event-driven`) and
+  `agents/README.md` documents the same table alongside the ralph layout. `agents/ralph.agent.md` is
+  regenerated from the composable sources; no Copilot behaviour changes.
+
+- 3dd6ba1: Harden `agent-cortex migrate` v1: allowlist its label values and drop the phantom `ctx` alias.
+
+  The v1 label rename now maps `implementation-type:afk|hitl` only. Any other value — a stray
+  `implementation-type:wip` — is a blocking error that names each offending bead id and label and
+  stops before any write, on the dry run and on `--apply` alike, instead of inventing an
+  `execution:wip` label nothing queries. The migration skill and its reference no longer document
+  `ctx migrate`: the package exposes one executable name, `agent-cortex`, with
+  `node bin/agent-cortex.mjs migrate` for a checkout that is not installed.
+
+- 3dd6ba1: Fix `agent-cortex migrate` v1 reporting a half-migrated workspace as verified.
+
+  Detection and verification now read every bead from `bd export --all` and cross-check the
+  label index from `bd label list-all`, instead of querying `bd list --label-pattern`. On bd
+  1.3.1 a label-filtered `bd list` can omit closed beads, so 28 closed beads kept
+  `implementation-type:afk` while `--apply` printed `✓ v1 label-rename verified` and advanced
+  the workspace to v1. A legacy label that survives the apply now names the residual bead ids
+  and exits non-zero, and an export that cannot attribute a legacy label the index still lists
+  fails loudly instead of shrinking the result set.
+
+- 3dd6ba1: Add step v2 to `agent-cortex migrate` — loose idea files become `kind:idea` beads — and delete
+  the retired idea scaffold script.
+
+  `docs/ideas/*.md` (one level of nesting included, `--dir <path>` to point the step elsewhere)
+  previously had to be migrated by hand. Step v2 reads each file, maps its sections onto the bead
+  fields, and creates a `kind:idea` + `execution:hitl` bead: `--description` takes the problem and
+  outcome sections, `--design` the how sections, and everything else — including any `##` section
+  the template never named — lands in `--notes` with its marker intact, so the flesh-out pass can
+  still find sections by name. No line of a source file is dropped. Priority comes from the first
+  `P0`–`P4` token in the file and falls back to P4 (backlog), and every bead carries the promotion
+  criterion a `task` bead needs to lint clean. The step reads the files and never writes or deletes
+  one: retiring them is the repo's own cutover.
+
+  Each bead it creates cites its source file under a `## Provenance` heading. Before creating
+  anything the step lists the existing `kind:idea` beads and skips a file whose path a bead names
+  under that heading, or — for a bead that cites no source, i.e. one migrated by hand before the
+  step existed — whose title matches (prefix and punctuation ignored). Attribution by provenance
+  is what makes re-runs and resumed applies exact: two files can state the same title
+  (`task-session-context.md` and `task-session-context.local.md` do), and inferring identity from
+  the title alone let an `--apply` that died between the two creates resume silently short. A
+  passing cross-reference elsewhere in a bead's notes does not count as a record. The dry run
+  prints one `<file> → <title> (P<n>)` line per pending file with zero writes.
+
+  `skills/planning/record-idea/scripts/new-idea.sh` is gone: it wrote the markdown records the bead
+  flow replaced, and nothing has called it since `record-idea` started creating beads. The
+  `migration` skill's `SKILL.md` and `REFERENCE.md` document the shipped v2 mechanics — the section
+  alias inventory, the priority rule and its `P0-P4` caveat, the `--dir` flag, the collision skip,
+  and the deletion ordering.
+
+- 3dd6ba1: Make stage chores pre-created only and add ralph's expansion guard. `create-chores.mjs` already
+  builds the whole `pipeline.json` chain with `blocks` deps, so the ralph agent body and the
+  `ralph` skill no longer create a chore on success paths or at first dispatch — they dispatch
+  whatever `bd ready` returns. A ready AFK task bead with no `stage:*` chore children is expanded
+  first by a worker running `create-chores.mjs --parent <id> --priority <parent-priority>`, whose
+  returned `code`/`verify`/`review`/`document`/`featurePrReview` mapping is reported before the
+  normal dispatch picks up `stage:code`; the guard names the duplicate-parent hazard of re-running
+  `create-task` for an existing bead. `create-task` documents expanding an existing bead as a
+  supported entry point.
+
+  An expansion worker has its own completion contract: it is recorded in `state.json`'s `inflight`
+  as `"kind": "expand"` with `choreId: null` (stage dispatches are `"kind": "stage"`), emits no
+  `---REPORT---`, and owns no bead to close — its completion means "the parent now has a `stage:*`
+  chain", so ralph confirms the chore tree exists and dispatches the ready `stage:code` chore. The
+  PI wait set and the Copilot timer start, HITL-pause check, and shutdown check all cover expansion
+  workers, so an in-flight expansion no longer looks like idle work and can no longer trigger HITL
+  Pause or Shutdown mid-expansion.
+
+  Every in-flight query now derives from `state.json`'s `inflight` instead of a
+  `--type=chore` beads listing: the dispatch cap counts parents with an `inflight` entry (stage or
+  `expand`), Log Polling tails the log of every `inflight` entry's `parentId`, and the Copilot
+  HITL-pause check, ralph's Shutdown condition, and the REFERENCE _What is in-flight?_ row all read
+  `inflight` — so a running expansion worker occupies a slot and is polled like any other worker.
+
+  That rule is now stated as an invariant and applied to every ralph control-flow predicate, not
+  just the ones an earlier round happened to touch: **every ralph predicate — is anything in flight,
+  is there work, is there room under the cap, may we pause, may we shut down — derives from
+  `state.json`'s `inflight` (`kind: stage|expand`) plus `bd ready`, never from a chore-type `bd`
+  query.** REFERENCE.md gains a _The in-flight invariant_ section with the derive-it-from /
+  never-from table, and the skill's init hand-over no longer gates on "no chore was dispatched"
+  (an expansion-only init is in flight, not idle, so it can no longer jump to HITL Pause
+  mid-expansion). The remaining chore-only predicates were widened at the same time: the init
+  hand-over, the HITL-pause conditions (agent body, skill, REFERENCE, Copilot poll tick), and the
+  Shutdown conditions now require that nothing is _dispatchable_ — no ready `stage:*` chore **and**
+  no **ready, claimable** chore-less AFK task bead awaiting expansion — instead of only "no stage
+  chores are ready".
+
+  "Claimable" is part of the predicate because the feature-PR gate already scopes it: while a
+  `lifecycle:feature-pr` HITL gate bead is open ralph schedules no new parent features, so a queued
+  unexpanded AFK bead in that state is paused work, not dispatchable work. Without that half of the
+  scope the pause predicate is unreachable in the canonical post-PR state — gate open, unexpanded
+  AFK beads queued, `inflight` empty, no ready `stage:*` chore — so Copilot would restart its 120 s
+  timer forever and PI would re-arm a wait set with no agent IDs. The invariant table now defines
+  "dispatchable" as ready _and_ claimable and explains that failure mode, and PI's wait loop defines
+  the empty-wait-set state explicitly: never call `wait_for_agents` with no IDs; run the event loop's
+  final check, which resolves to HITL Pause (gate beads pending) or Shutdown (none).
+
+  The chore-type carve-out is now stated as _the only legitimate chore-type control-flow predicate_
+  rather than "the one legitimate chore-type query": the `stage:fix` retry counter in _Cap Backstop_
+  counts remediation history, so it may gate a dispatch decision but may never answer "is anything in
+  flight?". The carve-out is scoped to _control-flow predicates_ so it no longer condemns the
+  expansion guard's own structural `grep -c '"stage:'` check, and that check states the count it
+  expects rather than demanding exit `0` — `grep -c` exits `1` on zero matches, so the guard now
+  says to add `|| true` under `set -e` or in an `&&` chain. The stale TDD loop-count line (`stage:test-writing` chore children) is dropped — that
+  label is absent from the pre-created chain in `skills/planning/create-task/pipeline.json`.
+
+  `agents/ralph/claude/wake.md` carries the same completion-handling text, aligned to the same
+  `kind` branch so the composed Claude agent branches identically without reintroducing the
+  chore-only predicate, and `agents/README.md` says so in the ralph layout.
+
+- 3dd6ba1: Publish only runtime assets. `package.json` gains a `files` whitelist, so the tarball stops
+  shipping the whole repo: `.changeset/`, `test/`, `docs/`, `.github/`, `.junie/`, `.agents/`,
+  `AGENTS.md`, `tsconfig.json`, `pnpm-workspace.yaml` and the extensions' `node_modules/.bin`
+  symlinks are all excluded. `bin/`, `lib/`, `scripts/` (the `postinstall` installer lives there),
+  `skills/`, `agents/`, `extensions/`, `hooks/`, `claude/`, `claude-extras/`, `plugin.json` and
+  `token-map.json` remain, since the installers and the PI runtime read them. The `.beads/` task
+  database was previously excluded only by `.git/info/exclude`, which npm does not honour, so a
+  `pnpm pack` from a developer checkout could publish it — the whitelist closes that. Also adds the
+  `// @ts-check` pragma that `skills/planning/classify-bead/scripts/classify-bead.mjs` was missing,
+  matching the other skill scripts and the single-workspace decision.
+- 3dd6ba1: Route ralph by `execution:afk` and give it feature decomposition (F4 of the two-axis model).
+
+  Ralph's dispatch predicate is now one query — `bd ready -l execution:afk` — and every ready
+  `execution:afk` bead is its work, whether that bead is a feature, a task or a chore. What happens
+  next is decided by the bead's _shape_: a childless `feature` bead is decomposed, a bead with no
+  `stage:*` chores is expanded, a `stage:*` chore is dispatched. This replaces the previous
+  `implementation-type:` vocabulary and, more importantly, removes a blind spot: a predicate that
+  looked only for "chores with `stage:*`" reported an `execution:afk` bead with no stage chores as
+  idle while it was work waiting for a worker.
+
+  Feature decomposition is the new behaviour (epic Q2). A ready `execution:afk` bead of type
+  `feature` with no children is not dispatchable work — ralph dispatches a decomposition worker that
+  builds the Q5 hierarchy (one `execution:hitl` planning bead plus `execution:afk` implementation
+  children wired to wait on it), confirms the children exist rather than trusting the report, records
+  the worker as `kind: "decompose"` in `state.json`, and then goes idle behind the planning bead.
+  Because a feature carries `execution:hitl` by default, this only ever runs for a feature a human has
+  deliberately relabelled `execution:afk`; the label, not the bead type, decides routing, so Q2 and Q5
+  hold together and Q5b's dependency gate does the pausing. The procedure lives in
+  `REFERENCE.md` (_Feature Decomposition_) with the trigger in `SKILL.md`, the whole flow mirrored
+  into `agents/ralph/agent.md`, and the planning-gate label in `agents/ralph-plan/agent.md` renamed to
+  match.
+
+  All HITL gate queries move to `execution:hitl` and live in one place —
+  `skills/workflow/ralph/scripts/pending-gates.mjs`, which counts gates on either HITL axis during the
+  cutover (_Gate predicate_) — and the parked-versus-pending invariant in _The in-flight invariant_ is
+  unchanged: dispatchable
+  still means ready _and_ claimable, so a bead behind an open feature-PR gate stays paused work rather
+  than re-arming a wait over an empty agent set.
+
+- e7b03cc: `ralph-plan` now creates its planning gate in the Q5 shape the rest of the package implements: the
+  planning bead is owned by the feature (`--parent <feature-id>`, `execution:hitl`,
+  `--no-inherit-labels`) and every implementation child depends on it, instead of the owning feature
+  depending on a parentless gate. The step also records that a planning bead is not a PR gate —
+  `create-chores.mjs` keeps exclusive ownership of `lifecycle:feature-pr` — and that a standalone task
+  bead needs no planning bead, and it now scopes its hand-built gate block to a feature that has no
+  `Plan:` child yet, so it cannot be run beside the gate `create-task` already created. `agents/plan`
+  gates its `bd dolt push` on the exit status, and `agents/ralph` names the PR gate's owner precisely.
+- 1e81c4b: Add `See Also` handoffs between related skills. Each skill that references another now names the
+  related skill with a relative `SKILL.md` link and the reason to load it — or, where the skill sits
+  at its 150-line budget, an inline reference — replacing the bare-name `## Cross-skill references`
+  lists and giving `classify-bead`, `refactor-skill`, and `grill-me` the pointer they were missing.
+- 3dd6ba1: Sweep the last stale references to the retired bead model. The `plan` agent's Phase 3 summary no
+  longer tells the planner to tag parent epics with a classification aggregated from their children —
+  a container epic is `execution:hitl`, and each bead beneath it states its own execution class. The
+  `agent-guardrails` extension cites its originating idea by name instead of by its retired
+  `docs/ideas/` file path.
+- 3dd6ba1: Typecheck the whole tooling surface — the test suite included — not just the skill scripts. The
+  root `tsconfig.json` covered `skills/**/scripts/**/*.mjs` only, so the repo's actual product code
+  (the CLI, both harness installers, the Claude hook, and the shared libs) and every test was never
+  type checked (only the `check-no-sync` lint reached them). `include` now covers `bin/`, `lib/`,
+  `hooks/`, `scripts/` and `test/` alongside the skill scripts, and every error that surfaced is fixed
+  with JSDoc annotations rather than by excluding files: no `@ts-nocheck`, no `exclude`, no file
+  converted to TypeScript.
+
+  The surface went from 13 unchecked modules to 0. Measured on the widened `include`, the tooling
+  sweep started at 273 errors in 10 files and is clean:
+
+  - `bin/installers/pi.mjs` 104 → 0, `bin/installers/claude.mjs` 76 → 0, `bin/agent-cortex.mjs` 24 → 0,
+    `scripts/lib/compose-agent.mjs` 28 → 0, `scripts/lib/verify-worker-tree.mjs` 13 → 0,
+    `scripts/lib/release-gates.mjs` 10 → 0, `hooks/claude/scripts/notify.mjs` 10 → 0, `lib/cli.mjs` 6 → 0,
+    and 1 each in `scripts/check-changeset.mjs` and `scripts/resolve-publish-command.mjs`. Most were
+    implicit-any parameters; the object shapes the installers pass around (install results, the token
+    map, the generated pi manifest, the sweep's options) now have `@typedef`s, exported from
+    `scripts/lib/compose-agent.mjs` where both installers share them.
+  - `parseArgs` declares its result as a `ParsedArgs` typedef, so `bin/agent-cortex.mjs` can read
+    `dryRun`/`output`/`pluginRoot`/`requireRegister` after narrowing on `command`.
+  - `validateHarness` treats an `undefined` harness as missing rather than unknown. `parseArgs` returns
+    `null` (never `undefined`), so no CLI path changes; `sweepLegacyPiUserDirs` loses its `= {}`
+    default, which its required `piUserDir` already made unusable (both its callers pass an object).
+  - Two guards replaced state that only looked like narrowing: the marketplace manifest path is built
+    from a non-null `marketplaceRoot`, and `hooks.json` is written when the read content is non-null
+    (`summary.hooks` was the same condition spelled indirectly).
+
+  The test suite swept the same way: 192 errors in 16 files → 0. The shape was different — untyped
+  fakes and partial fixtures rather than real code — so the fix is typedefs on the shared fakes and on
+  the per-file fixtures, not casts at the call sites:
+
+  - `test/helpers/` already modelled its fakes in JSDoc; the callers did not. `test/pi-register.test.mjs`
+    and `test/pi-sweep.test.mjs` grew `InstallTree`/`SweepTree` typedefs for their throwaway trees,
+    `test/pi-installer.test.mjs` a `PackageFixture`, and `test/create-chores.test.mjs` a `FakeBead`
+    mirroring what `test/helpers/fake-bd.mjs` records — partial option objects (`{ template }`,
+    `{ memory }`, `{ packages }`) now accept the fields the cases actually pass instead of inferring
+    `{}` from the default.
+  - `test/installer.test.mjs`'s generated `hooks.json` is read through a `HooksJson` typedef, so the
+    matcher and hook-command reads are checked rather than `any`; nullable results (`result.settings`,
+    `result.instructions`, `beads.find(...)`) are narrowed where they are asserted, never asserted
+    away with `!`.
+  - `execFile` callbacks narrow `error.code` to a number instead of passing a `string | number`
+    straight into `exitCode`.
+  - One real defect fell out of the sweep: `test/cli.test.mjs` had a `pathExists` helper calling an
+    unimported `stat`, dead code from a copy — deleted.
+
+  `test/typecheck-surface.test.mjs` is the regression guard: it fails if a tooling directory leaves
+  `include`, if any `.mjs` in those directories stops being matched by an include pattern, if the
+  `typecheck` script stops running the root project, or if `exclude` carves a tooling path out.
+  `test/` is in its `REQUIRED_SURFACE`, so dropping the suite back out of the surface is a build
+  failure rather than a silent gap.
+
+- 3dd6ba1: Move leaf execution bead ownership to the stage worker. The stage runner now appends its
+  own milestone notes, closes its own bead on both outcomes, and builds its own remediation
+  chain (a `stage:fix` chore plus a fresh instance of the failed stage, blocked in order) with
+  a `maxFixRounds` check before it does. `run-pipeline-stage` documents that contract across its
+  prompt, playbooks, and skill, and ralph no longer closes leaf beads or creates feedback
+  beads — it keeps a read-only cap backstop only.
+- 3dd6ba1: Convert the last two skill scripts to zero-dependency `.mjs` so they run under bare `node` —
+  no `tsx`, no per-skill install. `create-chores` (`skills/planning/create-task/scripts/`) and
+  `validate-agent-dir` (`skills/productivity/validate-agent-dir/scripts/`) now carry `// @ts-check`
+  and JSDoc types instead of TypeScript syntax, matching `classify-bead.mjs`; behaviour and output
+  are unchanged. `validate-agent-dir.test.ts` moves to `test/validate-agent-dir.test.mjs` and runs
+  in the repo's `node --test` glob, so its 21 tests no longer need a per-skill toolchain. Every
+  live invocation string (`create-task` SKILL/REFERENCE, the `ralph` agent body + skill docs,
+  `agents/README.md`) now calls `node <scripts>/create-chores.mjs`, and the regenerated Copilot
+  agent files follow. The two script packages keep their manifests for now, but with no scripts or
+  devDependencies — their deletion lands with the workspace consolidation.
+
 ## 2.1.0
 
 ### Minor Changes

@@ -2,6 +2,8 @@
 
 import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mjs";
 
 /** @typedef {import("./installers/pi.mjs").InstallPiResult} InstallPiResult */
@@ -12,6 +14,41 @@ const parsed = parseArgs(argv);
 
 if (parsed.command === "help") {
   process.stdout.write(buildHelpText() + "\n");
+  process.exit(0);
+}
+
+/**
+ * Read the version of the package this CLI ships in: `bin/` sits one level below
+ * the package root, in the repo checkout and in the published tarball alike.
+ * Resolved from this file's own location, never from the cwd or node_modules
+ * resolution, so an installed CLI reports the version it was installed at.
+ * Throws when that manifest is missing, unreadable, malformed, or has no version
+ * string, so a broken install never prints a bogus version with a success exit.
+ * @returns {Promise<string>}
+ */
+async function readPackageVersion() {
+  const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+  /** @type {unknown} */
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
+  } catch (err) {
+    throw new Error(`Cannot read the package version from ${manifestPath}: ${/** @type {Error} */ (err).message}`);
+  }
+  const version = /** @type {{ version?: unknown }} */ (manifest).version;
+  if (typeof version !== "string" || version === "") {
+    throw new Error(`Cannot read the package version from ${manifestPath}: the manifest has no "version" string.`);
+  }
+  return version;
+}
+
+if (parsed.command === "version") {
+  try {
+    process.stdout.write(`${await readPackageVersion()}\n`);
+  } catch (err) {
+    process.stderr.write(`${/** @type {Error} */ (err).message}\n`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 

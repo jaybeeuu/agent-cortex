@@ -4,6 +4,10 @@
 // stay a plain `pnpm <script>` token pair.
 import { resolvePublishCommand } from "./lib/release-gates.mjs";
 
+/**
+ * @param {string} raw
+ * @returns {string[]}
+ */
 function readLabels(raw) {
   try {
     return JSON.parse(raw);

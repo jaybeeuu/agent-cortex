@@ -26,11 +26,20 @@ import { fileURLToPath } from "node:url";
 const execFileAsync = promisify(execFile);
 const SELF = fileURLToPath(import.meta.url);
 
+/**
+ * @param {string} worktree
+ * @param {string[]} args
+ * @returns {Promise<string>}
+ */
 async function git(worktree, args) {
   const { stdout } = await execFileAsync("git", args, { cwd: worktree });
   return stdout.trim();
 }
 
+/**
+ * @param {string} porcelain
+ * @returns {number}
+ */
 function countPaths(porcelain) {
   return porcelain.split("\n").filter((line) => line.trim() !== "").length;
 }
@@ -39,6 +48,8 @@ function countPaths(porcelain) {
  * Check that a worker delivered: clean worktree and at least one commit ahead
  * of `base`. Returns the reasons it failed, so the caller can surface them
  * instead of guessing why a stage did not advance.
+ * @param {{ worktree: string, base: string }} options
+ * @returns {Promise<{ ok: boolean, reasons: string[], commitsAhead: number }>}
  */
 export async function verifyWorkerTree({ worktree, base }) {
   const reasons = [];
@@ -58,7 +69,12 @@ export async function verifyWorkerTree({ worktree, base }) {
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
+/**
+ * @param {string[]} argv
+ * @returns {Record<string, string | true>}
+ */
 function parseFlags(argv) {
+  /** @type {Record<string, string | true>} */
   const flags = {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -75,6 +91,11 @@ function parseFlags(argv) {
   return flags;
 }
 
+/**
+ * @param {Record<string, string | true>} flags
+ * @param {string} name
+ * @returns {string}
+ */
 function required(flags, name) {
   const value = flags[name];
   if (typeof value !== "string" || value === "") {
@@ -84,6 +105,10 @@ function required(flags, name) {
   return value;
 }
 
+/**
+ * @param {string[]} argv
+ * @returns {Promise<void>}
+ */
 async function main(argv) {
   const flags = parseFlags(argv);
   const verdict = await verifyWorkerTree({

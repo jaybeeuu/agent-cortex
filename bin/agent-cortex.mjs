@@ -4,6 +4,9 @@ import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
 import { join, dirname } from "node:path";
 import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mjs";
 
+/** @typedef {import("./installers/pi.mjs").InstallPiResult} InstallPiResult */
+/** @typedef {import("./installers/pi.mjs").RegisterPiResult} RegisterPiResult */
+
 const argv = process.argv.slice(2);
 const parsed = parseArgs(argv);
 
@@ -66,7 +69,7 @@ if (parsed.command === "install") {
         process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
       }
     } catch (err) {
-      process.stderr.write(`Install failed: ${err.message}\n`);
+      process.stderr.write(`Install failed: ${/** @type {Error} */ (err).message}\n`);
       process.exit(1);
     }
     process.exit(0);
@@ -99,8 +102,11 @@ if (parsed.command === "install") {
       // keeps generating only (documented in --help).
       if (parsed.output === undefined) {
         await registerClaude({
-          root: result.marketplaceRoot,
-          manifest: result.marketplaceManifest,
+          // A default install always materialises the marketplace manifest; the
+          // generate-only form (--output) is the only path where it is null, and
+          // this branch is not that path.
+          root: /** @type {string} */ (result.marketplaceRoot),
+          manifest: /** @type {object} */ (result.marketplaceManifest),
           pluginVersion: result.pluginVersion,
           dryRun: parsed.dryRun ?? false,
           requireRegister: parsed.requireRegister ?? false,
@@ -108,12 +114,13 @@ if (parsed.command === "install") {
       }
       process.exit(0);
     } catch (err) {
-      process.stderr.write(`Install failed: ${err.message}\n`);
+      process.stderr.write(`Install failed: ${/** @type {Error} */ (err).message}\n`);
       process.exit(1);
     }
   }
 }
 
+/** @param {{ removed: string[] }} result */
 function printPiSweep({ removed }) {
   if (removed.length === 0) return;
   process.stdout.write(
@@ -135,12 +142,13 @@ if (parsed.command === "migrate") {
   try {
     await runMigrate({ apply: parsed.apply ?? false });
   } catch (err) {
-    process.stderr.write(`Migration failed: ${err.message}\n`);
+    process.stderr.write(`Migration failed: ${/** @type {Error} */ (err).message}\n`);
     process.exit(1);
   }
   process.exit(0);
 }
 
+/** @param {InstallPiResult} result */
 function printPiInstall(result) {
   process.stdout.write(`Installing agent-cortex for "pi" harness…\n`);
   process.stdout.write(`  ✓ Staged pi package → ${result.output}\n`);

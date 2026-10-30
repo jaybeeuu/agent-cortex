@@ -80,10 +80,10 @@ Print a brief summary: whether `bd` was installed or already present, whether be
 | "I'll skip `--stealth` so the user can see what happens" | Stealth mode is the contract of this skill — non-stealth init adds hooks and commits the user never asked for. |
 | "I should ask before installing software on the user's machine" | Installing `bd` is the requested outcome; asking adds friction and the skill is meant to run headless. |
 
-## Cross-skill references
+## See Also
 
-- Use `bd-tool` for day-to-day beads usage once initialised — `bd prime`, `bd ready`, `bd create`, `bd close`.
-- Use `create-task` to create tasks with pipeline-stage expansion and a HITL review gate.
+- [bd-tool](../bd-tool/SKILL.md) — day-to-day beads usage once the workspace exists.
+- [create-task](../../planning/create-task/SKILL.md) — load when the first tracked task needs pipeline-stage expansion.
 
 ## Examples
 

@@ -116,12 +116,12 @@ fields, promotion changes its labels and type in place.
   separate means the readiness view answers "what can be worked now?" without a second label
   scheme.
 
-## Cross-skill references
+## See Also
 
-- Recording a new idea instead of deepening one — `record-idea`.
-- Expanding a promoted epic into pipeline stage chores — `create-task`.
-- Requirements capture for an idea that is ready to build — `write-a-prd`.
-- Label vocabulary and queries — `bd-tool`.
+- [record-idea](../record-idea/SKILL.md) — load to capture a new idea instead of deepening an existing one.
+- [create-task](../create-task/SKILL.md) — load when a promoted epic needs pipeline-stage chores.
+- [write-a-prd](../write-a-prd/SKILL.md) — load when the deepened idea is ready for requirements capture.
+- [bd-tool](../../productivity/bd-tool/SKILL.md) — load for label vocabulary and queries beyond the commands used here.
 
 ## Examples
 

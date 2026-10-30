@@ -216,6 +216,25 @@ describe("install claude", () => {
     }
   });
 
+  it("rewrites cross-skill links so every relative link resolves once skills are flat", async () => {
+    const out = await makeTmp();
+    const { exitCode } = await runCli(["install", "claude", "--output", out]);
+    assert.equal(exitCode, 0);
+
+    const skills = join(out, "skills");
+    const files = (await listFiles(skills)).filter((f) => f.endsWith(".md"));
+    assert.ok(files.length > 0);
+    const unresolved = [];
+    for (const f of files) {
+      const content = await readFile(join(skills, f), "utf-8");
+      for (const [, target] of content.matchAll(/\]\(([^)\s]+)\)/g)) {
+        if (/^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(target)) continue;
+        if (!(await pathExists(join(skills, dirname(f), target)))) unresolved.push(`${f} -> ${target}`);
+      }
+    }
+    assert.deepEqual(unresolved, [], "flattening must not orphan an authored skill link");
+  });
+
   it("copies hand-authored plugin extras (.mcp.json, scripts/) from the canonical claude-extras/ dir", async () => {
     const out = await makeTmp();
     await runCli(["install", "claude", "--output", out]);

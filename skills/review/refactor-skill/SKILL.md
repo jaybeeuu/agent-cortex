@@ -14,7 +14,8 @@ description: Refactor an existing SKILL.md to the canonical anatomy template thr
 
 ## When NOT to use
 
-- Creating a brand-new skill from scratch — use `write-a-skill` instead.
+- Creating a brand-new skill from scratch — use [write-a-skill](../../productivity/write-a-skill/SKILL.md) instead.
+- Drift in `AGENTS.md` or `docs/` rather than in a `SKILL.md` — use [maintain-agent-docs](../maintain-agent-docs/SKILL.md).
 - Minor copy-editing or typo fixes that don't need anatomy alignment.
 - Skills that are already verified against the anatomy template.
 
@@ -42,7 +43,7 @@ Run through each dimension of the anatomy template and record how the target cur
 - **Red Flags**: present? Only include for discipline-enforcement skills (security, TDD, review).
 - **Common Rationalizations**: present? Only include for process-critical skills where shortcut pressure is common.
 - **Phase-gate checklists**: present? Only include for multi-phase workflows (3+ distinct phases).
-- **Cross-skill references**: present? Only include when another skill owns a sub-domain better than restating.
+- **See Also**: present? Only include when another skill owns a sub-domain better than restating — as a relative `SKILL.md` link plus the reason to load it.
 - **Examples**: present? Only include for non-trivial output contracts.
 - **Verification checklist**: present? Concrete, machine-checkable items?
 - **Voice/tone**: imperative second-person? Positive framing? Rationale sentences for non-obvious rules?
@@ -68,7 +69,7 @@ Present the comparison and discuss optional sections using the inclusion criteri
 | `Red Flags` | The skill enforces process discipline (security, TDD, review) |
 | `Common Rationalizations` | The skill is process-critical where shortcut pressure is common |
 | `Phase-gate checklists` | The workflow has 3+ distinct phases |
-| `Cross-skill references` | Another skill owns a sub-domain the workflow delegates to |
+| `See Also` | Another skill owns a sub-domain the workflow delegates to |
 | `Examples` | The output contract is non-trivial (formats, schemas, templates) |
 | `Philosophy / rationale` | The skill defends an opinionated method with trade-offs |
 

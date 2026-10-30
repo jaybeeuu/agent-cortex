@@ -54,12 +54,12 @@ Act as a pragmatic, challenging staff engineer: constructive, direct, and eviden
 - **Challenge is the deliverable.** The value of a direction session is the assumptions it surfaces and kills. Optimising for agreement produces a recommendation nobody tested.
 - **Every recommendation carries its tradeoffs.** A choice without documented tradeoffs, revisit triggers, and validation signals cannot be revisited intelligently later.
 
-## Cross-skill references
+## See Also
 
-- `write-a-prd` produces the input brief when no PRD exists yet.
-- `grill-with-docs` sharpens contested terminology and stress-tests the memo against domain docs.
-- `design-an-interface` structures the option-generation step when the decision is about interface shape.
-- `style-documentation` governs the memo's what/whether criteria before writing.
+- [write-a-prd](../../planning/write-a-prd/SKILL.md) — load when the decision needs a requirements brief that does not exist yet.
+- [grill-with-docs](../grill-with-docs/SKILL.md) — load when the contested point is vocabulary rather than technology.
+- [design-an-interface](../design-an-interface/SKILL.md) — load when the decision is interface shape and option generation needs structure.
+- [style-documentation](../../style/style-documentation/SKILL.md) — load to decide whether the decision memo gets written at all.
 
 ## Examples
 

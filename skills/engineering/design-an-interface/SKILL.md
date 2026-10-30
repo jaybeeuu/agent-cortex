@@ -93,10 +93,10 @@ description: "Generate multiple radically different interface designs for a modu
 - [ ] Phase 4 complete: comparison shared and divergence highlighted
 - [ ] Phase 5 complete: candidate synthesized with user input
 
-## Cross-skill references
+## See Also
 
-- `improve-codebase-architecture` invokes this skill for its multi-design step (step 5 of its workflow).
-- Run `grill-with-docs` when the module's domain terminology is unsettled — design names should match the ubiquitous language.
+- [improve-codebase-architecture](../improve-codebase-architecture/SKILL.md) — runs this skill for its multi-design step; load it when the designs feed a deepening decision.
+- [grill-with-docs](../grill-with-docs/SKILL.md) — load when the module's domain terminology is unsettled, so design names match the ubiquitous language.
 
 ## Examples
 

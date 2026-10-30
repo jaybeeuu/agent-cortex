@@ -162,12 +162,12 @@ exact value ralph queries (`bd ready -l execution:afk`). That is also why the re
 the label *is* the query, so a half-migrated workspace does not error — it silently starves, and
 the queue looks empty instead of broken. Hence snapshot → dry run → gated apply → post-check.
 
-## Cross-skill references
+## See Also
 
-- `bd-tool` — bead query and label conventions the migration's post-checks rely on.
-- `init-beads` — create the `.beads/` workspace before a first migration.
-- `classify-bead` — the skill that applies `execution:*` labels to new beads after migration.
-- `ralph` — the consumer of `execution:afk`; its query is the migration's smoke test.
+- [bd-tool](../bd-tool/SKILL.md) — bead query and label conventions the post-checks assume.
+- [classify-bead](../../planning/classify-bead/SKILL.md) — the classifier that applies `execution:*` labels to new beads after the rename.
+- [ralph](../../workflow/ralph/SKILL.md) — the consumer whose `execution:afk` query is the migration's smoke test.
+- [init-beads](../init-beads/SKILL.md) — load when the project has no `.beads/` workspace to migrate yet.
 
 ## Verification checklist
 

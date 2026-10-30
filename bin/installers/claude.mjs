@@ -17,7 +17,11 @@
 //                                           plugin scan expects) with .md files
 //                                           token-substituted — no symlinks, so
 //                                           literal {{TOOL:...}}/{{PATH:...}}
-//                                           never reaches Claude
+//                                           never reaches Claude. Cross-skill
+//                                           links are rewritten for the flat
+//                                           layout (scripts/lib/skill-links.mjs),
+//                                           so a grouped-tree handoff still
+//                                           resolves in the plugin.
 //   <output>/hooks.json + hooks/<scripts>   from hooks/claude/ (support files
 //                                           referenced via ${CLAUDE_PLUGIN_ROOT})
 //   <output>/.mcp.json + scripts/           hand-authored extras copied from
@@ -59,6 +63,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
+import { flattenSkillLinks } from "../../scripts/lib/skill-links.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
@@ -169,20 +174,18 @@ async function buildAgents(root) {
  * under skills/), token-substituting .md files against token-map.json's claude
  * column (the same materialisation as bin/installers/pi.mjs: no symlinks, so
  * literal {{TOOL:...}}/{{PATH:...}} never survives; non-.md files verbatim).
+ * Flattening drops the group segment an authored cross-skill link relies on, so
+ * each .md file's skill links are rewritten to the flat sibling path.
  * @param {string} root
  * @param {string} skillOut
  * @param {{ dryRun: boolean, pluginRoot: string | undefined, tokenMap: TokenMap, warn: Warn }} options
  * @returns {Promise<{ names: string[], md: number, files: number, dir: string }>}
  */
 async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn }) {
+  // Names first: flattening needs the full set to recognise a skill segment in a
+  // link, and every name is unique once flattened.
+  const sources = [];
   const seen = new Map();
-  /** @param {string} content @returns {string} */
-  const transform = (content) =>
-    substituteTokens(content, CLAUDE, tokenMap, { dropNullTools: true, pluginRoot, resolveRelativePaths: true, warn });
-
-  const names = [];
-  let md = 0;
-  let files = 0;
   for (const group of (await readdir(join(root, "skills"))).sort(byName)) {
     const groupDir = join(root, "skills", group);
     if (!(await isDirectory(groupDir))) continue;
@@ -193,11 +196,29 @@ async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn 
         throw new Error(`duplicate skill name "${name}" (${seen.get(name)} and ${group}) — names must be unique when flattened`);
       }
       seen.set(name, group);
-      names.push(name);
-      const stats = await copyTree(skillDir, join(skillOut, name), transform, dryRun);
-      md += stats.md;
-      files += stats.files;
+      sources.push({ name, dir: skillDir });
     }
+  }
+
+  const names = sources.map((source) => source.name);
+  const nameSet = new Set(names);
+  let md = 0;
+  let files = 0;
+  for (const source of sources) {
+    /** @param {string} content @returns {string} */
+    const transform = (content) =>
+      flattenSkillLinks(
+        substituteTokens(content, CLAUDE, tokenMap, {
+          dropNullTools: true,
+          pluginRoot,
+          resolveRelativePaths: true,
+          warn,
+        }),
+        nameSet,
+      );
+    const stats = await copyTree(source.dir, join(skillOut, source.name), transform, dryRun);
+    md += stats.md;
+    files += stats.files;
   }
   return { names, md, files, dir: skillOut };
 }

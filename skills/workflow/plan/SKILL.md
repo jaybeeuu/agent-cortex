@@ -245,16 +245,13 @@ Deliver a handoff bead and instructions for running ralph.
 - **Planning and execution are separate concerns.** The plan skill works with the user to get the right scope and structure. Ralph then executes autonomously within that structure. Separating them means the user reviews once, not piecemeal.
 - **AFK by default.** Classify tasks as AFK unless a human is genuinely required. Agent capability grows over time — tasks that feel HITL today may be AFK tomorrow.
 
-## Cross-skill references
+## See Also
 
-- `write-a-prd` — PRD template and interview workflow for Phase 1 (this skill incorporates the approach inline rather than delegating, to maintain a single coherent conversation).
-- `prd-to-tasks` — For the task breakdown step in Phase 2. If the PRD is already written and only decomposition is needed, use that skill directly.
-- `create-task` — Invoked in Phase 3 for each task. Handles bead creation, classification via `classify-bead`, and pipeline expansion for AFK tasks.
-- `classify-bead` — Invoked internally by `create-task`; not invoked directly by this skill.
-- `ralph` — The downstream skill that consumes the handoff bead. Run a separate agent with "Use the ralph skill. Start from bead #<handoff-id>."
-- `record-idea` — Use this instead if the idea is not ready for implementation planning.
-- `style-comms` — Invoke during Phase 1 if the user stories or implementation decisions need clearer writing.
-- `style-documentation` — Invoke during Phase 1 to align PRD documentation conventions with project standards.
+- [write-a-prd](../../planning/write-a-prd/SKILL.md) — owns the PRD template and interview workflow that Phase 1 folds in.
+- [prd-to-tasks](../../planning/prd-to-tasks/SKILL.md) — load when the PRD is already written and only decomposition is needed.
+- [spec-to-tickets](../../planning/spec-to-tickets/SKILL.md) — load instead when the PRD must become external tickets rather than beads.
+- [create-task](../../planning/create-task/SKILL.md) — Phase 3's per-task bead creation and pipeline expansion; it invokes `classify-bead` internally, so this skill never classifies directly.
+- [ralph](../ralph/SKILL.md) — the downstream consumer of the handoff bead — hand off by running a separate agent with "Use the ralph skill. Start from bead #<handoff-id>".
 
 ## Examples
 

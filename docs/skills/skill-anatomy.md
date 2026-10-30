@@ -61,9 +61,19 @@ For each optional section, define **what it is**, include an **example snippet**
 | `Common Rationalizations` | Excuses models use to skip process with rebuttals | `| "This is small" | Small changes still need invariants checked. |` | Process-critical skills where shortcut pressure is common | Mechanical one-step skills |
 | `Philosophy / rationale` | Why the method exists and what trade-offs it protects | `- We front-load validation because downstream rollback cost is higher.` | Opinionated skills expected to handle novel variants | Purely mechanical instructions |
 | `Phase-gate checklists` | Mid-workflow gates that must pass before proceeding | `- [ ] Phase 1 complete: baseline tests captured.` | Multi-phase workflows (3+ distinct phases) | Linear single-phase tasks |
-| `Cross-skill references` | Explicit delegation to another skill for a real sub-task | `- Run \\`review-security\\` before committing.` | Another skill owns a sub-domain better than restating it | Self-contained skills |
+| `See Also` | Explicit handoff to another skill for a real sub-task: a relative link to its `SKILL.md` plus the reason to load it | `- [review-security](../../review/review-security/SKILL.md) — run before committing.` | Another skill owns a sub-domain better than restating it | Self-contained skills |
 | `Examples` | Full worked sample of expected outcome/output | `- Input: ... Output: ...` | Any non-trivial output contract | Trivially self-evident skills |
 | `Workflow diagrams` | Inline ASCII diagram showing step flow and decision points | Fenced block of `[Box]`, `|`, `-`, `>`, `v` arrows, e.g. `[Start] --> [Validate] --> [Run]` | Multi-step or branching workflows where a glanceable flow improves comprehension | Simple linear workflows already clear from numbered steps |
+
+`## See Also` entries are one-line handoffs: a relative link to the related skill's `SKILL.md`, an
+em-dash, and the reason a reader of this skill would load that one. A bare skill name leaves the
+reader guessing whether the link matters; the reason is what turns a link list into routing.
+
+Write the path against the authored tree (`../../<group>/<skill>/SKILL.md` from a skill directory).
+The Claude Code installer flattens skills and rewrites these targets at copy time, so a hand-written
+link that resolves here resolves in both install layouts. List only genuine handoffs — inline calls
+inside `## Workflow` already cover skills used as a step, and `using-agent-skills` already maps the
+whole corpus, so a duplicate entry adds noise.
 
 ## Workflow diagram style guide
 
@@ -115,6 +125,7 @@ A skill passes anatomy review when:
 - [ ] Tool references use `{{TOOL:name}}` tokens, not hardcoded tool names.
 - [ ] Required sections exist and follow canonical ordering.
 - [ ] Optional sections (if present) include what/when/example guidance.
+- [ ] `See Also` entries link the target `SKILL.md` relatively and state why to load it.
 - [ ] Workflow diagrams (if present) are ASCII-only and follow the workflow diagram style guide.
 - [ ] Verification checklist contains concrete, machine-checkable items.
 - [ ] Supporting docs are split by purpose when `SKILL.md` would exceed ~150 lines.
@@ -183,9 +194,9 @@ Workflow at a glance (include only when the flow branches):
 - [ ] Phase 1 complete and baseline checks captured.
 - [ ] Phase 2 complete and contract validation passed.
 
-## Cross-skill references
+## See Also
 
-- Run `review-security` before committing any externally exposed change.
+- [review-security](../../review/review-security/SKILL.md) — run before committing any externally exposed change.
 
 ## Examples
 

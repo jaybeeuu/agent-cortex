@@ -19,3 +19,8 @@ interview is complete only when there is enough agreed detail to fill every requ
 Never invent section content. If you must infer an answer, state it as an assumption and get the
 human to confirm it before it becomes bead content. Leave unresolved branches open — an open
 question is better than a fabricated answer.
+
+## See Also
+
+- [grill-with-docs](../../engineering/grill-with-docs/SKILL.md) — load when the decisions reached should land in CONTEXT.md or an ADR.
+- [technical-direction](../../engineering/technical-direction/SKILL.md) — load when the grilled design needs a justified recommendation between options.

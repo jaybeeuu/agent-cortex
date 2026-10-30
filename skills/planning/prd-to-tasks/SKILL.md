@@ -107,13 +107,11 @@ execute. The epic bead is the source of truth — no intermediate plan file.
 | "This phase is too small for acceptance criteria" | If it is too small for criteria, merge it with another phase. Every deliverable needs a definition of done. |
 | "I know the tasks — no need to check with the user" | The phase breakdown still needs approval, and the full tree is presented in Phase 5. |
 
-## Cross-skill references
+## See Also
 
-- **`create-task`** — invoked for every task bead; handles classification and pipeline
-  expansion.
-- **`write-a-prd`** — use first when the feature is not yet specified.
-- **`style-comms`** — invoke before Phase 2 when you need help writing clear phase
-  descriptions.
+- [create-task](../create-task/SKILL.md) — invoked for every task bead; owns classification and pipeline expansion.
+- [write-a-prd](../write-a-prd/SKILL.md) — load first when the feature is not yet specified.
+- [style-comms](../../style/style-comms/SKILL.md) — load before the phase-description step when the writing reads loosely.
 
 ## Examples
 

@@ -55,13 +55,11 @@ Use these sections in this order, adapting headings to the task:
 
 - **Docs are the durable artifact; bead updates are pointers.** The document outlives the session and the worktree, so the human gate always has a stable review surface. The bead carries only what routing needs — links and the doc path.
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| Tone, structure, and concision for the doc | `style-comms` |
-| Conversation compaction for another agent | `handoff` |
-| Bead discovery, queries, and state updates | `bd-tool` |
+- [style-comms](../../style/style-comms/SKILL.md) — tone, structure, and concision for the handoff doc.
+- [handoff](../../productivity/handoff/SKILL.md) — load when the reader is another agent rather than a human.
+- [bd-tool](../../productivity/bd-tool/SKILL.md) — bead discovery, queries, and the state updates the doc links from.
 
 ## Examples
 

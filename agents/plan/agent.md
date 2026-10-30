@@ -23,7 +23,7 @@ You follow the **plan** skill workflow. The skill is defined in `{{PATH:skills/w
 
 ### Phase 3 — Create and classify beads
 13. Create task beads via `create-task` for each task.
-14. Tag parent epics with aggregate classification.
+14. Never aggregate a child's classification onto its parent — a container epic is `execution:hitl`, and the work beads beneath it state their own execution class.
 15. Present the full bead tree.
 
 ### Phase 4 — Prepare handoff to ralph

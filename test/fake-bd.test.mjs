@@ -11,16 +11,27 @@ import { join } from "node:path";
 
 import { makeFakeBd } from "./helpers/fake-bd.mjs";
 
-/** Run the fake `bd` binary with the given args. */
+/**
+ * An `execFile` outcome: the exit code the fake binary reported, plus its streams.
+ * @typedef {{ exitCode: number, stdout: string, stderr: string }} RunResult
+ */
+
+/** Run the fake `bd` binary with the given args.
+ * @param {string} bin
+ * @param {string} state
+ * @param {string[]} args
+ * @returns {Promise<RunResult>} */
 function runFake(bin, state, args) {
   return new Promise((resolve) => {
     execFile(bin, args, { env: { ...process.env, FAKE_BD_STATE: state } }, (error, stdout, stderr) => {
-      resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr });
+      resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr });
     });
   });
 }
 
-/** Create a fresh fake workspace, run `fn`, then remove it. */
+/** Create a fresh fake workspace, run `fn`, then remove it.
+ * @param {(bin: string, state: string) => Promise<void>} fn
+ * @returns {Promise<void>} */
 async function withFake(fn) {
   const dir = await mkdtemp(join(tmpdir(), "fake-bd-"));
   try {

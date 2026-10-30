@@ -10,6 +10,10 @@ import {
   runCli,
 } from '../skills/workflow/ralph/scripts/pending-gates.mjs';
 
+/** A bead as the fake `bd` reports it: an id and a title, nothing else.
+ * @typedef {{ id: string, title?: string }} Bead */
+
+/** @param {Bead} bead @returns {{ id: string, title: string }} */
 function createBead({ id, title = `${id} title` }) {
   return { id, title };
 }
@@ -17,10 +21,14 @@ function createBead({ id, title = `${id} title` }) {
 /**
  * Fake `bd` for the query-contract tests: answers the three queries ralph makes
  * and refuses anything else, so an unexpected query fails loudly.
+ * @param {{ ready?: Bead[], open?: Bead[], epics?: Bead[] }} [seed]
+ * @returns {{ exec: (args: string[]) => Promise<string>, calls: string[][] }}
  */
 function makeExec({ ready = [], open = [], epics = [] } = {}) {
+  /** @type {string[][]} */
   const calls = [];
 
+  /** @param {string[]} args */
   const exec = async (args) => {
     calls.push(args);
     if (args[0] === 'ready') return JSON.stringify(ready);
@@ -32,6 +40,8 @@ function makeExec({ ready = [], open = [], epics = [] } = {}) {
   return { exec, calls };
 }
 
+/** Capture the CLI's stdout and parse it back as JSON.
+ * @returns {{ write: (chunk: string) => void, read: () => any }} */
 function capture() {
   let output = '';
   return { write: (chunk) => { output += chunk; }, read: () => JSON.parse(output) };

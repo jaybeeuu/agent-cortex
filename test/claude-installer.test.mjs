@@ -23,6 +23,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const CLI_PATH = join(ROOT, "bin", "agent-cortex.mjs");
 
+/** Run the CLI; optionally pass a custom env (e.g. a fake HOME).
+ * @param {string[]} args
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>} */
 function runCli(args, env = {}) {
   return new Promise((resolve) => {
     execFile(
@@ -30,13 +34,15 @@ function runCli(args, env = {}) {
       [CLI_PATH, ...args],
       { env: { ...process.env, ...env } },
       (error, stdout, stderr) => {
-        resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr });
+        resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr });
       },
     );
   });
 }
 
-/** True when a path exists (stat succeeds). */
+/** True when a path exists (stat succeeds).
+ * @param {string} p
+ * @returns {Promise<boolean>} */
 async function pathExists(p) {
   try {
     await stat(p);
@@ -50,11 +56,17 @@ function makeTmp() {
   return mkdtemp(join(tmpdir(), "agent-cortex-claude-installer-"));
 }
 
+/** Raw argv lines of every invocation the fake recorded.
+ * @param {string} log
+ * @returns {Promise<string[]>} */
 async function callLines(log) {
   return (await readFile(log, "utf-8")).trim().split("\n").filter(Boolean);
 }
 
-/** Registration actions logged at/after line `since` (0 = whole log). */
+/** Registration actions logged at/after line `since` (0 = whole log).
+ * @param {string} log
+ * @param {number} [since]
+ * @returns {Promise<string[]>} */
 async function actionsSince(log, since = 0) {
   return registrationActions((await callLines(log)).slice(since));
 }
@@ -230,6 +242,7 @@ describe("registerClaude", () => {
     const root = await makeMarketplaceRoot();
     const fake = await makeFakeClaude(tmp, { failWhen: "plugin --help" });
     try {
+      /** @type {string[]} */
       const warnings = [];
       const result = await registerClaude({ root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
       assert.equal(result.registered, false);

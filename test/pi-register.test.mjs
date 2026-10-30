@@ -27,17 +27,45 @@ const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "age
 // named @jaybeeuu/agent-cortex-pi).
 const RAW_PACKAGE_NAME = "@jaybeeuu/agent-cortex";
 
+/** A configured pi package source: a plain path/npm spec, or an entry object.
+ * @typedef {string | { source: string, skills?: string[] }} PackageSource */
+
+/** A throwaway install tree: the repo root, a raw-repo checkout, pi's settings
+ * directory, and the staged output.
+ * @typedef {object} InstallTree
+ * @property {string} root
+ * @property {string} rawRepo
+ * @property {string} staged
+ * @property {string} piDir
+ * @property {() => Promise<void>} cleanup
+ */
+
+/** An install tree with the fake `pi` started for it.
+ * @typedef {InstallTree & {
+ *   pi: { bin: string, log: string, settingsPath: string },
+ *   settingsPath: string,
+ *   localSources: () => Promise<string[]>,
+ *   calls: () => Promise<string[]>,
+ * }} PiTree */
+
+/** Run the CLI; optionally pass a custom env (e.g. a fake HOME).
+ * @param {string[]} args
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>} */
 function runCli(args, env = {}) {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
       [CLI_PATH, ...args],
       { env: { ...process.env, ...env } },
-      (error, stdout, stderr) => resolve({ exitCode: error ? (error.code ?? 1) : 0, stdout, stderr }),
+      (error, stdout, stderr) => resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr }),
     );
   });
 }
 
+/** True when a path exists (stat succeeds).
+ * @param {string} p
+ * @returns {Promise<boolean>} */
 async function pathExists(p) {
   try {
     await stat(p);
@@ -51,6 +79,7 @@ async function pathExists(p) {
  * A throwaway install tree: the repo root that owns the raw package name, a
  * raw-repo checkout (a worktree of it) configured as a pi package source, a
  * fake pi (whose own directory is pi's settings dir), and the staged output.
+ * @returns {Promise<InstallTree>}
  */
 async function makeInstallTree() {
   const root = await mkdtemp(join(tmpdir(), "pi-register-"));
@@ -75,7 +104,10 @@ async function makeInstallTree() {
   };
 }
 
-/** Start the fake `pi` for a tree, seeding pi's configured package sources. */
+/** Start the fake `pi` for a tree, seeding pi's configured package sources.
+ * @param {InstallTree} tree
+ * @param {{ packages?: PackageSource[], failWhen?: string | null }} [options]
+ * @returns {Promise<PiTree>} */
 async function makePi(tree, { packages = [], failWhen = null } = {}) {
   const pi = await makeFakePi(tree.piDir, { packages, failWhen });
   return {
@@ -85,6 +117,7 @@ async function makePi(tree, { packages = [], failWhen = null } = {}) {
     settingsPath: pi.settingsPath,
     /** Absolute paths of the local package sources pi has configured. */
     localSources: async () => {
+      /** @type {{ packages?: PackageSource[] }} */
       const { packages: configured = [] } = JSON.parse(await readFile(pi.settingsPath, "utf-8"));
       return configured
         .map((entry) => (typeof entry === "string" ? entry : entry.source))
@@ -246,6 +279,7 @@ describe("registerPi", () => {
     try {
       const fx = await makePi(tree, { packages: [{ source: "../checkout", skills: [] }] });
       const settingsBefore = await readFile(fx.settingsPath, "utf-8");
+      /** @type {string[]} */
       const warnings = [];
 
       const summary = await registerPi({

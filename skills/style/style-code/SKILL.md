@@ -68,17 +68,12 @@ description: Defines this project's coding style, conventions, and architectural
 | "A factory closure is more functional/pure" | State is state — a class names it. A closure over mutable state is an object with extra steps: the state is still there, the API is less discoverable, and nothing is gained. Use `#private` fields and public methods. |
 | "It's convenient to return the saved row / new count from the write" | That return turns a command into a query mid-flight: the caller now depends on data the mutation happens to produce. Return a typed result for the outcome, and let a separate query read the state if the caller needs it. |
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| Test-first development loop | `tdd` |
-| Test writing conventions | `style-tests` |
-| Building or hardening the project's ubiquitous language | `grill-with-docs` |
-| Communication tone and document structure | `style-comms` |
-| What and whether to document | `style-documentation` |
-| Surfacing architectural friction and deepening shallow modules | `improve-codebase-architecture` |
-| Secrets and credential scanning | `review-security` |
+- [tdd](../../engineering/tdd/SKILL.md) — the red-green loop that drives the code being named.
+- [style-tests](../style-tests/SKILL.md) — assertion, mock, and test-data conventions, which these rules leave out.
+- [grill-with-docs](../../engineering/grill-with-docs/SKILL.md) — the ubiquitous language that names and boundaries should follow.
+- [review-security](../../review/review-security/SKILL.md) — run before committing, for leaked secrets these rules cannot catch.
 
 ## Examples
 

@@ -54,13 +54,12 @@ Run the steps in order. Skip a step only when the user confirms it is unnecessar
 - [ ] Gate 2 — modules agreed: the module list and test expectations match the user's model of the solution.
 - [ ] Gate 3 — PRD filed: the epic bead contains the rendered template, carries `execution:hitl`, and lints clean.
 
-## Cross-skill references
+## See Also
 
-- Use `record-idea` when the idea is not yet ready to build.
-- Use `write-a-ticket` when the spec targets an external tracker rather than a bead.
-- Use `spec-to-tickets` when an approved PRD/RFC must become a map of external tickets.
-- Run `prd-to-tasks` on the filed epic to break the PRD into an executable backlog.
-- Do not run `classify-bead` on the epic: a container is `execution:hitl` by definition. `create-task` classifies the work beads beneath it.
+- [prd-to-tasks](../prd-to-tasks/SKILL.md) — the next step after filing: breaks the epic into an executable backlog, and its `create-task` calls classify only the work beads, so never run `classify-bead` on the epic itself.
+- [spec-to-tickets](../spec-to-tickets/SKILL.md) — load when the spec becomes tickets in an external tracker instead of beads.
+- [write-a-ticket](../write-a-ticket/SKILL.md) — load when the output is a single externally tracked ticket.
+- [record-idea](../record-idea/SKILL.md) — load when the idea is not yet ready to build.
 
 ## Examples
 

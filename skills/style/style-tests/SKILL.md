@@ -106,14 +106,12 @@ Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 | "A shared fixture saves setup time" | It couples tests and hides which value drives the case. Build data fresh per test. |
 | "Asserting every field is more thorough" | It makes the test break for reasons the case does not care about. Assert the fields that prove the behaviour. |
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| Red-green-refactor development loop | `tdd` |
-| Code-level style and conventions | `style-code` |
-| Plan test rows that gate implementation | `plan` |
-| Secrets and credential scanning | `review-security` |
+- [tdd](../../engineering/tdd/SKILL.md) — the red-green loop these conventions serve; load it for slicing and cycle discipline.
+- [style-code](../style-code/SKILL.md) — naming and module-boundary rules for the code under test.
+- [plan](../../workflow/plan/SKILL.md) — load when test rows should gate implementation planning rather than code.
+- [review-security](../../review/review-security/SKILL.md) — run before committing, when fixtures risk carrying real credentials.
 
 ## Examples
 

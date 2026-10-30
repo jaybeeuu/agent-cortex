@@ -112,13 +112,9 @@ Optional — beads work locally. Sync at session end when it's convenient.
   plain ready listing with `bd ready --exclude-label kind:idea`.
 - **Chore beads** (`--type chore`): auto-created pipeline stages. Do not create them manually — use `create-task`. Not ephemeral — they must stay visible to plain `bd ready` for ralph to discover them.
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| Creating a new task with pipeline expansion | `create-task` |
-| Executing a single pipeline stage | `run-pipeline-stage` |
-| Running the full end-to-end pipeline | `ralph` |
-| Classifying a bead's execution class | `classify-bead` |
-| Capturing an unscoped idea as a bead | `record-idea` |
-| Deepening or promoting an idea bead | `flesh-out-idea` |
+- [create-task](../../planning/create-task/SKILL.md) — creating a task that needs pipeline expansion.
+- [classify-bead](../../planning/classify-bead/SKILL.md) — resolving a bead's execution class.
+- [run-pipeline-stage](../../workflow/run-pipeline-stage/SKILL.md) — executing a single pipeline stage for a claimed bead.
+- [ralph](../../workflow/ralph/SKILL.md) — running the whole ready backlog end to end.

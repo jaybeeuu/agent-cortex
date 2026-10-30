@@ -79,11 +79,11 @@ Capture an idea that is not implementation-ready as a `bd` bead labelled `kind:i
 - **Capture before it becomes plan-shaped.** Scoping too early forces decisions the idea has not earned yet; a backlog bead keeps the option open at minimal cost. The validity check is what stops the backlog from filling with confident, doomed ideas.
 - **One home for backlog state.** Ideas live in `bd` next to the tasks and epics they become, so priority, dependencies, and search work the same way at every stage and promotion is a label change rather than a migration.
 
-## Cross-skill references
+## See Also
 
-- To deepen a recorded idea, update its sections, or promote it to an epic with task children, run `flesh-out-idea`.
-- When an idea passes its validity check and becomes implementation-ready, run `write-a-prd` to scope it properly.
-- For a full feature pipeline from idea to task breakdown, run `plan`.
+- [flesh-out-idea](../flesh-out-idea/SKILL.md) — the next step when the idea needs deepening, promotion, or task children.
+- [write-a-prd](../write-a-prd/SKILL.md) — load once the validity check passes and the idea is implementation-ready.
+- [plan](../../workflow/plan/SKILL.md) — load when the idea should run the whole feature pipeline rather than just be recorded.
 
 ## Examples
 

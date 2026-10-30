@@ -62,11 +62,11 @@ description: Create a detailed refactor plan via user interview, split into tiny
 - [ ] Phase 3 complete: commit plan written with every step leaving the codebase working.
 - [ ] Phase 4 complete: bead filed via `create-task` with priority P2.
 
-## Cross-skill references
+## See Also
 
-- `create-task` — files the plan bead and expands it into pipeline stages. Mandatory; never call `bd create` directly.
-- `write-a-prd` — product-level planning that is not a code refactor.
-- `record-idea` — early-stage refactor ideas not ready for a full plan.
+- [create-task](../create-task/SKILL.md) — mandatory next step: files the plan bead and expands it into pipeline stages.
+- [write-a-prd](../write-a-prd/SKILL.md) — load when the change is product-level rather than a code refactor.
+- [record-idea](../record-idea/SKILL.md) — load when the refactor idea is still too early for a commit-sized plan.
 
 ## Examples
 

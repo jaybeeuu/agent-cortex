@@ -115,12 +115,12 @@ Workflow at a glance:
 | "I'll note the open question in the ticket" | Only with the human's explicit agreement. Otherwise resolve it or spike it — an unagreed question is a blocked implementer. |
 | "One big ticket is simpler to track" | Big tickets hide scope and block parallel work. |
 
-## Cross-skill references
+## See Also
 
-- **`write-a-ticket`** — invoked for every body; owns the ticket quality bar.
-- **`write-a-prd`** — use first when no spec exists.
-- **`prd-to-tasks`** — use when the output is beads for the ralph/bd loop, not external tickets.
-- **`style-comms`** — invoke when drafting the map's titles and intents.
+- [write-a-ticket](../write-a-ticket/SKILL.md) — invoked for every ticket body; owns the ticket quality bar.
+- [write-a-prd](../write-a-prd/SKILL.md) — load first when no spec exists.
+- [prd-to-tasks](../prd-to-tasks/SKILL.md) — load when the output is beads for the ralph/bd loop rather than external tickets.
+- [style-comms](../../style/style-comms/SKILL.md) — load when the map's titles and intents read loosely.
 
 ## Phase-gate checklist
 

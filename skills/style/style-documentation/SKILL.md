@@ -70,13 +70,12 @@ description: Defines what to document, what to skip, and how to structure docume
 | "This is obvious from the code" | Then do not write it. The code is the documentation — let it do the work. |
 | "This doc is harmless even if it drifts" | Drift is not harmless — it erodes trust. Every stale sentence makes the reader wonder what else is wrong. Prune or update instead. |
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| Tone, structure, and concision for writing | `style-comms` |
-| Code-level conventions and inline comments | `style-code` |
-| Secrets and credential scanning before committing | `review-security` |
+- [maintain-agent-docs](../../review/maintain-agent-docs/SKILL.md) — load when auditing existing docs for drift rather than writing new pages.
+- [style-comms](../style-comms/SKILL.md) — tone, structure, and concision for the prose itself.
+- [style-code](../style-code/SKILL.md) — code-level conventions, including doc comments and examples.
+- [review-security](../../review/review-security/SKILL.md) — run before committing, so examples stay secret-free.
 
 ## Examples
 

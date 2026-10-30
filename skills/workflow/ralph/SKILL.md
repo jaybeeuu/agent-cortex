@@ -139,11 +139,13 @@ Both paths end in a **gated** `bd dolt push`: on a non-zero exit, retry once, th
 - [ ] Init complete: `bd prime` held, gitignore entries present, workspace and state.json created, pipeline.json read, first `bd ready -l execution:afk` classified, first agent work dispatched (a stage chore, a decomposition worker or an expansion worker).
 - [ ] Event loop handed off: completion-detection mechanism running (or HITL Pause/Shutdown started) — a decomposition- or expansion-only init is in flight, not idle.
 
-## Cross-skill references
+## See Also
 
-- The `run-pipeline-stage` skill owns the stage-runner prompt, per-stage playbooks, the `---REPORT---` format, and the worker's remediation-chain contract — read it before dispatching any stage.
-- The `create-task` skill owns `pipeline.json` and creates the `lifecycle:feature-pr` HITL gate beads; together with `prd-to-tasks` it owns the feature → planning → implementation hierarchy that ralph's decomposition worker invokes. `skills/workflow/ralph/scripts/pending-gates.mjs` owns the gate predicate — parked vs pending — and is the only place the gate queries live.
-- Do not invoke `classify-bead` from this loop — classification was already applied at planning time.
+- [run-pipeline-stage](../run-pipeline-stage/SKILL.md) — owns the stage-runner prompt, per-stage playbooks, the `---REPORT---` format, and the worker's remediation chain. Read it before dispatching any stage.
+- [create-task](../../planning/create-task/SKILL.md) — owns `pipeline.json` and the HITL gate beads; its `scripts/pending-gates.mjs` is the only home of the gate queries.
+- [prd-to-tasks](../../planning/prd-to-tasks/SKILL.md) — load when the decomposition worker expands a feature into slices.
+
+Do not invoke `classify-bead` from this loop — classification was applied at planning time.
 
 ## Verification checklist
 

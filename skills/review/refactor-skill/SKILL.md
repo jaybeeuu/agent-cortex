@@ -14,7 +14,8 @@ description: Refactor an existing SKILL.md to the canonical anatomy template thr
 
 ## When NOT to use
 
-- Creating a brand-new skill from scratch — use `write-a-skill` instead.
+- Creating a brand-new skill from scratch — use [write-a-skill](../../productivity/write-a-skill/SKILL.md) instead.
+- Drift in `AGENTS.md` or `docs/` rather than in a `SKILL.md` — use [maintain-agent-docs](../maintain-agent-docs/SKILL.md).
 - Minor copy-editing or typo fixes that don't need anatomy alignment.
 - Skills that are already verified against the anatomy template.
 

@@ -7,7 +7,7 @@
 - Migrate loose idea markdown files (`docs/ideas/*.md`) to first-class `kind:idea` beads
   in any workspace.
 - Both migrations are **steps in one versioned migration command** — `agent-cortex migrate`
-  (aliased `ctx migrate`), which detects a repo's current migration version and applies
+  (there is no `ctx` alias), which detects a repo's current migration version and applies
   ordered steps up to the latest. Repo-agnostic tool + skill any workspace can run, and a
   single-package.json script tooling story across the agent-cortex repo.
 
@@ -64,7 +64,7 @@
 
 ### D3: Migration command — versioned registry in the CLI
 
-- Command: `agent-cortex migrate` (alias `ctx migrate`), wired into `bin/agent-cortex.mjs`
+- Command: `agent-cortex migrate`, wired into `bin/agent-cortex.mjs`
   + `lib/cli.mjs` (parseArgs + buildHelpText), zero-dep stdlib-only like the rest of the CLI.
 - A **versioned migration registry**: each step declares the version it migrates to.
   `migrate` detects the current version of the target repo's state and applies each step in

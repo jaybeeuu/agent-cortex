@@ -29,7 +29,7 @@ You follow the **plan** skill workflow. The skill is defined in `{{PATH:skills/w
 ### Phase 4 — Prepare handoff to ralph
 16. Determine the handoff bead (epic or meta-epic).
 17. Tag it `workflow:ralph`.
-18. Push bead state with `bd dolt push`.
+18. Push bead state with `bd dolt push` and **gate on the exit status** — non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker; the handoff has not left this machine, so do not present the handoff summary.
 19. Present the handoff summary.
 
 ## Permitted writes

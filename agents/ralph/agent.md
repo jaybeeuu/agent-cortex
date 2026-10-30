@@ -21,7 +21,7 @@ Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.
 - **Single-feature epics** (epic has exactly one feature task child): skip the epic branch entirely. The feature branch (`feature/<parent-id>`) is based directly from `origin/main`. The HITL PR targets `main` directly. No epic PR is required.
 - **Multi-feature epics** (epic has two or more feature task children): each epic runs on `epic/<epic-id>` (base: `origin/main`, never local `main`). Each feature branch is based from its epic branch. Completed features PR into `epic/<epic-id>`; the completed epic PRs into `main`.
 - Each parent feature task runs on `feature/<parent-id>` in `.agent-cortex/worktrees/<parent-id>`.
-- Each feature includes a child HITL task bead (`lifecycle:feature-pr`) for PR review/merge.
+- Each implemented bead owns a child HITL PR-gate task bead (`lifecycle:feature-pr`, blocked by its own `document` chore) for PR review/merge.
 - Completed features must be reviewed by PR merge from the agent branch (`feature/<parent-id>`) into its base (epic branch for multi-feature epics, `main` for single-feature epics), then the HITL PR task bead must be closed by a human before Ralph continues feature scheduling.
 - Completed multi-feature epics must be reviewed by PR merge into `main`.
 

@@ -51,23 +51,33 @@ Update the top-level bead's `design` field with a high-level implementation plan
 ### 6. Decompose into tasks
 For large workstreams (multiple distinct areas) invoke the **prd-to-tasks** skill. For a single self-contained task invoke **create-task**. Pass the full `bd prime` output and any relevant design context from the `design` field to each skill.
 
-For each new feature bead and each new task bead, create a HITL planning gate before handoff. The feature/task bead depends on this gate and stays blocked until the user explicitly confirms planning is sufficient **for that specific feature/task**.
+**Planning gate.** Each feature carries exactly one HITL planning bead — the design gate that keeps the feature's implementation children out of `bd ready` until a human confirms planning is sufficient. It is the bead `create-task` builds on its feature path: `skills/planning/create-task/SKILL.md` steps 5–6 is the authority for this shape, so when you delegate the feature to `create-task` the gate already exists and you must not create a second one.
 
-Every planning gate description must be cold-start-ready so another person can pick it up without prior chat context. Include all of: (1) what is being built and why, (2) decisions already made, (3) open questions/risks, and (4) references (bead IDs, files, or docs) used during planning.
+Ownership is `--parent`; ordering is `bd dep add`. The planning bead is **owned by the feature** and **blocks every implementation child** of that feature. The feature never depends on its own gate — a container that waits on its own child is neither owner nor ordering.
+
+Every planning bead description must be cold-start-ready so another person can pick it up without prior chat context. Include all of: (1) what is being built and why, (2) decisions already made, (3) open questions/risks, and (4) references (bead IDs, files, or docs) used during planning.
 
 ```bash
-gate_id=$(bd create "Plan: <feature title>" --type task --description "<planning context, decisions, open questions, and references>
+# Design gate: human-owned, owned by the feature, blocking every implementation child.
+planning_id=$(bd create "Plan: <feature title>" --type task --priority <priority> \
+  -l execution:hitl --parent <feature-id> --no-inherit-labels \
+  --description "<planning context, decisions, open questions, and references>
 
 ## Acceptance Criteria
 
-- [ ] User confirms planning is sufficient for this feature/task." --validate)
-bd tag <planning-gate-id> execution:hitl
-bd dep add <feature-or-task-id> <planning-gate-id>   # feature/task depends on planning gate (gate blocks implementation)
+- [ ] The user confirms planning is sufficient for this feature." --validate --silent)
+
+# Readiness gate: every implementation child waits on the design gate.
+bd dep add <impl-task-id> <planning-bead-id>
 ```
 
-Do not close planning gates in bulk. Only close a gate after the user explicitly confirms that exact feature/task is ready to implement; leave all unconfirmed gates open and blocking.
+`--no-inherit-labels` is not optional: `bd` copies a parent's labels at create time, so without it a gate under an `execution:afk` feature picks up `execution:afk` beside its own `execution:hitl` and stops routing as human work.
 
-Before handing off, ensure every bead created in this step carries an `execution:` label — check `bd label list <id>` yourself. Do not spawn `classify-bead` here: planning gates were tagged inline above and `create-task` classifies its beads internally. Only invoke it for a bead that genuinely lacks both the label and a `## Type` field. Then run `bd lint <id>` for every bead created in this step and fix any missing sections before handoff.
+A planning bead is **not** a PR gate and carries no `lifecycle:` label. `create-chores.mjs` owns the `lifecycle:feature-pr` gate — owned by the implementation task, blocked by its `document` chore (`skills/planning/create-task/REFERENCE.md` → PR gate bead); creating one here would put a second, differently-wired gate on the same bead. A standalone task bead needs no planning bead: `create-task` classifies it, and its human checkpoint is that PR gate.
+
+Do not close planning gates in bulk. Only close a gate after the user explicitly confirms that exact feature is ready to implement; leave all unconfirmed gates open and blocking.
+
+Before handing off, ensure every bead created in this step carries an `execution:` label — check `bd label list <id>` yourself. Do not spawn `classify-bead` here: planning gates are labelled inline above and `create-task` classifies its beads internally. Only invoke it for a bead that genuinely lacks both the label and a `## Type` field. Then run `bd lint <id>` for every bead created in this step and fix any missing sections before handoff.
 
 Tag every bead created in this step with `workflow:ralph`:
 
@@ -95,9 +105,9 @@ bead against the full backlog — a P3 feature that blocks others may need a hig
 explicit priority than a standalone P4 feature.
 
 ### 7. Agree with the user
-Present the bead list (IDs, titles, one-line rationale each) plus planning gate status for each item using `✅` (confirmed/closed) or `⏳` (awaiting confirmation/open). Ask the user to confirm or request changes before finishing.
+Present the bead list (IDs, titles, one-line rationale each) plus the planning-gate status of each feature using `✅` (confirmed/closed) or `⏳` (awaiting confirmation/open). Ask the user to confirm or request changes before finishing.
 
-If any planning gates remain open, include an explicit warning that those features/tasks are still blocked and cannot be handed off to ralph yet. Iterate until approved.
+If any planning gate remains open, include an explicit warning that its implementation children are still blocked by it and cannot be handed off to ralph yet. Iterate until approved.
 
 ### 8. Hand off to ralph
 Once approved, report: "Plan complete — `bd ready -l execution:afk` will show the first tasks for ralph."

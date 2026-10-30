@@ -12,7 +12,7 @@ files: no `@ts-nocheck`, no `exclude`, no file converted to TypeScript.
 The surface went from 13 unchecked modules to 0. Measured on the widened `include`, the sweep
 started at 273 errors in 10 files and is now clean:
 
-- `bin/installers/pi.mjs` 107 → 0, `bin/installers/claude.mjs` 79 → 0, `bin/agent-cortex.mjs` 8 → 0,
+- `bin/installers/pi.mjs` 104 → 0, `bin/installers/claude.mjs` 76 → 0, `bin/agent-cortex.mjs` 24 → 0,
   `scripts/lib/compose-agent.mjs` 28 → 0, `scripts/lib/verify-worker-tree.mjs` 13 → 0,
   `scripts/lib/release-gates.mjs` 10 → 0, `hooks/claude/scripts/notify.mjs` 10 → 0, `lib/cli.mjs` 6 → 0,
   and 1 each in `scripts/check-changeset.mjs` and `scripts/resolve-publish-command.mjs`. Most were

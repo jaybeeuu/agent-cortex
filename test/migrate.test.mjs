@@ -107,6 +107,56 @@ describe("agent-cortex migrate v1 label rename", () => {
     );
   });
 
+  it("migrates both allowlisted values and leaves other labels alone", async () => {
+    await withWorkspace(
+      [
+        { id: "bd-afk", labels: ["implementation-type:afk"] },
+        { id: "bd-hitl", labels: ["implementation-type:hitl", "epic:epic-1"] },
+        { id: "bd-control", labels: ["epic:epic-1"] },
+      ],
+      async (workspace) => {
+        const { exitCode } = await runMigrate(["--apply"], workspace);
+
+        assert.equal(exitCode, 0);
+        assert.deepEqual(await readLabels(workspace.state), {
+          "bd-afk": ["execution:afk"],
+          "bd-hitl": ["epic:epic-1", "execution:hitl"],
+          "bd-control": ["epic:epic-1"],
+        });
+      },
+    );
+  });
+
+  it("refuses an unmapped label value on both the dry run and --apply, writing nothing", async () => {
+    await withWorkspace(
+      [
+        { id: "bd-afk", labels: ["implementation-type:afk"] },
+        { id: "bd-wip", labels: ["implementation-type:wip"] },
+        { id: "bd-wip-closed", labels: ["implementation-type:wip"], status: "closed" },
+      ],
+      async (workspace) => {
+        // Both invocations must stop before planning, so the allowlisted bead
+        // is not migrated either — a half-migrated workspace is the failure
+        // mode the allowlist exists to prevent.
+        for (const args of [[], ["--apply"]]) {
+          const { exitCode, stdout, stderr } = await runMigrate(args, workspace);
+
+          assert.equal(exitCode, 1);
+          assert.equal(stdout, "");
+          assert.match(stderr, /bd-wip/);
+          assert.match(stderr, /bd-wip-closed/);
+          assert.match(stderr, /implementation-type:wip/);
+          assert.deepEqual(await readLabels(workspace.state), {
+            "bd-afk": ["implementation-type:afk"],
+            "bd-wip": ["implementation-type:wip"],
+            "bd-wip-closed": ["implementation-type:wip"],
+          });
+          assert.equal((await readState(workspace.state)).writes.length, 0);
+        }
+      },
+    );
+  });
+
   it("gives a bead carrying both legacy labels both execution labels", async () => {
     await withWorkspace(
       [{ id: "bd-both", labels: ["implementation-type:afk", "implementation-type:hitl"] }],

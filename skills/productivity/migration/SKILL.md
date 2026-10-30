@@ -7,9 +7,10 @@ disable-model-invocation: true
 # Migration
 
 Bring a beads workspace up to the current workflow model by running the versioned
-`agent-cortex migrate` command (alias `ctx migrate`) in that workspace. The command keeps an
-ordered registry of steps, detects the version a repo is at, and applies each step in order
-until the repo is current — the same command migrates every workspace, whenever it joins.
+`agent-cortex migrate` command in that workspace. From a checkout that is not installed, the same
+command is `node bin/agent-cortex.mjs migrate` — those are the only two invocations. The command
+keeps an ordered registry of steps, detects the version a repo is at, and applies each step in
+order until the repo is current — the same command migrates every workspace, whenever it joins.
 
 Steps are **dry-run by default**, **idempotent**, and **verified per step**. Your job is to
 plan, gate, and prove the run — never to hand-edit `.beads/` or a label list.
@@ -43,9 +44,10 @@ Steps in flight (full contract in `REFERENCE.md`):
 ## Workflow
 
 1. **Preflight.** Run `bd version`, `bd label list-all`, and `agent-cortex --help` (upgrade the
-   package if `migrate` is not listed). Resolve the command name this harness exposes
-   (`agent-cortex migrate` or `ctx migrate`) and read `<command> --help` for the flags this
-   build accepts. Act on the version the registry detects — do not infer it yourself.
+   package if `migrate` is not listed). The command is `agent-cortex migrate`; if the CLI is not
+   on PATH, run it from the package checkout as `node bin/agent-cortex.mjs migrate`. Read
+   `agent-cortex migrate --help` for the flags this build accepts. Act on the version the registry
+   detects — do not infer it yourself.
 
 2. **Snapshot before touching anything.** `bd export --all -o <path>.jsonl` (JSONL of every issue
    including closed, with labels and dependencies). `--all` also exports infrastructure beads,
@@ -66,8 +68,9 @@ Steps in flight (full contract in `REFERENCE.md`):
    - Group sizes reconcile with the legacy-label counts in `bd export --all` — the source the
      command itself reads. A bead carrying both labels appears in both groups — expected, not a
      conflict. Do not reconcile with `bd list --label-pattern` (see `REFERENCE.md`).
-   - No unmapped or novel label value: the rename is strict, so anything unexpected is a signal
-     to stop and inspect, not to guess.
+   - No unmapped or novel label value: the rename is strict and only `afk|hitl` are mapped, so
+     the command refuses the whole run — dry run and `--apply` alike, nothing written — naming
+     each offending bead and label. Treat that error as a signal to inspect, not to work around.
 
 5. **Apply.** Run the same command with `--apply`. Steps write in batches per label value —
    add the `execution:<value>` label, then remove the `implementation-type:<value>` label — so a
@@ -152,7 +155,7 @@ the queue looks empty instead of broken. Hence snapshot → dry run → gated ap
 
 ## Verification checklist
 
-- [ ] `bd version` and `<command> --help` both ran; the command and its supported flags are known.
+- [ ] `bd version` and `agent-cortex migrate --help` both ran; the flags this build accepts are known.
 - [ ] A pre-migration `bd export --all` snapshot exists and is readable.
 - [ ] The dry run reported a plan and wrote nothing (no label changes in `bd label list-all`).
 - [ ] The plan reconciles with the legacy-label counts in `bd export --all`.

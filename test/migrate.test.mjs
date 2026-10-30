@@ -4,7 +4,7 @@
 // (test/helpers/fake-bd-migrate.mjs) so the real beads database is never
 // touched. The workspace is a throwaway directory that is also the child
 // process's working directory, so the idea files v2 reads are fixtures, never
-// this repo's own `docs/ideas/`. Assertions are on the workspace's resulting
+// this repo's own (now retired) idea directory. Assertions are on the workspace's resulting
 // bead state and recorded writes — the observable effect of the command.
 
 import { describe, it } from "node:test";

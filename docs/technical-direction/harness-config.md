@@ -174,4 +174,4 @@ pi extension loads from `node_modules/` and an optional one is materialised from
   provisioner);
   `pi.extensions.json`, `claude.extensions.json`, `lib/extension-manifest.mjs` (epic F5, `1e0e970`);
   `bin/installers/pi.mjs` settings materialisation (epic F3, `afab2c6`);
-  `docs/ideas/extension-manifests.md` (the originating idea).
+  idea bead `agnt-ctx-w7cn` (the originating idea, since superseded).

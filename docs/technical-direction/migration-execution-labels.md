@@ -82,7 +82,7 @@
      How→--design, When/Priority/Validity/Constraints/Notes→--notes, referential→--context),
      `bd create -l kind:idea -p <preserved priority, default P4>`; preserve content
      fidelity (keep section markers inside fields); dry-run; safe deletion order
-     (docs/ideas/ + new-idea.sh only after F3 lands); `record-ideas-as-beads.md` migrates
+     (docs/ideas/ + new-idea.sh only after F3 lands); idea bead `agnt-ctx-ddh8` migrates
      itself last.
 - Shared plumbing: preflight (detect current version), `--dry-run` (default), `--apply`,
   per-step verification, and a final summary. Do NOT run v1 against agent-cortex's own
@@ -146,7 +146,7 @@
   sharing preflight/dry-run/verify plumbing. Rationale (user directive, 2026-09-13): the
   target is a migration *command* that converts any given repo from the current version to
   the latest — one surface, not N ad-hoc scripts; also aligns with the planned `ctx`
-  alias/version/update surface (docs/ideas/ctx-alias-version-and-update-commands.md).
+  alias/version/update surface (idea bead `agnt-ctx-kdto`).
 
 ## Tradeoffs accepted
 
@@ -181,5 +181,4 @@
   package.json` (none remain — all folded into the root workspace), root `package.json` +
   `pnpm-workspace.yaml`, bd CLI help
   (`bd list`, `bd label`, `bd create`), epic `agnt-ctx-s5xd` notes.
-- Idea file: `docs/ideas/ctx-alias-version-and-update-commands.md` (ctx alias + version/update
-  surface that `migrate` joins).
+- Idea bead: `agnt-ctx-kdto` (ctx alias + version/update surface that `migrate` joins).

@@ -3,8 +3,8 @@
  *
  * Appends the always-on reply shape to the PI system prompt on every turn: lead
  * with the action, write in Simplified Technical English (ASD-STE100), restate the
- * context the reader cannot remember (the second slice of
- * docs/ideas/improve-pi-system-prompt.md).
+ * context the reader cannot remember (the second slice of the "Improve PI
+ * System Prompt" idea, bead `agnt-ctx-s5hn`).
  *
  * The block is stable text appended after any chained system-prompt changes, so it
  * keeps the prompt-cache prefix intact while remaining authoritative for the model.

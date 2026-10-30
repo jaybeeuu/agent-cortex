@@ -2,7 +2,7 @@
 
 Appends the always-on reply shape to the PI system prompt once per user prompt.
 
-This is the second slice of `docs/ideas/improve-pi-system-prompt.md`: the first
+This is the second slice of the "Improve PI System Prompt" idea (bead `agnt-ctx-s5hn`): the first
 (`agent-guardrails`) stops wasted work; this one stops the answer getting buried in
 it. The extension injects a stable block via the `before_agent_start` hook — which
 fires once per user prompt, before the agent loop — so the rules apply to every

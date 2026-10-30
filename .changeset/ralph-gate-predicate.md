@@ -21,9 +21,9 @@ were invisible and pending human action was under-reported.
   never appear in the Pending Human Action table.
 - Gate queries match `lifecycle:feature-pr` on either HITL axis, so gates
   created on either side of the two-axis migration are counted.
-- ralph's agent files (canonical source and the generated Copilot flat file) and
-  the ralph skill and REFERENCE now point at the script instead of restating
-  ad-hoc `bd` queries that had already drifted.
+- ralph's composable agent source (`agents/ralph/agent.md`) and the ralph skill
+  and REFERENCE now point at the script instead of restating ad-hoc `bd` queries
+  that had already drifted.
 - `agents-native/ralph.md` (the Claude harness) keeps the **open**-gate form and
   only takes the dual-axis query: its gates stay blocked for their whole life —
   `create-task` blocks them behind a `document` chore no Claude ralph closes, and

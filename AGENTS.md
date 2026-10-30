@@ -71,7 +71,9 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   checkout (branch bases, merge method, signature rules, required checks, release mechanics) belong
   in `AGENTS.md`, `docs/`, or the tracker. Repo-local `.agents/skills/` follows the same rule: a
   skill is a skill, not a place for this repo's configuration.
-- `SKILL.md` must include a YAML front-matter block with `name` and `description`.
+- `SKILL.md` must include a YAML front-matter block with `name` and `description`. `pnpm lint`
+  enforces this (`pnpm check:skills`), because PI silently drops a skill whose frontmatter it
+  cannot parse.
 - `description` must be ≤ 1024 characters. First sentence: what it does. Second: "Use when…".
 - Keep `SKILL.md` near the ~150-line target in `docs/skills/skill-anatomy.md`, overflowing into
   purpose-named support files (`REFERENCE.md`, `EXAMPLES.md`, `FORMAT.md`). `style-tests`

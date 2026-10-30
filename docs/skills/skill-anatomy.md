@@ -9,6 +9,9 @@ Required fields:
 - `name`: kebab-case skill identifier.
 - `description`: max 1024 characters.
 
+Frontmatter is machine-validated: `pnpm lint` runs `check:skills`, which fails on a
+frontmatter block that would make pi silently drop the skill.
+
 Optional fields:
 - `argument-hint`: input prompt shown to users at invocation.
 - `disable-model-invocation`: hides the skill from automatic model routing; explicit

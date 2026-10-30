@@ -127,7 +127,9 @@ creates and signs: rebase-and-merge is documented to add the head-branch commits
 commit signature verification", because the commit it creates is modified and GitHub "can't
 therefore sign it as a generic system user" ([about merge methods](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/about-merge-methods-on-github),
 checked 2026-10-27). For a `github-actions[bot]` head commit that means an unsigned commit on
-`main`, so rebase is not an acceptable path here even though the settings permit it.
+`main`, so rebase is not an acceptable path here even though the settings permit it. That rules
+out the *landing* merge method only: rebasing your own branch locally to sync it with its base is
+a different operation, unaffected here, and is the required sync path (`git-workflow` rule 6).
 
 Note the limit of this remedy: squash re-signs the landing commit, it does not bypass an
 enforced signature rule (see above). It works here because no such rule is currently

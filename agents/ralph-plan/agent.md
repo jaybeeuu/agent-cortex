@@ -57,6 +57,8 @@ Ownership is `--parent`; ordering is `bd dep add`. The planning bead is **owned 
 
 Every planning bead description must be cold-start-ready so another person can pick it up without prior chat context. Include all of: (1) what is being built and why, (2) decisions already made, (3) open questions/risks, and (4) references (bead IDs, files, or docs) used during planning.
 
+Both routes above create the gate for you, so this block is the shape to build by hand only when the feature already exists and `bd children <feature-id>` lists no `Plan:` child. Never run it beside a gate `create-task` already made: bead creation is not idempotent, so a second run leaves two design gates blocking the same children.
+
 ```bash
 # Design gate: human-owned, owned by the feature, blocking every implementation child.
 planning_id=$(bd create "Plan: <feature title>" --type task --priority <priority> \

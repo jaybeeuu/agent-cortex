@@ -13,7 +13,12 @@
 // too. The check is stricter than PI in two places PI only warns about: `name` must be a
 // non-empty frontmatter field (PI falls back to the directory name), and a description over
 // 1024 characters is an error.
-
+//
+// Known gaps, each verified against PI's loader and left unhandled on purpose:
+// - A symlinked SKILL.md is skipped: `entry.isFile()` is false for a symlink, while PI
+//   stats through the link and loads it. No symlinked SKILL.md exists in this repo.
+// - Duplicate `name` values across skill roots are not detected: validation is per-file
+//   with no name index, while PI drops the loser of a name collision.
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { parse } from "yaml";

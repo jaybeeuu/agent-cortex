@@ -10,6 +10,10 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/**
+ * @param {string} raw
+ * @returns {string[]}
+ */
 function readLabels(raw) {
   try {
     return JSON.parse(raw);

@@ -662,3 +662,145 @@ describe("install claude — settings.json", () => {
     }
   });
 });
+// ─── installClaude — managed CLAUDE.md section ────────────────────────────────
+
+const MANAGED_BEGIN = "<!-- BEGIN agent-cortex:output-style -->";
+const MANAGED_END = "<!-- END agent-cortex:output-style -->";
+const OUTPUT_SOURCE = "## Output style (agent-cortex)\n\nRules for replies.\n";
+
+/** Minimal package root carrying the output-style source, enough for
+ * installClaude to materialise the managed CLAUDE.md section. */
+async function makeInstructionsFixture({ source = OUTPUT_SOURCE, memory } = {}) {
+  const root = await makeTmp();
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({ name: "agent-cortex", version: "1.2.3", license: "MIT" }),
+  );
+  await writeFile(
+    join(root, "token-map.json"),
+    JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+  );
+  await mkdir(join(root, "agents"));
+  await mkdir(join(root, "skills"));
+  if (source !== null) {
+    await mkdir(join(root, "extensions", "output-style"), { recursive: true });
+    await writeFile(join(root, "extensions", "output-style", "output-style.md"), source);
+  }
+  const output = join(root, "out");
+  const instructionsPath = join(root, "claude-home", "CLAUDE.md");
+  if (memory !== undefined) {
+    await mkdir(dirname(instructionsPath), { recursive: true });
+    await writeFile(instructionsPath, memory);
+  }
+  return { root, output, instructionsPath, cleanup: () => rm(root, { recursive: true, force: true }) };
+}
+
+const MANAGED_SECTION = `${MANAGED_BEGIN}\n${OUTPUT_SOURCE.trimEnd()}\n${MANAGED_END}\n`;
+
+describe("installClaude — managed CLAUDE.md section", () => {
+  it("creates CLAUDE.md with the managed section when the file does not exist", async () => {
+    const fx = await makeInstructionsFixture();
+    try {
+      const result = await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
+
+      assert.equal(result.instructions.action, "written");
+      assert.equal(await readFile(fx.instructionsPath, "utf-8"), MANAGED_SECTION);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("appends the section to existing memory and keeps the user's text", async () => {
+    const fx = await makeInstructionsFixture({ memory: "# My memory\n\nAlways run the tests.\n" });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
+
+      const written = await readFile(fx.instructionsPath, "utf-8");
+      assert.ok(written.startsWith("# My memory\n\nAlways run the tests.\n\n"), "personal text kept at the top");
+      assert.ok(written.endsWith(MANAGED_SECTION), "managed section appended");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("replaces only the managed section, keeping memory text on both sides", async () => {
+    const memory = `# Top\n\n${MANAGED_BEGIN}\n## Output style (agent-cortex)\n\nStale rules.\n${MANAGED_END}\n\n# Bottom\n\nKeep me.\n`;
+    const fx = await makeInstructionsFixture({ memory });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
+
+      const written = await readFile(fx.instructionsPath, "utf-8");
+      assert.equal(written, `# Top\n\n${MANAGED_SECTION}\n# Bottom\n\nKeep me.\n`);
+      assert.equal(written.includes("Stale rules."), false, "stale block replaced");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("re-running is idempotent — the second install reports unchanged", async () => {
+    const fx = await makeInstructionsFixture({ memory: "# My memory\n" });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
+      const first = await readFile(fx.instructionsPath, "utf-8");
+
+      const second = await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
+      assert.equal(second.instructions.action, "unchanged");
+      assert.equal(await readFile(fx.instructionsPath, "utf-8"), first);
+      assert.equal(first.split(MANAGED_BEGIN).length - 1, 1, "exactly one managed section");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("leaves a file with an unterminated section unchanged and warns", async () => {
+    const memory = `# My memory\n\n${MANAGED_BEGIN}\nHand-edited, no end marker.\n`;
+    const fx = await makeInstructionsFixture({ memory });
+    try {
+      const warnings = [];
+      const result = await installClaude({
+        root: fx.root,
+        output: fx.output,
+        instructionsPath: fx.instructionsPath,
+        warn: (m) => warnings.push(m),
+      });
+
+      assert.equal(result.instructions.action, "skipped-unmanaged");
+      assert.equal(await readFile(fx.instructionsPath, "utf-8"), memory, "file untouched");
+      assert.ok(warnings.some((w) => w.includes("unterminated")), "unmatched markers are warned about");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("dry-run plans the CLAUDE.md write without touching the filesystem", async () => {
+    const fx = await makeInstructionsFixture();
+    try {
+      const result = await installClaude({
+        root: fx.root,
+        output: fx.output,
+        instructionsPath: fx.instructionsPath,
+        dryRun: true,
+      });
+
+      assert.equal(result.instructions.action, "would-write");
+      assert.equal(await pathExists(fx.instructionsPath), false, "nothing written in dry-run");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("ships the real output-style source the pi extension reads", async () => {
+    const real = await readFile(join(ROOT, "extensions", "output-style", "output-style.md"), "utf-8");
+    assert.ok(real.startsWith("## Output style (agent-cortex)"), "canonical heading");
+
+    const fx = await makeInstructionsFixture({ source: real });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
+      const written = await readFile(fx.instructionsPath, "utf-8");
+      assert.ok(written.includes("### Write Simplified Technical English (ASD-STE100)"));
+      assert.ok(written.includes("### Restate the context, never assume it"));
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});

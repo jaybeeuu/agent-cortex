@@ -1,9 +1,11 @@
 # Idea: Improve PI System Prompt
 
 ## Status
-Backlog idea (not implementation-ready) — first slice (circuit-breakers, check-in triggers,
-atomic-change discipline) implemented as the `agent-guardrails` pi extension; the rest of the
-idea is unscoped.
+Backlog idea (not implementation-ready) — two slices implemented as pi extensions:
+`agent-guardrails` (circuit-breakers, check-in triggers, atomic-change discipline) and
+`output-style` (action-first reply shape, Simplified Technical English, restated context,
+shipped to pi via the system prompt and to Claude via a managed `CLAUDE.md` section).
+The rest of the idea is unscoped.
 
 ## Why it might be useful
 PI's current system prompt is weak. Agents consistently get off track, spend excessive tokens spinning their wheels or going off on tangents, fail to check in when problems are hit, and generally behave like inexperienced code goblins. This wastes tokens, slows down task completion, and forces the user to constantly redirect the agent. A stronger system prompt would produce more focused, disciplined agents that know when to stop and ask.
@@ -30,6 +32,10 @@ High — after current work lands. Directly impacts daily productivity and token
 - Which guardrails from the Gemini starter are genuinely useful vs redundant with existing skills (e.g. `git-workflow` already covers destructive commands, `style-code` covers scope discipline)?
 
 ## Notes
+- **Second slice (settled)**: reply shape is a separate extension from task discipline.
+  `agent-guardrails` decides whether work continues; `output-style` decides how the result
+  is reported (STE per ASD-STE100, action first, context restated — never a bead or phase
+  ID cited alone). Both are stable constants appended on `before_agent_start`.
 - **Precedence (settled by the first slice)**: the generic circuit-breakers yield to a structured
   workflow — a skill or pipeline stage with its own explicit retry and check-in rules wins.
 - **Gemini starter prompt** exists (see conversation from 2026-08-05) covering loop prevention, action scope, context management, execution workflow order, and working state maintenance. Useful starting material but needs heavy customisation.

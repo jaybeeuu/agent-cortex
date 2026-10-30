@@ -16,7 +16,8 @@ following behaviour — nothing wider:
 | `--apply` | Performs the writes. Same plan, executed. |
 | `--dry-run` | Explicit form of the default; identical output, still zero writes. |
 | `--help` | Lists the commands and flags this build accepts, including whether `migrate` itself is present. |
-| Idea source | Step v2 reads `docs/ideas/` in the workspace it runs in. There is no flag for it: the module option `runMigrate({ dir })` overrides it, and the CLI does not yet expose one. |
+| `--dir <path>` | Points step v2 at a workspace that keeps its idea files somewhere other than `docs/ideas`. Omitted, the default applies; a missing value is a usage error, not a silent fallback. |
+| Idea source | Step v2 reads `*.md` under the idea directory (`docs/ideas/` unless `--dir` says otherwise), one level of nesting included, and never writes or deletes one. |
 | Registry detection | Reports the repo's current version and the first step with pending work — the only step a dry run plans — derived from workspace state, not from a flag or a stored marker the agent has to keep. |
 | Step ordering | Applies steps in version order, oldest first. The final summary is one line per step: its name and description, that step's pending bead total, and a `verified` line. It carries no per-group breakdown — derive group sizes from the step-v1 export counts. |
 | Idempotence | A converged repo plans zero targets and exits 0; a re-run after a partial failure resumes rather than repeating writes. |
@@ -93,8 +94,8 @@ bd ready -l execution:afk                       # the routing query still works
 
 Purpose: loose idea files (`docs/ideas/*.md`) become `kind:idea` + `execution:hitl` beads, one
 bead per file. The files are read and left in place; deleting them is the repo's own cutover step.
-The step is repo-agnostic — it assumes the `docs/ideas/` directory and nothing else: no skill, no
-install path, no agent-cortex-specific label.
+The step is repo-agnostic — it assumes an idea directory (`docs/ideas/` by default, `--dir`
+overridable) and nothing else: no skill, no install path, no agent-cortex-specific label.
 
 Mechanics the plan reflects:
 
@@ -126,12 +127,16 @@ Mechanics the plan reflects:
   carrying `execution:afk`.
 
 - **Idempotence.** Before creating anything the step reads `bd list -l kind:idea --all --json
-  --limit 0` and skips a file when an idea bead already records it: either a bead title matches
-  after dropping the `Idea: ` / `Design: ` prefix and all punctuation, or a bead names the file
-  under a `## Provenance` heading (how the records migrated by hand announce their source). The
-  title key is what makes a re-run, or an `--apply` that died part-way, a no-op; the provenance
-  check is what stops a second copy of a record a human had already migrated. A passing
-  cross-reference outside a provenance section is not a record — the step still creates that bead.
+  --limit 0` and skips a file when an idea bead already records it: either a bead names the file
+  under a `## Provenance` heading, or a bead carrying no provenance has a matching title (after
+  dropping the `Idea: ` / `Design: ` prefix and all punctuation). Every bead the step creates
+  cites its source file under `## Provenance`, so the provenance rule is what makes a re-run, or
+  an `--apply` that died part-way, a no-op — and what keeps two files that share a title
+  (`task-session-context.md` and `task-session-context.local.md` do) separately attributable. The
+  title rule is the fallback for records migrated by hand before the step existed, which cite no
+  source; a title match is therefore also the one case where a summary bead can stand in for a
+  file's content. A passing cross-reference outside a provenance section is not a record — the
+  step still creates that bead.
 
 - **Write order.** One `bd create --silent` per file, in path order, so a partial failure leaves
   only the unmigrated files behind; the verification pass re-detects and must find nothing.

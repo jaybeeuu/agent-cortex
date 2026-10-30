@@ -68,6 +68,19 @@ A QA pass could run before each merge.
 - Who owns the fixture data?
 `;
 
+/** Two files that state the same title — the shape `.local.md` variants take. */
+const TWIN_IDEA_FILE = `# Idea: task-session-context
+
+## Problem
+The resume path drops the bead's own progress trail.
+`;
+
+const TWIN_LOCAL_IDEA_FILE = `# Idea: task-session-context
+
+## Problem
+The local-only variant of the same note, with content of its own.
+`;
+
 /** @typedef {{ bin: string, state: string, cwd: string }} Workspace */
 
 /**
@@ -564,11 +577,96 @@ describe("agent-cortex migrate v2 ideas to beads", () => {
     });
   });
 
+  it("cites the source file under a provenance heading", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const [bead] = createdBeads(await readState(workspace.state), 0);
+        assert.match(bead.notes, /## Provenance/);
+        assert.match(bead.notes, /docs\/ideas\/model-selector\.md/);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE } },
+    );
+  });
+
+  it("resumes a twin-title apply that died between the two creates", async () => {
+    await withWorkspace(
+      [
+        {
+          id: "already-created",
+          labels: ["kind:idea", "execution:hitl"],
+          title: "Idea: task-session-context",
+          notes: "## Provenance\nMigrated from `docs/ideas/task-session-context.local.md` by `agent-cortex migrate`.",
+        },
+      ],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrate(["--apply"], workspace);
+
+        // Both files state the same title, so a title-keyed skip would call this
+        // workspace done and never record `task-session-context.md`.
+        assert.equal(exitCode, 0);
+        const created = createdBeads(await readState(workspace.state), 1);
+        assert.equal(created.length, 1);
+        assert.equal(created[0].title, "Idea: task-session-context");
+        assert.match(created[0].description, /drops the bead's own progress trail/);
+        assert.match(created[0].notes, /docs\/ideas\/task-session-context\.md/);
+        assert.match(stdout, /v2 ideas-to-beads verified/);
+      },
+      {
+        ideaFiles: {
+          "task-session-context.md": TWIN_IDEA_FILE,
+          "task-session-context.local.md": TWIN_LOCAL_IDEA_FILE,
+        },
+      },
+    );
+  });
+
+  it("still skips a source-less record by its title after a twin is recorded", async () => {
+    await withWorkspace(
+      [
+        {
+          id: "hand-migrated",
+          labels: ["kind:idea", "execution:hitl"],
+          title: "Design: task-session-context",
+          notes: "A summary a human wrote before the step existed.",
+        },
+      ],
+      async (workspace) => {
+        const { stdout } = await runMigrate(["--apply"], workspace);
+
+        assert.doesNotMatch(stdout, /task-session-context/);
+        assert.equal(createdBeads(await readState(workspace.state), 1).length, 0);
+      },
+      {
+        ideaFiles: {
+          "task-session-context.md": TWIN_IDEA_FILE,
+          "task-session-context.local.md": TWIN_LOCAL_IDEA_FILE,
+        },
+      },
+    );
+  });
+
   it("reads ideas from an overridden directory", async () => {
     await withWorkspace(
       [],
       async (workspace) => {
         const { exitCode, stdout } = await runMigrateWithDir(workspace, "docs/notes");
+
+        assert.equal(exitCode, 0);
+        assert.match(stdout, /docs\/notes\/model-selector\.md → Idea: model selector/);
+        assert.equal((await readState(workspace.state)).writes.length, 0);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE }, ideaDir: "docs/notes" },
+    );
+  });
+
+  it("reads ideas from an overridden directory through the --dir flag", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrate(["--dir", "docs/notes"], workspace);
 
         assert.equal(exitCode, 0);
         assert.match(stdout, /docs\/notes\/model-selector\.md → Idea: model selector/);

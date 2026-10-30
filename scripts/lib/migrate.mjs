@@ -495,18 +495,27 @@ async function listIdeaBeads(bd) {
 /**
  * Pending work for v2: every idea file whose record does not exist yet.
  *
- * A file is skipped when an idea bead already carries its title — the
- * migration's own output, so a re-run, or an `--apply` that died part-way, never
- * duplicates a record — or when a bead cites the file under a `## Provenance`
- * heading, which is how the records migrated by hand before this step existed
- * announce their source.
+ * A file is skipped when a bead cites it under a `## Provenance` heading — both
+ * this step's own output, so a re-run or an `--apply` that died part-way never
+ * duplicates a record, and the records migrated by hand before this step
+ * existed — or, for a bead that cites no source, when the bead's title matches.
+ *
+ * A bead that cites its source identifies exactly one file, so its title stands
+ * for nothing but itself: two files can share a title (this workspace's
+ * `task-session-context.md` and `task-session-context.local.md` do), and letting
+ * a source-citing bead's title mask its twin would make an `--apply` that died
+ * between the two creates resume silently short. Only a bead that cites no
+ * source is matched by title — that is the older hand-migrated record, which the
+ * step cannot attribute any other way.
  *
  * @param {StepContext} ctx
  * @returns {Promise<PendingIdea[]>}
  */
 async function findIdeaFiles(ctx) {
   const beads = await listIdeaBeads(ctx.bd);
-  const titles = new Set(beads.map((bead) => bead.key).filter((key) => key !== ""));
+  const titles = new Set(
+    beads.filter((bead) => bead.provenance === "").map((bead) => bead.key).filter((key) => key !== ""),
+  );
   const provenance = beads.map((bead) => bead.provenance).join("\n");
   /** @type {PendingIdea[]} */
   const pending = [];
@@ -519,6 +528,20 @@ async function findIdeaFiles(ctx) {
   }
 
   return pending;
+}
+
+/**
+ * Every bead this step creates names the file it came from, so a re-run can
+ * attribute a record to one file exactly instead of inferring it from a title
+ * two files may share — and so the cutover that retires the files leaves the
+ * provenance behind in the record.
+ *
+ * @param {PendingIdea} idea
+ * @returns {string}
+ */
+function withProvenance({ notes, file }) {
+  const block = `## Provenance\nMigrated from \`${file}\` by \`agent-cortex migrate\`.`;
+  return notes === "" ? block : `${notes}\n\n${block}`;
 }
 
 /**
@@ -547,7 +570,7 @@ async function createIdeaBeads({ bd }, pending) {
     ];
     if (idea.description !== "") args.push("-d", idea.description);
     if (idea.design !== "") args.push("--design", idea.design);
-    if (idea.notes !== "") args.push("--notes", idea.notes);
+    args.push("--notes", withProvenance(idea));
     args.push("--acceptance", IDEA_ACCEPTANCE);
     await bd(args);
   }
@@ -602,7 +625,7 @@ const STEPS = [
   {
     version: 2,
     name: "ideas-to-beads",
-    describe: `${DEFAULT_IDEA_DIR}/*.md → ${IDEA_LABEL} beads`,
+    describe: `${DEFAULT_IDEA_DIR}/*.md (or --dir) → ${IDEA_LABEL} beads`,
     detect: findIdeaFiles,
     plan: planIdeaBeads,
     apply: createIdeaBeads,

@@ -20,7 +20,7 @@ Steps in the registry (full contract in `REFERENCE.md`):
 | Version | Step | Effect |
 |---|---|---|
 | v1 | Label rename | `implementation-type:afk\|hitl` → `execution:afk\|hitl`, all beads including closed |
-| v2 | Ideas → beads | `docs/ideas/*.md` (one level of nesting included) become `kind:idea` + `execution:hitl` beads — the command reads the files and never deletes them |
+| v2 | Ideas → beads | `docs/ideas/*.md` (default; `--dir` overrides, one level of nesting included) become `kind:idea` + `execution:hitl` beads — the command reads the files and never deletes them |
 
 ## When to use
 
@@ -74,9 +74,10 @@ Steps in the registry (full contract in `REFERENCE.md`):
      the command refuses the whole run — dry run and `--apply` alike, nothing written — naming
      each offending bead and label. Treat that error as a signal to inspect, not to work around.
    - For a v2 plan, each line names the file, the title, and the priority it will carry. A file
-     missing from the plan is one the command considers already recorded (a bead with that title,
-     or one citing the file under `## Provenance`); confirm the record exists before accepting the
-     skip, and do not hand-create a replacement.
+     missing from the plan is one the command considers already recorded (a bead citing the file
+     under `## Provenance` — which every bead the step creates does — or a source-less bead with
+     that title); confirm the record exists before accepting the skip, and do not hand-create a
+     replacement.
 
 5. **Apply.** Run the same command with `--apply`. Step v1 writes in batches per label value —
    add the `execution:<value>` label, then remove the `implementation-type:<value>` label — so a
@@ -141,8 +142,8 @@ Workflow at a glance:
 - **Nothing applied yet** — the dry run wrote nothing, so discard the plan; the workspace is
   untouched; the snapshot is not even needed.
 - **A step died mid-batch** — dry-run, then re-run `--apply`: steps are idempotent, so
-  already-renamed beads no longer match and already-created idea beads collide with their files'
-  titles, and the retry resumes instead of repeating writes.
+  already-renamed beads no longer match and an already-created idea bead cites its source file, so
+  the retry resumes instead of repeating writes — even when two files share one title.
 - **A completed step was wrong** — invert it per group from the recorded plan or pre-migration
   export: `bd label add <ids…> implementation-type:<value>` then
   `bd label remove <ids…> execution:<value>` (issue ids first, label last), through `bd`, never

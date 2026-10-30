@@ -414,8 +414,9 @@ half-applying, when `bd` is missing or a `bd` subcommand errors.
 
 Detection reads `bd export --all` and cross-checks `bd label list-all`, never a
 label-filtered `bd list`: on bd 1.3.1 that query can omit closed beads, which once let a
-partially migrated workspace report itself as verified. When the export and the label index
-disagree, or a legacy label survives the apply, `migrate` names the beads and exits non-zero.
+partially migrated workspace report itself as verified. When the label index still reports a
+legacy label that no exported bead carries — or a legacy label survives the apply — `migrate`
+names the beads and exits non-zero.
 
 ```sh
 agent-cortex migrate            # dry run — per-bead plan, zero writes

@@ -15,7 +15,7 @@ also exposed as `ctx migrate`. This skill depends on the following behaviour —
 | `--dry-run` | Explicit form of the default; identical output, still zero writes. |
 | `--help` | Lists the commands and flags this build accepts, including whether `migrate` itself is present. |
 | Registry detection | Reports the repo's current version and the first step with pending work — the only step a dry run plans — derived from workspace state, not from a flag or a stored marker the agent has to keep. |
-| Step ordering | Applies steps in version order, oldest first. The final summary is one line per step: its name and description, that step's pending bead total, and a `verified` line. It carries no per-group breakdown — derive group sizes from the step-v1 `bd list --label-pattern` query. |
+| Step ordering | Applies steps in version order, oldest first. The final summary is one line per step: its name and description, that step's pending bead total, and a `verified` line. It carries no per-group breakdown — derive group sizes from the step-v1 export counts. |
 | Idempotence | A converged repo plans zero targets and exits 0; a re-run after a partial failure resumes rather than repeating writes. |
 | Failure mode | Fails loudly (non-zero exit) when `bd` is missing or a `bd` subcommand errors; never silently skips a group. |
 
@@ -26,6 +26,21 @@ command — upgrade rather than reconstructing the steps by hand.
 
 Scope note: the command touches beads only. Skills, hooks, docs, and agent prompts that mention
 the old labels are follow-up edits in the repo, not command output.
+
+## Detection source and its cost
+
+Detection and verification read `bd export --all`, cross-checked against `bd label list-all
+--json`. A label-filtered `bd list` is not in the path: on bd 1.3.1 that query can omit closed
+beads, which is how a half-migrated workspace once verified clean. The cross-check keeps the
+export from becoming the new silent weak link — an export that cannot attribute a legacy label
+the index still lists fails the run rather than shrinking the count.
+
+The cost is operational. One `--apply` reads the whole export about three times — initial
+detection, verification after the step, then re-detection for the next step — so a large workspace
+pays for a full export per call rather than a label-filtered page. Each call is capped at 32 MB of
+stdout (roughly 12k issues at typical record sizes); past the cap the run fails loudly instead of
+truncating. Near the ceiling, expect that explicit failure and do not read a short result as a
+clean workspace.
 
 ## Snapshot scope (SKILL step 2)
 
@@ -44,11 +59,10 @@ agent-agnostic.
 
 Mechanics the plan reflects:
 
-1. Enumerate every bead carrying an `implementation-type:*` label —
-   `bd list --label-pattern 'implementation-type:*' --all --json --limit 0` — including closed
-   beads, because a clean label space is the goal and bd tolerates label history on closed
-   issues. `--limit 0` is explicit: `bd list` documents a default limit of 50, and reconciliation
-   must see the whole workspace.
+1. Enumerate every bead carrying an `implementation-type:*` label by reading the whole workspace —
+   `bd export --all` (JSONL) — closed beads included, because a clean label space is the goal and
+   bd tolerates label history on closed issues. There is no label filter and no page limit in this
+   path, so the count is the workspace's rather than a query's.
 2. Group bead ids by label value. A bead carrying both `afk` and `hitl` appears in both groups;
    that is a data problem worth inspecting, not a conflict the tool resolves for you.
 3. Per group, on `--apply`: `bd label add <ids…> execution:<value>` then
@@ -59,10 +73,10 @@ Mechanics the plan reflects:
 Verification commands:
 
 ```bash
-bd label list-all                                      # no implementation-type:* entries
-bd list --label-pattern 'implementation-type:*' --all  # empty
-bd label list <bead-id>                               # spot-check: execution:<value> present
-bd ready -l execution:afk                             # the routing query still works
+bd label list-all                               # no implementation-type:* entries
+bd export --all | grep '"implementation-type:'  # empty, closed beads included
+bd label list <bead-id>                         # spot-check: execution:<value> present
+bd ready -l execution:afk                       # the routing query still works
 ```
 
 ## Step v2 — ideas to beads
@@ -120,7 +134,7 @@ Run exactly what v1 would run, with the same gate:
 
 ```bash
 # Read the plan; confirm the group counts match what you expect
-bd list --label-pattern 'implementation-type:*' --all --json --limit 0
+bd export --all | grep '"implementation-type:'   # every bead, closed included
 bd label add <ids…> execution:afk
 bd label remove <ids…> implementation-type:afk
 bd label add <ids…> execution:hitl
@@ -147,6 +161,6 @@ changelogs, ADRs, or closed-bead notes (leave them — rewriting history removes
 ## Reporting a run
 
 Record, in order: the detected version and steps planned, the snapshot location, the dry-run
-plan with the group sizes reconciled from the `bd list --label-pattern` query, the `--apply`
+plan with the group sizes reconciled from the export, the `--apply`
 summary, the four post-check results, the idempotence re-run outcome, and the stale-reference list
 with owning files. That sequence is also the evidence trail if a later post-check fails.

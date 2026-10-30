@@ -12,6 +12,11 @@
 // test/ is part of the surface: its fakes and partial fixtures are typed with
 // JSDoc typedefs rather than excluded, so the coverage the other directories get
 // applies here too.
+//
+// Two boundaries stay `any` on purpose: `JSON.parse` results in tests (the shape is
+// asserted at runtime by the case that reads them) and the `/** @type {any} */` casts
+// in validate-agent-dir.test.mjs that build deliberately malformed frontmatter. New
+// coverage should come from typed fixtures, not from widening those.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

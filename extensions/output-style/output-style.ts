@@ -1,8 +1,8 @@
 /**
  * Output style for the PI system prompt.
  *
- * The second slice of docs/ideas/improve-pi-system-prompt.md: the reply shape, not
- * the task discipline. Three concerns, in order — lead with the action, write in
+ * The second slice of the "Improve PI System Prompt" idea (bead `agnt-ctx-s5hn`): the reply
+ * shape, not the task discipline. Three concerns, in order — lead with the action, write in
  * Simplified Technical English, restate the context the reader cannot remember.
  *
  * The prose lives in output-style.md so one file feeds both harnesses: this

@@ -90,39 +90,34 @@ git pull
 
 This avoids avoidable merge conflicts.
 
-### 6. Bring a behind branch up to date — merge, don't rebase
+### 6. Bring a behind branch up to date — rebase, don't merge
 
-When the base branch moves and the PR reports `BEHIND` or `CONFLICTING`, update
-the branch before anything else:
+When the base branch moves and the PR reports `BEHIND` or `CONFLICTING`, rebase
+your branch onto it before anything else — never merge the base in:
 
 ```bash
 git fetch origin
-git merge origin/main
+git rebase origin/main
+git push --force-with-lease
 ```
 
-**Never rebase a branch that contains a merge commit.** `git rebase` drops merge
-commits and the patches they carry, so rebasing a branch that already merged the
-base silently reverts what that merge resolved — the conflict resolutions, and
-any fix from the base the merge brought in. The result usually looks like a
-regression in your own change. `--rebase-merges` preserves the structure, but
-it re-opens the same conflicts; only worth it when the branch's history is
-itself the deliverable.
+A merge from the base drags every intervening commit into the review diff and,
+under a squash-merge landing method, contributes nothing that reaches the base
+branch. Landing is still a squash merge; rebasing only reshapes *your* branch
+before it lands, so these are separate decisions, not rivals. Keeping the branch
+linear is what makes the rebase safe: `git rebase` drops merge commits and the
+patches they resolved, so never rebase a branch that already merged the base.
 
-Rebase only a **linear branch that has not been reviewed yet**. Rewriting
-commits under review discards the review context and invalidates approvals, and
-it requires `git push --force-with-lease` — never `--force`, which overwrites
-work you have not seen.
+Rewritten commits are re-signed automatically when `commit.gpgsign` is set. Pass
+no `--gpg-sign`, and do not set `rebase.gpgSign` — both are redundant.
 
-Which one you owe the repository depends on its landing method, not on taste:
+Scope: rebase only your **own unmerged feature branch**. Never rebase `main`, and
+never rebase a branch another person or agent is working on — it discards their
+context and invalidates review. Force-push with `--force-with-lease`, never
+`--force`, which overwrites work you have not seen.
 
-- **Squash merge**: the branch is collapsed on landing, so its shape never
-  reaches the base branch. Merge the base in and move on — rebasing here is
-  cosmetic, and the risky kind of cosmetic.
-- **Rebase-and-merge**: a linear branch is mandatory, so rebase *before* the
-  first review. Once a merge has landed on the branch, that option is gone.
-
-After any update, re-run the checks. A merge that resolved conflicts by hand is
-not verified by the base branch's green CI.
+After any update, re-run the checks: a conflict resolved by hand is not verified
+by the base branch's green CI.
 
 ### 7. Worktree lifecycle
 

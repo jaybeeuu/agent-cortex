@@ -40,9 +40,11 @@
     "check:sync": "node scripts/check-no-sync.mjs",
     "test": "node --test test/*.test.mjs && pnpm -r test",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r typecheck",
+    "verify": "pnpm typecheck && pnpm test",
+    "prepublishOnly": "pnpm verify",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "publish-package": "TARBALL=$(pnpm pack | tail -n 1) && npm publish \"$TARBALL\" --provenance --access public",
+    "publish-package": "pnpm verify && TARBALL=$(pnpm pack | tail -n 1) && npm publish \"$TARBALL\" --provenance --access public",
     "publish-noop": "echo 'No publish: the merged PR carries the no-publish label.'",
     "release": "changeset publish"
   },

@@ -1,11 +1,15 @@
-// Behaviour tests for the release gates that keep `main` from re-publishing a
-// version: the inverted PR changeset gate and the no-publish release gate.
-// The decision logic is pure; the two CLI adapters are exercised through their
+// Behaviour tests for the release gates: the inverted PR changeset gate and the
+// no-publish release gate that keep `main` from re-publishing a version, and the
+// publish gate that refuses to publish unless typecheck and tests pass.
+// The decision logic is pure; the CLI adapters are exercised through their
 // process boundary because that is the contract CI depends on.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PUBLISH_COMMAND,
@@ -19,6 +23,7 @@ const CHECK_CHANGESET = fileURLToPath(new URL("../scripts/check-changeset.mjs", 
 const RESOLVE_PUBLISH = fileURLToPath(
   new URL("../scripts/resolve-publish-command.mjs", import.meta.url),
 );
+const MANIFEST = fileURLToPath(new URL("../package.json", import.meta.url));
 
 function runScript(script, { args = [], env = {}, stdin = "" } = {}) {
   return new Promise((resolve, reject) => {
@@ -186,5 +191,188 @@ describe("resolve-publish-command CLI", () => {
 
     assert.equal(code, 0);
     assert.equal(stdout.trim(), NO_PUBLISH_COMMAND);
+  });
+});
+
+// --- publish gate -----------------------------------------------------------
+//
+// Publishing must not start until typecheck and tests pass. The gate is the
+// composition of package.json's `verify` script, run by the `prepublishOnly`
+// lifecycle hook (directory publishes) and by `publish-package` itself — the
+// pack-then-`npm publish <tarball>` path changesets/action execs, and the one
+// path where npm runs no publish lifecycle hook at all.
+//
+// So the gate is tested where it lives: the script bodies are read from the
+// manifest and executed by a real shell against a fake `pnpm`/`npm` pair. The
+// fakes expand script-to-script calls and stub every leaf, which keeps real
+// typecheck/test runs out of the test suite and keeps `npm publish` from ever
+// reaching a registry.
+
+const FAKE_PNPM = [
+  "#!/usr/bin/env node",
+  "// Fake `pnpm` for the publish-gate test: records every script call, expands",
+  "// script-to-script calls (the gate's composition), stubs every leaf script.",
+  "const fs = require('node:fs/promises');",
+  "",
+  "const TARBALL = 'stub-package-0.0.0.tgz';",
+  "",
+  "(async () => {",
+  "  const { scripts } = JSON.parse(await fs.readFile(process.env.GATE_MANIFEST, 'utf8'));",
+  "  const record = (name) => fs.appendFile(process.env.GATE_LOG, 'pnpm ' + name + '\\n');",
+  "",
+  "  const run = async (name) => {",
+  "    await record(name);",
+  "    if (name === 'pack') {",
+  "      console.log(TARBALL);",
+  "      return 0;",
+  "    }",
+  "    if (name === process.env.GATE_FAIL_AT) return 1;",
+  "    const body = scripts[name];",
+  "    if (body === undefined) {",
+  "      console.error('ERR_PNPM_NO_SCRIPT  Missing script: ' + name);",
+  "      return 1;",
+  "    }",
+  "    const steps = body.split('&&').map((step) => step.trim());",
+  "    if (!steps.every((step) => /^pnpm [\\w:.-]+$/.test(step))) return 0;",
+  "    for (const step of steps) {",
+  "      const code = await run(step.slice('pnpm '.length));",
+  "      if (code !== 0) return code;",
+  "    }",
+  "    return 0;",
+  "  };",
+  "",
+  "  process.exit(await run(process.argv[2]));",
+  "})().catch((error) => {",
+  "  console.error(error);",
+  "  process.exit(1);",
+  "});",
+].join("\n");
+
+const FAKE_NPM = [
+  "#!/usr/bin/env node",
+  "// Fake `npm` for the publish-gate test: records the invocation, contacts nothing.",
+  "const fs = require('node:fs/promises');",
+  "",
+  "(async () => {",
+  "  await fs.appendFile(process.env.GATE_LOG, 'npm ' + process.argv.slice(2).join(' ') + '\\n');",
+  "})().catch((error) => {",
+  "  console.error(error);",
+  "  process.exit(1);",
+  "});",
+].join("\n");
+
+/** Create a fake `pnpm`/`npm` pair in a temp dir first on PATH, recording every
+ * call to `calls.log`. `failAt` makes that one script name exit 1. */
+async function createPackageManagerStub({ failAt = "" } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), "publish-gate-"));
+  const calls = join(dir, "calls.log");
+  await writeFile(calls, "");
+  await writeFile(join(dir, "pnpm"), `${FAKE_PNPM}\n`, { mode: 0o755 });
+  await writeFile(join(dir, "npm"), `${FAKE_NPM}\n`, { mode: 0o755 });
+  return {
+    dir,
+    calls,
+    env: {
+      PATH: `${dir}:${process.env.PATH}`,
+      GATE_LOG: calls,
+      GATE_MANIFEST: MANIFEST,
+      GATE_FAIL_AT: failAt,
+    },
+  };
+}
+
+/** Run a package.json script body the way npm runs a lifecycle hook: `sh -c`,
+ * from the stub directory so nothing real is reachable if a stub is bypassed. */
+async function runLifecycleScript(stub, name) {
+  const { scripts } = JSON.parse(await readFile(MANIFEST, "utf8"));
+  const body = scripts[name];
+  if (body === undefined) throw new Error(`package.json defines no \`${name}\` script`);
+
+  return await new Promise((resolve, reject) => {
+    const child = spawn("sh", ["-c", body], {
+      cwd: stub.dir,
+      env: { ...process.env, ...stub.env },
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code, stderr }));
+  });
+}
+
+async function readCalls(log) {
+  const text = await readFile(log, "utf8");
+  return text.split("\n").filter((line) => line !== "");
+}
+
+describe("publish gate", () => {
+  it("runs typecheck and the tests before a directory publish proceeds", async (t) => {
+    const stub = await createPackageManagerStub();
+    t.after(() => rm(stub.dir, { recursive: true, force: true }));
+
+    const { code } = await runLifecycleScript(stub, "prepublishOnly");
+
+    assert.equal(code, 0);
+    assert.deepEqual(await readCalls(stub.calls), [
+      "pnpm verify",
+      "pnpm typecheck",
+      "pnpm test",
+    ]);
+  });
+
+  it("rejects the publish when typecheck fails, without running the tests", async (t) => {
+    const stub = await createPackageManagerStub({ failAt: "typecheck" });
+    t.after(() => rm(stub.dir, { recursive: true, force: true }));
+
+    const { code } = await runLifecycleScript(stub, "prepublishOnly");
+
+    assert.notEqual(code, 0);
+    assert.deepEqual(await readCalls(stub.calls), ["pnpm verify", "pnpm typecheck"]);
+  });
+
+  it("rejects the publish when the tests fail", async (t) => {
+    const stub = await createPackageManagerStub({ failAt: "test" });
+    t.after(() => rm(stub.dir, { recursive: true, force: true }));
+
+    const { code } = await runLifecycleScript(stub, "prepublishOnly");
+
+    assert.notEqual(code, 0);
+    assert.deepEqual(await readCalls(stub.calls), [
+      "pnpm verify",
+      "pnpm typecheck",
+      "pnpm test",
+    ]);
+  });
+
+  it("gates the pack-tarball publish path before any tarball is packed", async (t) => {
+    const stub = await createPackageManagerStub({ failAt: "test" });
+    t.after(() => rm(stub.dir, { recursive: true, force: true }));
+
+    const { code } = await runLifecycleScript(stub, "publish-package");
+
+    assert.notEqual(code, 0);
+    assert.deepEqual(await readCalls(stub.calls), [
+      "pnpm verify",
+      "pnpm typecheck",
+      "pnpm test",
+    ]);
+  });
+
+  it("packs and publishes the tarball once both gates pass", async (t) => {
+    const stub = await createPackageManagerStub();
+    t.after(() => rm(stub.dir, { recursive: true, force: true }));
+
+    const { code } = await runLifecycleScript(stub, "publish-package");
+
+    assert.equal(code, 0);
+    assert.deepEqual(await readCalls(stub.calls), [
+      "pnpm verify",
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm pack",
+      "npm publish stub-package-0.0.0.tgz --provenance --access public",
+    ]);
   });
 });

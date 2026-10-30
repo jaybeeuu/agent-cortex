@@ -43,6 +43,9 @@ workstream, from container down to stage chore:
 | Stage chore | `chore` | inherited `execution:afk` | `create-chores.mjs` | `--parent <impl-task>` |
 | PR gate | `task` | `execution:hitl` | `create-chores.mjs` | `--parent <impl-task>`, `--no-inherit-labels` |
 
+Stage chores come from running `create-chores.mjs` once per impl task (`--parent <impl-task>`),
+never against the feature itself — its parent must carry `execution:afk`.
+
 Every impl task depends on the planning bead (`bd dep add <impl-task> <planning-bead>`), so
 `bd ready` withholds them until planning closes. Nothing aggregates a child's execution class
 onto its parent: the container is human-owned because a person decides when it is done, and

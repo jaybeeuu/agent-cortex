@@ -63,7 +63,7 @@ section content; surface assumptions and confirm them with the user.
 
 7. Create an epic bead from the approved PRD:
    ```bash
-   bd create "<Feature Title> — PRD" --type epic \
+   bd create "<Feature Title> — PRD" --type epic -l execution:hitl \
      --description "<rendered PRD as markdown>" --priority p2 --validate
    bd tag <epic-id> workflow:plan
    bd lint <epic-id>
@@ -91,7 +91,7 @@ Take the approved PRD and produce a set of epics and tasks using tracer-bullet v
 
 10. If the work is small enough for a single epic (one phase, a few tasks), skip epics and proceed directly to Phase 3. A single epic with a few tasks dispatches through ralph more efficiently than creating unnecessary epic hierarchy. If the work has multiple distinct phases, create epics:
     ```bash
-    bd create "<Phase Title>" --type epic \
+    bd create "<Phase Title>" --type epic -l execution:hitl \
       --description "<epic body with scope, success criteria, dependencies>" --priority <same as parent> --validate
     bd tag <epic-id> workflow:plan
     bd lint <epic-id>
@@ -169,7 +169,7 @@ Deliver a handoff bead and instructions for running ralph.
 ## Success Criteria
 
 - [ ] All child epics complete and the feature verified end-to-end." \
-        --priority <same> --validate
+        --priority <same> -l execution:hitl --validate
       bd lint <meta-epic>
       bd dep add <epic-1> <meta-epic> --type parent-child
       bd dep add <epic-2> <meta-epic> --type parent-child

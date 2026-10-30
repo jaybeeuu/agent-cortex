@@ -12,7 +12,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 - Starting new tracked work that must move through implementation, verification, and review gates — user phrases like "create a task for this", "track this work end-to-end", or "get this into the ralph pipeline".
 - Expanding an **existing** AFK task bead that has no `stage:*` chore children — run step 7 only (see _Expanding an existing bead_).
 - A caller (`prd-to-tasks`, `ralph-plan`) needs one task bead with the full child-chore structure.
-- A workstream of several deliverables needs a planning bead in front of them — the feature path in steps 5–6.
+- A workstream of several deliverables needs a planning bead in front of them — the feature path in steps 5–6, then step 7 for each AFK impl child.
 
 ## When NOT to use
 
@@ -23,7 +23,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 ## Workflow
 
-1. **Pick the shape.** One deliverable an agent can finish in a session → a **task** bead (steps 2–4). A workstream of several deliverables that needs design settled before code → a **feature** bead carrying a planning bead and one impl task per deliverable (steps 5–6).
+1. **Pick the shape.** One deliverable an agent can finish in a session → a **task** bead (steps 2–4). A workstream of several deliverables that needs design settled before code → a **feature** bead carrying a planning bead and one impl task per deliverable (steps 5–6, then step 7 for each AFK impl child).
 
    **Ownership is `--parent`; ordering is `bd dep add`.** `--parent` records who owns a bead at create time; a dependency records what must finish first. Never express one as the other.
 
@@ -92,7 +92,9 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
    `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path.
 
-8. **Report.** Return the bead ID (or, on the feature path, the feature ID plus every planning and impl child ID), the classification of each expanded bead (`AFK`), and the created stage chore IDs from the script output (including `featurePrReview`).
+   On the feature path, run it **once per AFK impl child**, with `--parent <impl-task-id>` — never the feature ID: stage chores inherit their parent's labels, the script requires an `execution:afk` parent, and the feature is `execution:hitl`. A deliverable created `execution:hitl` in step 6 is not expanded.
+
+8. **Report.** Return the bead ID (or, on the feature path, the feature ID plus every planning and impl child ID), the classification of each expanded bead (`AFK`), and the created stage chore IDs from the script output (including `featurePrReview`) — one mapping per expanded impl child on the feature path.
 
 ### Expanding an existing bead
 

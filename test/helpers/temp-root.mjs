@@ -3,10 +3,13 @@
 //
 // Cleanup owned by an individual test is only as reliable as that test's control
 // flow: a test that throws before reaching its own `rm()` leaks its whole
-// workspace — large enough here (a copied node_modules closure) to fill a tmpfs
-// across a few failing runs, which then fails more tests, which leak more. The
-// root is therefore removed by a file-level `after()` hook registered when the
-// root is created, so it is removed whether every test passed, failed, or threw.
+// workspace. Each one is a materialised plugin tree (skills, agents, hooks — a
+// few hundred KB spread over hundreds of files), and a single installer run
+// allocates 21 of them, so the leak is measured in MB per run: enough to exhaust
+// a small tmpfs over repeated runs, which then fails more tests, which leak more.
+// The root is therefore removed by a file-level `after()` hook registered when
+// the root is created, so it is removed whether every test passed, failed, or
+// threw.
 
 import { after } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";

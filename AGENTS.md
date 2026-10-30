@@ -52,9 +52,16 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 - **Landing method**: pull requests are squash-merged. Merge commits are disabled in the
   repository settings and `main` requires linear history, so a branch's own commit shape never
-  reaches `main` — bring a behind branch up to date by merging `main` in rather than rebasing it.
-  `docs/commit-signing.md` records why squash is the only landing path that produces a signed
-  commit; the rebase-versus-merge reasoning lives in the `git-workflow` skill.
+  reaches `main`. `docs/commit-signing.md` records why squash is the only landing path that
+  produces a signed commit.
+- **Mid-branch sync**: bringing a behind branch up to date is a *separate* decision from landing —
+  rebase it onto its base branch locally (`main`, or `epic/<id>` for a feature branch inside an
+  epic), never merge the base in. `commit.gpgsign=true` re-signs the rewritten commits
+  automatically, so no extra flag is needed; force-push with `--force-with-lease`, never
+  `--force`. Rebase only your own unmerged branch — never `main` or an `epic/<id>` branch others
+  are based on, and never a branch another person or agent is working on. An integration branch
+  is the one thing you sync by merging the base in. The rule and its reasoning live in the
+  `git-workflow` skill (rule 6).
 - **Never block the main thread**: no `*Sync` functions (`readFileSync`, `spawnSync`, …).
   Tooling code in `bin/`, `scripts/`, `lib/`, `hooks/`, and `test/` must be async —
   enforced by `scripts/check-no-sync.mjs` (runs via `pnpm lint`). Skill-owned

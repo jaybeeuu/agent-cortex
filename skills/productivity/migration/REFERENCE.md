@@ -16,6 +16,7 @@ following behaviour — nothing wider:
 | `--apply` | Performs the writes. Same plan, executed. |
 | `--dry-run` | Explicit form of the default; identical output, still zero writes. |
 | `--help` | Lists the commands and flags this build accepts, including whether `migrate` itself is present. |
+| Idea source | Step v2 reads `docs/ideas/` in the workspace it runs in. There is no flag for it: the module option `runMigrate({ dir })` overrides it, and the CLI does not yet expose one. |
 | Registry detection | Reports the repo's current version and the first step with pending work — the only step a dry run plans — derived from workspace state, not from a flag or a stored marker the agent has to keep. |
 | Step ordering | Applies steps in version order, oldest first. The final summary is one line per step: its name and description, that step's pending bead total, and a `verified` line. It carries no per-group breakdown — derive group sizes from the step-v1 export counts. |
 | Idempotence | A converged repo plans zero targets and exits 0; a re-run after a partial failure resumes rather than repeating writes. |
@@ -27,7 +28,8 @@ build's help output as the truth. If `migrate` is not listed at all, the install
 the command — upgrade rather than reconstructing the steps by hand.
 
 Scope note: the command touches beads only. Skills, hooks, docs, and agent prompts that mention
-the old labels are follow-up edits in the repo, not command output.
+the old labels are follow-up edits in the repo, not command output. Step v2 reads idea files and
+never writes or deletes one — retiring the files is the repo's cutover, not the migration.
 
 ## Detection source and its cost
 
@@ -43,6 +45,10 @@ pays for a full export per call rather than a label-filtered page. Each call is 
 stdout (roughly 12k issues at typical record sizes); past the cap the run fails loudly instead of
 truncating. Near the ceiling, expect that explicit failure and do not read a short result as a
 clean workspace.
+
+Step v2 adds two reads of its own, both cheap: the idea files on disk, and one `bd list -l
+kind:idea --all --json --limit 0` for the records that already exist. It never runs the full
+export.
 
 ## Snapshot scope (SKILL step 2)
 
@@ -85,23 +91,54 @@ bd ready -l execution:afk                       # the routing query still works
 
 ## Step v2 — ideas to beads
 
-Purpose: retired loose idea files (`docs/ideas/*.md`, overridable with `--dir`) become
-`kind:idea` beads.
+Purpose: loose idea files (`docs/ideas/*.md`) become `kind:idea` + `execution:hitl` beads, one
+bead per file. The files are read and left in place; deleting them is the repo's own cutover step.
+The step is repo-agnostic — it assumes the `docs/ideas/` directory and nothing else: no skill, no
+install path, no agent-cortex-specific label.
 
 Mechanics the plan reflects:
 
-- Each file maps to one bead: the problem section becomes `--description`, the how section
-  `--design`, the when/priority/validity/constraints/notes sections `--notes`, referential links
-  `--context`. Section markers stay inside the fields so content fidelity survives the move.
-- Priority is preserved from the file; a file with no stated priority becomes P4 (backlog).
-- Beads are created with `-l kind:idea` and are always `execution:hitl`: an idea is human-owned
-  until it is promoted, and it stays out of the agent queue by *not* carrying `execution:afk`.
-- Deletion of the source files (and any scaffold script that writes them) happens only after the
-  skills that create and consume them stop using the file flow — otherwise the repo regenerates
-  what you just deleted. Land those skill updates first, then delete.
+- **Discovery.** Top-level `*.md` under the idea directory, plus one level of nesting (a multi-part
+  idea can live in its own folder). A missing directory is not an error — a workspace that never
+  used idea files has nothing pending. The plan prints one line per file: path, title, priority.
+- **Field mapping.** The files predate a single template, so a `##` heading is matched by normalised
+  name (case-folded, trailing parenthetical ignored) rather than exact text. Every field keeps its
+  `##` marker, because the marker is the contract `flesh-out-idea` reads a bead by.
 
-Verify with `bd list -l kind:idea --long`, checking one migrated bead's fields against its source
-file before the files are removed.
+  | Bead field | Sections |
+  |---|---|
+  | title | the `#` heading, `Idea: ` prefixed (a leading `Idea:`/`Design:` is not doubled) |
+  | `--description` | `## Problem`, legacy `## Why it might be useful`, `## Who benefits`, `## Proposed outcome` |
+  | `--design` | `## How we might do it`, `## Fleshed-out design (…)`, `## Design so far / provenance` |
+  | `--notes` | `## Status`, `## Created`, `## Validity check`, `## Constraints`, `## Next validation step`, `## Priority`, `## When to think about it`, `## Open questions`, `## Notes`, and every unlisted `##` section in file order |
+  | `--context` | unused — no idea file in the wild carries a referential section; do not invent one |
+  | `--acceptance` | fixed promotion criterion: a scoped epic/feature is spawned from the bead, or it is explicitly rejected (a `task` bead needs acceptance criteria to lint clean) |
+  | `-p` | first `P0`–`P4` token anywhere in the file, `P4` when the file states none |
+
+  The invariant that makes the mapping checkable: **no content loss** — the heading becomes the
+  title and every other line of the file appears in exactly one of the three fields.
+
+- **Priority caveat.** The first `P<n>` token wins, so a file that only mentions a `P0-P4` *scale*
+  reads as `P0`. Read the priority column of the plan before applying.
+
+- **Labels.** `kind:idea` marks the record as an unscoped idea; `execution:hitl` is always applied
+  because an idea is human-owned until promoted, and it stays out of the agent queue by *not*
+  carrying `execution:afk`.
+
+- **Idempotence.** Before creating anything the step reads `bd list -l kind:idea --all --json
+  --limit 0` and skips a file when an idea bead already records it: either a bead title matches
+  after dropping the `Idea: ` / `Design: ` prefix and all punctuation, or a bead names the file
+  under a `## Provenance` heading (how the records migrated by hand announce their source). The
+  title key is what makes a re-run, or an `--apply` that died part-way, a no-op; the provenance
+  check is what stops a second copy of a record a human had already migrated. A passing
+  cross-reference outside a provenance section is not a record — the step still creates that bead.
+
+- **Write order.** One `bd create --silent` per file, in path order, so a partial failure leaves
+  only the unmigrated files behind; the verification pass re-detects and must find nothing.
+
+Verify with `bd list -l kind:idea --json --limit 0`, then compare one bead's fields against its
+source file before the files are retired ("files present but already migrated" is a normal state:
+the plan simply has nothing to say about them).
 
 ## Rollback recipes
 
@@ -135,7 +172,6 @@ Rules that keep recovery safe:
 
 Use only when the installed package genuinely lacks the command and an upgrade is out of scope.
 Run exactly what v1 would run, with the same gate:
-
 ```bash
 # Read the plan; confirm the group counts match what you expect
 bd export --all | grep '"implementation-type:'   # every bead, closed included
@@ -148,6 +184,21 @@ bd label list-all                        # verify: nothing left
 
 Then record in the handoff that the run did not go through the registry, so the repo still needs
 a `migrate` dry run once the command is available (it will simply find nothing to do).
+
+For step v2 by hand, follow the field table under _Step v2 — ideas to beads_ and create one bead
+per file:
+
+```bash
+bd create "Idea: <file title>" --silent -l kind:idea,execution:hitl -p P<n> \
+  -d "<## Problem, ## Who benefits, ## Proposed outcome>" \
+  --design "<## How we might do it>" \
+  --notes "<## Status, ## Validity check, ## Constraints, ## Next validation step, …>" \
+  --acceptance "<promotion criterion>"
+```
+
+Keep every `##` marker inside its field, check the title against `bd list -l kind:idea` before
+creating — a hand-run has no collision skip — and leave the source files in place unless the repo
+has already retired the file flow.
 
 ## Stale-reference sweep
 
@@ -165,6 +216,7 @@ changelogs, ADRs, or closed-bead notes (leave them — rewriting history removes
 ## Reporting a run
 
 Record, in order: the detected version and steps planned, the snapshot location, the dry-run
-plan with the group sizes reconciled from the export, the `--apply`
-summary, the four post-check results, the idempotence re-run outcome, and the stale-reference list
-with owning files. That sequence is also the evidence trail if a later post-check fails.
+plan with the group sizes reconciled from the export (or, at v2, the per-file title and priority
+lines), the `--apply` summary, the four post-check results, the idempotence re-run outcome, and the
+stale-reference list with owning files. That sequence is also the evidence trail if a later
+post-check fails.

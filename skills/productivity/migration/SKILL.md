@@ -15,12 +15,12 @@ order until the repo is current — the same command migrates every workspace, w
 Steps are **dry-run by default**, **idempotent**, and **verified per step**. Your job is to
 plan, gate, and prove the run — never to hand-edit `.beads/` or a label list.
 
-Steps in flight (full contract in `REFERENCE.md`):
+Steps in the registry (full contract in `REFERENCE.md`):
 
 | Version | Step | Effect |
 |---|---|---|
 | v1 | Label rename | `implementation-type:afk\|hitl` → `execution:afk\|hitl`, all beads including closed |
-| v2 | Ideas → beads | `docs/ideas/*.md` files become `kind:idea` beads (`--dir` overrides the source) |
+| v2 | Ideas → beads | `docs/ideas/*.md` (one level of nesting included) become `kind:idea` + `execution:hitl` beads — the command reads the files and never deletes them |
 
 ## When to use
 
@@ -28,7 +28,8 @@ Steps in flight (full contract in `REFERENCE.md`):
 - The user says "run the migration", "rename the labels", "migrate this repo", or asks why
   `bd ready -l execution:afk` returns nothing in a project that clearly has AFK work.
 - A repo adopts agent-cortex (or a newer version) and its existing beads predate the model.
-- Loose idea markdown is being retired in favour of `kind:idea` beads (step v2).
+- Loose idea markdown still lives under `docs/ideas/` in a workspace and those records belong in
+  the backlog as beads (step v2).
 
 ## When NOT to use
 
@@ -58,9 +59,10 @@ Steps in flight (full contract in `REFERENCE.md`):
 3. **Dry run.** Run the command with no apply flag — dry-run is the default, and an explicit
    `--dry-run` is equivalent. It writes nothing and exits 0. Read the plan it prints: the
    workspace version against the latest, then the **first pending step** only — its name, one
-   line per pending bead naming the labels it would gain and lose, the pending bead count, and
-   the no-writes notice. Steps behind a pending one are not named, and the plan does not group
-   beads by label value — take group sizes from the export counts in step 4.
+   line per pending item, the pending count, and the no-writes notice. A v1 line is a bead and the
+   labels it would gain and lose; a v2 line is an idea file and the title plus priority it becomes.
+   Steps behind a pending one are not named, and the plan does not group beads by label value —
+   take group sizes from the export counts in step 4.
 
 4. **Gate on the plan.** Apply only when all of these hold:
    - The detected version and the steps to run match what you expect for this repo.
@@ -71,10 +73,16 @@ Steps in flight (full contract in `REFERENCE.md`):
    - No unmapped or novel label value: the rename is strict and only `afk|hitl` are mapped, so
      the command refuses the whole run — dry run and `--apply` alike, nothing written — naming
      each offending bead and label. Treat that error as a signal to inspect, not to work around.
+   - For a v2 plan, each line names the file, the title, and the priority it will carry. A file
+     missing from the plan is one the command considers already recorded (a bead with that title,
+     or one citing the file under `## Provenance`); confirm the record exists before accepting the
+     skip, and do not hand-create a replacement.
 
-5. **Apply.** Run the same command with `--apply`. Steps write in batches per label value —
+5. **Apply.** Run the same command with `--apply`. Step v1 writes in batches per label value —
    add the `execution:<value>` label, then remove the `implementation-type:<value>` label — so a
-   partial failure never loses the routing label. Record the summary verbatim in your report.
+   partial failure never loses the routing label. Step v2 creates one bead per idea file, one file
+   at a time, so a run that dies part-way leaves only the unmigrated files behind and the retry
+   resumes exactly there. Record the summary verbatim in your report.
 
 6. **Post-check.** Treat the migration as unproven until all of these hold:
 
@@ -87,6 +95,10 @@ Steps in flight (full contract in `REFERENCE.md`):
    Then grep the repo for stale `implementation-type` references (skills, docs, hooks, configs).
    List the files still to update — they are follow-up work, not part of the rename.
 
+   For v2, check a migrated bead against its source file with `bd show <id>` before the files are
+   retired: `--description`, `--design`, and `--notes` carry the file's sections with their `##`
+   markers, and the priority matches what the file stated.
+
 7. **Prove idempotence.** Re-run the dry run. A converged repo plans zero targets, performs no
    writes, and exits 0. A non-empty plan after `--apply` means the write step did not converge:
    investigate before applying again.
@@ -97,7 +109,9 @@ Steps in flight (full contract in `REFERENCE.md`):
 9. **Continue the sequence.** The label rename is one step, not the migration. Idea files become
    beads at a later step, and any skill, hook, or doc that creates or queries the old labels
    must be updated before the workspace is truly current. Hand those edits to their owners; the
-   migration command does not rewrite prose.
+   migration command does not rewrite prose — and it does not delete the idea files either. Retire
+   them (and any scaffold script that writes them) only after the skills that used the file flow
+   have stopped, or the repo recreates what you just deleted.
 
 Workflow at a glance:
 
@@ -126,8 +140,9 @@ Workflow at a glance:
 
 - **Nothing applied yet** — the dry run wrote nothing, so discard the plan; the workspace is
   untouched; the snapshot is not even needed.
-- **A step died mid-batch** — dry-run, then re-run `--apply`: steps are idempotent per group, so
-  already-renamed beads no longer match and the retry resumes instead of repeating writes.
+- **A step died mid-batch** — dry-run, then re-run `--apply`: steps are idempotent, so
+  already-renamed beads no longer match and already-created idea beads collide with their files'
+  titles, and the retry resumes instead of repeating writes.
 - **A completed step was wrong** — invert it per group from the recorded plan or pre-migration
   export: `bd label add <ids…> implementation-type:<value>` then
   `bd label remove <ids…> execution:<value>` (issue ids first, label last), through `bd`, never
@@ -167,3 +182,6 @@ the queue looks empty instead of broken. Hence snapshot → dry run → gated ap
 - [ ] A repeat dry run is a no-op (zero targets, exit 0).
 - [ ] Stale `implementation-type` references are listed with their owning files, and later steps
       (idea files → beads) plus skill/doc updates are handed off explicitly.
+- [ ] For v2: one `kind:idea` + `execution:hitl` bead exists per idea file, a spot-checked bead
+      carries its source sections in `--description`/`--design`/`--notes` with the original
+      priority, and the source files were left in place for the repo's own cutover to retire.

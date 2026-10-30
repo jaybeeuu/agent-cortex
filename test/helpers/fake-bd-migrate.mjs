@@ -10,12 +10,17 @@
 //   - `bd list --label-pattern <glob> --json` returns matching beads, and
 //     hides closed beads unless `--all` is passed (see `listHidesClosed` for
 //     the bd builds that hide them even then);
+//   - `bd list -l <label> --all --json --limit 0` returns the whole issue rows,
+//     free-form fields included, which is how the ideas step recognises records
+//     that already exist;
+//   - `bd create <title> --silent [flags]` appends a bead and prints only its id,
+//     recording the labels, priority, and fields it was given;
 //   - `bd label add <ids...> <label>` / `bd label remove <ids...> <label>`
 //     mutate the bead's labels;
 //   - every write is appended to `writes`, so a test can prove a dry run wrote
 //     nothing;
-//   - `failOn` (e.g. "label add") makes that subcommand exit 1, exercising the
-//     fail-loud path.
+//   - `failOn` makes a command (`create`) or a subcommand (`label add`) exit 1,
+//     exercising the fail-loud path.
 //
 // State lives in `state.json` next to the binary. Written async throughout —
 // the repo's check-no-sync lint scans test/ (including helpers).
@@ -44,13 +49,54 @@ function matchesPattern(pattern, label) {
   return rest.endsWith(parts[parts.length - 1]);
 }
 
+/**
+ * Every value following one of the given flag spellings, in argv order.
+ * Comma-separated values are split the way bd splits labels.
+ */
+function flagValues(argv, names) {
+  const values = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (!names.includes(argv[i])) continue;
+    values.push(argv[i + 1]);
+    i++;
+  }
+  return values;
+}
+
+/** The single value of the last occurrence of a flag, or null. */
+function flag(argv, names) {
+  const values = flagValues(argv, names);
+  return values.length === 0 ? null : values[values.length - 1];
+}
+
+function labelsOf(bead) {
+  return Array.isArray(bead.labels) ? bead.labels : [];
+}
+
+function row(bead) {
+  const row = {
+    id: bead.id,
+    title: bead.title === undefined ? bead.id : bead.title,
+    status: bead.status || "open",
+    priority: bead.priority === undefined ? 2 : bead.priority,
+    labels: labelsOf(bead),
+  };
+  // Free-form fields: bd omits one the issue does not carry.
+  for (const field of ["description", "design", "acceptance_criteria", "notes"]) {
+    if (typeof bead[field] === "string" && bead[field] !== "") row[field] = bead[field];
+  }
+  return row;
+}
+
 (async () => {
   const argv = process.argv.slice(2);
   const [command, sub] = argv;
   const state = JSON.parse(await fs.readFile(stateFile, "utf8"));
 
   const invoked = [command, sub].filter(Boolean).join(" ");
-  if (state.failOn && state.failOn === invoked) {
+  // A bare command name fails every invocation of it ('create'), while a
+  // command plus subcommand targets one ('label add').
+  if (state.failOn && (state.failOn === invoked || state.failOn === command)) {
     console.error("bd " + invoked + " failed: simulated bd error");
     process.exit(1);
   }
@@ -59,8 +105,8 @@ function matchesPattern(pattern, label) {
     const lines = state.beads.map((bead) => {
       const record = { _type: "issue", id: bead.id, status: bead.status || "open" };
       // bd omits the labels field entirely when an issue has none.
-      if (bead.labels.length > 0) {
-        record.labels = bead.labels.filter((label) => label !== state.exportDropsLabel);
+      if (labelsOf(bead).length > 0) {
+        record.labels = labelsOf(bead).filter((label) => label !== state.exportDropsLabel);
       }
       return JSON.stringify(record);
     });
@@ -73,7 +119,7 @@ function matchesPattern(pattern, label) {
   if (command === "label" && sub === "list-all") {
     const counts = new Map();
     for (const bead of state.beads) {
-      for (const label of bead.labels) counts.set(label, (counts.get(label) || 0) + 1);
+      for (const label of labelsOf(bead)) counts.set(label, (counts.get(label) || 0) + 1);
     }
     const entries = [...counts.keys()].sort().map((label) => ({ label, count: counts.get(label) }));
     process.stdout.write(
@@ -85,19 +131,49 @@ function matchesPattern(pattern, label) {
   }
 
   if (command === "list") {
+    const labelFilters = flagValues(argv, ["-l", "--label", "--labels"]).flatMap((value) =>
+      String(value).split(",").filter(Boolean),
+    );
     const patternAt = argv.indexOf("--label-pattern");
     const pattern = patternAt === -1 ? "*" : argv[patternAt + 1];
     const includeClosed = argv.includes("--all") && !state.listHidesClosed;
     const beads = state.beads.filter((bead) => {
       const status = bead.status || "open";
       if (status === "closed" && !includeClosed) return false;
-      return bead.labels.some((label) => matchesPattern(pattern, label));
+      if (!labelFilters.every((label) => labelsOf(bead).includes(label))) return false;
+      return labelsOf(bead).some((label) => matchesPattern(pattern, label));
     });
-    process.stdout.write(JSON.stringify(beads.map(({ id, labels, status }) => ({
+    // Plain list output is a bare array of rows; --json is the same payload.
+    process.stdout.write(JSON.stringify(beads.map(row)));
+    return;
+  }
+
+  if (command === "create") {
+    const args = argv.slice(1);
+    const title = args[0] && !args[0].startsWith("-") ? args[0] : flag(args, ["--title"]);
+    const labels = flagValues(args, ["-l", "--labels"]).flatMap((value) => String(value).split(","));
+    const priority = flag(args, ["-p", "--priority"]);
+    const id = "fake-" + (state.beads.length + 1);
+    const bead = {
       id,
-      labels,
-      status: status || "open",
-    }))));
+      labels: labels.filter(Boolean),
+      status: "open",
+      title: title === null ? id : title,
+    };
+    if (priority !== null) bead.priority = Number(String(priority).replace(/^P/i, ""));
+    for (const [names, field] of [
+      [["-d", "--description"], "description"],
+      [["--design"], "design"],
+      [["--notes"], "notes"],
+      [["--acceptance"], "acceptance_criteria"],
+    ]) {
+      const value = flag(args, names);
+      if (value !== null) bead[field] = value;
+    }
+    state.beads.push(bead);
+    state.writes.push({ op: "create", id, title: bead.title, labels: bead.labels });
+    await fs.writeFile(stateFile, JSON.stringify(state));
+    process.stdout.write(argv.includes("--silent") ? id + "\\n" : JSON.stringify(row(bead)) + "\\n");
     return;
   }
 
@@ -110,7 +186,7 @@ function matchesPattern(pattern, label) {
         console.error("bd label " + sub + ": unknown issue " + id);
         process.exit(1);
       }
-      const labels = new Set(bead.labels);
+      const labels = new Set(labelsOf(bead));
       if (sub === "add") labels.add(label);
       else if (!state.ignoreLabelRemovals) labels.delete(label);
       bead.labels = [...labels];
@@ -133,7 +209,17 @@ function matchesPattern(pattern, label) {
  *
  * @param {string} dir  Directory to hold the binary and its state.json
  * @param {{
- *   beads: Array<{ id: string, labels: string[], status?: string }>,
+ *   beads: Array<{
+ *     id: string,
+ *     labels: string[],
+ *     status?: string,
+ *     title?: string,
+ *     priority?: number,
+ *     description?: string,
+ *     design?: string,
+ *     notes?: string,
+ *     acceptance_criteria?: string,
+ *   }>,
  *   failOn?: string | null,
  *   listHidesClosed?: boolean,
  *   ignoreLabelRemovals?: boolean,

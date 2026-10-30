@@ -43,9 +43,9 @@ async function mjsFiles(dir, prefix = dir) {
   return files;
 }
 
-/** Whether a tsconfig `include` glob matches `file` (`**` spans directories). */
+/** Whether a tsconfig `include`/`exclude` glob matches `file` (`**` spans directories). */
 function patternCovers(pattern, file) {
-  const source = pattern
+  const source = (pattern.endsWith("/**") ? `${pattern}/*` : pattern)
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
     .replace(/\*\*\/|\*/g, (token) => (token === "**/" ? "(?:[^/]+/)*" : "[^/]*"));
   return new RegExp(`^${source}$`).test(file);
@@ -82,8 +82,12 @@ describe("root typecheck surface", () => {
 
   it("does not exclude tooling paths from the root project", async () => {
     const { exclude = [] } = await readJson("tsconfig.json");
+    // Matched against the real modules, not their leading directory: `exclude`
+    // resolves relative to this config, so `**/notify.mjs` drops the Claude hook
+    // without naming `hooks` anywhere (verified: it hides a type error there).
+    const files = (await Promise.all(REQUIRED_SURFACE.map((dir) => mjsFiles(dir)))).flat();
     const excluded = exclude.filter(
-      (pattern) => !pattern.startsWith("node_modules") && REQUIRED_SURFACE.some((dir) => pattern.startsWith(dir)),
+      (pattern) => !pattern.startsWith("node_modules") && files.some((file) => patternCovers(pattern, file)),
     );
 
     assert.deepEqual(excluded, [], "tsconfig.json exclude must not carve tooling paths out of the surface");

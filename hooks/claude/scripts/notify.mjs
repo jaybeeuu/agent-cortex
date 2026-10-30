@@ -20,6 +20,7 @@ for await (const chunk of process.stdin) {
   raw += chunk;
 }
 
+/** @type {{ message?: unknown, title?: unknown, notification_type?: unknown }} */
 let payload = {};
 try {
   payload = raw.trim() ? JSON.parse(raw) : {};
@@ -36,7 +37,13 @@ const type = typeof payload.notification_type === "string" ? payload.notificatio
 
 process.stdout.write(JSON.stringify({ terminalSequence: pickSequence(title, message, type) }) + "\n");
 
-/** Pick an OSC notification escape sequence for the detected terminal. */
+/**
+ * Pick an OSC notification escape sequence for the detected terminal.
+ * @param {string} title
+ * @param {string} message
+ * @param {string} type
+ * @returns {string}
+ */
 function pickSequence(title, message, type) {
   const body = message.replace(/\u001b/g, "").replace(/\n/g, " ").trim();
   const label = type ? `${type}: ${title}` : title;

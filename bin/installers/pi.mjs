@@ -115,6 +115,48 @@ import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 
 const PI = "pi";
 
+/** @typedef {import("../../scripts/lib/compose-agent.mjs").TokenMap} TokenMap */
+/** @typedef {import("../../scripts/lib/compose-agent.mjs").ComposedAgent} ComposedAgent */
+/** @typedef {(msg: string) => void} Warn */
+/** @typedef {(name: string, fromDir?: string) => string | Promise<string>} ResolvePackage */
+/** @typedef {{ name: string, dir: string }} ResolvedPackage */
+/** @typedef {{ extensions: string[], skills: string[] }} PackageResources */
+/** @typedef {{ packages: ResolvedPackage[], resources: PackageResources }} PiDependencies */
+/** @typedef {(content: string) => string} ContentTransform */
+
+/**
+ * The generated package's pi manifest (`//` carries the generated-file marker).
+ * @typedef {{ "//": string, name: string, version: string, private: boolean,
+ *             description: string, type: string, keywords: string[],
+ *             pi: { extensions: string[], skills: string[] } }} PiManifest
+ */
+
+/**
+ * Staged-package summary returned by installPi.
+ * @typedef {object} InstallPiResult
+ * @property {string} output
+ * @property {{ name: string, filePath: string }[]} agents
+ * @property {{ skills: number, md: number, files: number, dir: string }} skills
+ * @property {{ files: number, dir: string }} extensions
+ * @property {{ dir: string, bundled: string[], staged: string[], resources: PackageResources }} packages
+ * @property {{ path: string, manifest: PiManifest }} manifest
+ * @property {string} tokenMap
+ * @property {string[]} warnings
+ * @property {boolean} dryRun
+ */
+
+/**
+ * Registration plan/outcome returned by registerPi.
+ * @typedef {object} RegisterPiResult
+ * @property {string} output
+ * @property {string} piBin
+ * @property {string} settingsPath
+ * @property {boolean} registered
+ * @property {string[]} removed
+ * @property {string[][]} commands
+ * @property {boolean} dryRun
+ */
+
 // The token-map contract version this installer implements (token-map.json
 // "version" field). A higher map version is rejected: the contract must be
 // extended before this installer can trust it.
@@ -152,7 +194,7 @@ const DEFAULT_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 // npm:, git:, https/github URLs, and built-in extension names).
 const NON_LOCAL_PREFIXES = ["npm:", "git:", "github:", "http:", "https:", "ssh:", "builtin:"];
 
-const DEFAULT_WARN = (msg) => console.warn(`[pi-installer] ${msg}`);
+const DEFAULT_WARN = (/** @type {string} */ msg) => console.warn(`[pi-installer] ${msg}`);
 
 // Artifacts the pre-staged-model installer wrote into pi's own user directory
 // that the package root can no longer name on its own: the orphaned
@@ -197,7 +239,7 @@ const DEFAULT_LEGACY_SWEEP_RECORD = join(homedir(), ".agent-cortex", "legacy-swe
  *             skills: {skills: number, md: number, files: number, dir: string},
  *             extensions: {files: number, dir: string},
  *             packages: {dir: string, bundled: string[], staged: string[], resources: {extensions: string[], skills: string[]}},
- *             manifest: {path: string, manifest: object},
+ *             manifest: {path: string, manifest: PiManifest},
  *             tokenMap: string, warnings: string[], dryRun: boolean }>}
  */
 export async function installPi(options = {}) {
@@ -205,8 +247,9 @@ export async function installPi(options = {}) {
   const output = options.output ?? DEFAULT_OUTPUT;
   const dryRun = options.dryRun ?? false;
   const resolvePackage = options.resolvePackage ?? resolveFromNode;
+  /** @type {string[]} */
   const warnings = [];
-  const warn = (msg) => {
+  const warn = (/** @type {string} */ msg) => {
     warnings.push(msg);
     (options.warn ?? DEFAULT_WARN)(msg);
   };
@@ -222,7 +265,7 @@ export async function installPi(options = {}) {
     );
   }
 
-  const pluginRoot = options.pluginRoot ?? tokenMap.paths.plugin_root?.[PI];
+  const pluginRoot = options.pluginRoot ?? /** @type {string | undefined} */ (tokenMap.paths.plugin_root?.[PI]);
 
   // Resolve the bundled packages before clearing the output: an unresolvable
   // dependency must fail the install without destroying the previous staging.
@@ -264,6 +307,11 @@ export async function installPi(options = {}) {
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
 
+/**
+ * @param {{ root: string, agentsDir: string, dryRun: boolean, pluginRoot: string | undefined,
+ *           tokenMap: TokenMap, warn: Warn }} options
+ * @returns {Promise<{ name: string, filePath: string }[]>}
+ */
 async function installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, warn }) {
   const written = [];
   const agentsSrc = join(root, "agents");
@@ -295,6 +343,12 @@ async function installAgents({ root, agentsDir, dryRun, pluginRoot, tokenMap, wa
   return written;
 }
 
+/**
+ * @param {string} name
+ * @param {ComposedAgent} fm
+ * @param {string[]} tools
+ * @returns {string}
+ */
 function renderPiAgent(name, fm, tools) {
   const lines = [
     "---",
@@ -316,10 +370,16 @@ function renderPiAgent(name, fm, tools) {
 
 // ─── Skills ──────────────────────────────────────────────────────────────────
 
+/**
+ * @param {{ root: string, skillsDir: string, dryRun: boolean, pluginRoot: string | undefined,
+ *           tokenMap: TokenMap, warn: Warn }} options
+ * @returns {Promise<{ skills: number, md: number, files: number, dir: string }>}
+ */
 async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, warn }) {
   const skillsSrc = join(root, "skills");
   if (!(await isDirectory(skillsSrc))) return { skills: 0, md: 0, files: 0, dir: skillsDir };
 
+  /** @param {string} content @returns {string} */
   const transform = (content) =>
     substituteTokens(content, PI, tokenMap, { dropNullTools: true, pluginRoot, resolveRelativePaths: true, warn });
 
@@ -349,6 +409,8 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
  * dependency tree is needed. `node_modules` (pnpm workspace links) and symlinks
  * are never copied: the staged package owns its dependencies and must contain
  * real files only.
+ * @param {{ root: string, output: string, dryRun: boolean }} options
+ * @returns {Promise<{ files: number, dir: string }>}
  */
 async function installExtensions({ root, output, dryRun }) {
   const src = join(root, "extensions");
@@ -363,6 +425,8 @@ async function installExtensions({ root, output, dryRun }) {
 /**
  * Ship token-map.json alongside agents/ — agent-modes loads it from the package
  * root, so the staged extensions keep the same source of truth as the checkout.
+ * @param {{ output: string, tokenMap: TokenMap, dryRun: boolean }} options
+ * @returns {Promise<string>}
  */
 async function installTokenMap({ output, tokenMap, dryRun }) {
   const path = join(output, "token-map.json");
@@ -381,10 +445,13 @@ async function installTokenMap({ output, tokenMap, dryRun }) {
  * generated manifest loads them. Ordinary dependencies are left to the usual
  * module resolution.
  *
+ * @param {{ root: string, resolvePackage: ResolvePackage }} options
  * @returns {Promise<{packages: {name: string, dir: string}[], resources: {extensions: string[], skills: string[]}}>}
  */
 async function resolvePiPackages({ root, resolvePackage }) {
+  /** @type {ResolvedPackage[]} */
   const packages = [];
+  /** @type {PackageResources} */
   const resources = { extensions: [], skills: [] };
 
   for (const name of await readDirectDependencies(root)) {
@@ -393,7 +460,7 @@ async function resolvePiPackages({ root, resolvePackage }) {
     if (manifest === null || manifest.pi === undefined) continue;
 
     packages.push({ name, dir });
-    for (const type of ["extensions", "skills"]) {
+    for (const type of /** @type {("extensions" | "skills")[]} */ (["extensions", "skills"])) {
       for (const entry of asStringList(manifest.pi[type])) {
         resources[type].push(`node_modules/${name}/${stripRelative(entry)}`);
       }
@@ -410,13 +477,17 @@ async function resolvePiPackages({ root, resolvePackage }) {
  * source layout is irrelevant. Copies are real files (never symlinks) and stay
  * flat, matching what pi loads from a local package; a package that resolves to
  * two different versions keeps the first and warns.
+ * @param {{ dependencies: PiDependencies, output: string, resolvePackage: ResolvePackage,
+ *           dryRun: boolean, warn: Warn }} options
+ * @returns {Promise<{ dir: string, bundled: string[], staged: string[], resources: PackageResources }>}
  */
 async function stagePiPackages({ dependencies, output, resolvePackage, dryRun, warn }) {
+  /** @type {Map<string, string>} */
   const staged = new Map();
   const pending = dependencies.packages.map(({ name, dir }) => ({ name, dir }));
 
   while (pending.length > 0) {
-    const { name, dir } = pending.shift();
+    const { name, dir } = /** @type {ResolvedPackage} */ (pending.shift());
     const seen = staged.get(name);
     if (seen !== undefined) {
       if (seen !== dir) warn(`pi package "${name}" resolves to two directories (${seen}, ${dir}) — keeping the first`);
@@ -445,9 +516,13 @@ async function stagePiPackages({ dependencies, output, resolvePackage, dryRun, w
  * construction. A package's `package.json` is not always exported, so the
  * package directory is found by resolving an entry point and walking up to the
  * enclosing manifest that names it.
+ * @param {string} name
+ * @param {string} [fromDir]
+ * @returns {Promise<string>}
  */
 async function resolveFromNode(name, fromDir = PACKAGE_ROOT) {
   const req = createRequire(join(fromDir, "package.json"));
+  /** @type {string | null} */
   let entry = null;
   for (const specifier of [name, `${name}/package.json`]) {
     try {
@@ -471,11 +546,19 @@ async function resolveFromNode(name, fromDir = PACKAGE_ROOT) {
   }
 }
 
+/**
+ * @param {string} root
+ * @returns {Promise<string[]>}
+ */
 async function readDirectDependencies(root) {
   const manifest = await readJsonObject(join(root, "package.json"));
   return manifest === null ? [] : Object.keys(manifest.dependencies ?? {});
 }
 
+/**
+ * @param {string} dir
+ * @returns {Promise<string[]>}
+ */
 async function readDependencyNames(dir) {
   const manifest = await readJsonObject(join(dir, "package.json"));
   return manifest === null ? [] : Object.keys(manifest.dependencies ?? {});
@@ -515,8 +598,7 @@ async function readDependencyNames(dir) {
  * @param {boolean} [options.dryRun]       Plan and report without spawning anything
  * @param {boolean} [options.requireRegister] Throw when registration cannot run
  * @param {(msg: string) => void} [options.warn] Warning sink (default: console.warn)
- * @returns {Promise<{ output: string, piBin: string, settingsPath: string, registered: boolean,
- *             removed: string[], commands: string[][], dryRun: boolean }>}
+ * @returns {Promise<RegisterPiResult>}
  */
 export async function registerPi({
   root = PACKAGE_ROOT,
@@ -536,7 +618,7 @@ export async function registerPi({
   // runs it: drop the superseded sources, then register the staged package.
   const manualCommands = [...stale.map(({ path }) => `${piBin} remove ${path}`), `${piBin} install ${stagedPath}`];
 
-  const summary = { output: stagedPath, piBin, settingsPath, registered: false, removed: [], commands: [], dryRun };
+  const summary = /** @type {RegisterPiResult} */ ({ output: stagedPath, piBin, settingsPath, registered: false, removed: [], commands: [], dryRun });
   for (const { path } of stale) summary.commands.push(["remove", path]);
   if (!registered) summary.commands.push(["install", stagedPath]);
 
@@ -583,7 +665,7 @@ export async function registerPi({
       // checkout and the staged package at once, and every re-run would repeat
       // the same non-converging cycle. Fail instead of reporting success.
       throw new Error(
-        `${err.message} — the superseded source is still configured: ${path}. ` +
+        `${/** @type {Error} */ (err).message} — the superseded source is still configured: ${path}. ` +
           `Remove it with "${piBin} remove ${path}" and re-run`,
       );
     }
@@ -612,6 +694,8 @@ export async function registerPi({
 /**
  * Local package sources configured in pi's settings file, in order. pi stores
  * each entry as a source string or a `{ source, … }` filter object.
+ * @param {string} settingsPath
+ * @returns {Promise<string[]>}
  */
 async function readConfiguredPackages(settingsPath) {
   const settings = await readJsonObject(settingsPath);
@@ -620,11 +704,19 @@ async function readConfiguredPackages(settingsPath) {
   return packages.map(packageSource).filter((source) => source !== undefined);
 }
 
+/**
+ * @param {any} entry
+ * @returns {string | undefined}
+ */
 function packageSource(entry) {
   if (typeof entry === "string") return entry;
   return typeof entry?.source === "string" ? entry.source : undefined;
 }
 
+/**
+ * @param {string} source
+ * @returns {boolean}
+ */
 function isLocalSource(source) {
   return !NON_LOCAL_PREFIXES.some((prefix) => source.trim().startsWith(prefix));
 }
@@ -632,6 +724,9 @@ function isLocalSource(source) {
 /**
  * Resolve a configured source the way pi does: relative to the directory
  * holding the settings file, with `~` expanded.
+ * @param {string} source
+ * @param {string} settingsDir
+ * @returns {string}
  */
 function resolveSourcePath(source, settingsDir) {
   const trimmed = source.trim();
@@ -645,9 +740,12 @@ function resolveSourcePath(source, settingsDir) {
  * whose directory is gone is left alone: a missing path cannot be told apart
  * from a temporarily absent one, and removing it could drop a package the user
  * still wants.
+ * @param {{ sources: string[], settingsPath: string, stagedPath: string, rawPackageName: string | undefined }} options
+ * @returns {Promise<{ registered: boolean, stale: { path: string }[] }>}
  */
 async function classifySources({ sources, settingsPath, stagedPath, rawPackageName }) {
   const settingsDir = dirname(settingsPath);
+  /** @type {{ path: string }[]} */
   const stale = [];
   let registered = false;
   for (const source of sources) {
@@ -666,6 +764,8 @@ async function classifySources({ sources, settingsPath, stagedPath, rawPackageNa
 /**
  * Probe whether the `pi` CLI can be run at all, with output suppressed.
  * Resolves `{ ok: true }` or `{ ok: false, detail }` naming the failure.
+ * @param {string} piBin
+ * @returns {Promise<{ ok: true } | { ok: false, detail: string }>}
  */
 function probePi(piBin) {
   return new Promise((resolve) => {
@@ -683,7 +783,12 @@ function probePi(piBin) {
   });
 }
 
-/** Run one pi package command, inheriting its output; rejects on failure. */
+/**
+ * Run one pi package command, inheriting its output; rejects on failure.
+ * @param {string} piBin
+ * @param {string[]} args
+ * @returns {Promise<void>}
+ */
 function runPiCommand(piBin, args) {
   const label = `${piBin} ${args.join(" ")}`;
   return new Promise((resolve, reject) => {
@@ -747,15 +852,23 @@ export async function sweepLegacyPiUserDirs({
   recordPath = DEFAULT_LEGACY_SWEEP_RECORD,
   dryRun = false,
   warn = DEFAULT_WARN,
-} = {}) {
+}) {
+  /** @type {string[]} */
   const removed = [];
+  /** @type {string[]} */
   const kept = [];
+  /** @type {string[]} */
   const failed = [];
 
   if (!(await isDirectory(piUserDir))) return { removed, kept };
   if (await hasMigrated({ recordPath, piUserDir, warn })) return { removed, kept };
 
   // Commands that record what happened and either delete the path or keep it.
+  /**
+   * @param {string} path
+   * @param {boolean} isLegacy
+   * @returns {Promise<void>}
+   */
   const sweep = async (path, isLegacy) => {
     if (!isLegacy) {
       kept.push(path);
@@ -769,7 +882,7 @@ export async function sweepLegacyPiUserDirs({
       await rm(path, { recursive: true, force: true });
       removed.push(path);
     } catch (err) {
-      warn(`could not remove the legacy artifact ${path}: ${err.message}`);
+      warn(`could not remove the legacy artifact ${path}: ${/** @type {Error} */ (err).message}`);
       kept.push(path);
       failed.push(path);
     }
@@ -782,6 +895,7 @@ export async function sweepLegacyPiUserDirs({
   // attribute what it cannot see, so it warns and counts the directory as a
   // failure — which is what keeps the migration unrecorded, so the next install
   // retries once the permissions allow it.
+  /** @param {string} dir */
   const unreadable = (dir) => {
     warn(
       `could not list ${dir} — the legacy sweep cannot tell its contents from the user's, ` +
@@ -792,6 +906,10 @@ export async function sweepLegacyPiUserDirs({
 
   // Entries of a sweep site: none for a directory that is absent, and a recorded
   // failure for one that exists but cannot be read.
+  /**
+   * @param {string} dir
+   * @returns {Promise<string[]>}
+   */
   const list = async (dir) => {
     const entries = await listDir(dir);
     if (entries === null) unreadable(dir);
@@ -861,14 +979,16 @@ export async function sweepLegacyPiUserDirs({
  * A record that exists but cannot be read is treated as "already migrated":
  * the state is ambiguous and a deletion is not recoverable, so the sweep never
  * runs on an unreadable record.
+ * @param {{ recordPath: string, piUserDir: string, warn: Warn }} options
+ * @returns {Promise<boolean>}
  */
 async function hasMigrated({ recordPath, piUserDir, warn }) {
   let raw;
   try {
     raw = await readFile(recordPath, "utf-8");
   } catch (err) {
-    if (err.code === "ENOENT") return false;
-    warn(`could not read the legacy sweep record ${recordPath}: ${err.message} — the migration will not run again`);
+    if (/** @type {NodeJS.ErrnoException} */ (err).code === "ENOENT") return false;
+    warn(`could not read the legacy sweep record ${recordPath}: ${/** @type {Error} */ (err).message} — the migration will not run again`);
     return true;
   }
   const entries = parseRecordEntries(raw);
@@ -884,6 +1004,8 @@ async function hasMigrated({ recordPath, piUserDir, warn }) {
  * — another pi config may have migrated already and must not be re-run. A write
  * failure warns instead of throwing: registration already succeeded, so an
  * unwritable record is not a reason to fail the install.
+ * @param {{ recordPath: string, piUserDir: string, warn: Warn }} options
+ * @returns {Promise<void>}
  */
 async function recordMigration({ recordPath, piUserDir, warn }) {
   const entries = await readRecordEntries(recordPath);
@@ -893,12 +1015,16 @@ async function recordMigration({ recordPath, piUserDir, warn }) {
     await writeFile(recordPath, `${JSON.stringify(entries, null, 2)}\n`);
   } catch (err) {
     warn(
-      `could not record the legacy sweep at ${recordPath}: ${err.message} — a later install may run the migration again`,
+      `could not record the legacy sweep at ${recordPath}: ${/** @type {Error} */ (err).message} — a later install may run the migration again`,
     );
   }
 }
 
-/** Record entries keyed by pi user directory; `{}` when it is absent or unusable. */
+/**
+ * Record entries keyed by pi user directory; `{}` when it is absent or unusable.
+ * @param {string} recordPath
+ * @returns {Promise<Record<string, any>>}
+ */
 async function readRecordEntries(recordPath) {
   try {
     return parseRecordEntries(await readFile(recordPath, "utf-8")) ?? {};
@@ -907,7 +1033,11 @@ async function readRecordEntries(recordPath) {
   }
 }
 
-/** The record's `{ "<piUserDir>": entry }` object, or null when the text is not one. */
+/**
+ * The record's `{ "<piUserDir>": entry }` object, or null when the text is not one.
+ * @param {string} raw
+ * @returns {Record<string, any> | null}
+ */
 function parseRecordEntries(raw) {
   let parsed;
   try {
@@ -918,7 +1048,11 @@ function parseRecordEntries(raw) {
   return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : null;
 }
 
-/** Whether `path` is a directory without following a symlink to one. */
+/**
+ * Whether `path` is a directory without following a symlink to one.
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
 async function isRealDirectory(path) {
   try {
     return (await lstat(path)).isDirectory();
@@ -927,10 +1061,15 @@ async function isRealDirectory(path) {
   }
 }
 
-/** Composable agent names the package root ships (`agents/<name>/agent.md`), or null when it cannot be listed. */
+/**
+ * Composable agent names the package root ships (`agents/<name>/agent.md`), or null when it cannot be listed.
+ * @param {string} root
+ * @returns {Promise<Set<string> | null>}
+ */
 async function shippedAgentNames(root) {
   const entries = await listDir(join(root, "agents"));
   if (entries === null) return null;
+  /** @type {Set<string>} */
   const names = new Set();
   for (const entry of entries) {
     if (await isFile(join(root, "agents", entry, "agent.md"))) names.add(entry);
@@ -938,10 +1077,15 @@ async function shippedAgentNames(root) {
   return names;
 }
 
-/** Skill paths the package root ships (`skills/<group>/<name>/SKILL.md`), or null when it cannot be listed. */
+/**
+ * Skill paths the package root ships (`skills/<group>/<name>/SKILL.md`), or null when it cannot be listed.
+ * @param {string} root
+ * @returns {Promise<Set<string> | null>}
+ */
 async function shippedSkillPaths(root) {
   const groups = await listDir(join(root, "skills"));
   if (groups === null) return null;
+  /** @type {Set<string>} */
   const paths = new Set();
   for (const group of groups) {
     const names = await listDir(join(root, "skills", group));
@@ -960,12 +1104,15 @@ async function shippedSkillPaths(root) {
  * The two must not collapse into one answer: the sweep records a finished
  * migration, so a listing failure read as an empty directory would record one
  * that removed nothing and never retry it.
+ * @param {string} dir
+ * @returns {Promise<string[] | null>}
  */
 async function listDir(dir) {
   try {
     return (await readdir(dir)).sort();
   } catch (err) {
-    if (err.code === "ENOENT" || err.code === "ENOTDIR") return [];
+    const code = /** @type {NodeJS.ErrnoException} */ (err).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return [];
     return null;
   }
 }
@@ -978,6 +1125,8 @@ async function listDir(dir) {
  * pi's package rules do the loading: conventional dirs are declared explicitly
  * so the bundled packages' resources are included alongside ./extensions and
  * ./skills (one pi-visible source, no tokenised repo copies).
+ * @param {{ root: string, dependencies: PiDependencies }} options
+ * @returns {Promise<PiManifest>}
  */
 async function buildManifest({ root, dependencies }) {
   const pkg = await readJsonObject(join(root, "package.json"));
@@ -996,6 +1145,10 @@ async function buildManifest({ root, dependencies }) {
   };
 }
 
+/**
+ * @param {{ output: string, manifest: PiManifest }} options
+ * @returns {Promise<{ path: string, manifest: PiManifest }>}
+ */
 async function writeManifest({ output, manifest }) {
   const path = join(output, "package.json");
   await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -1006,9 +1159,12 @@ async function writeManifest({ output, manifest }) {
  * Prove the manifest references real resources before reporting a success: a
  * staged package whose declared extension or skill path does not exist would
  * load silently short of the tools the agents expect.
+ * @param {{ output: string, manifest: PiManifest }} options
+ * @returns {Promise<void>}
  */
 async function verifyManifestResources({ output, manifest }) {
   const declared = [...manifest.pi.extensions, ...manifest.pi.skills];
+  /** @type {string[]} */
   const missing = [];
   for (const rel of declared) {
     if (!(await pathExists(join(output, rel)))) missing.push(rel);
@@ -1024,6 +1180,10 @@ async function verifyManifestResources({ output, manifest }) {
  * Recursively copy a tree, optionally transforming file contents. `.md` files
  * go through `transform` when supplied; everything else is copied verbatim.
  * `node_modules` and symlinks are never copied.
+ * @param {string} src
+ * @param {string} dest
+ * @param {{ dryRun?: boolean, transform?: ContentTransform | null }} [options]
+ * @returns {Promise<{ files: number, md: number }>}
  */
 async function copyTree(src, dest, { dryRun = false, transform = null } = {}) {
   let files = 0;
@@ -1052,21 +1212,33 @@ async function copyTree(src, dest, { dryRun = false, transform = null } = {}) {
 
 // ─── Small helpers ───────────────────────────────────────────────────────────
 
-/** `./skills/` → `skills` — a package resource path relative to its own root. */
+/**
+ * `./skills/` → `skills` — a package resource path relative to its own root.
+ * @param {string} entry
+ * @returns {string}
+ */
 function stripRelative(entry) {
   return entry.replace(/^\.\//, "").replace(/\/$/, "");
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
 function asStringList(value) {
   return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
 }
 
+/**
+ * @param {string} filePath
+ * @returns {Promise<Record<string, any> | null>}
+ */
 async function readJsonObject(filePath) {
   let raw;
   try {
     raw = await readFile(filePath, "utf-8");
   } catch (err) {
-    if (err.code === "ENOENT") return null;
+    if (/** @type {NodeJS.ErrnoException} */ (err).code === "ENOENT") return null;
     throw err;
   }
   try {
@@ -1077,6 +1249,10 @@ async function readJsonObject(filePath) {
   }
 }
 
+/**
+ * @param {string} filePath
+ * @returns {Promise<boolean>}
+ */
 async function pathExists(filePath) {
   try {
     await stat(filePath);

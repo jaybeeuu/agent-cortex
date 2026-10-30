@@ -11,8 +11,7 @@
 //                                           agent.md + claude/ harness dirs,
 //                                           {{TOOL:...}}/{{PATH:...}}
 //                                           substituted against token-map.json's
-//                                           claude column) plus agents-native
-//                                           (ralph verbatim)
+//                                           claude column)
 //   <output>/skills/<name>/                 skill dirs COPIED flat (one dir per
 //                                           skill, as Claude's <name>/SKILL.md
 //                                           plugin scan expects) with .md files
@@ -64,6 +63,28 @@ import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
 
+/** @typedef {import("../../scripts/lib/compose-agent.mjs").TokenMap} TokenMap */
+/** @typedef {(msg: string) => void} Warn */
+
+/**
+ * Result of writing (or planning to write) a managed file.
+ * @typedef {object} ManagedFileResult
+ * @property {string} path
+ * @property {"would-remove-symlink" | "unchanged" | "would-write" | "removed-symlink" | "written" | "skipped-unmanaged"} action
+ * @property {boolean} removedSymlink
+ */
+
+/**
+ * Registration plan/outcome returned by registerClaude.
+ * @typedef {object} RegisterClaudeResult
+ * @property {string} marketplace
+ * @property {string} plugin
+ * @property {string[][]} commands
+ * @property {boolean} dryRun
+ * @property {boolean} registered
+ * @property {string[]} skipped
+ */
+
 // Home-scoped plugin install root. The parent dir (~/.agent-cortex) is the
 // marketplace root: it carries .claude-plugin/marketplace.json exposing
 // ./claude, so `claude plugin marketplace add ~/.agent-cortex` points Claude
@@ -98,27 +119,27 @@ const CONTRACT_VERSION = 1;
 
 const CLAUDE = "claude";
 
-const DEFAULT_WARN = (msg) => console.warn(`[claude-installer] ${msg}`);
+const DEFAULT_WARN = (/** @type {string} */ msg) => console.warn(`[claude-installer] ${msg}`);
 
-// Agents NOT transformed from the composable sources. `ralph` is authored natively for Claude
-// instead (agents-native/ralph.md) — its event-driven orchestration can't be produced by
-// section composition from the poll-loop sources.
-const DEFER = new Set(["ralph"]);
-
-// Ralph-coupled pipeline skills that don't apply to the lean Claude Ralph (its completion
-// handling is event-driven, not the pi orchestrator's). Not copied into the Claude plugin.
-const SKILL_EXCLUDE = new Set(["ralph", "run-pipeline-stage"]);
 
 const NAME_PREFIX = "agent-cortex:";
 
+/**
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
 function byName(a, b) {
   return a.localeCompare(b);
 }
 
-/** Compose agents from agents/<name>/; DEFERed agents come from agents-native/ instead. */
+/**
+ * Compose every agent from agents/<name>/ — all harnesses share the composable sources.
+ * @param {string} root
+ * @returns {Promise<{ files: { file: string, content: string }[] }>}
+ */
 async function buildAgents(root) {
   const files = [];
-  const skipped = [];
   const entries = (await readdir(join(root, "agents"), { withFileTypes: true })).sort((a, b) =>
     byName(a.name, b.name),
   );
@@ -127,11 +148,6 @@ async function buildAgents(root) {
     if (!entry.isDirectory()) continue;
     const dir = join(root, "agents", entry.name);
     if (!(await isFile(join(dir, "agent.md"))) || !(await isFile(join(dir, "claude", "frontmatter.json")))) continue;
-
-    if (DEFER.has(entry.name)) {
-      skipped.push(entry.name);
-      continue;
-    }
 
     const fm = await composeAgent(root, entry.name, CLAUDE);
     const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
@@ -144,18 +160,7 @@ async function buildAgents(root) {
       `---\n`;
     files.push({ file: `${slug}.md`, content: `${header}\n${fm.body}\n` });
   }
-  return { files, skipped };
-}
-
-/** Copy hand-authored Claude-native agents into agents/ verbatim. */
-async function buildNatives(root, nativeSrc) {
-  const files = [];
-  if (!(await isDirectory(nativeSrc))) return files;
-  const names = (await readdir(nativeSrc)).filter((f) => f.endsWith(".md")).sort(byName);
-  for (const file of names) {
-    files.push({ file, content: await readFile(join(nativeSrc, file), "utf-8") });
-  }
-  return files;
+  return { files };
 }
 
 /**
@@ -164,9 +169,14 @@ async function buildNatives(root, nativeSrc) {
  * under skills/), token-substituting .md files against token-map.json's claude
  * column (the same materialisation as bin/installers/pi.mjs: no symlinks, so
  * literal {{TOOL:...}}/{{PATH:...}} never survives; non-.md files verbatim).
+ * @param {string} root
+ * @param {string} skillOut
+ * @param {{ dryRun: boolean, pluginRoot: string | undefined, tokenMap: TokenMap, warn: Warn }} options
+ * @returns {Promise<{ names: string[], md: number, files: number, dir: string }>}
  */
 async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn }) {
   const seen = new Map();
+  /** @param {string} content @returns {string} */
   const transform = (content) =>
     substituteTokens(content, CLAUDE, tokenMap, { dropNullTools: true, pluginRoot, resolveRelativePaths: true, warn });
 
@@ -179,7 +189,6 @@ async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn 
     for (const name of (await readdir(groupDir)).sort(byName)) {
       const skillDir = join(groupDir, name);
       if (!(await isFile(join(skillDir, "SKILL.md")))) continue;
-      if (SKILL_EXCLUDE.has(name)) continue;
       if (seen.has(name)) {
         throw new Error(`duplicate skill name "${name}" (${seen.get(name)} and ${group}) — names must be unique when flattened`);
       }
@@ -193,7 +202,14 @@ async function buildSkills(root, skillOut, { dryRun, pluginRoot, tokenMap, warn 
   return { names, md, files, dir: skillOut };
 }
 
-/** Recursively copy a tree; transform .md file contents, copy everything else verbatim. */
+/**
+ * Recursively copy a tree; transform .md file contents, copy everything else verbatim.
+ * @param {string} src
+ * @param {string} dest
+ * @param {(content: string) => string} transform
+ * @param {boolean} dryRun
+ * @returns {Promise<{ md: number, files: number }>}
+ */
 async function copyTree(src, dest, transform, dryRun) {
   let md = 0;
   let files = 0;
@@ -216,7 +232,11 @@ async function copyTree(src, dest, transform, dryRun) {
   return { md, files };
 }
 
-/** plugin.json manifest; version tracks the package so it can never go stale. */
+/**
+ * plugin.json manifest; version tracks the package so it can never go stale.
+ * @param {string} root
+ * @returns {Promise<string>}
+ */
 async function buildPluginJson(root) {
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
   return (
@@ -242,6 +262,10 @@ async function buildPluginJson(root) {
  * install root ~/.agent-cortex doubles as the marketplace root), so `claude
  * plugin marketplace add ~/.agent-cortex` resolves ./claude relative to the
  * manifest's directory.
+ * @param {string} root
+ * @param {string} outputName
+ * @returns {Promise<{ name: string, owner: { name: string }, metadata: { description: string },
+ *             plugins: { name: string, source: string, description: string }[] }>}
  */
 async function buildMarketplaceManifest(root, outputName) {
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf-8"));
@@ -263,11 +287,19 @@ async function buildMarketplaceManifest(root, outputName) {
  * Hook support files (hooks/claude/ except hooks.json) bundled into
  * hooks/ so hook commands can reference them via ${CLAUDE_PLUGIN_ROOT}.
  * hooks.json itself is special-cased to the plugin root (hooks.json).
+ * @param {string} root
+ * @returns {Promise<{ rel: string, content: string }[]>}
  */
 async function buildHookFiles(root) {
+  /** @type {{ rel: string, content: string }[]} */
   const files = [];
   const srcDir = join(root, "hooks", "claude");
   if (!(await isDirectory(srcDir))) return files;
+  /**
+   * @param {string} dir
+   * @param {string} rel
+   * @returns {Promise<void>}
+   */
   const walk = async (dir, rel) => {
     const entries = await readdir(dir, { withFileTypes: true });
     entries.sort((a, b) => byName(a.name, b.name));
@@ -289,8 +321,11 @@ async function buildHookFiles(root) {
  * at read time (not path-referenced) so the write-phase cleanup of the
  * output dir can never destroy the sources (outputs normally go to
  * ~/.agent-cortex/claude or a tmp dir, never into claude-extras/).
+ * @param {string} root
+ * @returns {Promise<{ rel: string, content: string | Buffer, mode: number }[]>}
  */
 async function buildHandAuthored(root) {
+  /** @type {{ rel: string, content: string | Buffer, mode: number }[]} */
   const items = [];
   const srcExtras = join(root, "claude-extras");
   if (await isFile(join(srcExtras, ".mcp.json"))) {
@@ -320,6 +355,8 @@ async function buildHandAuthored(root) {
  *   - `enabledPlugins` and `extraKnownMarketplaces` are CLI-owned: they are
  *     rewritten from the template outright. `permissions`, `hooks`, `env`,
  *     `statusLine` and every other key are never touched.
+ * @param {{ root: string, target: string, dryRun: boolean, warn: Warn }} options
+ * @returns {Promise<ManagedFileResult | null>}
  */
 async function installSettings({ root, target, dryRun, warn }) {
   const template = await readTemplateJson(join(root, SETTINGS_TEMPLATE), warn);
@@ -339,8 +376,12 @@ async function installSettings({ root, target, dryRun, warn }) {
  * Merge the committed template over the live file. Template keys fill in
  * defaults, live values win (deeply), and keys the template does not know about
  * are preserved — re-installing never discards personal or Claude-written config.
+ * @param {Record<string, any>} template
+ * @param {Record<string, any>} existing
+ * @returns {Record<string, any>}
  */
 function mergeSettings(template, existing) {
+  /** @type {Record<string, any>} */
   const merged = {};
   for (const key of Object.keys(template)) {
     const templateValue = template[key];
@@ -362,6 +403,8 @@ function mergeSettings(template, existing) {
  * a sibling temp file and renaming it over the target — rename replaces the link
  * itself, so a committed template is never written through.
  * Returns the action taken so the CLI can report the plan (dry-run included).
+ * @param {{ target: string, content: string, dryRun: boolean }} options
+ * @returns {Promise<ManagedFileResult>}
  */
 async function writeManagedFile({ target, content, dryRun }) {
   const symlink = await isSymlink(target);
@@ -399,6 +442,8 @@ async function writeManagedFile({ target, content, dryRun }) {
  * text between them and every other line of the user's memory file survives. A
  * file with exactly one marker (hand-edited or truncated) is left untouched with
  * a warning, never guessed at.
+ * @param {{ root: string, target: string, dryRun: boolean, warn: Warn }} options
+ * @returns {Promise<ManagedFileResult | null>}
  */
 async function installInstructions({ root, target, dryRun, warn }) {
   const block = await readFileMaybe(join(root, INSTRUCTIONS_SOURCE));
@@ -418,6 +463,9 @@ async function installInstructions({ root, target, dryRun, warn }) {
  * Return `existing` with the managed section replaced by `block`, or null when
  * the file carries unmatched markers. A file without markers gets the section
  * appended, so personal memory text is never disturbed.
+ * @param {string | null} existing
+ * @param {string} block
+ * @returns {string | null}
  */
 function mergeManagedSection(existing, block) {
   const managed = `${INSTRUCTIONS_BEGIN}\n${block.trimEnd()}\n${INSTRUCTIONS_END}`;
@@ -436,6 +484,11 @@ function mergeManagedSection(existing, block) {
   return `${[before, managed, after].filter((part) => part !== "").join("\n\n")}\n`;
 }
 
+/**
+ * @param {string} filePath
+ * @param {Warn} warn
+ * @returns {Promise<Record<string, any> | null>}
+ */
 async function readTemplateJson(filePath, warn) {
   const raw = await readFileMaybe(filePath);
   if (raw === null) {
@@ -447,6 +500,11 @@ async function readTemplateJson(filePath, warn) {
   return parsed;
 }
 
+/**
+ * @param {string} filePath
+ * @param {Warn} warn
+ * @returns {Promise<Record<string, any>>}
+ */
 async function readJsonObject(filePath, warn) {
   const raw = await readFileMaybe(filePath);
   if (raw === null) return {};
@@ -458,6 +516,10 @@ async function readJsonObject(filePath, warn) {
   return parsed;
 }
 
+/**
+ * @param {string} raw
+ * @returns {Record<string, any> | null}
+ */
 function tryParseJsonObject(raw) {
   try {
     const parsed = JSON.parse(raw);
@@ -467,19 +529,31 @@ function tryParseJsonObject(raw) {
   }
 }
 
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, any>}
+ */
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * @param {string} filePath
+ * @returns {Promise<string | null>}
+ */
 async function readFileMaybe(filePath) {
   try {
     return await readFile(filePath, "utf-8");
   } catch (err) {
-    if (err.code === "ENOENT") return null;
+    if (/** @type {NodeJS.ErrnoException} */ (err).code === "ENOENT") return null;
     throw err;
   }
 }
 
+/**
+ * @param {string} filePath
+ * @returns {Promise<boolean>}
+ */
 async function isSymlink(filePath) {
   try {
     return (await lstat(filePath)).isSymbolicLink();
@@ -509,13 +583,13 @@ async function isSymlink(filePath) {
  *                                       explicitly materialises the section even
  *                                       with --output — the test/CI seam.
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
- * @returns {{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
- *             marketplaceManifest: object|null, agents: string[], natives: string[],
+ * @returns {Promise<{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
+ *             marketplaceManifest: object|null, agents: string[],
  *             skills: {names: string[], md: number, files: number, dir: string},
  *             hooks: boolean, hookFiles: string[], handAuthored: string[],
  *             settings: {path: string, action: string, removedSymlink: boolean}|null,
  *             instructions: {path: string, action: string, removedSymlink: boolean}|null,
- *             warnings: string[], dryRun: boolean }}
+ *             pluginVersion: string, warnings: string[], dryRun: boolean }>}
  */
 export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, instructionsPath, warn = DEFAULT_WARN } = {}) {
   const tokenMap = await loadTokenMap(root);
@@ -525,8 +599,8 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     );
   }
 
-  const warnings = [];
-  const warnSink = (msg) => {
+  const warnings = /** @type {string[]} */ ([]);
+  const warnSink = (/** @type {string} */ msg) => {
     warnings.push(msg);
     warn(msg);
   };
@@ -536,9 +610,9 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   // --output is generate-only (tests/CI), matching its no-registration semantics.
   const isDefaultInstall = output === undefined;
   const marketplaceRoot = isDefaultInstall ? dirname(out) : null;
-  const manifestPath = isDefaultInstall ? join(marketplaceRoot, ".claude-plugin", "marketplace.json") : null;
+  const manifestPath = isDefaultInstall && marketplaceRoot !== null ? join(marketplaceRoot, ".claude-plugin", "marketplace.json") : null;
 
-  const rootPlugin = pluginRoot ?? tokenMap.paths.plugin_root?.[CLAUDE];
+  const rootPlugin = pluginRoot ?? /** @type {string | undefined} */ (tokenMap.paths.plugin_root?.[CLAUDE]);
 
   // Read hand-authored extras from the canonical claude-extras/ dir BEFORE
   // the cleanup below (defensive: the output is normally ~/.agent-cortex/claude
@@ -574,7 +648,6 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
       : null;
 
   const agents = await buildAgents(root);
-  const natives = await buildNatives(root, join(root, "agents-native"));
   const skillOut = join(out, "skills");
   const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
   const pluginJson = await buildPluginJson(root);
@@ -590,7 +663,6 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     marketplaceManifest,
     pluginVersion: JSON.parse(pluginJson).version,
     agents: agents.files.map((f) => f.file.replace(/\.md$/, "")),
-    natives: natives.map((f) => f.file.replace(/\.md$/, "")),
     skills: { names: skills.names, md: skills.md, files: skills.files, dir: skillOut },
     hooks: hooksJson !== null,
     hookFiles: hookFiles.map((f) => f.rel),
@@ -601,12 +673,9 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     dryRun,
   };
 
-  if (agents.skipped.length) console.log(`Skipped composable source(s): ${agents.skipped.join(", ")}`);
-
   if (dryRun) {
     console.log(`DRY-RUN — would generate into ${out}, no files written:`);
     console.log(`  agents: ${summary.agents.join(", ")}`);
-    if (summary.natives.length) console.log(`  native agents: ${summary.natives.join(", ")}`);
     console.log(`  skills: ${summary.skills.names.length} copied → ${skillOut}/<name>/ (token-substituted)`);
     console.log(`  .claude-plugin/plugin.json (version ${JSON.parse(pluginJson).version})`);
     if (isDefaultInstall && manifestPath) {
@@ -629,11 +698,10 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     console.log(`Materialised CLAUDE.md section → ${instructions.path} (${instructions.action})`);
   const agentOut = join(out, "agents");
   await mkdir(agentOut, { recursive: true });
-  for (const { file, content } of [...agents.files, ...natives]) {
+  for (const { file, content } of agents.files) {
     await writeFile(join(agentOut, file), content);
   }
   console.log(`Generated ${summary.agents.length} Claude agent(s): ${summary.agents.join(", ")}`);
-  if (summary.natives.length) console.log(`Copied ${summary.natives.length} native Claude agent(s): ${summary.natives.join(", ")}`);
 
   await mkdir(skillOut, { recursive: true });
   console.log(
@@ -651,7 +719,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     console.log(`Wrote ${manifestPath} (plugin agent-cortex @ ./${basename(out)})`);
   }
 
-  if (summary.hooks) {
+  if (hooksJson !== null) {
     await writeFile(join(out, "hooks.json"), hooksJson);
     console.log(`Wrote ${join(out, "hooks.json")} (from ${hooksSrc})`);
 
@@ -686,8 +754,13 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
 // The `claude` CLI on PATH. Overridable in tests via the claudeBin option.
 const DEFAULT_CLAUDE_BIN = "claude";
 
-/** Validate a marketplace manifest object; returns the marketplace and plugin
- * names that `claude plugin` commands address. */
+/**
+ * Validate a marketplace manifest object; returns the marketplace and plugin
+ * names that `claude plugin` commands address.
+ * @param {any} manifest
+ * @param {string} label
+ * @returns {{ marketplace: string, plugin: string }}
+ */
 function parseMarketplaceManifest(manifest, label) {
   const marketplace = manifest.name;
   const plugin = manifest.plugins?.[0]?.name;
@@ -702,6 +775,8 @@ function parseMarketplaceManifest(manifest, label) {
 /**
  * Read the marketplace manifest that exposes the plugin at install root
  * (<root>/.claude-plugin/marketplace.json).
+ * @param {string} root
+ * @returns {Promise<{ manifest: any, path: string }>}
  */
 async function readMarketplaceManifest(root) {
   const manifestPath = join(root, ".claude-plugin", "marketplace.json");
@@ -710,7 +785,7 @@ async function readMarketplaceManifest(root) {
     manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
   } catch (err) {
     throw new Error(
-      `no Claude marketplace manifest at ${manifestPath} (${err.message}) — ` +
+      `no Claude marketplace manifest at ${manifestPath} (${/** @type {Error} */ (err).message}) — ` +
         `"agent-cortex install claude" registers the plugin by pointing Claude Code at the install root`,
     );
   }
@@ -722,6 +797,9 @@ async function readMarketplaceManifest(root) {
  * where <source> is the marketplace manifest's plugin source) — the signature a
  * directory-source marketplace exposes to `claude plugin`. Read when the version
  * is not passed explicitly; undefined when it cannot be determined.
+ * @param {string} root
+ * @param {any} manifest
+ * @returns {Promise<string | undefined>}
  */
 async function readMaterialisedPluginVersion(root, manifest) {
   const source = manifest.plugins?.[0]?.source;
@@ -734,7 +812,10 @@ async function readMaterialisedPluginVersion(root, manifest) {
   }
 }
 
-/** Run one claude plugin command, inheriting its output; rejects on failure. */
+/** Run one claude plugin command, inheriting its output; rejects on failure.
+ * @param {string} claudeBin
+ * @param {string[]} args
+ * @returns {Promise<void>} */
 function runClaudeCommand(claudeBin, args) {
   const label = `${claudeBin} ${args.join(" ")}`;
   return new Promise((resolve, reject) => {
@@ -753,6 +834,8 @@ function runClaudeCommand(claudeBin, args) {
  * `claude plugin --help` with output suppressed. Resolves `{ ok: true }` when
  * it exits 0, otherwise `{ ok: false, message }` naming the failure (missing
  * binary vs missing subcommand) so registration can give targeted guidance.
+ * @param {string} claudeBin
+ * @returns {Promise<{ ok: true } | { ok: false, message: string }>}
  */
 function probePluginSupport(claudeBin) {
   return new Promise((resolve) => {
@@ -776,7 +859,12 @@ function probePluginSupport(claudeBin) {
   });
 }
 
-/** Run a claude plugin command capturing stdout; null when the command fails. */
+/**
+ * Run a claude plugin command capturing stdout; null when the command fails.
+ * @param {string} claudeBin
+ * @param {string[]} args
+ * @returns {Promise<string | null>}
+ */
 function queryClaudeCommand(claudeBin, args) {
   const label = `${claudeBin} ${args.join(" ")}`;
   return new Promise((resolve, reject) => {
@@ -796,6 +884,9 @@ function queryClaudeCommand(claudeBin, args) {
  * Whether `claude plugin marketplace list` already registers `marketplace`.
  * Unparseable output counts as not-registered: the fallback `marketplace add`
  * is itself idempotent (the CLI reports "already on disk", exit 0).
+ * @param {string} claudeBin
+ * @param {string} marketplace
+ * @returns {Promise<boolean>}
  */
 async function marketplaceRegistered(claudeBin, marketplace) {
   const out = await queryClaudeCommand(claudeBin, ["plugin", "marketplace", "list", "--json"]);
@@ -812,6 +903,9 @@ async function marketplaceRegistered(claudeBin, marketplace) {
  * Installed version of `pluginId` per `claude plugin list --json`; null when
  * not installed or the output is unreadable (the caller falls back to the
  * idempotent `plugin install`).
+ * @param {string} claudeBin
+ * @param {string} pluginId
+ * @returns {Promise<string | null>}
  */
 async function installedPluginVersion(claudeBin, pluginId) {
   const out = await queryClaudeCommand(claudeBin, ["plugin", "list", "--json"]);
@@ -861,8 +955,7 @@ async function installedPluginVersion(claudeBin, pluginId) {
  * @param {string} [options.pluginVersion]   Materialised plugin version (default: read from plugin.json)
  * @param {boolean} [options.requireRegister] Exit non-zero when registration cannot run
  * @param {(msg: string) => void} [options.warn] Warning sink (default: console.warn)
- * @returns {{ marketplace: string, plugin: string, commands: string[][],
- *             dryRun: boolean, registered: boolean, skipped: string[] }}
+ * @returns {Promise<RegisterClaudeResult>}
  */
 export async function registerClaude({
   root = PACKAGE_ROOT,
@@ -880,7 +973,7 @@ export async function registerClaude({
   const version = pluginVersion ?? (await readMaterialisedPluginVersion(root, manifestObj));
   const home = resolve(root);
 
-  const summary = { marketplace, plugin, commands: [], dryRun, registered: true, skipped: [] };
+  const summary = /** @type {RegisterClaudeResult} */ ({ marketplace, plugin, commands: [], dryRun, registered: true, skipped: [] });
   console.log(`Registering plugin "${pluginId}" with Claude Code (via ${claudeBin})…`);
 
   const manualCommands = [

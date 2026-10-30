@@ -62,10 +62,15 @@ rather than inventing a dotted form:
   actually runs from. A literal home path in substituted files would break under
   cache-copy, so the installer passes the env form through verbatim.
 - **`agents`** — the `agent-cortex:` name-prefix convention per harness (claude strips the
-  prefix during conversion) and the deferred-agent exception (claude's `ralph` is authored
-  natively, never generated). Agent names themselves do not get per-row mappings because
-  the prefix rule covers all of them; the deferred list captures the only structural
-  difference.
+  prefix during conversion). Agent names themselves do not get per-row mappings because
+  the prefix rule covers all of them — every agent is composed from `agents/<name>/` for
+  every harness, so there is no structural exception to record.
+- **`wake`** — the completion mechanism per harness (`pi`: blocking-wait,
+  `claude`: event-driven). Informational only — no installer substitutes a
+  token from it. It records the fact that the shared ralph body deliberately does not
+  state, so `{{SECTION:wake}}` → `agents/ralph/<harness>/wake.md` is the single place
+  harness specifics live, and the mechanism stays checkable instead of being inferred from
+  prose. `agents/README.md` carries the same table for humans.
 - **Deliberately not mapped:** hook patterns, MCP servers, and tool descriptions. Those
   differ *structurally* per harness (different hook event names, different config files),
   not by a single substitutable token; each installer already hardcodes its own shape. The

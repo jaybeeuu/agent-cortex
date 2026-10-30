@@ -4,13 +4,13 @@ This document defines the canonical format for composable agent directories in a
 
 ## Motivation
 
-The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Claude) with different tool names and polling mechanisms.
+The original format used a single `*.agent.md` file per agent, combining harness-agnostic logic with harness-specific configuration. This created duplication when the same agent needed to run on multiple harnesses (PI, Claude) with different tool names and wake mechanisms.
 
 The composable directory format separates concerns:
 
 - **Shared body**: Harness-agnostic instructions (workflow, branching model, constraints)
 - **Harness-specific frontmatter**: Tool names, model preferences, metadata per harness
-- **Section files**: Harness-specific instructions (e.g., polling loops) included via tokens
+- **Section files**: Harness-specific instructions (e.g., the harness wake mechanism) included via tokens
 
 ## Directory Structure
 
@@ -33,11 +33,24 @@ agents/ralph/
 ├── agent.md                        # Shared body (branching model, dispatch logic, constraints)
 ├── pi/
 │   ├── frontmatter.json            # PI tools: ["bash", "task", "read_agent", "wait_for_agents"]
-│   └── polling.md                  # PI completion: blocking wait_for_agents (no poll timer)
+│   └── wake.md                     # PI wake: blocking wait_for_agents (no poll timer)
 └── claude/
     ├── frontmatter.json            # Claude tools: ["bash", "task"]
-    └── polling.md                  # Claude event-driven (no polling)
+    └── wake.md                     # Claude wake: event-driven re-invocation on worker completion
 ```
+
+### Wake mechanisms by harness
+
+`{{SECTION:wake}}` is the one seam where harness differences belong: the shared `agent.md`
+names no harness and no harness-specific tool, and every one of those facts lives in a
+`wake.md` that states its mechanism in one sentence, then covers **spawn** (tool and argument
+shape), **completion arrival**, **id tracking**, **log flush**, and **stop** behaviour.
+`token-map.json`'s `wake.mechanism` table records the same fact machine-readably.
+
+| Harness | `wake.mechanism` | Completion arrives via | Id tracking | Stop means |
+|---------|------------------|------------------------|-------------|------------|
+| `pi` | `blocking-wait` | `wait_for_agents` returns as soon as a worker finishes, result inline | `agentId` only | stop calling `wait_for_agents` — nothing to kill |
+| `claude` | `event-driven` | harness re-invokes ralph with the result inline | task ID only, no `logLine` | simply stop — nothing to kill |
 
 ### Example: plan agent (no per-harness sections)
 
@@ -105,7 +118,7 @@ JSON schema for harness-specific metadata:
 Optional markdown files in harness subdirectories that contain harness-specific instructions. Included via `{{SECTION:name}}` tokens in agent.md.
 
 Examples:
-- `polling.md` — Polling loop logic (differs between PI and Claude)
+- `wake.md` — How a background worker's completion reaches the agent (polling, blocking wait, event-driven)
 - `authentication.md` — Harness-specific auth setup
 - `output-format.md` — Harness-specific output formatting
 
@@ -126,7 +139,7 @@ Use {{TOOL:task}} to spawn subagents.
 
 Read {{PATH:skills/workflow/plan/SKILL.md}} for the full workflow.
 
-{{SECTION:polling}}
+{{SECTION:wake}}
 ```
 
 When composing the final agent file for a specific harness:
@@ -161,7 +174,7 @@ as well, so either form round-trips safely.
 When a harness directory contains section files:
 
 ```
-agent.md + pi/frontmatter.json + pi/polling.md → composed agent
+agent.md + pi/frontmatter.json + pi/wake.md → composed agent
 ```
 
 The composer:
@@ -210,8 +223,7 @@ flat agent file is committed:
 - `bin/installers/claude.mjs` (plain `agent-cortex install claude` materialises the plugin
   into `~/.agent-cortex/claude` and registers it with Claude Code; `--output <dir>` is its
   generate-only form, used by tests/CI) composes the plugin's
-  `agents/*.md` from each agent's `claude/` harness dir (except `ralph`, which ships natively
-  from `agents-native/ralph.md`, copied verbatim).
+  `agents/*.md` from each agent's `claude/` harness dir — `ralph` included.
 - The pi harness delivers two ways: the `agent-modes` extension composes `agent.md` +
   `pi/frontmatter.json` at runtime against `token-map.json`, and `agent-cortex install pi`
   renders flat pi agents + token-substituted skills into a self-contained package at
@@ -236,7 +248,7 @@ agents, token-substituted skills, extensions) at `~/.agent-cortex/pi`.
 Use the `validate-agent-dir` script to validate agent directories:
 
 ```bash
-node --test --import tsx/esm skills/productivity/validate-agent-dir/scripts/validate-agent-dir.test.ts
+node --test test/validate-agent-dir.test.mjs
 ```
 
 The validator checks:

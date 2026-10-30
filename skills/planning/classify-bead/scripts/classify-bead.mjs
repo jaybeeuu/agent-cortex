@@ -1,8 +1,9 @@
+// @ts-check
 // Deterministic bead classifier — resolves an AFK/HITL classification from
 // evidence already present on a bead before any model judgement is spent.
 //
 // Tier order (see skills/planning/classify-bead/SKILL.md):
-//   1. implementation-type label   — an existing decision is authoritative
+//   1. execution label              — an existing decision is authoritative
 //   2. legacy ## Type field        — back-compat with pre-label beads
 //   3. conservative heuristics     — explicit natural-language signals only
 //   4. escalate                    — hand to the rubric (small/cheap model)
@@ -24,8 +25,8 @@ import { pathToFileURL } from 'node:url';
  * @property {boolean} escalate                      True when model judgement is required (tier 4).
  */
 
-const AFK_LABEL = 'implementation-type:afk';
-const HITL_LABEL = 'implementation-type:hitl';
+const AFK_LABEL = 'execution:afk';
+const HITL_LABEL = 'execution:hitl';
 
 // Heuristic signals are deliberately conservative: they only fire on explicit
 // natural-language phrasing that maps directly onto the rubric's criteria.
@@ -94,7 +95,7 @@ function extractTypeField(description) {
 }
 
 /**
- * Resolve a bead's implementation type from the evidence it already carries,
+ * Resolve a bead's execution class from the evidence it already carries,
  * without spending a model call.
  *
  * @param {{ labels?: string[], description?: string }} bead

@@ -1,19 +1,34 @@
+// @ts-check
+// Repo-level tests for skills/productivity/validate-agent-dir. The validator
+// has no CLI — it is a pure module, so these tests import it by path.
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
   validateFrontmatter,
   validateAgentDir,
-  type AgentDir,
-  type Frontmatter,
-} from "./validate-agent-dir.ts";
+} from "../skills/productivity/validate-agent-dir/scripts/validate-agent-dir.mjs";
+
+/**
+ * @typedef {object} Frontmatter
+ * @property {string} name
+ * @property {string} description
+ * @property {string[]} tools
+ * @property {string} [model]
+ * @property {string} [argumentHint]
+ */
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-function makeFrontmatter(overrides: Partial<Frontmatter> = {}): Frontmatter {
+/**
+ * @param {Partial<Frontmatter>} [overrides]
+ * @returns {Frontmatter}
+ */
+function makeFrontmatter(overrides = {}) {
   return {
     name: "agent-cortex:ralph",
     description: "Parallel task orchestration agent",
@@ -22,28 +37,41 @@ function makeFrontmatter(overrides: Partial<Frontmatter> = {}): Frontmatter {
   };
 }
 
-function createAgentDir(
-  tmpDir: string,
-  name: string,
-  frontmatter: Frontmatter,
-  body: string = "# Shared body\n\nYou are an agent.",
-  sections?: Record<string, string>
-): void {
+/** Fresh temp dir per test, cleaned up by the caller. */
+function makeTmpDir() {
+  return mkdtemp(join(tmpdir(), "agent-dir-test-"));
+}
+
+/**
+ * @param {string} tmpDir
+ * @param {string} name
+ * @param {Frontmatter} frontmatter
+ * @param {string} [body]
+ * @param {Record<string, string>} [sections]
+ * @returns {Promise<void>}
+ */
+async function createAgentDir(
+  tmpDir,
+  name,
+  frontmatter,
+  body = "# Shared body\n\nYou are an agent.",
+  sections
+) {
   const agentDir = join(tmpDir, "agents", name);
-  mkdirSync(agentDir, { recursive: true });
+  await mkdir(agentDir, { recursive: true });
 
   // Write agent.md
-  writeFileSync(join(agentDir, "agent.md"), body, "utf-8");
+  await writeFile(join(agentDir, "agent.md"), body, "utf-8");
 
   // Write frontmatter.json for PI harness
   const piDir = join(agentDir, "pi");
-  mkdirSync(piDir, { recursive: true });
-  writeFileSync(join(piDir, "frontmatter.json"), JSON.stringify(frontmatter), "utf-8");
+  await mkdir(piDir, { recursive: true });
+  await writeFile(join(piDir, "frontmatter.json"), JSON.stringify(frontmatter), "utf-8");
 
   // Write optional sections
   if (sections) {
     for (const [filename, content] of Object.entries(sections)) {
-      writeFileSync(join(piDir, filename), content, "utf-8");
+      await writeFile(join(piDir, filename), content, "utf-8");
     }
   }
 }
@@ -70,28 +98,28 @@ describe("validateFrontmatter", () => {
   });
 
   it("rejects frontmatter missing name", () => {
-    const fm = { description: "desc", tools: ["bash"] } as any;
+    const fm = /** @type {any} */ ({ description: "desc", tools: ["bash"] });
     const result = validateFrontmatter(fm);
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((e) => e.includes("name")));
   });
 
   it("rejects frontmatter missing description", () => {
-    const fm = { name: "test", tools: ["bash"] } as any;
+    const fm = /** @type {any} */ ({ name: "test", tools: ["bash"] });
     const result = validateFrontmatter(fm);
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((e) => e.includes("description")));
   });
 
   it("rejects frontmatter missing tools", () => {
-    const fm = { name: "test", description: "desc" } as any;
+    const fm = /** @type {any} */ ({ name: "test", description: "desc" });
     const result = validateFrontmatter(fm);
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((e) => e.includes("tools")));
   });
 
   it("rejects frontmatter with non-array tools", () => {
-    const fm = { name: "test", description: "desc", tools: "bash" } as any;
+    const fm = /** @type {any} */ ({ name: "test", description: "desc", tools: "bash" });
     const result = validateFrontmatter(fm);
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((e) => e.includes("tools")));
@@ -119,7 +147,7 @@ describe("validateFrontmatter", () => {
   });
 
   it("rejects frontmatter with unknown fields", () => {
-    const fm = makeFrontmatter({ unknownField: "value" } as any);
+    const fm = makeFrontmatter(/** @type {any} */ ({ unknownField: "value" }));
     const result = validateFrontmatter(fm);
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((e) => e.includes("unknown")));
@@ -129,30 +157,28 @@ describe("validateFrontmatter", () => {
 // ─── Behavior 2: validate agent directory structure ───────────────────────────
 
 describe("validateAgentDir", () => {
-  let tmpDir: string;
-
-  it("accepts valid agent directory with agent.md and pi/frontmatter.json", () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "agent-dir-test-"));
+  it("accepts valid agent directory with agent.md and pi/frontmatter.json", async () => {
+    const tmpDir = await makeTmpDir();
     try {
-      createAgentDir(tmpDir, "ralph", makeFrontmatter());
+      await createAgentDir(tmpDir, "ralph", makeFrontmatter());
       const result = validateAgentDir(join(tmpDir, "agents", "ralph"));
       assert.equal(result.ok, true);
     } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+      await rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("accepts agent directory with multiple harness subdirectories", () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "agent-dir-test-"));
+  it("accepts agent directory with multiple harness subdirectories", async () => {
+    const tmpDir = await makeTmpDir();
     try {
       const agentDir = join(tmpDir, "agents", "ralph");
-      mkdirSync(agentDir, { recursive: true });
-      writeFileSync(join(agentDir, "agent.md"), "# Body", "utf-8");
+      await mkdir(agentDir, { recursive: true });
+      await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
 
       // PI harness
       const piDir = join(agentDir, "pi");
-      mkdirSync(piDir, { recursive: true });
-      writeFileSync(
+      await mkdir(piDir, { recursive: true });
+      await writeFile(
         join(piDir, "frontmatter.json"),
         JSON.stringify(makeFrontmatter({ tools: ["bash", "task"] })),
         "utf-8"
@@ -160,8 +186,8 @@ describe("validateAgentDir", () => {
 
       // Claude harness
       const claudeDir = join(agentDir, "claude");
-      mkdirSync(claudeDir, { recursive: true });
-      writeFileSync(
+      await mkdir(claudeDir, { recursive: true });
+      await writeFile(
         join(claudeDir, "frontmatter.json"),
         JSON.stringify(makeFrontmatter({ tools: ["bash", "task"] })),
         "utf-8"
@@ -170,34 +196,34 @@ describe("validateAgentDir", () => {
       const result = validateAgentDir(agentDir);
       assert.equal(result.ok, true);
     } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+      await rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("accepts agent directory with section files", () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "agent-dir-test-"));
+  it("accepts agent directory with section files", async () => {
+    const tmpDir = await makeTmpDir();
     try {
-      createAgentDir(
+      await createAgentDir(
         tmpDir,
         "ralph",
         makeFrontmatter(),
-        "# Body\n\n{{SECTION:polling}}",
-        { "polling.md": "# Polling loop\n\nYou poll every 2 minutes." }
+        "# Body\n\n{{SECTION:wake}}",
+        { "wake.md": "# Wake mechanism\n\nYou are woken when a worker completes." }
       );
       const result = validateAgentDir(join(tmpDir, "agents", "ralph"));
       assert.equal(result.ok, true);
     } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+      await rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("rejects agent directory missing agent.md", () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "agent-dir-test-"));
+  it("rejects agent directory missing agent.md", async () => {
+    const tmpDir = await makeTmpDir();
     try {
       const agentDir = join(tmpDir, "agents", "ralph");
-      mkdirSync(agentDir, { recursive: true });
-      mkdirSync(join(agentDir, "pi"), { recursive: true });
-      writeFileSync(
+      await mkdir(agentDir, { recursive: true });
+      await mkdir(join(agentDir, "pi"), { recursive: true });
+      await writeFile(
         join(agentDir, "pi", "frontmatter.json"),
         JSON.stringify(makeFrontmatter()),
         "utf-8"
@@ -207,36 +233,36 @@ describe("validateAgentDir", () => {
       assert.equal(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes("agent.md")));
     } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+      await rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("rejects agent directory with no harness subdirectories", () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "agent-dir-test-"));
+  it("rejects agent directory with no harness subdirectories", async () => {
+    const tmpDir = await makeTmpDir();
     try {
       const agentDir = join(tmpDir, "agents", "ralph");
-      mkdirSync(agentDir, { recursive: true });
-      writeFileSync(join(agentDir, "agent.md"), "# Body", "utf-8");
+      await mkdir(agentDir, { recursive: true });
+      await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
 
       const result = validateAgentDir(agentDir);
       assert.equal(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes("harness")));
     } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+      await rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("rejects agent directory with invalid frontmatter in harness", () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "agent-dir-test-"));
+  it("rejects agent directory with invalid frontmatter in harness", async () => {
+    const tmpDir = await makeTmpDir();
     try {
       const agentDir = join(tmpDir, "agents", "ralph");
-      mkdirSync(agentDir, { recursive: true });
-      writeFileSync(join(agentDir, "agent.md"), "# Body", "utf-8");
+      await mkdir(agentDir, { recursive: true });
+      await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
 
       const piDir = join(agentDir, "pi");
-      mkdirSync(piDir, { recursive: true });
+      await mkdir(piDir, { recursive: true });
       // Invalid frontmatter: missing tools
-      writeFileSync(
+      await writeFile(
         join(piDir, "frontmatter.json"),
         JSON.stringify({ name: "test", description: "desc" }),
         "utf-8"
@@ -246,7 +272,7 @@ describe("validateAgentDir", () => {
       assert.equal(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes("tools")));
     } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+      await rm(tmpDir, { recursive: true, force: true });
     }
   });
 });
@@ -267,9 +293,9 @@ describe("token format in agent.md body", () => {
   });
 
   it("accepts valid {{SECTION:name}} tokens", () => {
-    const body = "# Body\n\n{{SECTION:polling}}";
+    const body = "# Body\n\n{{SECTION:wake}}";
     const tokens = extractTokens(body);
-    assert.deepEqual(tokens.sections, ["polling"]);
+    assert.deepEqual(tokens.sections, ["wake"]);
   });
 
   it("extracts multiple tokens of different types", () => {
@@ -278,39 +304,42 @@ describe("token format in agent.md body", () => {
 
 Use {{TOOL:task}} to spawn.
 Read {{PATH:skills/plan/SKILL.md}}.
-{{SECTION:polling}}
+{{SECTION:wake}}
 `;
     const tokens = extractTokens(body);
     assert.deepEqual(tokens.tools, ["task"]);
     assert.deepEqual(tokens.paths, ["skills/plan/SKILL.md"]);
-    assert.deepEqual(tokens.sections, ["polling"]);
+    assert.deepEqual(tokens.sections, ["wake"]);
   });
 });
 
 // ─── Helper: extract tokens from markdown ─────────────────────────────────────
 
-function extractTokens(body: string): {
-  tools: string[];
-  paths: string[];
-  sections: string[];
-} {
+/**
+ * @param {string} body
+ * @returns {{ tools: string[], paths: string[], sections: string[] }}
+ */
+function extractTokens(body) {
   const toolPattern = /\{\{TOOL:([^}]+)\}\}/g;
   const pathPattern = /\{\{PATH:([^}]+)\}\}/g;
   const sectionPattern = /\{\{SECTION:([^}]+)\}\}/g;
 
-  const tools: string[] = [];
-  const paths: string[] = [];
-  const sections: string[] = [];
+  /** @type {string[]} */
+  const tools = [];
+  /** @type {string[]} */
+  const paths = [];
+  /** @type {string[]} */
+  const sections = [];
 
   let match;
   while ((match = toolPattern.exec(body)) !== null) {
-    tools.push(match[1]!);
+    tools.push(/** @type {string} */ (match[1]));
   }
   while ((match = pathPattern.exec(body)) !== null) {
-    paths.push(match[1]!);
+    paths.push(/** @type {string} */ (match[1]));
   }
   while ((match = sectionPattern.exec(body)) !== null) {
-    sections.push(match[1]!);
+    sections.push(/** @type {string} */ (match[1]));
   }
 
   return { tools, paths, sections };

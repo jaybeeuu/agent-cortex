@@ -62,6 +62,11 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 - **Share generic tooling helpers in `scripts/lib/`**: tooling code (installers under
   `bin/installers/`, hooks, other scripts) imports shared utilities from `scripts/lib/`
   (e.g. `compose-agent.mjs`, `fs.mjs`) rather than redefining them inline.
+- **`scripts/` is a runtime asset, not just build tooling**: `bin/agent-cortex.mjs` imports
+  `scripts/lib/migrate.mjs` for `migrate`, and the installers import
+  `scripts/lib/{compose-agent,fs}.mjs` — so any `package.json` `files` whitelist must include
+  `scripts/`, or published installs and `migrate` break for consumers while every local run
+  stays green.
 
 ## Skill Conventions
 
@@ -100,9 +105,8 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `enabledPlugins` + `extraKnownMarketplaces`, and every other key is left untouched. Only
   that settings template is committed under `claude/` — the generated plugin subtree is not;
   hand-authored plugin extras live in `claude-extras/` (`.mcp.json`, `scripts/`), and
-  `--output <dir>` is the generate-only form (tests/CI materialiser checks); `ralph`
-  is authored natively in `agents-native/` and copied verbatim; the other agents compose from their
-  `claude/` harness dirs).
+  `--output <dir>` is the generate-only form (tests/CI materialiser checks); every agent,
+  `ralph` included, composes from its `claude/` harness dir).
 - The pi package is materialised by `bin/installers/pi.mjs`: `agent-cortex install pi` stages a
   self-contained pi package in `~/.agent-cortex/pi` (manifest, flat rendered agents, token-substituted
   skills, a copy of `extensions/`, `token-map.json`, and the bundled `pi.packages` closure under
@@ -143,9 +147,38 @@ This project uses **bd (beads)** for task tracking.
 
 Run `bd prime` at the start of each session for context.
 
+**Two axes.** A bead's *type* is its workflow stage — `idea` (a `kind:idea` bead) → `epic` →
+`feature` → `chore`/`task` — and its `execution` label answers who does the work:
+`execution:afk` (agent-routable) or `execution:hitl` (human-required). The label is a query filter
+only: it never auto-claims and nothing enforces it, so claim mechanics are unchanged. Each bead
+carries the class of its own work — nothing aggregates upward.
+
+**Hierarchy.** `--parent` is ownership; `bd dep add` is execution ordering; dependencies are the
+whole readiness gate (there is no separate "ready" label).
+
+```
+feature (execution:hitl)
+├── "Plan: <feature>"  execution:hitl  --parent feature
+└── <deliverable>      execution:afk   --parent feature + bd dep add <deliverable> <plan-bead>
+```
+
+Pass `--no-inherit-labels` beside `--parent`: `bd` copies a parent's labels at create time, so a
+child of an `execution:hitl` feature would otherwise acquire `execution:hitl` next to the
+`execution:afk` label its own work needs. The planning bead is the design gate, so implementation
+children stay out of `bd ready` until it closes. `create-task` builds this shape, `classify-bead`
+resolves the label, and `ralph` executes `bd ready -l execution:afk`.
+
+**Ideas.** `kind:idea` beads, always `execution:hitl`, so ralph's `bd ready -l execution:afk` never
+returns them. A bare `bd ready` does — pass `--exclude-label kind:idea` when you want the
+buildable view without ralph's filter.
+
 Quick reference:
 - `bd ready` — list unblocked work
-- `bd create "Title" -p <0-3>` — create a task (P0 = critical)
+- `bd ready -l execution:afk` — work an agent can pick up (ralph's query)
+- `bd list -l kind:idea` — the idea backlog
+- `bd children <id>` — everything under a bead, closed included
+- `bd create "Title" -p <0-3>` — create a task (P0 = critical); add `-l execution:<class>`,
+  `--parent <id> --no-inherit-labels`, and `--validate`
 - `bd update <id> --claim` — claim a task
 - `bd close <id>` — complete a task
 - `bd dep add <A> <B>` — **"A depends on B"** (B blocks A). First arg waits, second arg

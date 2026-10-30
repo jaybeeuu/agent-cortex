@@ -7,13 +7,13 @@ truth for the deterministic tiers; this document mirrors it for verification.
 
 | Tier | `source` | Evidence | Applies the label? |
 |---|---|---|---|
-| 1 | `label` | An `implementation-type:afk` or `implementation-type:hitl` label is already present | no — it is already there |
+| 1 | `label` | An `execution:afk` or `execution:hitl` label is already present | no — it is already there |
 | 2 | `type-field` | The legacy `## Type` section in the bead body declares `AFK`/`HITL` (block or inline form, case-insensitive) | yes |
 | 3 | `heuristic` | A conservative natural-language signal (below) | yes |
 | 4 | *(none)* | Nothing deterministic matched → `escalate: true`; a small/cheap model applies the rubric | after the model decides |
 
-When both `implementation-type` labels are present, AFK wins — matching the
-pre-existing skill wording, which checks `implementation-type:afk` first.
+When both `execution` labels are present, AFK wins — matching the
+pre-existing skill wording, which checks `execution:afk` first.
 
 The classifier runs `bd show <id> --json` and `bd tag <id> <label>`; it never
 re-reads prose from the rendered `bd show` output.

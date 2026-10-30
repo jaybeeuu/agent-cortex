@@ -46,12 +46,20 @@
       "claude": "",
       "pi": "agent-cortex:"
     },
-    "deferred": {
-      "ralph": ["claude"]
-    },
     "sources": {
       "pi": "agents/<name>/ composable dirs (canonical) — composed at runtime by the agent-modes extension",
-      "claude": "agents/<name>/ composable dirs (canonical) — composed by bin/installers/claude.mjs (install-time generator, the only generator — the generated claude/ plugin subtree is not committed), plus agents-native/*.md for deferred agents"
+      "claude": "agents/<name>/ composable dirs (canonical) — composed by bin/installers/claude.mjs (install-time generator, the only generator — the generated claude/ plugin subtree is not committed)"
+    }
+  },
+  "wake": {
+    "description": "How each harness tells ralph that a background worker finished. `{{SECTION:wake}}` in agents/ralph/agent.md resolves to agents/ralph/<harness>/wake.md; this table is the machine-readable form of the same fact, so the mechanism is recorded rather than inferred from prose (see the wake table in agents/README.md).",
+    "mechanism": {
+      "pi": "blocking-wait",
+      "claude": "event-driven"
+    },
+    "notes": {
+      "pi": "Blocking wait: wait_for_agents returns as soon as one worker finishes, carrying its result inline. No timer to start, nothing to kill — there is no poll loop.",
+      "claude": "Event-driven: the harness re-invokes ralph when a worker completes and delivers the result inline. No poll timer, no sleep, no log flush."
     }
   },
   "notes": {
@@ -70,8 +78,7 @@
       "claude": "plugin_root stays ${CLAUDE_PLUGIN_ROOT} (env var) for the materialised plugin — never a literal ~/.agent-cortex/claude. Claude Code copies marketplace-installed plugins (including local directory sources like ~/.agent-cortex/claude) into its own cache and expands the env var per context, so a literal home path in substituted files would break under cache-copy; the installer passes the env form through verbatim."
     },
     "agents": {
-      "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in bin/installers/claude.mjs): pi agents are agent-cortex:<slug>, claude agents are <slug>.",
-      "deferred": "ralph has no generated claude counterpart — it is authored natively as agents-native/ralph.md (its event-driven orchestration cannot be produced by section composition from the polling pi source)."
+      "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in bin/installers/claude.mjs): pi agents are agent-cortex:<slug>, claude agents are <slug>."
     }
   },
   "contract": {

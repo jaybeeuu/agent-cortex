@@ -46,6 +46,32 @@ jobs:
         run: pnpm build
 
 
+  base-branch:
+    name: No stacked PRs
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      # A PR based on another PR's feature branch is invisible work: it carries the
+      # lower branch's whole diff, and once that branch is squash-merged the upper PR
+      # shows phantom conflicts on byte-identical content. Dependencies belong in the
+      # bead graph (bd dep add <waiting> <blocked-on>), not in the branch base.
+      # See skills/workflow/git-workflow/SKILL.md rule 3.
+      - name: Reject a feature-branch base
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE_REF" ]; then
+            echo "No base ref (not a pull_request event) — skipping"
+            exit 0
+          fi
+          case "$BASE_REF" in
+            feature/*)
+              echo "::error::This PR targets '$BASE_REF'. Base it on the integration branch ('main' or 'epic/<id>') instead, and record the dependency with 'bd dep add' so this work stays unready until its dependency merges. See skills/workflow/git-workflow/SKILL.md rule 3."
+              exit 1
+              ;;
+          esac
+          echo "Base '$BASE_REF' is an integration branch — ok"
+
   changeset-check:
     name: Changeset check
     # The gate is a pure, idempotent recomputation of the diff plus PR metadata,

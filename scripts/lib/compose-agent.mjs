@@ -32,7 +32,49 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-/** True when a path exists (stat succeeds). */
+/** @typedef {{ base: string, relative: string }} PathSpec */
+
+/**
+ * Parsed token-map.json. `tools` maps a canonical tool key to its per-harness
+ * name (null = the harness has no equivalent); `paths` maps a path key to its
+ * per-harness spec (a literal string, or a {base, relative} pair resolved
+ * recursively through the same table).
+ * @typedef {object} TokenMap
+ * @property {number} [version]
+ * @property {Record<string, Record<string, string | null>>} tools
+ * @property {Record<string, Record<string, string | PathSpec>>} paths
+ */
+
+/**
+ * Options shared by the composer entry points.
+ * @typedef {object} ComposeOptions
+ * @property {boolean} [dropNullTools]
+ * @property {string} [pluginRoot]
+ * @property {boolean} [resolveRelativePaths]
+ * @property {(message: string) => void} [warn]
+ * @property {string} [context]
+ */
+
+/**
+ * Parsed and schema-checked harness frontmatter.json.
+ * @typedef {object} AgentFrontmatter
+ * @property {string} name
+ * @property {string} description
+ * @property {string[]} tools
+ * @property {string} [model]
+ * @property {string} [argumentHint]
+ */
+
+/**
+ * A composed agent: its frontmatter plus the substituted body.
+ * @typedef {AgentFrontmatter & { body: string }} ComposedAgent
+ */
+
+/**
+ * True when a path exists (stat succeeds).
+ * @param {string} p
+ * @returns {Promise<boolean>}
+ */
 async function pathExists(p) {
   try {
     await stat(p);
@@ -47,6 +89,7 @@ async function pathExists(p) {
 const TOOL_RE = /\{\{TOOL:([^}]+)\}\}/g;
 const PATH_RE = /\{\{PATH:([^}]+)\}\}/g;
 
+/** @returns {void} */
 function noop() {}
 
 /**
@@ -62,8 +105,8 @@ function noop() {}
  *
  * @param {string} content  Source text containing {{TOOL:...}}/{{PATH:...}} tokens
  * @param {string} harness  Harness id: "claude" | "pi"
- * @param {object} tokenMap Parsed token-map.json (from loadTokenMap)
- * @param {object} options  { dropNullTools, pluginRoot, resolveRelativePaths, warn, context }
+ * @param {TokenMap} tokenMap Parsed token-map.json (from loadTokenMap)
+ * @param {ComposeOptions} [options]  { dropNullTools, pluginRoot, resolveRelativePaths, warn, context }
  * @returns {string}
  */
 export function substituteTokens(content, harness, tokenMap, options = {}) {
@@ -100,7 +143,8 @@ export function substituteTokens(content, harness, tokenMap, options = {}) {
  * @param {string} root    Package root (contains agents/ and token-map.json)
  * @param {string} name    Agent directory name (e.g. "ralph", "plan")
  * @param {string} harness Harness id: "claude" | "pi"
- * @returns {{ name: string, description: string, tools: string[], model?: string, argumentHint?: string, body: string }}
+ * @param {ComposeOptions} [options]
+ * @returns {Promise<ComposedAgent>}
  */
 export async function composeAgent(root, name, harness, options = {}) {
   const { dropNullTools = false, pluginRoot, resolveRelativePaths = false, warn = noop } = options;
@@ -144,14 +188,21 @@ export async function composeAgent(root, name, harness, options = {}) {
 const REQUIRED_FIELDS = ["name", "description", "tools"];
 const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
 
-/** Parse and schema-check a harness frontmatter.json (strict, per agents/README.md). */
+/**
+ * Parse and schema-check a harness frontmatter.json (strict, per agents/README.md).
+ * @param {string} path
+ * @param {string} name
+ * @param {string} harness
+ * @returns {Promise<AgentFrontmatter>}
+ */
 async function parseFrontmatter(path, name, harness) {
   const raw = await readFile(path, "utf-8");
+  /** @type {Record<string, unknown>} */
   let fm;
   try {
     fm = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`agent "${name}": invalid JSON in ${path}: ${err.message}`);
+    throw new Error(`agent "${name}": invalid JSON in ${path}: ${/** @type {Error} */ (err).message}`);
   }
   if (typeof fm !== "object" || fm === null) {
     throw new Error(`agent "${name}": ${path} must be a JSON object`);
@@ -188,6 +239,11 @@ async function parseFrontmatter(path, name, harness) {
  * With the installer options (`pluginRoot`, `resolveRelativePaths`) the
  * plugin_root base and bare relative paths resolve against the actual install
  * layout instead.
+ * @param {string} arg
+ * @param {string} harness
+ * @param {TokenMap} tokenMap
+ * @param {ComposeOptions} [opts]
+ * @returns {string}
  */
 function resolvePath(arg, harness, tokenMap, opts = {}) {
   const entry = tokenMap.paths?.[arg];
@@ -217,9 +273,9 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
  * translation in extensions/agent-modes/discover.ts.
  *
  * @param {string[]} tools  Canonical tool names from a harness frontmatter.json
- * @param {object} tokenMap Parsed token-map.json (from loadTokenMap)
+ * @param {TokenMap} tokenMap Parsed token-map.json (from loadTokenMap)
  * @param {string} harness  Harness id: "claude" | "pi"
- * @param {object} options  { warn }
+ * @param {ComposeOptions} [options]  { warn }
  * @returns {string[]}
  */
 export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}) {
@@ -242,7 +298,11 @@ export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}
 
 // ─── Token map ───────────────────────────────────────────────────────────────
 
-/** Load token-map.json from the package root; missing/incomplete maps hard-fail. */
+/**
+ * Load token-map.json from the package root; missing/incomplete maps hard-fail.
+ * @param {string} root
+ * @returns {Promise<TokenMap>}
+ */
 export async function loadTokenMap(root) {
   const path = join(root, "token-map.json");
   let raw;

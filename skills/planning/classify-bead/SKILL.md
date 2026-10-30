@@ -1,27 +1,27 @@
 ---
 name: classify-bead
-description: Classify a bead as AFK or HITL and apply the implementation-type label. Use when a bead is missing its implementation-type label, when picking up a bead to work on, or when any skill creates a new bead.
+description: Classify a bead as AFK or HITL and apply its `execution` label. Use when a bead is missing its execution label, when picking up a bead to work on, or when any skill creates a new bead.
 ---
 
 # Classify Bead
 
-Determine whether a bead requires human action (HITL) or can be completed autonomously by an agent (AFK), then persist the result as an `implementation-type` label. A deterministic classifier settles the common cases; only genuine rubric judgement reaches a model.
+Determine whether a bead requires human action (HITL) or can be completed autonomously by an agent (AFK), then persist the result as an `execution` label (`execution:afk` or `execution:hitl`). A deterministic classifier settles the common cases; only genuine rubric judgement reaches a model.
 
 ## When to use
 
-- A bead is missing its `implementation-type` label and you are about to pick it up.
+- A bead is missing its `execution` label and you are about to pick it up.
 - A skill has just created a new bead and needs it classified before claiming or scheduling.
 - You are unsure of a bead's classification and want to resolve it deterministically.
 
 ## When NOT to use
 
-- The bead already carries an `implementation-type` label — check `bd label list <id>` before invoking, and never re-classify a labelled bead.
+- The bead already carries an `execution` label — check `bd label list <id>` before invoking, and never re-classify a labelled bead.
 - You are creating a new task — `create-task` classifies internally; do not spawn this skill separately.
 - The work item is not a bead (e.g. a Jira ticket or plain code task) — use `write-a-ticket` or start the work directly.
 
 ## Invocation
 
-Run the deterministic classifier first. It resolves the existing label, the legacy `## Type` field, and explicit heuristic signals without a model call:
+Run the deterministic classifier first. It resolves the existing `execution` label, the legacy `## Type` field, and explicit heuristic signals without a model call:
 
 ```bash
 # Run from the TARGET project's directory — bd resolves its beads DB from cwd.
@@ -34,11 +34,11 @@ node <skill-scripts>/classify-bead.mjs <bead-id>
 
 `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path. Only run inline when no task-spawning capability exists in the current environment.
 
-**Callers should run the classifier themselves before spawning this subagent.** If `implementation-type` is already present, or the classifier resolves the bead, there is no subagent call to make.
+**Callers should run the classifier themselves before spawning this subagent.** If an `execution` label is already present, or the classifier resolves the bead, there is no subagent call to make.
 
 ## Workflow
 
-1. **Check for an existing label.** `bd label list <id>` — `implementation-type:afk` present → **AFK**; `implementation-type:hitl` present → **HITL**. Stop.
+1. **Check for an existing label.** `bd label list <id>` — `execution:afk` present → **AFK**; `execution:hitl` present → **HITL**. Stop.
 
 2. **Run the deterministic classifier.** `node <skill-scripts>/classify-bead.mjs <id>`. A resolved classification is already tagged; stop and report it.
 
@@ -51,7 +51,7 @@ node <skill-scripts>/classify-bead.mjs <bead-id>
 
    **AFK** — otherwise: the agent can implement, verify, and complete the task autonomously, and all acceptance criteria are machine-checkable.
 
-4. **Apply the label.** `bd tag <id> implementation-type:afk` (or `:hitl`). The classifier does this for the deterministic tiers; do it yourself only after step 3.
+4. **Apply the label.** `bd tag <id> execution:afk` (or `execution:hitl`). The classifier does this for the deterministic tiers; do it yourself only after step 3.
 
 5. **Return the classification.** Report `AFK` or `HITL` so the calling skill or agent can act on it.
 
@@ -83,5 +83,5 @@ Tier precedence (label → `## Type` → heuristics → rubric), the heuristic s
 - [ ] The deterministic classifier ran before any rubric subagent.
 - [ ] A rubric subagent ran only when the classifier reported `escalate: true`.
 - [ ] The full bead body was read before classifying from first principles.
-- [ ] `bd tag <id> implementation-type:<afk|hitl>` is present afterwards.
+- [ ] `bd tag <id> execution:<afk|hitl>` is present afterwards.
 - [ ] The calling skill or agent received the classification in the report.

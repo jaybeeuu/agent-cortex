@@ -12,7 +12,11 @@
 
 import { stat } from "node:fs/promises";
 
-/** True when `p` exists and is a regular file; false on any error. */
+/**
+ * True when `p` exists and is a regular file; false on any error.
+ * @param {string} p
+ * @returns {Promise<boolean>}
+ */
 export async function isFile(p) {
   try {
     return (await stat(p)).isFile();
@@ -21,7 +25,11 @@ export async function isFile(p) {
   }
 }
 
-/** True when `p` exists and is a directory; false on any error. */
+/**
+ * True when `p` exists and is a directory; false on any error.
+ * @param {string} p
+ * @returns {Promise<boolean>}
+ */
 export async function isDirectory(p) {
   try {
     return (await stat(p)).isDirectory();

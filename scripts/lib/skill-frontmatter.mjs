@@ -33,6 +33,8 @@ const SKIPPED_DIRS = new Set([".git", "node_modules"]);
  * Return the YAML text between the leading `---` delimiters, or null when the
  * document has no frontmatter block. Mirrors PI's extraction step, including
  * newline normalisation and BOM stripping.
+ * @param {string} content
+ * @returns {string | null}
  */
 function extractYaml(content) {
   const normalized = content.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -44,7 +46,13 @@ function extractYaml(content) {
   return normalized.slice(4, endIndex);
 }
 
-/** True when `value` is a string with at least one non-whitespace character. */
+/**
+ * True when `value` is a string with at least one non-whitespace character.
+ * `yaml`'s `parse` is typed `any`, so the frontmatter values it yields are
+ * taken as `unknown` here and narrowed by this typeof guard.
+ * @param {unknown} value
+ * @returns {value is string}
+ */
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim() !== "";
 }
@@ -61,6 +69,7 @@ export function validateSkillFrontmatter(content) {
     return ["frontmatter block is missing (expected '---' delimiters)"];
   }
 
+  /** @type {unknown} */
   let frontmatter;
   try {
     frontmatter = parse(yamlText);
@@ -73,23 +82,31 @@ export function validateSkillFrontmatter(content) {
     return ["frontmatter is not a YAML mapping of name/description fields"];
   }
 
+  // The guard above establishes a non-null, non-array object, so the YAML
+  // mapping's fields are readable as unknown values.
+  const fields = /** @type {Record<string, unknown>} */ (frontmatter);
   const errors = [];
-  if (!isNonEmptyString(frontmatter.name)) {
+  if (!isNonEmptyString(fields.name)) {
     errors.push("frontmatter is missing a non-empty name");
   }
-  if (!isNonEmptyString(frontmatter.description)) {
+  if (!isNonEmptyString(fields.description)) {
     errors.push("frontmatter is missing a non-empty description");
-  } else if (frontmatter.description.length > MAX_DESCRIPTION_LENGTH) {
+  } else if (fields.description.length > MAX_DESCRIPTION_LENGTH) {
     errors.push(
-      `description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${frontmatter.description.length})`,
+      `description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${fields.description.length})`,
     );
   }
 
   return errors;
 }
 
-/** Recursively collect every SKILL.md below `dir`, skipping vendored trees. */
+/**
+ * Recursively collect every SKILL.md below `dir`, skipping vendored trees.
+ * @param {string} dir
+ * @returns {Promise<string[]>}
+ */
 async function findSkillFiles(dir) {
+  /** @type {string[]} */
   const found = [];
   let entries;
   try {

@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"]
+  },
+  "include": ["bin/**/*.mjs", "lib/**/*.mjs", "hooks/**/*.mjs", "scripts/**/*.mjs", "skills/**/scripts/**/*.mjs"]
+}

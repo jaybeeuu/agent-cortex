@@ -9,9 +9,9 @@ import { resolveClassification, auditBeads, runCli } from '../skills/planning/cl
 const testDir = dirname(fileURLToPath(import.meta.url));
 
 describe('resolveClassification', () => {
-  it('resolves AFK from an existing implementation-type:afk label', () => {
+  it('resolves AFK from an existing execution:afk label', () => {
     const result = resolveClassification({
-      labels: ['implementation-type:afk'],
+      labels: ['execution:afk'],
       description: 'Do a thing.',
     });
 
@@ -20,9 +20,9 @@ describe('resolveClassification', () => {
     assert.equal(result.escalate, false);
   });
 
-  it('resolves HITL from an existing implementation-type:hitl label', () => {
+  it('resolves HITL from an existing execution:hitl label', () => {
     const result = resolveClassification({
-      labels: ['implementation-type:hitl'],
+      labels: ['execution:hitl'],
       description: 'Provision the staging cluster.',
     });
 
@@ -31,9 +31,9 @@ describe('resolveClassification', () => {
     assert.equal(result.escalate, false);
   });
 
-  it('prefers AFK when both implementation-type labels are present', () => {
+  it('prefers AFK when both execution labels are present', () => {
     const result = resolveClassification({
-      labels: ['implementation-type:hitl', 'implementation-type:afk'],
+      labels: ['execution:hitl', 'execution:afk'],
       description: 'Ambiguous bead.',
     });
 
@@ -73,7 +73,7 @@ describe('resolveClassification', () => {
 
   it('prefers the label over a conflicting ## Type field', () => {
     const result = resolveClassification({
-      labels: ['implementation-type:afk'],
+      labels: ['execution:afk'],
       description: 'Conflicting bead.\n\n## Type\n\nHITL',
     });
 
@@ -153,8 +153,8 @@ describe('resolveClassification', () => {
 
 describe('auditBeads', () => {
   const sample = [
-    { labels: ['implementation-type:afk'], description: '' },
-    { labels: ['implementation-type:hitl'], description: '' },
+    { labels: ['execution:afk'], description: '' },
+    { labels: ['execution:hitl'], description: '' },
     { labels: [], description: '## Type\n\nAFK' },
     { labels: [], description: 'Rework the billing domain model.' },
   ];
@@ -200,7 +200,7 @@ describe('runCli', () => {
     assert.equal(code, 0);
     assert.deepEqual(calls, [
       ['show', 'proj-1', '--json'],
-      ['tag', 'proj-1', 'implementation-type:afk'],
+      ['tag', 'proj-1', 'execution:afk'],
     ]);
     assert.deepEqual(out.read(), {
       id: 'proj-1',
@@ -209,12 +209,12 @@ describe('runCli', () => {
       reason: 'legacy ## Type field declares AFK',
       escalate: false,
       applied: true,
-      label: 'implementation-type:afk',
+      label: 'execution:afk',
     });
   });
 
   it('does not re-apply a label that is already present', async () => {
-    const { exec, calls } = makeExec([{ id: 'proj-2', labels: ['implementation-type:hitl'], description: '' }]);
+    const { exec, calls } = makeExec([{ id: 'proj-2', labels: ['execution:hitl'], description: '' }]);
     const out = capture();
 
     const code = await runCli({ argv: ['proj-2'], exec, write: out.write });
@@ -251,7 +251,7 @@ describe('runCli', () => {
 
   it('reports the deterministic split in --audit mode', async () => {
     const beads = [
-      { labels: ['implementation-type:afk'], description: '' },
+      { labels: ['execution:afk'], description: '' },
       { labels: [], description: 'Rework the billing model.' },
     ];
     const { exec, calls } = makeExec(beads);

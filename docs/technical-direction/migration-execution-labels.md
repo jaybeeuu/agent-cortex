@@ -7,7 +7,7 @@
 - Migrate loose idea markdown files (`docs/ideas/*.md`) to first-class `kind:idea` beads
   in any workspace.
 - Both migrations are **steps in one versioned migration command** — `agent-cortex migrate`
-  (aliased `ctx migrate`), which detects a repo's current migration version and applies
+  (there is no `ctx` alias), which detects a repo's current migration version and applies
   ordered steps up to the latest. Repo-agnostic tool + skill any workspace can run, and a
   single-package.json script tooling story across the agent-cortex repo.
 
@@ -23,12 +23,15 @@
   version mismatch. Keep exactly one `bd` on PATH so `bd` and the DB version agree.
 - `bd list` supports `--label-pattern`/`--json`; `bd count` does NOT support `--label-pattern`.
 - `bd ready --label-pattern 'stage:*'` works; `bd ready -l execution:afk` verified.
-- 3 script packages still exist with their own `package.json` (create-task,
-  validate-agent-dir, run-pipeline-stage). They ARE root workspace members (root glob
-  `skills/**/scripts`; all three are in the root `pnpm-lock.yaml`). Residual per-skill
-  `pnpm-lock.yaml` (all three) and `pnpm-workspace.yaml` (validate-agent-dir,
-  run-pipeline-stage) are stale artefacts of the pre-D2 layout.
-- All 3 scripts are stdlib-only (`node:child_process`, `node:fs`, `node:path`, `node:url`).
+- Zero skill script packages remain: every `skills/*/*/scripts/` manifest (`package.json`,
+  `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and the stray `tsconfig.json`) is deleted, so the
+  root `pnpm-lock.yaml` has no script-dir importers and `pnpm-workspace.yaml` no longer carries
+  the `skills/**/scripts` glob. Planning recorded "3 script packages, NOT members of the root
+  workspace"; that was wrong — the glob made all of them members (`pnpm ls -r` listed them and
+  each had a root lockfile importer). `run-pipeline-stage/scripts` went with the generated
+  progress view; create-task and validate-agent-dir followed in F8. The root `tsconfig.json`
+  typechecks the `.mjs` scripts and each one runs on bare `node`.
+- All scripts are stdlib-only (`node:child_process`, `node:fs`, `node:path`, `node:url`).
 - Extensions (`extensions/skill-stats`) have real peer deps on `@earendil-works/pi-coding-agent`
   — they remain workspace members with their own package.json.
 - `node_modules` gitignored; per-skill modules are installed manually today — a fragility in
@@ -50,9 +53,10 @@
 
 ### D2: Single package.json (root workspace consolidation)
 
-- Fold the 3 per-skill script packages into the root workspace: delete their `package.json`,
-  `pnpm-workspace.yaml`, `pnpm-lock.yaml`; convert scripts to `.mjs` (D1); root
-  `package.json` owns typecheck/test wiring.
+- Fold the per-skill script packages into the root workspace (3 at planning time, all now
+  deleted): delete their `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`; convert scripts to
+  `.mjs` (D1); root `package.json` owns typecheck/test wiring. The `skills/**/scripts` glob
+  already made them workspace members, so what remains is deleting the per-package files.
 - Extensions stay as workspace members (`extensions/*` glob) — their package.jsons are
   semantically meaningful (peer deps on the pi runtime).
 - Fresh-clone/installed-context verification: `pnpm install` at root then
@@ -60,7 +64,7 @@
 
 ### D3: Migration command — versioned registry in the CLI
 
-- Command: `agent-cortex migrate` (alias `ctx migrate`), wired into `bin/agent-cortex.mjs`
+- Command: `agent-cortex migrate`, wired into `bin/agent-cortex.mjs`
   + `lib/cli.mjs` (parseArgs + buildHelpText), zero-dep stdlib-only like the rest of the CLI.
 - A **versioned migration registry**: each step declares the version it migrates to.
   `migrate` detects the current version of the target repo's state and applies each step in
@@ -103,16 +107,20 @@
   extensions are TS by pi contract (`index.ts` entrypoint, loader transpiles; the pi runtime
   import is type-only). Root build script is deliberately a no-op.
 - Chosen: (1) `files` whitelist in package.json — ship only runtime assets (skills/, agents/,
-  extensions/, bin/, lib/, AGENTS.md, plugin.json, README, LICENSE); (2) `prepublishOnly`
+  extensions/, bin/, lib/, scripts/, hooks/, claude/, claude-extras/, token-map.json, README,
+  CHANGELOG); (2) `prepublishOnly`
   gate running `pnpm typecheck && pnpm test`; (3) wire `test/cli.test.mjs` into root `test`.
+- `scripts/` is a runtime asset despite its build-tooling name, and the whitelist must include
+  it: both installers statically import `scripts/lib/{compose-agent,fs}.mjs`, and
+  `bin/agent-cortex.mjs` lazily imports `scripts/lib/migrate.mjs` for `migrate`. Omitting it
+  ships a package whose install and migration paths fail only for consumers — every local run
+  stays green, so nothing catches it before publish.
 - Revisit trigger: if an extension ever gains real runtime deps, bundle that extension with
   esbuild at prepack — not a repo-wide build.
 
 ### D5: Knocked-on invocation changes (F4/F5)
 
-- ralph init step 9: `pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx
-  generate-progress.ts` → `node <abs>/generate-progress.mjs`.
-- create-task chore creation: `<skill-scripts>/node_modules/.bin/tsx create-chores.ts` →
+- create-task chore creation: `<skill-scripts>/node_modules/.bin/tsx create-chores.mjs` →
   `node <abs>/create-chores.mjs`.
 
 ## Options considered
@@ -169,9 +177,9 @@
 
 ## References
 
-- Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface),
-  `skills/*/*/scripts/package.json` (3, root workspace members), root `package.json` +
-  `pnpm-workspace.yaml`, bd CLI help (`bd list`, `bd label`, `bd create`), epic
-  `agnt-ctx-s5xd` notes.
+- Code evidence: `bin/agent-cortex.mjs` + `lib/cli.mjs` (CLI surface), `skills/*/*/scripts/
+  package.json` (none remain — all folded into the root workspace), root `package.json` +
+  `pnpm-workspace.yaml`, bd CLI help
+  (`bd list`, `bd label`, `bd create`), epic `agnt-ctx-s5xd` notes.
 - Idea file: `docs/ideas/ctx-alias-version-and-update-commands.md` (ctx alias + version/update
   surface that `migrate` joins).

@@ -16,9 +16,21 @@ const GITHUB_ACTIONS_BOT = "github-actions[bot]";
 const CHANGESET_PATH = /^\.changeset\/[^/]+\.md$/;
 const CHANGESET_EXEMPT_PATHS = new Set([".changeset/README.md"]);
 
+/** @typedef {{ status: string, path: string }} NameStatusEntry */
+
+/**
+ * @typedef {object} ChangesetGateInput
+ * @property {NameStatusEntry[]} changes
+ * @property {string[]} labels
+ * @property {string} headRef
+ * @property {string} actor
+ */
+
 /**
  * Parse `git diff --name-status` output into `{ status, path }` entries, where
  * `status` is the single-letter change type and `path` is the new path.
+ * @param {string} output
+ * @returns {NameStatusEntry[]}
  */
 export function parseNameStatus(output) {
   return output
@@ -26,7 +38,7 @@ export function parseNameStatus(output) {
     .filter((line) => line.trim() !== "")
     .map((line) => {
       const [status, ...paths] = line.split("\t");
-      return { status: status.charAt(0), path: paths.at(-1) };
+      return { status: status.charAt(0), path: /** @type {string} */ (paths.at(-1)) };
     });
 }
 
@@ -34,6 +46,8 @@ export function parseNameStatus(output) {
  * Decide whether a pull request may skip adding a changeset. Exempt only the
  * Version Packages PR and PRs explicitly labelled `no-publish`; every other PR
  * must add its own changeset.
+ * @param {ChangesetGateInput} input
+ * @returns {{ ok: boolean, reason: string }}
  */
 export function evaluateChangesetGate({ changes, labels, headRef, actor }) {
   if (headRef.startsWith(VERSION_PACKAGES_HEAD_REF) || actor === GITHUB_ACTIONS_BOT) {
@@ -51,11 +65,17 @@ export function evaluateChangesetGate({ changes, labels, headRef, actor }) {
 /**
  * Resolve the command changesets/action should exec for publishing, based on
  * the labels of the PR merged for the pushed commit.
+ * @param {string[]} labels
+ * @returns {string}
  */
 export function resolvePublishCommand(labels) {
   return labels.includes(NO_PUBLISH_LABEL) ? NO_PUBLISH_COMMAND : PUBLISH_COMMAND;
 }
 
+/**
+ * @param {string} path
+ * @returns {boolean}
+ */
 function isChangeset(path) {
   return CHANGESET_PATH.test(path) && !CHANGESET_EXEMPT_PATHS.has(path);
 }

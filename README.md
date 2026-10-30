@@ -12,8 +12,6 @@ agent-cortex/
 │   ├── plan/                 #   "
 │   ├── ralph-plan/           #   "
 │   └── strategy/             #   "
-├── agents-native/            # Claude-only agents
-│   └── ralph.md              #  the lean Claude Ralph
 ├── skills/                   # Skills (grouped by domain) — shared by all harnesses
 │   ├── engineering/          #  tdd, improve-codebase-architecture, …
 │   ├── planning/             #  write-a-prd, prd-to-tasks, design-an-interface, …
@@ -71,11 +69,9 @@ temp-dir install plus structural checks:
   harness dirs
   (frontmatter.json + section files). Claude only loads agents from a plugin's default `agents/`
   dir, so the plugin ships them at its own root (default `~/.agent-cortex/claude/agents/`).
-- **Claude-native agents** that cannot be composed from a shared body live in
-  `agents-native/*.md` and are copied verbatim into the materialised plugin's `agents/`. `ralph`
-  is one: it is reimplemented for Claude around background workers + an independent review gate
-  (Claude's event-driven completion delivery has no `task`/`read_agent` poll loop to reuse), so
-  it can't be mechanically converted.
+- **Every agent composes, `ralph` included.** There is no Claude-only agent source: the shared
+  body is harness-neutral and each harness supplies only its own wake mechanism
+  (`agents/ralph/<harness>/wake.md`), so one body serves both harnesses.
 - **Manifests** are generated too: the plugin's `.claude-plugin/plugin.json` (its `version`
   tracks `package.json`, so it never goes stale) and `hooks.json` (copied from the canonical
   `hooks/claude/hooks.json` source), plus any support files under `hooks/claude/` bundled into
@@ -84,7 +80,7 @@ temp-dir install plus structural checks:
   dir, which is their canonical store. See `docs/claude-hooks.md` for the
   extension→hook mapping and the rejections (auto-name, agent-guardrails, skill-stats, subagent, agent-modes).
 
-Edit the sources (`agents/<name>/` composable dirs, `agents-native/*.md`, `skills/**`,
+Edit the sources (`agents/<name>/` composable dirs, `skills/**`,
 `hooks/claude/`, `claude-extras/`, `package.json`), never anything under the materialised
 `~/.agent-cortex/claude`.
 
@@ -434,15 +430,13 @@ extension→hook audit.
   rejection rationale live in `docs/claude-hooks.md`.
 - Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume
   after a PR merge (instead of manual re-invocation).
-- The pi Ralph (the 4-stage `run-pipeline-stage` pipeline) is unchanged; those two
-  ralph-coupled skills (`ralph`, `run-pipeline-stage`) are intentionally not shipped to Claude.
+- Ralph's per-task pipeline is shared, not ported: `ralph` and `run-pipeline-stage` ship to
+  Claude and compose from the same harness-neutral body as pi, differing only in the wake section.
 
 #### Contributing to the Claude plugin
 
 Edit the **sources** — the composable `agents/<name>/` directories (shared `agent.md` +
-per-harness frontmatter/sections, composed by `bin/installers/claude.mjs`),
-`agents-native/*.md` (Claude-only
-agents like `ralph` — the canonical bodies the installer copies verbatim), `skills/**`,
+per-harness frontmatter/sections, composed by `bin/installers/claude.mjs`), `skills/**`,
 `hooks/claude/hooks.json` (hook config), `claude/settings.json` (the user-settings template
 merged into `~/.claude/settings.json`), `claude-extras/` (hand-authored `.mcp.json` and
 `scripts/`), and `package.json` (plugin
@@ -453,3 +447,29 @@ re-registers it; `--output <dir>` generates a preview only). The only committed 
 (`.claude-plugin/plugin.json`, `agents/`, `skills/`, `hooks.json`, `.mcp.json`, `scripts/`)
 so never edit anything under it. CI validates the Claude materialiser (structural checks on
 a temp-dir install) so sources and installer can never silently diverge.
+
+## Migrating a beads workspace
+
+`agent-cortex migrate` brings the `.beads` workspace it runs in — any repo, not just this
+one — up to the latest agent-cortex migration version. The current version is derived from
+the workspace's own state (the first step with pending work), so there is no marker file to
+drift and a re-run after an apply is a no-op. Step v1 renames `implementation-type:afk|hitl`
+labels to `execution:afk|hitl` on every bead carrying them, closed ones included: the goal
+is an empty legacy namespace, not just a clean live one (see
+`docs/technical-direction/migration-execution-labels.md` for the two-axis model behind it).
+
+A bare `agent-cortex migrate` is a **dry run** — it prints the per-bead plan and writes
+nothing. `--apply` runs every pending step in order and verifies each before moving on. It
+shells out to the `bd` CLI on `PATH` (`BD_PATH` overrides) and fails loudly, rather than
+half-applying, when `bd` is missing or a `bd` subcommand errors.
+
+Detection reads `bd export --all` and cross-checks `bd label list-all`, never a
+label-filtered `bd list`: on bd 1.3.1 that query can omit closed beads, which once let a
+partially migrated workspace report itself as verified. When the label index still reports a
+legacy label that no exported bead carries — or a legacy label survives the apply — `migrate`
+names the beads and exits non-zero.
+
+```sh
+agent-cortex migrate            # dry run — per-bead plan, zero writes
+agent-cortex migrate --apply    # apply pending steps, verifying each
+```

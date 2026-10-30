@@ -25,7 +25,7 @@ description: Create a PRD through user interview, codebase exploration, and modu
 3. **Interview relentlessly.** Walk down each branch of the design tree, resolving dependencies between decisions one by one, until the user's understanding and yours are identical. The epic's required sections — `## Success Criteria` in particular — are the interview's target: it is complete only when there is enough agreed detail to fill every required section. Never invent an answer; surface it as an assumption and confirm it with the user.
 4. **Sketch the modules.** List the major modules to build or modify, actively looking for deep modules — ones that encapsulate rich behaviour behind a simple, stable interface testable in isolation. Confirm the list with the user, plus which modules they want tests written for.
 5. **Write the PRD.** Render the template in `FORMAT.md` (Problem Statement, Solution, User Stories, Success Criteria, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Make the user-story list extremely extensive so it covers all aspects of the feature.
-6. **File the bead.** Create the epic with `bd create "<title>" --type epic --priority P1 --body-file - --validate`, piping the rendered PRD to stdin, then run the `classify-bead` classifier (`node <this-skill-dir>/../classify-bead/scripts/classify-bead.mjs <epic-id>`, run from the target project's cwd) to label it AFK or HITL. Escalate to the `classify-bead` subagent only when the classifier reports `escalate: true`. Finally run `bd lint <epic-id>` and fix any missing sections before reporting.
+6. **File the bead.** Create the epic with `bd create "<title>" --type epic -l execution:hitl --priority P1 --body-file - --validate`, piping the rendered PRD to stdin. A PRD epic is a container a person owns, so it is `execution:hitl` in its own right — it is not classified; the work beads beneath it are. Finally run `bd lint <epic-id>` and fix any missing sections before reporting.
 
 Run the steps in order. Skip a step only when the user confirms it is unnecessary (e.g. the codebase is already explored).
 
@@ -52,7 +52,7 @@ Run the steps in order. Skip a step only when the user confirms it is unnecessar
 
 - [ ] Gate 1 — shared understanding: every design-tree branch resolved and the user confirms the summary.
 - [ ] Gate 2 — modules agreed: the module list and test expectations match the user's model of the solution.
-- [ ] Gate 3 — PRD filed: the epic bead contains the rendered template, carries an implementation-type label, and lints clean.
+- [ ] Gate 3 — PRD filed: the epic bead contains the rendered template, carries `execution:hitl`, and lints clean.
 
 ## Cross-skill references
 
@@ -60,7 +60,7 @@ Run the steps in order. Skip a step only when the user confirms it is unnecessar
 - Use `write-a-ticket` when the spec targets an external tracker rather than a bead.
 - Use `spec-to-tickets` when an approved PRD/RFC must become a map of external tickets.
 - Run `prd-to-tasks` on the filed epic to break the PRD into an executable backlog.
-- Run the `classify-bead` classifier on the new epic — the repo labels every new bead AFK or HITL. Its `scripts/` directory sits next to this skill's directory in every harness, so `<this-skill-dir>/../classify-bead/scripts/classify-bead.mjs` resolves it. Escalate to its rubric subagent only when the classifier reports `escalate: true`.
+- Do not run `classify-bead` on the epic: a container is `execution:hitl` by definition. `create-task` classifies the work beads beneath it.
 
 ## Examples
 
@@ -75,4 +75,4 @@ Output: an epic bead whose description is the rendered PRD — problem, solution
 - [ ] Every user story follows "As an <actor>, I want <feature>, so that <benefit>".
 - [ ] Codebase assertions verified against the repo before writing.
 - [ ] Implementation Decisions contains no file paths or code snippets.
-- [ ] Epic bead filed with type `epic`, priority P1, the rendered PRD as description, and an implementation-type label applied.
+- [ ] Epic bead filed with type `epic`, priority P1, the rendered PRD as description, and `execution:hitl` applied — a PRD epic is human-owned by definition.

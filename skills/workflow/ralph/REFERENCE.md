@@ -4,7 +4,140 @@ Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL
 
 ---
 
+## The in-flight invariant
+
+Every ralph control-flow predicate — *is any agent work in flight?*, *is there work?*, *is there
+room to dispatch?*, *may we pause?*, *may we shut down?* — is answered from `state.json`'s
+`inflight` list (entries carry `kind: "stage"`, `kind: "decompose"` or `kind: "expand"`) plus
+`bd ready -l execution:afk`. **Never** from a chore-type `bd` query, and never from "was a chore
+dispatched?".
+
+| Question | Derive it from | Never from |
+|----------|----------------|------------|
+| Is any agent work in flight? | `inflight` in `.agent-cortex/ralph/state.json` — stage, decomposition **and** expansion entries | `bd list -t chore`, `bd ready -t chore`, or any "were chores dispatched?" test |
+| Is anything dispatchable? | `bd ready -l execution:afk`: a `stage:*` chore, a childless `execution:afk` `feature` bead to decompose, **or** a ready, claimable chore-less `execution:afk` task bead awaiting expansion | A chore listing alone — a ready, claimable childless feature or chore-less task is work waiting, not idle |
+| Is there room under the 5-feature cap? | Parent count in `inflight` | A count of chore beads |
+| May ralph pause or shut down? | `inflight` empty **and** nothing dispatchable (per the row above) | "No stage worker is running" |
+
+**`execution:afk` is the one dispatch predicate.** It answers *whose work is this* for features,
+tasks and chores alike, and the bead graph answers *when*. Ralph therefore never narrows the query
+— "chores with `stage:*`" would report a ready childless feature or an unexpanded task as idle
+while both are work waiting for a worker.
+
+**Dispatchable means ready *and* claimable.** `bd ready -l execution:afk` decides ready; pending human action
+decides claimable: while `pending-gates.mjs` reports an unblocked `lifecycle:feature-pr` gate, ralph
+schedules no new parent features (_Feature PR gate_, step 6), so a queued unexpanded `execution:afk` bead in
+that state is paused work, not dispatchable work. Scoping the predicate both ways is what makes HITL Pause
+reachable in the canonical post-PR state — gate open, unexpanded `execution:afk` beads queued, `inflight`
+empty, no ready `stage:*` chore — instead of re-arming a PI
+wait over an empty agent set forever on an idle poll.
+
+**Why:** an expansion or decomposition worker claims no chore. A chore-only predicate therefore
+reports "nothing in flight" while an agent is running, which makes ralph pause or shut down
+mid-expansion and leaves the parent's freshly created `stage:*` chain undispatched. The only
+legitimate chore-type control-flow predicate in ralph is the retry counter in _Cap Backstop_
+(`stage:fix` children): it counts remediation history rather than in-flight work, so it may gate a
+dispatch decision but it must never answer *is anything in flight?*. Every other chore-type `bd`
+query used as a control-flow predicate is a bug. Structural checks that ask nothing more than
+*what does this bead already have?* — the _Expansion Guard_'s `grep -c '"stage:'`, the _Cap
+Backstop_'s `stage:fix` count, the _Feature Decomposition_'s child count — are not predicates and
+are fine.
+
+---
+
+## Expansion Guard
+
+Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. Ralph's dispatch is therefore always "claim what `bd ready -l execution:afk` returns".
+
+A ready `execution:afk` task bead with **no** `stage:*` chore children has nothing to dispatch. Expand it, then dispatch the resulting `stage:code` chore:
+
+1. **Confirm it is chore-less** — a bead that already has stage chores is never expanded again:
+   ```bash
+   bd children <parent-id> --json | grep -c '"stage:'
+   ```
+   Expect `0` printed. `grep -c` exits `1` when it counts zero matches, so add `|| true` when the
+   check runs under `set -e` or inside an `&&` chain — the printed count is the answer, not the exit
+   status.
+2. **Dispatch an expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
+   ```bash
+   node <create-task-scripts>/create-chores.mjs \
+     --parent <parent-id> --priority <parent-priority>
+   ```
+   `<create-task-scripts>` is the absolute path to `skills/planning/create-task/scripts/`, resolved from wherever the skill was loaded — never hardcode one harness's install path. `<parent-priority>` is the parent's own priority from `bd show <parent-id>`, so chores match the task they belong to.
+3. **Record it in `inflight`** so its completion is attributable to the parent and it stays in the wait set — it has no chore, so `choreId` is `null`:
+   ```json
+   { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
+   ```
+4. **Report the mapping** the worker returns — `code`, `verify`, `review`, `document`, `featurePrReview` — and close nothing. The worker owns no bead on this run; the expansion is bookkeeping, not a stage.
+5. **Dispatch normally.** The next `bd ready -l execution:afk` pass picks up the `stage:code` chore, and the pre-created chain carries the rest.
+6. **Handle the completion as an expansion completion**, not a stage completion — see below.
+
+**Never expand an existing bead with `create-task`** — or with any other command that creates a bead. `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. The guard exists so an `execution:afk` task bead always ends with exactly one parent: `create-chores.mjs` expands a bead that already exists; only `create-task` creates parents.
+
+**Labels on the chain.** Stage chores inherit `execution:afk` from their parent task bead, so they surface in ralph's `bd ready -l execution:afk` query without extra tagging — an expanded task never needs its chores relabelled. The `featurePrReview` HITL gate is the one exception: it declares its own `execution:hitl` + `lifecycle:feature-pr` labels and the script passes `--no-inherit-labels` for it, so it never picks up the parent's `execution:afk`.
+
+### Expansion Completion Contract
+
+An expansion worker is dispatched like a stage worker but is **not** one. Nothing downstream of a stage dispatch applies to it:
+
+| Stage worker | Expansion worker |
+|------|------|
+| Correlates to a claimed chore: `kind: "stage"` with a `choreId` | Holds no chore: `kind: "expand"`, `choreId: null` |
+| Emits a `---REPORT---` block | Emits none — it prints the `create-chores.mjs` JSON mapping |
+| Owns its leaf bead, which must read `closed` | Owns nothing — no bead to close, nothing to confirm |
+| Completion advances the parent along the chain | Completion means "chores now exist" — dispatch the ready `stage:code` chore |
+
+On completion, remove the entry from `inflight` and confirm the chore tree exists rather than taking the worker's word for it:
+
+```bash
+bd children <parent-id> --json | grep -c '"stage:'
+```
+
+Expect a non-zero count — one match per `stage:*` label in the chain. A printed `0` means the
+expansion failed. Surface the worker's output in chat and record the parent for the shutdown summary — **never re-dispatch the expansion**, because `create-chores.mjs` is not idempotent and a second run duplicates the chain beside the first. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
+
+---
+
+## Feature Decomposition
+
+Epic Q2 makes ralph responsible for decomposing a feature bead into the hierarchy; Q5 makes a
+feature `execution:hitl` by default. Both hold because the **label**, not the bead type, decides
+routing: a feature is invisible to ralph while it carries `execution:hitl`, and a human exposes it
+to ralph by relabelling it `execution:afk` when its delivery is genuinely agent-routable. Ralph
+then decomposes it once and immediately goes idle behind the planning bead — Q5b's dependency gate
+does the pausing, so no extra "ready to decompose" label is needed.
+
+A ready `execution:afk` bead of type `feature` with **no** children is not dispatchable work.
+Decompose it:
+
+1. **Confirm it is childless** — any existing child means the feature is already decomposed and this
+   procedure does not apply:
+   ```bash
+   bd children <feature-id> --json
+   ```
+   Expect an empty list `[]`. A non-empty list, however few children, means stop here.
+2. **Dispatch a decomposition worker** in the feature worktree (`.agent-cortex/worktrees/<feature-id>`) whose whole job is to run the `create-task` hierarchy flow (`prd-to-tasks` → `create-task`) for that one **existing** feature — its planning bead and impl children only, never a second feature bead — and report the IDs it created. The worker builds the Q5 shape:
+   - a **planning bead** — `--parent <feature-id>`, `execution:hitl` — held for a human to confirm planning is sufficient;
+   - **implementation task children** — `--parent <feature-id>`, `execution:afk`, `--no-inherit-labels` — each wired to wait on the planning bead with `bd dep add <impl-child> <planning-bead>`.
+
+   This is the shape `create-task` builds on its feature path (`SKILL.md` steps 5–6): an `execution:hitl` planning bead owned by the feature, whose impl children depend on it, so the dependency — not a label — is the readiness gate.
+3. **Record it in `inflight`** so its completion is attributable to the feature and it stays in the wait set — it holds no chore, so `choreId` is `null`:
+   ```json
+   { "kind": "decompose", "choreId": null, "parentId": "<feature-id>", "title": "<feature title>", "agentId": "<agent-id>", "logLine": 1 }
+   ```
+4. **Confirm the children exist** rather than trusting the report — the worker's IDs are a claim, the bead graph is the evidence:
+   ```bash
+   bd children <feature-id> --json
+   ```
+   Surface the created IDs in chat. An empty list means the decomposition failed: record the feature for the shutdown summary and continue — do not re-dispatch.
+5. **Never re-dispatch a decomposition.** The bead creation it runs is not idempotent, so a second run duplicates the planning bead and every implementation child beside the first. This is the same hazard as re-running `create-chores.mjs`.
+6. **Go idle.** After decomposition nothing is dispatchable for that feature: `bd ready -l execution:afk` still lists the feature itself (it now has children, so it is skipped — never decomposed again) but none of its children until a human closes the planning bead. Returning to the event loop with *nothing* to dispatch is the correct outcome, not a failure to re-expand — that is Q5b working as designed.
+
+---
+
 ## Dispatching a Chore Bead
+
+Chores already exist, so dispatch never creates one:
 
 1. **Claim** the bead: `bd update <id> --claim`.
 2. **Read its `stage:*` label** from `bd show <id>`.
@@ -13,7 +146,7 @@ Detailed procedures for the ralph orchestration workflow. See [SKILL.md](./SKILL
 5. **Ensure branch + worktree exist for this parent task** (see _Feature branches and worktrees_ below), then note the worktree path — you'll pass it as `cwd` to {{TOOL:task}}.
 6. **Fill in the prompt** — replace placeholders with:
    - Stage from bead label (`stage:<stage>`) for `<stage>`
-   - Chore bead ID and its `bd show` output for the bead specification. Do **not** inject `bd prime` output — the stage runner runs `bd prime` itself if it needs project context
+   - The leaf execution bead ID and its `bd show` output for the bead specification. Do **not** inject `bd prime` output — the stage runner runs `bd prime` itself if it needs project context
    - Parent task description from `bd show <parent-id>`
    - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
@@ -55,6 +188,10 @@ For each parent task bead (`<parent-id>`):
    # <base> is epic/<epic-id> for multi-feature epics, origin/main for single-feature
    git worktree add .agent-cortex/worktrees/<parent-id> -b feature/<parent-id> <base>
    ```
+   **`<base>` is `epic/<epic-id>` or `origin/main` — never another `feature/*` branch.** If this
+   task depends on another unmerged task, its `blocks` edge already keeps it out of `bd ready`;
+   do not create the worktree early to get ahead, and never reuse a sibling task's worktree — that
+   silently stacks the branches and turns the dependency into a squash-merge conflict later.
    If `.agent-cortex/worktrees/<parent-id>` already exists, reuse it.
 5. All chores for this parent run in `.agent-cortex/worktrees/<parent-id>`. The `feature/<parent-id>` branch is the agent branch for HITL PRs.
 
@@ -64,7 +201,7 @@ For each parent task bead (`<parent-id>`):
 
 When the `document` chore for a parent task completes:
 
-1. Close the `document` chore.
+1. Confirm the document worker closed its own chore (`bd show <id>` reads `closed`); do not close it yourself.
 2. Create or update a feature PR immediately from the agent branch to the feature branch (`feature/<parent-id>` into `epic/<epic-id>`; into `main` for single-feature epics):
    ```bash
    # <base> is epic/<epic-id> for multi-feature epics, main for single-feature
@@ -72,7 +209,7 @@ When the `document` chore for a parent task completes:
    ```
    If an open PR already exists, update it instead of creating a duplicate.
 3. Report the PR URL in chat as soon as it is created.
-4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` (created by `create-task`).
+4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` and `execution:hitl` (created by `create-task`).
 5. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
 6. Do not schedule new parent features while this gate is **unblocked** — an unblocked gate is a feature genuinely awaiting a human merge (see _Gate predicate_ below).
 7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake. After that, close the parent feature bead:
@@ -101,40 +238,27 @@ Gate queries match the HITL axis on either `execution:hitl` (current) or `implem
 **Invariant — what may block a gate.** `parked` means "blocked by its own pipeline". A gate blocked by its parent **feature** bead is not parked in any harness: that bead stays open until after the merge, so the gate never reaches `bd ready`, never appears in `pendingHumanAction`, and a human merge is silently never requested. Keep the two shapes apart:
 
 - A `create-chores` gate unblocks exactly once, when its `document` chore closes. Until then it is parked and must not stop dispatch.
-- A gate must never carry a `blocks` dependency onto its own feature bead (the native-Claude shape: `bd create ... --labels ...lifecycle:feature-pr` then dep it to `<id>`). Remove it with `bd dep rm <gate> <id>` if present, so the gate is unblocked while its PR awaits merge.
+- A gate must never carry a `blocks` dependency onto its own feature bead (e.g. `bd create ... --labels ...lifecycle:feature-pr` then dep it to `<id>`). Remove it with `bd dep rm <gate> <id>` if present, so the gate is unblocked while its PR awaits merge.
 
-So the predicate is sensitive to *what* blocks a gate, not only whether something does. `agents-native/ralph.md` (the Claude harness) keeps the open-gate form for this reason: its gates stay blocked by design, and its `document` chores never close; F10 (agnt-ctx-s5xd.10) unifies the two predicates.
+So the predicate is sensitive to *what* blocks a gate, not only whether something does. It is ralph's only gate predicate on every harness: the Claude-native agent file that kept an open-gate form is retired, so nothing else restates a second predicate.
 
 ---
 
-## Fix Loop
+## Cap Backstop (read-only)
 
-When a verify or review stage fails:
+Ralph never builds remediation. The worker that fails a stage creates its own `stage:fix` chore, a fresh instance of the failed stage blocked on that fix, and re-blocks the later stages behind the fresh bead (see the `run-pipeline-stage` skill, _Remediation Children_). Ralph only guards the cap, and only reads:
 
-1. **Determine the parent task**: look up the chore bead's parent via `bd show <chore-id>` (follow the `parent-child` dependency).
-2. **Count existing fix rounds**: list all chore beads that are children of the parent task with label `stage:fix`. The count of these (including closed ones) is the number of fix rounds already attempted.
-3. **Read `maxFixRounds`** from `skills/planning/create-task/pipeline.json` (held in memory since initialization).
-4. **If fix rounds ≥ maxFixRounds**: close the parent task bead as failed (`bd close <parent-id> --reason "Max fix rounds reached"`). Do not create another fix chore.
-5. **Otherwise, create a fix chore** with the feedback in its description so the fixer agent can read it directly from `bd show`:
+1. **Read `maxFixRounds`** from `skills/planning/create-task/pipeline.json` (held in memory since initialization).
+2. **Count existing fix rounds** for the parent — closed chores count:
    ```bash
-   fix_id=$(bd create "[<parent-id>] Fix (round <N>)" --type chore \
-     --priority <same as parent> \
-     --description "Requirements: see <parent-id> acceptance criteria (`bd show <parent-id>`).
-
-<CHANGES_REQUESTED list or VERIFY_FAILURES list from the triggering REPORT>" -q)
-   bd tag $fix_id stage:fix
-   bd dep add $fix_id <parent-id> --type parent-child   # fix-chore is child of parent
+   fix_rounds=$(bd children <parent-id> --json | grep -c '"stage:fix"')
    ```
-6. **Find the verify chore** for this parent task (the chore with label `stage:verify` and a `parent-child` dep to the parent).
-7. **Block the verify chore** on the new fix chore:
+3. **Before dispatching any `stage:*` chore of that parent**, if `fix_rounds >= maxFixRounds`: create nothing and block the parent, so a human sees it in the shutdown summary:
    ```bash
-   bd dep add <verify-id> $fix_id --type blocks          # verify waits for fix
+   bd update <parent-id> --status blocked \
+     --append-notes "[<ISO-timestamp>] max fix rounds reached (<fix_rounds>/<maxFixRounds>)"
    ```
-8. **Reopen the verify chore**:
-   ```bash
-   bd reopen <verify-id>
-   ```
-   This ensures the fix chore runs first, then verify re-runs automatically when the fix closes.
+4. Ralph does **not** close the parent as failed and does **not** reopen or re-wire any chore — the worker already closed the failed leaf bead and the fresh stage bead is already blocked on its fix.
 
 ---
 
@@ -142,43 +266,43 @@ When a verify or review stage fails:
 
 Run whenever completion handling is triggered (an agent completion):
 
-1. **Query in-flight beads**: `bd list --status=in_progress --type=chore`. Extract each bead's ID and title.
-2. For each in-flight bead, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file. Track the next unread line number per parent in memory, starting at 1:
+1. **Read in-flight entries**: `inflight` in `.agent-cortex/ralph/state.json` — every dispatched worker: stage (`kind: "stage"`), decomposition (`kind: "decompose"`) or expansion (`kind: "expand"`). Each entry carries `parentId` and `logLine`.
+2. For each in-flight entry, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file:
    ```bash
-   tail -n +<lastLine> .agent-cortex/ralph/ralph-<parent-id>.log 2>/dev/null
+   tail -n +<logLine> .agent-cortex/ralph/ralph-<parentId>.log 2>/dev/null
    ```
-3. For each bead that has new lines:
+3. For each entry that has new lines:
    - **Post a chat summary** of new key events (stage transitions and notable events — not every line verbatim):
      ```
-     📋 [bead-id] <title>
+     📋 [parent-id] <title>
         coding → verifying  (or whatever transition)
         Tests: 12 passed, 0 failed
      ```
-   - Update the in-memory line offset for that bead.
-4. If no bead had new lines, post nothing — do not spam the chat with empty polls.
+   - Update `logLine` in `state.json` for that entry.
+4. If no entry had new lines, post nothing — do not spam the chat with empty polls.
 
 ---
 
 ## HITL Pause
 
-Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and `pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate or an epic tagged `awaiting-epic-pr-merge` (see _Gate predicate_). Gates still parked behind their own pipeline do not count. Ralph stops rather than burning requests on idle polls.
+Proceed here when no agent work is in flight (no stage, decomposition or expansion workers in `inflight`), nothing is dispatchable (`bd ready -l execution:afk` returns no `stage:*` chore, no childless feature to decompose, and no ready, claimable chore-less `execution:afk` task bead awaiting expansion), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate or an epic tagged `awaiting-epic-pr-merge` (see _Gate predicate_). Gates still parked behind their own pipeline do not count. Ralph stops rather than burning requests on idle polls.
 
-1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main (skip single-feature epics — their feature branch PRs already target `main`):
+1. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main (skip single-feature epics — their feature branch PRs already target `main`):
    ```bash
    gh pr create --base main --head epic/<epic-id> --title "[<epic-id>] Merge epic into main" --body "<epic summary>"
    ```
    Tag each epic bead with `awaiting-epic-pr-merge` until merged.
-3. Run:
+2. Run:
    ```bash
    bd dolt push
    ```
-4. Collect the table rows from `pendingHumanAction`:
+   **Gate on the exit status.** Non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker — no Pending Human Action table, and ralph does not claim a clean pause.
+3. Collect the table rows from the script's `pendingHumanAction` list:
    ```bash
    node skills/workflow/ralph/scripts/pending-gates.mjs
    ```
    For each entry, run `bd show <id>` to retrieve the PR URL from bead notes. `kind: "feature-pr"` rows read "review and merge the feature PR"; `kind: "epic-pr"` rows read "review and merge the epic PR into main".
-5. Output the **Pending Human Action** summary:
+4. Output the **Pending Human Action** summary:
    ```
    ⏸️  Ralph is paused — human action required before work can continue.
 
@@ -190,25 +314,25 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
 
    When you've completed the above, prompt me to continue.
    ```
-6. **Stop completely.** Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
+5. **Stop completely.** Stop the wake mechanism as the wake section describes. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
 
 ---
 
 ## Shutdown
 
-When `bd list --status=in_progress --type=chore` returns no results AND `bd ready` returns no chore beads with `stage:*` labels:
+When nothing is in flight AND nothing is dispatchable — `inflight` holds no entries, `bd ready -l execution:afk` returns nothing (no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less task bead awaiting expansion) (_The in-flight invariant_ above):
 
-1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
-2. For each **multi-feature** epic whose feature beads are all closed, open/update an epic PR to main (skip single-feature epics — no epic branch exists):
+1. For each **multi-feature** epic whose feature beads are all closed, open/update an epic PR to main (skip single-feature epics — no epic branch exists):
    ```bash
    gh pr create --base main --head epic/<epic-id> --title "[<epic-id>] Merge epic into main" --body "<epic summary>"
    ```
    Tag each epic bead with `awaiting-epic-pr-merge` until merged.
-3. Run:
+2. Run:
    ```bash
    bd dolt push
    ```
-4. If any HITL beads were noted during the session, output:
+   **Gate on the exit status.** Non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker — no completion summary, no "All beads complete.", and the remaining shutdown steps are not run.
+3. If any HITL beads were noted during the session, output:
    ```
    All agent work is complete. The following steps require human action before work can continue:
 
@@ -229,20 +353,27 @@ When `bd list --status=in_progress --type=chore` returns no results AND `bd read
 
 ## State Files
 
+Status is read from beads — there is no rendered status document to build or refresh:
+
+```bash
+bd list --parent <parent-id>   # every chore for a feature, with its state
+bd ready -l execution:afk      # the next dispatchable work
+bd show <id>                   # full detail, including the worker's notes
+```
+
 | File | Purpose |
 |------|---------|
-| `.agent-cortex/ralph/progress.md` | Human-readable snapshot. Regenerate: `workspace="/abs/path"; pnpm --prefix skills/workflow/run-pipeline-stage/scripts exec tsx generate-progress.ts --workspace "$workspace" > "$workspace/.agent-cortex/ralph/progress.md"`. `workspace` must be an **absolute** path — never `.` or `$(pwd)`. **Never hand-edit.** |
-| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the in-flight agent-ID→bead mapping. Shape: `{ "inflight": [ { "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. Initialise at startup with `{ "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
+| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the in-flight agent-ID→bead mapping. Shape: `{ "inflight": [ { "kind": "stage", "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. A decomposition worker is recorded with `"kind": "decompose"` and an expansion worker with `"kind": "expand"`, both with `"choreId": null` — they hold no chore but still occupy the wait set and the in-flight check. Initialise at startup with `{ "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
 | `.agent-cortex/ralph/ralph-*.log` | Per-parent log files written by subagents — every stage chore of a feature appends to `.agent-cortex/ralph/ralph-<parent-id>.log` (e.g. `ralph-abc-123.log`). |
 
 All task state is derived from beads; `state.json` holds only runtime bookkeeping:
 
 | Question | How to answer |
 |----------|---------------|
-| What is in-flight? | `bd list --status=in_progress --type=chore` |
-| What is ready? | `bd ready` — filter for chores with `stage:*` labels |
+| What is in-flight? | The `inflight` entries in `.agent-cortex/ralph/state.json` — `kind: "stage"` for a dispatched stage chore, `kind: "decompose"` for a feature-decomposition worker, `kind: "expand"` for an expansion worker. Decomposition and expansion workers hold no chore, so beads alone under-report in-flight work. |
+| What is ready? | `bd ready -l execution:afk` — the single dispatch predicate. Each result is routed by its shape: a childless `feature` bead is decomposed (_Feature Decomposition_), a bead with no `stage:*` children is expanded (_Expansion Guard_), a `stage:*` chore is dispatched. |
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
 | Which agent-ID maps to which bead? | `inflight` entries in `.agent-cortex/ralph/state.json` |
-| How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task. Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. |
+| How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task (`bd children <parent-id> --json | grep -c '"stage:fix"'`). Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. Read-only: used for the cap backstop, never to build remediation. |
 | Which features are review-gated? | `pendingHumanAction` entries with `kind: "feature-pr"` from `pending-gates.mjs` — unblocked `lifecycle:feature-pr` gates on either HITL axis. A gate in `parked` is pre-created but not yet actionable |
 | Which epics are review-gated? | `bd list -l awaiting-epic-pr-merge` |

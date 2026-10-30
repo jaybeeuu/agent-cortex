@@ -10,6 +10,27 @@
   "bin": {
     "agent-cortex": "./bin/agent-cortex.mjs"
   },
+  "files": [
+    "bin/",
+    "lib/",
+    "scripts/",
+    "skills/",
+    "agents/",
+    "extensions/*.ts",
+    "extensions/lib/",
+    "extensions/*/*.ts",
+    "extensions/*/*.md",
+    "extensions/*/package.json",
+    "extensions/*/agents/",
+    "extensions/*/prompts/",
+    "hooks/",
+    "claude/",
+    "claude-extras/",
+    "token-map.json",
+    "token-map.README.md",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -19,16 +40,20 @@
     "check:sync": "node scripts/check-no-sync.mjs",
     "check:skills": "node scripts/check-skill-frontmatter.mjs",
     "test": "node --test test/*.test.mjs && pnpm -r test",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r typecheck",
+    "verify": "pnpm typecheck && pnpm test",
+    "prepublishOnly": "pnpm verify",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "publish-package": "TARBALL=$(pnpm pack | tail -n 1) && npm publish \"$TARBALL\" --provenance --access public",
+    "publish-package": "pnpm verify && TARBALL=$(pnpm pack | tail -n 1) && npm publish \"$TARBALL\" --provenance --access public",
     "publish-noop": "echo 'No publish: the merged PR carries the no-publish label.'",
     "release": "changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
+    "@types/node": "^22.20.1",
     "tsx": "^4.0.0",
+    "typescript": "^5.9.3",
     "yaml": "^2.0.0"
   },
   "pi": {

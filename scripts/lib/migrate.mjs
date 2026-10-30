@@ -19,8 +19,8 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-// `bd list --json` on a large workspace is far bigger than execFile's 1 MiB
-// default; the migration reads every bead carrying a legacy label.
+// `bd export --all` on a large workspace is far bigger than execFile's 1 MiB
+// default; the migration reads every bead in the workspace.
 const MAX_BUFFER = 32 * 1024 * 1024;
 
 /** Step v1 renames labels in this namespace to the two-axis execution namespace. */
@@ -69,6 +69,67 @@ function bdRunner() {
 }
 
 /**
+ * Every issue in the workspace, read from `bd export --all` (JSONL). The export
+ * reports each record's labels whatever its status, so closed beads are in
+ * scope. A label-filtered `bd list` hides closed beads on some bd builds, and
+ * relying on it is how a partially migrated workspace once reported itself as
+ * up to date.
+ *
+ * Non-issue records (memories and other infrastructure beads) are skipped. A
+ * line that is not JSON, or an issue without an id, fails loudly instead of
+ * shrinking the result set silently.
+ *
+ * @param {BdRunner} bd
+ * @returns {Promise<Array<{ id: string, labels: string[] }>>}
+ */
+async function exportIssues(bd) {
+  const stdout = await bd(["export", "--all"]);
+  /** @type {Array<{ id: string, labels: string[] }>} */
+  const issues = [];
+  const lines = stdout.split("\n");
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index].trim();
+    if (line === "") continue;
+
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      throw new Error(`bd export --all returned a non-JSON line at line ${index + 1}`);
+    }
+    if (typeof record?._type === "string" && record._type !== "issue") continue;
+    if (typeof record?.id !== "string") {
+      throw new Error(`bd export --all returned an issue without an id at line ${index + 1}`);
+    }
+    issues.push({ id: record.id, labels: Array.isArray(record.labels) ? record.labels : [] });
+  }
+
+  return issues;
+}
+
+/**
+ * Labels present anywhere in the workspace, closed beads included, from the
+ * label index. The migration cross-checks the export against it: a legacy label
+ * the index reports but the export cannot attribute to a bead means the export
+ * lost data, and the workspace must not be called migrated.
+ *
+ * @param {BdRunner} bd
+ * @returns {Promise<string[]>}
+ */
+async function listIndexedLabels(bd) {
+  const entries = JSON.parse(await bd(["label", "list-all", "--json"]));
+  if (!Array.isArray(entries)) throw new Error("bd label list-all --json did not return an array");
+
+  return entries.map((entry) => {
+    if (typeof entry?.label !== "string") {
+      throw new Error("bd label list-all --json returned an entry without a label");
+    }
+    return entry.label;
+  });
+}
+
+/**
  * Find every bead still carrying an `implementation-type:` label, grouped per
  * bead. Closed beads are included: the migration's goal is an empty legacy
  * namespace, so history labels are renamed too.
@@ -77,33 +138,27 @@ function bdRunner() {
  * @returns {Promise<PendingBead[]>}
  */
 async function findLegacyLabelBeads(bd) {
-  const stdout = await bd([
-    "list",
-    "--label-pattern",
-    `${LEGACY_LABEL_PREFIX}*`,
-    "--all",
-    "--json",
-    "--limit",
-    "0",
-  ]);
-
-  /** @type {Array<{ id: string, labels?: string[] }>} */
-  const beads = JSON.parse(stdout);
-  if (!Array.isArray(beads)) {
-    throw new Error("bd list --json did not return an array of beads");
-  }
-
+  /** @type {PendingBead[]} */
   const pending = [];
-  for (const bead of beads) {
+
+  for (const bead of await exportIssues(bd)) {
     /** @type {LabelRename[]} */
     const renames = [];
-    for (const label of bead.labels ?? []) {
+    for (const label of bead.labels) {
       if (!label.startsWith(LEGACY_LABEL_PREFIX)) continue;
       const value = label.slice(LEGACY_LABEL_PREFIX.length);
       if (value === "") throw new Error(`cannot migrate malformed label "${label}" on ${bead.id}`);
       renames.push({ from: label, to: `${EXECUTION_LABEL_PREFIX}${value}` });
     }
     if (renames.length > 0) pending.push({ id: bead.id, renames });
+  }
+
+  const residual = (await listIndexedLabels(bd)).filter((label) => label.startsWith(LEGACY_LABEL_PREFIX));
+  if (pending.length === 0 && residual.length > 0) {
+    throw new Error(
+      `no bead in bd export --all carries ${residual.join(", ")}, but the label index still does — ` +
+        "refusing to report the workspace as migrated",
+    );
   }
 
   return pending.sort((a, b) => a.id.localeCompare(b.id));
@@ -233,7 +288,10 @@ export async function runMigrate({ apply }) {
 
     const remaining = await step.detect(bd);
     if (remaining.length > 0) {
-      throw new Error(`v${step.version} ${step.name} verification failed — ${remaining.length} bead(s) still pending`);
+      const ids = remaining.map((bead) => bead.id).join(", ");
+      throw new Error(
+        `v${step.version} ${step.name} verification failed — ${remaining.length} bead(s) still pending: ${ids}`,
+      );
     }
     write(`  ✓ v${step.version} ${step.name} verified\n`);
 

@@ -50,12 +50,17 @@ async function readLabels(statePath) {
  *
  * @param {Array<{ id: string, labels: string[], status?: string }>} beads
  * @param {(workspace: { bin: string, state: string }) => Promise<void>} fn
- * @param {{ failOn?: string | null }} [options]
+ * @param {{
+ *   failOn?: string | null,
+ *   listHidesClosed?: boolean,
+ *   ignoreLabelRemovals?: boolean,
+ *   exportDropsLabel?: string | null,
+ * }} [options]
  */
-async function withWorkspace(beads, fn, { failOn = null } = {}) {
+async function withWorkspace(beads, fn, options = {}) {
   const dir = await mkdtemp(join(tmpdir(), "agent-cortex-migrate-"));
   try {
-    await fn(await makeFakeBdMigrate(dir, { beads, failOn }));
+    await fn(await makeFakeBdMigrate(dir, { beads, ...options }));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -127,6 +132,61 @@ describe("agent-cortex migrate v1 label rename", () => {
       assert.equal(afterSecond.writes.length, afterFirst.writes.length);
       assert.deepEqual(afterSecond.beads, afterFirst.beads);
     });
+  });
+
+  it("reports a workspace whose only pending work is a closed bead", async () => {
+    await withWorkspace(
+      [{ id: "bd-closed", labels: ["implementation-type:afk"], status: "closed" }],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrate([], workspace);
+
+        assert.equal(exitCode, 0);
+        assert.match(stdout, /bd-closed/);
+        assert.match(stdout, /1 bead\(s\) pending/);
+        assert.doesNotMatch(stdout, /already at v1/);
+      },
+      { listHidesClosed: true },
+    );
+  });
+
+  it("renames a closed bead's legacy label when nothing else is pending", async () => {
+    await withWorkspace(
+      [{ id: "bd-closed", labels: ["implementation-type:hitl"], status: "closed" }],
+      async (workspace) => {
+        const { exitCode } = await runMigrate(["--apply"], workspace);
+
+        assert.equal(exitCode, 0);
+        assert.deepEqual(await readLabels(workspace.state), { "bd-closed": ["execution:hitl"] });
+      },
+      { listHidesClosed: true },
+    );
+  });
+
+  it("fails verification and names the closed bead when its legacy label survives the apply", async () => {
+    await withWorkspace(
+      [{ id: "bd-closed", labels: ["implementation-type:afk"], status: "closed" }],
+      async (workspace) => {
+        const { exitCode, stderr } = await runMigrate(["--apply"], workspace);
+
+        assert.equal(exitCode, 1);
+        assert.match(stderr, /verification failed/);
+        assert.match(stderr, /bd-closed/);
+      },
+      { ignoreLabelRemovals: true },
+    );
+  });
+
+  it("refuses to report a workspace as migrated when the label index sees a legacy label the export loses", async () => {
+    await withWorkspace(
+      [{ id: "bd-closed", labels: ["implementation-type:afk"], status: "closed" }],
+      async (workspace) => {
+        const { exitCode, stderr } = await runMigrate([], workspace);
+
+        assert.equal(exitCode, 1);
+        assert.match(stderr, /implementation-type:afk/);
+      },
+      { exportDropsLabel: "implementation-type:afk" },
+    );
   });
 
   it("fails loudly when bd is not available", async () => {

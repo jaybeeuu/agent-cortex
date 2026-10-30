@@ -58,14 +58,14 @@ Steps in flight (full contract in `REFERENCE.md`):
    workspace version against the latest, then the **first pending step** only — its name, one
    line per pending bead naming the labels it would gain and lose, the pending bead count, and
    the no-writes notice. Steps behind a pending one are not named, and the plan does not group
-   beads by label value — take group sizes from the `bd list` query in step 4.
+   beads by label value — take group sizes from the export counts in step 4.
 
 4. **Gate on the plan.** Apply only when all of these hold:
    - The detected version and the steps to run match what you expect for this repo.
    - Every `implementation-type:<value>` group maps to exactly one `execution:<value>` group.
-   - Group sizes reconcile with
-     `bd list --label-pattern 'implementation-type:*' --all --json --limit 0` (a bead carrying
-     both labels appears in both groups — expected, not a conflict).
+   - Group sizes reconcile with the legacy-label counts in `bd export --all` — the source the
+     command itself reads. A bead carrying both labels appears in both groups — expected, not a
+     conflict. Do not reconcile with `bd list --label-pattern` (see `REFERENCE.md`).
    - No unmapped or novel label value: the rename is strict, so anything unexpected is a signal
      to stop and inspect, not to guess.
 
@@ -76,9 +76,9 @@ Steps in flight (full contract in `REFERENCE.md`):
 6. **Post-check.** Treat the migration as unproven until all of these hold:
 
    ```bash
-   bd label list-all                                    # no implementation-type:* remains
-   bd list --label-pattern 'implementation-type:*' --all # empty
-   bd ready -l execution:afk                            # same beads as the pre-migration AFK set
+   bd label list-all                              # no implementation-type:* remains
+   bd export --all | grep '"implementation-type:' # empty, closed beads included
+   bd ready -l execution:afk                      # same beads as the pre-migration AFK set
    ```
 
    Then grep the repo for stale `implementation-type` references (skills, docs, hooks, configs).
@@ -155,12 +155,11 @@ the queue looks empty instead of broken. Hence snapshot → dry run → gated ap
 - [ ] `bd version` and `<command> --help` both ran; the command and its supported flags are known.
 - [ ] A pre-migration `bd export --all` snapshot exists and is readable.
 - [ ] The dry run reported a plan and wrote nothing (no label changes in `bd label list-all`).
-- [ ] The plan reconciles with
-      `bd list --label-pattern 'implementation-type:*' --all --json --limit 0`.
+- [ ] The plan reconciles with the legacy-label counts in `bd export --all`.
 - [ ] The `--apply` summary is recorded verbatim: one line per step with its pending bead total
       and a `verified` line. It reports no per-group counts — reconcile group sizes against the
-      step-4 `bd list --label-pattern 'implementation-type:*' --all --json --limit 0` query.
-- [ ] `bd label list-all` and `bd list --label-pattern 'implementation-type:*'` show nothing left.
+      step-4 export counts.
+- [ ] `bd label list-all` and the export grep in step 6 both show nothing left.
 - [ ] `bd ready -l execution:afk` returns the same beads as the pre-migration AFK set.
 - [ ] A repeat dry run is a no-op (zero targets, exit 0).
 - [ ] Stale `implementation-type` references are listed with their owning files, and later steps

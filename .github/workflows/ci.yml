@@ -220,11 +220,6 @@ jobs:
           PLUGIN_VERSION=$(node -p "require('$OUT/.claude-plugin/plugin.json').version")
           test "$PKG_VERSION" = "$PLUGIN_VERSION"
 
-      - name: Check generated Copilot agent files are up to date
-        run: |
-          pnpm build:copilot
-          git diff --exit-code -- 'agents/*.agent.md'
-
   release:
     name: Release
     needs: [lint, test, claude-plugin-check]
@@ -288,12 +283,10 @@ jobs:
           # changesets/action execs these inputs via @actions/exec with NO shell:
           # the string is split by argStringToArray on whitespace (single quotes
           # survive literally), so each must be a single unquoted command token
-          # that runs a pnpm script. version-packages bumps versions, syncs
-          # plugin.json, THEN regenerates the committed Copilot output
-          # (build:copilot re-derives agents/*.agent.md; the Claude plugin is
-          # materialised at install time with the package version, so nothing
-          # committed needs regenerating) before the action commits, so the
-          # Version Packages PR always passes the drift gates.
+          # that runs a pnpm script. version-packages bumps the package version
+          # and rewrites CHANGELOG.md, and nothing else is committed: the Claude
+          # plugin is materialised at install time with the package version, so
+          # there is no committed output to regenerate.
           version: pnpm version-packages
           # pnpm publish-package when the merged PR is unlabelled, pnpm
           # publish-noop when it carries `no-publish`.

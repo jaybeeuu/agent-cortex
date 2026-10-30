@@ -4,20 +4,17 @@ Instructions for agents working on this repository.
 
 ## What This Repo Is
 
-A personal Copilot CLI plugin containing custom agents and skills, shipped to Copilot, pi,
-and Claude Code, plus PI extensions and Claude hooks for enhancing the coding agent
-runtime. Changes here affect the behaviour of every agent, skill, and PI extension
-available in the author's coding sessions.
+A personal collection of custom agents and skills, shipped to pi and Claude Code, plus PI
+extensions and Claude hooks for enhancing the coding agent runtime. Changes here affect the
+behaviour of every agent, skill, and PI extension available in the author's coding sessions.
 
 ## Structure
 
 ```
 agent-cortex/
-├── package.json           # PI package manifest (pi: { extensions, skills, packages })
-├── plugin.json            # GitHub Copilot plugin manifest — agents, skills, MCP servers
+├── package.json           # PI package manifest (pi: { extensions, skills }) + pi runtime deps
 ├── agents/                # Custom agents — canonical composable <name>/ dirs
-│   ├── *.agent.md         #   generated from <name>/ by scripts/build-copilot-agents.mjs
-│   ├── ralph/             #   composable format — see agents/README.md
+│   ├── ralph/             #   composable format (shared agent.md + pi/, claude/) — see agents/README.md
 │   ├── plan/              #   "
 │   ├── ralph-plan/        #   "
 │   └── strategy/          #   "
@@ -38,13 +35,13 @@ agent-cortex/
 ├── claude-extras/        # Hand-authored Claude plugin extras
 │   ├── .mcp.json         # MCP servers (context7, github) — copied into installs
 │   └── scripts/          # statusline-command.sh — copied into installs (executable)
-└── package.json          # PI package manifest (pi: { extensions, skills, packages })
+└── package.json          # PI package manifest (pi: { extensions, skills }) + pi runtime deps
 ```
 
 ## Versioning
 
 Use `pnpm changeset` for all version bumps. Never edit versions manually.
-`package.json`, `plugin.json`, and `CHANGELOG.md` stay in lockstep automatically.
+`package.json` and `CHANGELOG.md` stay in lockstep automatically.
 See the `style-versioning` skill for the full workflow.
 
 ## Changelog
@@ -53,6 +50,11 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Coding Conventions
 
+- **Landing method**: pull requests are squash-merged. Merge commits are disabled in the
+  repository settings and `main` requires linear history, so a branch's own commit shape never
+  reaches `main` — bring a behind branch up to date by merging `main` in rather than rebasing it.
+  `docs/commit-signing.md` records why squash is the only landing path that produces a signed
+  commit; the rebase-versus-merge reasoning lives in the `git-workflow` skill.
 - **Never block the main thread**: no `*Sync` functions (`readFileSync`, `spawnSync`, …).
   Tooling code in `bin/`, `scripts/`, `lib/`, `hooks/`, and `test/` must be async —
   enforced by `scripts/check-no-sync.mjs` (runs via `pnpm lint`). Skill-owned
@@ -63,6 +65,12 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Skill Conventions
 
+- **Skills are portable, not repo documentation.** `skills/` is installed onto arbitrary machines
+  (pi, Claude Code), so it describes general practice and the author's portable
+  preferences — never how this repository is configured or how to work in it. Facts about this
+  checkout (branch bases, merge method, signature rules, required checks, release mechanics) belong
+  in `AGENTS.md`, `docs/`, or the tracker. Repo-local `.agents/skills/` follows the same rule: a
+  skill is a skill, not a place for this repo's configuration.
 - `SKILL.md` must include a YAML front-matter block with `name` and `description`.
 - `description` must be ≤ 1024 characters. First sentence: what it does. Second: "Use when…".
 - Keep `SKILL.md` near the ~150-line target in `docs/skills/skill-anatomy.md`, overflowing into
@@ -77,13 +85,10 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 ## Agent Conventions
 
 - Agents live in composable `<name>/` directories under `agents/`: a shared `agent.md` body plus
-  per-harness subdirectories `pi/`, `copilot/`, `claude/` (frontmatter.json and optional section
-  files) per the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, and `strategy` all use
-  the composable layout. The flat `agents/*.agent.md` files are **generated output** — composed
-  from the canonical directories by the shared `bin/installers/copilot.mjs` code path behind both
-  `agent-cortex install copilot` and `scripts/build-copilot-agents.mjs` (thin wrapper), and
-  committed for Copilot CLI (plugin.json `agents: "agents/"` scans for `*.agent.md`); never edit
-  them by hand. The Claude plugin is materialised by the install-time generator
+  per-harness subdirectories `pi/` and `claude/` (frontmatter.json and optional section files) per
+  the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, and `strategy` all use the
+  composable layout, and no flat agent file is committed — each harness renders its own at install
+  time. The Claude plugin is materialised by the install-time generator
   `bin/installers/claude.mjs`: a plain `agent-cortex install claude` copies it into
   `~/.agent-cortex/claude` (skills copied flat with `{{TOOL:...}}`/`{{PATH:...}}` substituted,
   never symlinked), writes the marketplace manifest at
@@ -96,6 +101,16 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `--output <dir>` is the generate-only form (tests/CI materialiser checks); `ralph`
   is authored natively in `agents-native/` and copied verbatim; the other agents compose from their
   `claude/` harness dirs).
+- The pi package is materialised by `bin/installers/pi.mjs`: `agent-cortex install pi` stages a
+  self-contained pi package in `~/.agent-cortex/pi` (manifest, flat rendered agents, token-substituted
+  skills, a copy of `extensions/`, `token-map.json`, and the bundled `pi.packages` closure under
+  `node_modules/`) and registers that directory with pi through the `pi` CLI — pi's own
+  `~/.pi/agent/settings.json` is read, never written. `--output <dir>` stages only (no registration,
+  no sweep) and `--dry-run` reports the plan. Once registration succeeds, a one-shot migration sweeps
+  the copies the pre-staged-model installer rendered into `~/.pi/agent`, attributing them by name from
+  the package root and recording completion in `~/.agent-cortex/legacy-sweep.json`; `~/.pi/agent/extensions`
+  is never touched. Run it from the main checkout: the staged package is a snapshot of the checkout you
+  invoked, so a run from a ralph worktree stages that worktree's content.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
 

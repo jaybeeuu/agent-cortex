@@ -1,8 +1,8 @@
 {
   "name": "agent-cortex token map",
-  "description": "Central mapping of tool names, paths, and agent naming conventions across the copilot, claude, and pi harnesses. Single source of truth for install-time token substitution. See token-map.README.md for the design rationale.",
+  "description": "Central mapping of tool names, paths, and agent naming conventions across the claude and pi harnesses. Single source of truth for install-time token substitution. See token-map.README.md for the design rationale.",
   "version": 1,
-  "harnesses": ["copilot", "claude", "pi"],
+  "harnesses": ["claude", "pi"],
   "token_format": {
     "convention": "{{TYPE:NAME}}",
     "decision": "Adopt the {{TOOL:name}} / {{PATH:name}} / {{SECTION:name}} grammar already standardised by ADR #63 (agents/README.md) rather than a dotted {{tool.name}} form. The uppercase type prefix disambiguates token kinds at a glance, keeps tool/path/section names in one namespace collision-free, and matches the token grammar skills are already written against.",
@@ -13,40 +13,36 @@
     }
   },
   "tools": {
-    "bash": { "copilot": "bash", "claude": "Bash", "pi": "bash" },
-    "view": { "copilot": "view", "claude": "Read", "pi": "read" },
-    "edit": { "copilot": "edit", "claude": "Edit", "pi": "edit" },
-    "create": { "copilot": "create", "claude": "Write", "pi": "write" },
-    "grep": { "copilot": "grep", "claude": "Grep", "pi": "grep" },
-    "rg": { "copilot": "rg", "claude": "Grep", "pi": "grep" },
-    "glob": { "copilot": "glob", "claude": "Glob", "pi": "find" },
-    "ask_user": { "copilot": "ask_user", "claude": "AskUserQuestion", "pi": "ask_questions" },
-    "web_fetch": { "copilot": "web_fetch", "claude": "WebFetch", "pi": "fetch_content" },
-    "skill": { "copilot": "skill", "claude": "Skill", "pi": "read" },
-    "task": { "copilot": "task", "claude": "Task", "pi": "task" },
-    "read_agent": { "copilot": "read_agent", "claude": null, "pi": "read_agent" },
-    "wait_for_agents": { "copilot": null, "claude": null, "pi": "wait_for_agents" }
+    "bash": { "claude": "Bash", "pi": "bash" },
+    "view": { "claude": "Read", "pi": "read" },
+    "edit": { "claude": "Edit", "pi": "edit" },
+    "create": { "claude": "Write", "pi": "write" },
+    "grep": { "claude": "Grep", "pi": "grep" },
+    "rg": { "claude": "Grep", "pi": "grep" },
+    "glob": { "claude": "Glob", "pi": "find" },
+    "ask_user": { "claude": "AskUserQuestion", "pi": "ask_questions" },
+    "web_fetch": { "claude": "WebFetch", "pi": "fetch_content" },
+    "skill": { "claude": "Skill", "pi": "read" },
+    "task": { "claude": "Task", "pi": "task" },
+    "read_agent": { "claude": null, "pi": "read_agent" },
+    "wait_for_agents": { "claude": null, "pi": "wait_for_agents" }
   },
   "paths": {
     "plugin_root": {
-      "copilot": "~/.copilot/installed-plugins/_direct/agent-cortex",
       "claude": "${CLAUDE_PLUGIN_ROOT}",
-      "pi": "~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex"
+      "pi": "~/.agent-cortex/pi"
     },
     "agents_dir": {
-      "copilot": { "base": "plugin_root", "relative": "agents" },
       "claude": { "base": "plugin_root", "relative": "agents" },
       "pi": { "base": "plugin_root", "relative": "agents" }
     },
     "skills_dir": {
-      "copilot": { "base": "plugin_root", "relative": "skills" },
       "claude": { "base": "plugin_root", "relative": "skills" },
       "pi": { "base": "plugin_root", "relative": "skills" }
     }
   },
   "agents": {
     "prefix": {
-      "copilot": "agent-cortex:",
       "claude": "",
       "pi": "agent-cortex:"
     },
@@ -54,41 +50,40 @@
       "ralph": ["claude"]
     },
     "sources": {
-      "copilot": "agents/<name>/ composable dirs (canonical) — composed to agents/*.agent.md by scripts/build-copilot-agents.mjs",
       "pi": "agents/<name>/ composable dirs (canonical) — composed at runtime by the agent-modes extension",
       "claude": "agents/<name>/ composable dirs (canonical) — composed by bin/installers/claude.mjs (install-time generator, the only generator — the generated claude/ plugin subtree is not committed), plus agents-native/*.md for deferred agents"
     }
   },
   "notes": {
     "tools": {
-      "rg": "Copilot alias for grep. Claude and pi collapse it onto their single search tool (Grep / grep) — same collapse rule as the build script.",
+      "rg": "Canonical alias for grep. Claude and pi collapse it onto their single search tool (Grep / grep).",
       "glob": "Claude has a dedicated Glob tool. pi's built-in pattern-search tool is find (hypa_find when the pi-hypa extension is installed).",
-      "ask_user": "Copilot (ask_user) and Claude (AskUserQuestion) prompt the user mid-run. pi's equivalent is ask_questions, provided by the pi-questions package (declared in the package manifest — package.json pi.packages — and provisioned by agent-cortex install pi; also declared in pi/settings.json for the symlinked checkout) — the genuine interactive-questioning tool, restoring grilling in plan/ralph-plan/strategy modes. Like fetch_content (pi-web-access), it is only present when its package is installed, so the mapping depends on that package (see the extension-manifests idea). pi still intentionally ships no permission popups; ask_questions is the interactive mid-run question tool, not a popup.",
-      "web_fetch": "pi's fetch_content comes from the pi-web-access package (declared in the package manifest — package.json pi.packages — and provisioned by agent-cortex install pi).",
-      "skill": "Copilot (skill) and Claude (Skill) expose skills as a tool. pi has no dedicated skill tool — skills are surfaced in the always-present 'Available skills' context block and loaded by reading the listed SKILL.md path ({{PATH:<skill>/SKILL.md}}). The pi mapping is read, the tool used to load a skill's file; a dedicated skill tool is a follow-on design candidate if prompting proves insufficient.",
-      "read_agent": "Claude's Task returns results inline — there is no separate read step, so read_agent drops on claude (null). Copilot uses the task + read_agent poll loop; pi exposes read_agent as a fallback to wait_for_agents.",
-      "task": "Copilot and Claude provide a subagent tool natively. On pi it is supplied by this repo's own extensions/subagent extension (which also registers read_agent and wait_for_agents), not by pi itself — a pi session started before that extension was installed has no dispatch tool at all. Skills must therefore stop and report a missing subagent tool rather than improvising a backgrounded CLI run, which has no completion signal.",
-      "wait_for_agents": "PI-only blocking wait over background subagent runs (the task tool): returns the results of completed agents and STILL RUNNING for the rest. Copilot has no equivalent tool (its task + read_agent poll loop stays) and Claude's Task delivers results inline with no wait step — both null."
+      "ask_user": "Claude (AskUserQuestion) prompts the user mid-run. pi's equivalent is ask_questions, provided by the pi-questions package (an ordinary runtime dependency of this package that `agent-cortex install pi` bundles into the staged package's node_modules) — the genuine interactive-questioning tool, restoring grilling in plan/ralph-plan/strategy modes. Like fetch_content (pi-web-access), it is only present when its package is installed, so the mapping depends on that package (see the extension-manifests idea). pi still intentionally ships no permission popups; ask_questions is the interactive mid-run question tool, not a popup.",
+      "web_fetch": "pi's fetch_content comes from the pi-web-access package (an ordinary runtime dependency of this package that `agent-cortex install pi` bundles into the staged package's node_modules).",
+      "skill": "Claude (Skill) exposes skills as a tool. pi has no dedicated skill tool — skills are surfaced in the always-present 'Available skills' context block and loaded by reading the listed SKILL.md path ({{PATH:<skill>/SKILL.md}}). The pi mapping is read, the tool used to load a skill's file; a dedicated skill tool is a follow-on design candidate if prompting proves insufficient.",
+      "read_agent": "Claude's Task returns results inline — there is no separate read step, so read_agent drops on claude (null). pi exposes read_agent as a fallback to wait_for_agents.",
+      "task": "Claude provides a subagent tool natively. On pi it is supplied by this repo's own extensions/subagent extension (which also registers read_agent and wait_for_agents), not by pi itself — a pi session started before that extension was installed has no dispatch tool at all. Skills must therefore stop and report a missing subagent tool rather than improvising a backgrounded CLI run, which has no completion signal.",
+      "wait_for_agents": "PI-only blocking wait over background subagent runs (the task tool): returns the results of completed agents and STILL RUNNING for the rest. Claude's Task delivers results inline with no wait step — null on claude."
     },
     "paths": {
-      "pi": "plugin_root defaults to the npm-package install layout (~/.pi/agent/npm/node_modules/@jaybeeuu/agent-cortex). Local-checkout installs (pi/settings.json packages entry referencing a local src path) or symlinked installs differ — installers must compute plugin_root from the actual resolution and can override it.",
+      "pi": "plugin_root is the staged package `agent-cortex install pi` materialises at ~/.agent-cortex/pi; pi loads that directory by path and the shipped extensions resolve their own resources relative to it (agent-modes computes plugin_root from its actual install location). A checkout or symlinked install differs — installers compute plugin_root from the actual resolution and can override it (--plugin-root).",
       "claude": "plugin_root stays ${CLAUDE_PLUGIN_ROOT} (env var) for the materialised plugin — never a literal ~/.agent-cortex/claude. Claude Code copies marketplace-installed plugins (including local directory sources like ~/.agent-cortex/claude) into its own cache and expands the env var per context, so a literal home path in substituted files would break under cache-copy; the installer passes the env form through verbatim."
     },
     "agents": {
-      "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in bin/installers/claude.mjs): copilot/pi agents are agent-cortex:<slug>, claude agents are <slug>.",
-      "deferred": "ralph has no generated claude counterpart — it is authored natively as agents-native/ralph.md (its event-driven orchestration cannot be produced by section composition from the polling copilot source)."
+      "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in bin/installers/claude.mjs): pi agents are agent-cortex:<slug>, claude agents are <slug>.",
+      "deferred": "ralph has no generated claude counterpart — it is authored natively as agents-native/ralph.md (its event-driven orchestration cannot be produced by section composition from the polling pi source)."
     }
   },
   "contract": {
     "version": 1,
     "summary": "Installers substitute {{TOOL:...}}, {{PATH:...}}, and {{SECTION:...}} tokens in generated harness files using this map. This contract is the single reference installers must implement; token-map.json is the data those rules operate on.",
-    "harness_ids": ["copilot", "claude", "pi"],
+    "harness_ids": ["claude", "pi"],
     "binding": "The harness id is the same value the installer is invoked with (agent-cortex install <harness>). Each harness reads its own column from the tools, paths, and agents sections.",
     "substitution_order": ["SECTION", "TOOL", "PATH"],
     "rules": [
-      "TOOL: replace {{TOOL:<key>}} with tools.<key>.<harness>. Canonical keys are exact, case-sensitive strings (the copilot tool names, which are the authoring names in agents/<name>/agent.md).",
+      "TOOL: replace {{TOOL:<key>}} with tools.<key>.<harness>. Canonical keys are exact, case-sensitive strings (the names the canonical sources in agents/<name>/agent.md are authored with).",
       "TOOL null: a null value means the harness has no equivalent. In prose, remove the token (and emit a warning). In a tool-list context (frontmatter tools: [...]), omit the entry. Do not substitute an empty string.",
-      "TOOL unknown: a {{TOOL:<key>}} with no entry in tools is a hard error — the map must be extended. This mirrors the generators (scripts/build-copilot-agents.mjs, bin/installers/claude.mjs), which throw on unknown tools.",
+      "TOOL unknown: a {{TOOL:<key>}} with no entry in tools is a hard error — the map must be extended. This mirrors the generators (bin/installers/claude.mjs, bin/installers/pi.mjs), which throw on unknown tools.",
       "PATH named key: replace {{PATH:<key>}} with the resolved value of paths.<key>.<harness>.",
       "PATH relative: replace {{PATH:<relative>}} with plugin_root + '/' + <relative> (e.g. {{PATH:skills/workflow/plan/SKILL.md}}).",
       "PATH resolution: a value may be a literal string, an ${ENV_VAR} token, or a {base, relative} spec. Resolve {base, relative} by joining relative onto the resolved base. Leave ${ENV_VAR} values verbatim — the harness expands them at runtime (claude's ${CLAUDE_PLUGIN_ROOT}).",

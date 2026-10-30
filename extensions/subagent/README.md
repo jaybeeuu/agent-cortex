@@ -58,7 +58,7 @@ This tool executes a separate `pi` subprocess with a delegated system prompt and
 
 **Project-local agents** (`.pi/agents/*.md`) are repo-controlled prompts that can instruct the model to read files, run bash commands, etc.
 
-**Default behavior:** Only loads **user-level agents** from `~/.pi/agent/agents`.
+**Default behavior:** Only loads **user-level agents** — pi's own `~/.pi/agent/agents`, plus the `agents/` tree of the package this extension ships inside when that is a rendered (staged) tree, e.g. `~/.agent-cortex/pi/agents` after `agent-cortex install pi`.
 
 To enable project-local agents, pass `agentScope: "both"` (or `"project"`). Only do this for repositories you trust.
 
@@ -111,8 +111,8 @@ fire-and-forget orchestration:
 - **`read_agent`** — fallback: read one specific agent's output once you know it has
   finished (or query its `STILL RUNNING` state directly).
 
-These mirror Copilot CLI's `task`/`read_agent` model; `wait_for_agents` adds the
-blocking wait that Copilot's poll loop does manually. Abort (Ctrl+C) propagates: a
+These mirror the `task`/`read_agent` model the skills are authored against;
+`wait_for_agents` adds the blocking wait that a `read_agent` poll loop does manually. Abort (Ctrl+C) propagates: a
 pending `wait_for_agents` returns immediately with whatever is known so far.
 
 ## Output Display

@@ -7,7 +7,7 @@ description: "Run all pending beads end-to-end with up to 5 concurrent pipeline-
 
 Ralph is a parallel orchestration loop. It advances AFK task beads through pipeline-stage chores (`code` → `verify` → `review` → `document`), dispatching each stage as a background subagent in the feature's worktree, then opens review-gated feature and epic PRs and pauses for human merges. Ralph never writes code itself — it dispatches, tracks, and reports.
 
-State model: task state lives in beads (ready/in_progress via `bd`); the only local file is `.agent-cortex/ralph/state.json`, holding the poll-timer shellId and the agent-ID→bead mapping. Pipeline configuration comes from `skills/planning/create-task/pipeline.json`, and stage execution belongs to the `run-pipeline-stage` skill.
+State model: task state lives in beads (ready/in_progress via `bd`); the only local file is `.agent-cortex/ralph/state.json`, holding the agent-ID→bead mapping. Pipeline configuration comes from `skills/planning/create-task/pipeline.json`, and stage execution belongs to the `run-pipeline-stage` skill.
 
 ## When to use
 
@@ -28,14 +28,14 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 1. Run `bd prime` and hold the output verbatim in memory.
 2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
 3. Create the workspace: `mkdir -p .agent-cortex/ralph`.
-4. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "timerShellId": null, "inflight": [] }`.
+4. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "inflight": [] }`.
 5. Read `skills/planning/create-task/pipeline.json` and hold it in memory — you need its `maxFixRounds` for the fix loop.
 6. Run `bd ready` and classify each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
    - **Task or other type without an `implementation-type:*` label**: unexpected here — classification happens at planning time via `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note it for the shutdown summary.
    - **Task labelled `execution:hitl`** (or the legacy `implementation-type:hitl`): skip — record the ID for the Pending Human Action summary at shutdown.
 7. For each ready chore bead (up to 5), dispatch it from its parent's feature worktree (see _Dispatching a chore bead_ in REFERENCE.md — create branches/worktrees first).
-8. Hand over to your harness's completion-detection mechanism: Copilot keeps a `sleep 120` poll timer running in the background; PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no chore was dispatched and `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md).
+8. Hand over to your harness's completion-detection mechanism: PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no chore was dispatched and `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md).
 9. Regenerate `.agent-cortex/ralph/progress.md`:
    ```bash
    # workspace must be the absolute path you cd'd into — never . or $(pwd)
@@ -45,7 +45,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 
 ### 2. Event loop
 
-On each completion notification (background agent finished, or the poll timer fired):
+On each completion notification (a background agent finished):
 
 1. Poll that parent's log for new lines — `tail -n +<nextLine> .agent-cortex/ralph/ralph-<parent-id>.log` (logs are keyed by parent bead ID, so every stage of a feature shares one file) — and post only new key events (stage transitions, test/lint results), never empty updates.
 2. Read the completed agent's output with {{TOOL:read_agent}} and parse its `---REPORT---` block for `BEAD_ID`, `STAGE_COMPLETED`, and the outcome.
@@ -97,7 +97,7 @@ On each completion notification (background agent finished, or the poll timer fi
 
 ## Philosophy / rationale
 
-- Orchestration state derives from beads so a crash loses nothing but an in-memory ID mapping: `state.json` holds only the poll-timer shellId and the agent-ID→bead mapping, never task state.
+- Orchestration state derives from beads so a crash loses nothing but an in-memory ID mapping: `state.json` holds only the agent-ID→bead mapping, never task state.
 - Classification happens up-front at planning time (`create-task`), so the loop can trust `bd ready` instead of re-interpreting each bead's intent.
 - Human review gates are non-negotiable because agent-authored changes still need a person to merge them.
 

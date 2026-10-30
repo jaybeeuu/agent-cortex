@@ -31,3 +31,12 @@ Determine how the changesets commit gets signed in CI on this repo — cheapest 
 
 ## Notes
 Recorded 2026-09-02. Backlog capture only — no active work planned; revisit after the install-manager epic (pi/claude/copilot) settles. Adjacent to `docs/ideas/unified-ci-pipeline.md` (CI/release restructure).
+
+Updated 2026-10-28: `docs/commit-signing.md` records the investigation and the decided policy.
+The applied-rule read shows no `required_signatures` rule on `main` at repository or
+organization level (org ruleset *definitions* stay unreadable with a repository-scoped token),
+and Version Packages PRs land by squash merge, whose landing commit GitHub signs — so releases
+stay automated with no key in CI, and the CI signing key this idea points at is rejected as the
+default. That rejection does not settle the idea: GitHub checks head-branch commits through its
+test merge, so enabling enforcement would still require the signed CI commit, exactly as
+`Next validation step` describes.

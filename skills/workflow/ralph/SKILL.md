@@ -33,9 +33,9 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 6. Run `bd ready` and classify each available bead:
    - **Chore with a `stage:*` label**: pipeline stage bead — eligible for dispatch.
    - **Task or other type without an `implementation-type:*` label**: unexpected here — classification happens at planning time via `create-task`. Do not invoke `classify-bead`; treat as needs-refinement and note it for the shutdown summary.
-   - **Task labelled `implementation-type:hitl`**: skip — record the ID for the Pending Human Action summary at shutdown.
+   - **Task labelled `execution:hitl`** (or the legacy `implementation-type:hitl`): skip — record the ID for the Pending Human Action summary at shutdown.
 7. For each ready chore bead (up to 5), dispatch it from its parent's feature worktree (see _Dispatching a chore bead_ in REFERENCE.md — create branches/worktrees first).
-8. Hand over to your harness's completion-detection mechanism: PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no chore was dispatched and HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l implementation-type:hitl` or `bd list -l awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md).
+8. Hand over to your harness's completion-detection mechanism: PI keeps a {{TOOL:wait_for_agents}} call outstanding over every in-flight agent ID. If no chore was dispatched and `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md).
 9. Regenerate `.agent-cortex/ralph/progress.md`:
    ```bash
    # workspace must be the absolute path you cd'd into — never . or $(pwd)
@@ -62,8 +62,8 @@ On each completion notification (a background agent finished):
    | `review` | `REVIEW_OUTCOME: CHANGES_REQUESTED` | Run the fix loop (REFERENCE.md) |
    | `document` | — | Open/update the feature PR now (`feature/<parent-id>` → its base branch), report the URL, and update the child HITL gate bead (`lifecycle:feature-pr`). Wait for a human to close that bead after merge, then `bd close <parent-id>` |
 
-5. Run `bd ready` and dispatch new ready `stage:*` chore beads while the in-flight count (`bd list --status=in_progress --type=chore`) is under 5. Do not schedule new parent features while any `lifecycle:feature-pr` HITL gate bead is open.
-6. If no chores are in-flight and `bd ready` returns no `stage:*` chores, proceed to HITL Pause (REFERENCE.md) when HITL gate beads are pending, otherwise to Shutdown (REFERENCE.md).
+5. Run `bd ready` and dispatch new ready `stage:*` chore beads while the in-flight count (`bd list --status=in_progress --type=chore`) is under 5. Do not schedule new parent features while `pending-gates.mjs` reports a non-empty `pendingHumanAction` — that is, while a `lifecycle:feature-pr` gate is **unblocked**. Gates still blocked behind their own pipeline (pre-created for a feature that has not reached its PR stage) are parked and never stop dispatch.
+6. If no chores are in-flight and `bd ready` returns no `stage:*` chores, proceed to HITL Pause (REFERENCE.md) when `pendingHumanAction` is non-empty, otherwise to Shutdown (REFERENCE.md).
 7. Regenerate `.agent-cortex/ralph/progress.md`.
 
 ### 3. Branching and review model
@@ -75,7 +75,7 @@ On each completion notification (a background agent finished):
 
 ### 4. HITL pause and shutdown
 
-- **HITL Pause** — when no chores are in-flight, none ready, and HITL gate beads are pending: regenerate `progress.md`, open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
+- **HITL Pause** — when no chores are in-flight, none ready, and `pending-gates.mjs` reports a non-empty `pendingHumanAction`: regenerate `progress.md`, open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
 - **Shutdown** — when all work is complete: regenerate `progress.md`, open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
 
 ## Red Flags
@@ -109,7 +109,7 @@ On each completion notification (a background agent finished):
 ## Cross-skill references
 
 - The `run-pipeline-stage` skill owns the stage-runner prompt, per-stage playbooks, the `---REPORT---` format, and fix-loop feedback beads — read it before dispatching any stage.
-- The `create-task` skill owns `pipeline.json` and creates the `lifecycle:feature-pr` HITL gate beads.
+- The `create-task` skill owns `pipeline.json` and creates the `lifecycle:feature-pr` HITL gate beads. `skills/workflow/ralph/scripts/pending-gates.mjs` owns the gate predicate — parked vs pending — and is the only place the gate queries live.
 - Do not invoke `classify-bead` from this loop — classification was already applied at planning time.
 
 ## Verification checklist

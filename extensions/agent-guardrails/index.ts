@@ -3,7 +3,7 @@
  *
  * Appends behavioural circuit-breakers to the PI system prompt on every turn:
  * hard retry limits, explicit check-in triggers, and atomic-change discipline
- * (the first slice of docs/ideas/improve-pi-system-prompt.md).
+ * (the first slice of the *Improve PI System Prompt* idea).
  *
  * The block is stable text appended after any chained system-prompt changes, so
  * it keeps the prompt-cache prefix intact while remaining authoritative for the

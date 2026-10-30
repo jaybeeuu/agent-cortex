@@ -1,7 +1,7 @@
 /**
  * Behavioural guardrails for the PI system prompt.
  *
- * The first slice of docs/ideas/improve-pi-system-prompt.md: hard circuit-breakers
+ * The first slice of the *Improve PI System Prompt* idea: hard circuit-breakers
  * against wasted retries, explicit check-in triggers, and atomic-change discipline.
  * Kept as a stable constant so it can be appended to every turn's system prompt
  * without invalidating the prompt-cache prefix.

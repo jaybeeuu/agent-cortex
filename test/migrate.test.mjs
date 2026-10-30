@@ -123,7 +123,7 @@ function runNode(args, { bin, state, cwd }) {
       process.execPath,
       args,
       { cwd, env: { ...process.env, BD_PATH: bin, FAKE_BD_STATE: state } },
-      (error, stdout, stderr) => resolve({ exitCode: error ? (error.code ?? 1) : 0, stdout, stderr }),
+      (error, stdout, stderr) => resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr }),
     );
   });
 }
@@ -133,7 +133,9 @@ async function readState(statePath) {
   return JSON.parse(await readFile(statePath, "utf8"));
 }
 
-/** Labels of every bead in the fake workspace, keyed by bead id. */
+/** Labels of every bead in the fake workspace, keyed by bead id.
+ * @param {string} statePath
+ * @returns {Promise<Record<string, string[]>>} */
 async function readLabels(statePath) {
   const state = await readState(statePath);
   return Object.fromEntries(state.beads.map((bead) => [bead.id, bead.labels]));

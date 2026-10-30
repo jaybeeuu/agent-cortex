@@ -9,5 +9,12 @@
     "moduleResolution": "nodenext",
     "types": ["node"]
   },
-  "include": ["bin/**/*.mjs", "lib/**/*.mjs", "hooks/**/*.mjs", "scripts/**/*.mjs", "skills/**/scripts/**/*.mjs"]
+  "include": [
+    "bin/**/*.mjs",
+    "lib/**/*.mjs",
+    "hooks/**/*.mjs",
+    "scripts/**/*.mjs",
+    "skills/**/scripts/**/*.mjs",
+    "test/**/*.mjs"
+  ]
 }

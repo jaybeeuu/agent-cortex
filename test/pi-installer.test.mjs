@@ -10,7 +10,12 @@ import { installPi } from "../bin/installers/pi.mjs";
 // works against the canonical sources (agents/, skills/, extensions/, token-map.json).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** True when a path exists (stat succeeds). */
+/** A throwaway package root plus the staging output below it.
+ * @typedef {{ root: string, output: string, cleanup: () => Promise<void> }} PackageFixture */
+
+/** True when a path exists (stat succeeds).
+ * @param {string} p
+ * @returns {Promise<boolean>} */
 async function pathExists(p) {
   try {
     await stat(p);
@@ -57,6 +62,11 @@ async function makeFixture() {
   };
 }
 
+/** Write a fixture file, creating its parent directories.
+ * @param {PackageFixture} fx
+ * @param {string} relPath
+ * @param {string} content
+ * @returns {Promise<void>} */
 async function writeFixture(fx, relPath, content) {
   const p = join(fx.root, relPath);
   await mkdir(dirname(p), { recursive: true });
@@ -71,6 +81,15 @@ function defaultPackageJson(version = "9.9.9", dependencies = {}) {
 /**
  * Create a fake installed dependency — its own directory plus the package.json
  * the installer reads to decide whether it ships pi resources.
+ * @param {string} baseDir
+ * @param {{
+ *   name: string,
+ *   version?: string,
+ *   dependencies?: Record<string, string>,
+ *   pi?: { extensions?: string[], skills?: string[] },
+ *   files?: Record<string, string>,
+ * }} options
+ * @returns {Promise<string>}
  */
 async function createInstalledPackage(baseDir, { name, version = "1.0.0", dependencies = {}, pi, files = {} }) {
   const dir = join(baseDir, name);
@@ -86,8 +105,14 @@ async function createInstalledPackage(baseDir, { name, version = "1.0.0", depend
   return dir;
 }
 
-/** Resolve the fake installed packages by name, recording who asked for them. */
+/** Resolve the fake installed packages by name, recording who asked for them.
+ * @param {Record<string, string>} packages  Package name → directory
+ * @returns {{
+ *   calls: Array<{ name: string, fromDir: string | undefined }>,
+ *   resolvePackage: (name: string, fromDir?: string) => Promise<string>,
+ * }} */
 function fakeResolver(packages) {
+  /** @type {Array<{ name: string, fromDir: string | undefined }>} */
   const calls = [];
   return {
     calls,
@@ -103,6 +128,19 @@ function fakeResolver(packages) {
 /**
  * Seed a minimal but realistic package tree: token-map, package.json, agents,
  * skills, and extensions — the sources the staged package is built from.
+ * @param {PackageFixture} fx
+ * @param {{
+ *   agents?: Record<string, {
+ *     body?: string,
+ *     frontmatter?: Record<string, unknown>,
+ *     sections?: Record<string, string>,
+ *   }>,
+ *   tokenMap?: Record<string, unknown>,
+ *   tokenMapVersion?: number,
+ *   packageVersion?: string,
+ *   dependencies?: Record<string, string>,
+ * }} [opts]
+ * @returns {Promise<void>}
  */
 async function seedPackage(fx, opts = {}) {
   const { agents = {}, tokenMap: map, tokenMapVersion, packageVersion = "9.9.9", dependencies } = opts;
@@ -130,6 +168,9 @@ async function seedPackage(fx, opts = {}) {
   }
 }
 
+/** Relative paths of every file below `dir`, empty when it does not exist.
+ * @param {string} dir
+ * @returns {Promise<string[]>} */
 async function listFiles(dir) {
   if (!(await pathExists(dir))) return [];
   const out = [];
@@ -201,7 +242,10 @@ describe("installPi — agent composition", () => {
       const content = await readFile(join(fx.output, "agents", "alpha.agent.md"), "utf-8");
 
       // pi's parseFrontmatter hands the tools value back as one scalar string.
-      const scalar = JSON.parse(content.match(/^tools: (.*)$/m)[1]);
+      const toolsLine = content.match(/^tools: (.*)$/m);
+      assert.ok(toolsLine, "the rendered frontmatter carries a tools line");
+      /** @type {string} */
+      const scalar = JSON.parse(toolsLine[1]);
       assert.equal(typeof scalar, "string");
 
       // extensions/subagent/agents.ts turns that scalar into `pi --tools`, and pi's
@@ -523,7 +567,7 @@ describe("installPi — bundled pi packages", () => {
       assert.deepEqual(result.packages.staged, ["pi-web-access", "p-limit"]);
       assert.ok(await pathExists(join(fx.output, "node_modules", "p-limit", "index.js")));
       assert.deepEqual(
-        resolver.calls.find((call) => call.name === "p-limit").fromDir,
+        resolver.calls.find((call) => call.name === "p-limit")?.fromDir,
         web,
         "transitive dependency resolved from its dependent, not a hoisted root",
       );

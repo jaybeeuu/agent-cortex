@@ -26,14 +26,21 @@ import { makeFakePi } from "./helpers/fake-pi.mjs";
 
 const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "agent-cortex.mjs");
 
+/** Run the CLI; optionally pass a custom env (e.g. a fake HOME).
+ * @param {string[]} args
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>} */
 function runCli(args, env = {}) {
   return new Promise((resolve) => {
     execFile(process.execPath, [CLI_PATH, ...args], { env: { ...process.env, ...env } }, (error, stdout, stderr) =>
-      resolve({ exitCode: error ? (error.code ?? 1) : 0, stdout, stderr }),
+      resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr }),
     );
   });
 }
 
+/** True when a path exists (stat succeeds).
+ * @param {string} p
+ * @returns {Promise<boolean>} */
 async function pathExists(p) {
   try {
     await stat(p);
@@ -47,7 +54,10 @@ async function makeTmp() {
   return mkdtemp(join(tmpdir(), "pi-sweep-"));
 }
 
-/** Write a `{ relativePath: content }` map below `baseDir`. */
+/** Write a `{ relativePath: content }` map below `baseDir`.
+ * @param {string} baseDir
+ * @param {Record<string, string>} files
+ * @returns {Promise<void>} */
 async function writeFiles(baseDir, files) {
   for (const [rel, content] of Object.entries(files)) {
     const p = join(baseDir, rel);
@@ -56,11 +66,22 @@ async function writeFiles(baseDir, files) {
   }
 }
 
+/** A throwaway package root plus pi's user directory, with path helpers.
+ * @typedef {object} SweepTree
+ * @property {string} home
+ * @property {string} root
+ * @property {string} piUserDir
+ * @property {string} recordPath
+ * @property {(rel: string) => string} path
+ * @property {() => Promise<void>} cleanup
+ */
+
 /**
  * A throwaway package root plus pi's user directory, seeded with what the old
  * flow left behind: rendered agents (including the orphaned pipeline-worker),
  * skill copies inside the package's own skill groups, and copied extensions —
  * alongside an agent, a skill, and an extension of the user's own.
+ * @returns {Promise<SweepTree>}
  */
 async function makeSweepTree() {
   const home = await makeTmp();
@@ -99,7 +120,10 @@ async function makeSweepTree() {
   };
 }
 
-/** Sweep the throwaway pi user directory, recording the migration outside it. */
+/** Sweep the throwaway pi user directory, recording the migration outside it.
+ * @param {SweepTree} tree
+ * @param {{ dryRun?: boolean, warn?: (msg: string) => void }} [options]
+ * @returns {Promise<Awaited<ReturnType<typeof sweepLegacyPiUserDirs>>>} */
 function sweepTree(tree, options = {}) {
   return sweepLegacyPiUserDirs({
     root: tree.root,
@@ -356,6 +380,7 @@ describe("sweepLegacyPiUserDirs — the migration record", () => {
   it("warns instead of failing when the record cannot be written", async () => {
     const tree = await makeSweepTree();
     const recordDir = dirname(tree.recordPath);
+    /** @type {string[]} */
     const warnings = [];
     try {
       await mkdir(recordDir, { recursive: true });
@@ -406,6 +431,7 @@ describe("sweepLegacyPiUserDirs — a directory the sweep cannot read", () => {
   it("does not record the migration when a skill group cannot be listed, and retries once it can", { skip: skipAsRoot }, async () => {
     const tree = await makeSweepTree();
     const blockedGroup = tree.path("skills/workflow");
+    /** @type {string[]} */
     const warnings = [];
     try {
       await chmod(blockedGroup, 0o000);
@@ -433,6 +459,7 @@ describe("sweepLegacyPiUserDirs — a directory the sweep cannot read", () => {
   it("does not record the migration when pi's skills directory cannot be listed", { skip: skipAsRoot }, async () => {
     const tree = await makeSweepTree();
     const skillsDir = tree.path("skills");
+    /** @type {string[]} */
     const warnings = [];
     try {
       await chmod(skillsDir, 0o000);
@@ -455,6 +482,7 @@ describe("sweepLegacyPiUserDirs — a directory the sweep cannot read", () => {
   it("does not record the migration when pi's agents directory cannot be listed", { skip: skipAsRoot }, async () => {
     const tree = await makeSweepTree();
     const agentsDir = tree.path("agents");
+    /** @type {string[]} */
     const warnings = [];
     try {
       await chmod(agentsDir, 0o000);
@@ -477,6 +505,7 @@ describe("sweepLegacyPiUserDirs — a directory the sweep cannot read", () => {
   it("does not record the migration when the package root cannot be listed", { skip: skipAsRoot }, async () => {
     const tree = await makeSweepTree();
     const shippedSkills = join(tree.root, "skills");
+    /** @type {string[]} */
     const warnings = [];
     try {
       await chmod(shippedSkills, 0o000);
@@ -517,7 +546,8 @@ describe("sweepLegacyPiUserDirs — the path record left in pi's user directory"
 
 // ─── CLI wiring ──────────────────────────────────────────────────────────────
 
-/** Seed pi's user directory inside a fake HOME with two legacy artifacts. */
+/** Seed pi's user directory inside a fake HOME with two legacy artifacts.
+ * @param {string} home */
 async function seedLegacyArtifacts(home) {
   await writeFiles(join(home, ".pi", "agent"), {
     "agents/pipeline-worker.agent.md": '---\nname: "pipeline-worker"\n---\n',

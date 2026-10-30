@@ -13,7 +13,10 @@ import { dirname, join } from "node:path";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(ROOT, "hooks", "claude", "scripts", "notify.mjs");
 
-/** Run the hook script with the given payload on stdin and a controlled env. */
+/** Run the hook script with the given payload on stdin and a controlled env.
+ * @param {Record<string, unknown>} payload
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>} */
 function runNotify(payload, env = {}) {
   return new Promise((resolve) => {
     const child = execFile(
@@ -21,10 +24,10 @@ function runNotify(payload, env = {}) {
       [SCRIPT],
       { env, timeout: 10_000 },
       (error, stdout, stderr) => {
-        resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr });
+        resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr });
       },
     );
-    child.stdin.end(JSON.stringify(payload));
+    child.stdin?.end(JSON.stringify(payload));
   });
 }
 

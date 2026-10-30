@@ -17,7 +17,9 @@ import {
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Wrap frontmatter lines in a SKILL.md-shaped document. */
+/** Wrap frontmatter lines in a SKILL.md-shaped document.
+ * @param {string} frontmatter
+ * @returns {string} */
 function skillDocument(frontmatter) {
   return `---\n${frontmatter}\n---\n\n# Skill body\n`;
 }
@@ -27,7 +29,11 @@ async function makeFixtureRoot() {
   return await mkdtemp(join(tmpdir(), "agent-cortex-skill-frontmatter-"));
 }
 
-/** Write a SKILL.md at `<root>/<relativeSkillDir>/SKILL.md`. */
+/** Write a SKILL.md at `<root>/<relativeSkillDir>/SKILL.md`.
+ * @param {string} root
+ * @param {string} relativeSkillDir
+ * @param {string} content
+ * @returns {Promise<void>} */
 async function writeSkill(root, relativeSkillDir, content) {
   const dir = join(root, relativeSkillDir);
   await mkdir(dir, { recursive: true });

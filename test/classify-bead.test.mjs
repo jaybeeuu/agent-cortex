@@ -174,8 +174,13 @@ describe('auditBeads', () => {
 });
 
 describe('runCli', () => {
+  /** A fake `bd` answering `show`/`list` with `beads` and accepting `tag`.
+   * @param {Array<Record<string, unknown>>} beads  Beads the fake `bd` reports
+   * @returns {{ exec: (args: string[]) => Promise<string>, calls: string[][] }} */
   function makeExec(beads) {
+    /** @type {string[][]} */
     const calls = [];
+    /** @param {string[]} args */
     const exec = async (args) => {
       calls.push(args);
       if (args[0] === 'show') return JSON.stringify(beads);
@@ -186,6 +191,8 @@ describe('runCli', () => {
     return { exec, calls };
   }
 
+  /** Capture the CLI's stdout and parse it back as JSON.
+   * @returns {{ write: (chunk: string) => void, read: () => any }} */
   function capture() {
     let output = '';
     return { write: (chunk) => { output += chunk; }, read: () => JSON.parse(output) };

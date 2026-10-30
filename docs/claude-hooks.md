@@ -17,6 +17,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `session-start/` | `SessionStart` hook commands | **Port** (extended) |
 | `auto-name.ts` | — | **Reject** — built-in |
 | `agent-guardrails/` | — | **Reject** — pi-only (no system-prompt hook) |
+| `output-style/` | managed `CLAUDE.md` section | **Port** — user memory, not a hook |
 | `notify/` | `Notification` hook + `scripts/notify.mjs` | **Port** |
 | `skill-stats/` | — | **Reject** — no equivalent |
 | `subagent/` | — | **Reject** — native |
@@ -88,6 +89,21 @@ its nearest surface, `SessionStart` `additionalContext`, injects conversation
 context rather than system instructions. The rules are harness-agnostic prose, so
 a future port could append them to the existing ported SessionStart hook — out of
 scope for this pi-first slice.
+
+## `output-style/` → Port (managed CLAUDE.md section)
+
+pi appends the reply shape (action first, Simplified Technical English, restated
+context) to the system prompt through `before_agent_start`. Claude Code cannot
+modify the system prompt from a hook, so the installer writes the same block into
+the managed section of `~/.claude/CLAUDE.md` — Claude's user memory, loaded every
+session.
+
+The content is not copied into a Claude-side template: `extensions/output-style/
+output-style.md` is the single source, read by the pi extension at load and by the
+installer at install time. Re-running the install replaces only the text between
+the markers; personal memory text survives untouched. The installer never writes
+the block by appending to a `SessionStart` hook — memory is the right surface
+because the rules must hold for every turn, not just the first.
 
 ## `skill-stats/` → Reject (no equivalent)
 

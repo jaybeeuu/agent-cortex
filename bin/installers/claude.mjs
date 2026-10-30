@@ -70,7 +70,7 @@ const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
  * Result of writing (or planning to write) a managed file.
  * @typedef {object} ManagedFileResult
  * @property {string} path
- * @property {"would-remove-symlink" | "unchanged" | "would-write" | "removed-symlink" | "written"} action
+ * @property {"would-remove-symlink" | "unchanged" | "would-write" | "removed-symlink" | "written" | "skipped-unmanaged"} action
  * @property {boolean} removedSymlink
  */
 
@@ -99,6 +99,14 @@ const DEFAULT_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 
 // The committed user-settings template.
 const SETTINGS_TEMPLATE = "claude/settings.json";
+
+// Claude user memory — the global prompt. The installer owns only the marked
+// section; everything outside the markers is the user's own text.
+const DEFAULT_INSTRUCTIONS_PATH = join(homedir(), ".claude", "CLAUDE.md");
+const INSTRUCTIONS_BEGIN = "<!-- BEGIN agent-cortex:output-style -->";
+const INSTRUCTIONS_END = "<!-- END agent-cortex:output-style -->";
+// Canonical prose, shared with the pi extension (extensions/output-style).
+const INSTRUCTIONS_SOURCE = join("extensions", "output-style", "output-style.md");
 
 // The only keys the installer owns outright: everything else in the live file
 // is personal config the merge must preserve.
@@ -361,7 +369,7 @@ async function installSettings({ root, target, dryRun, warn }) {
   }
 
   const content = `${JSON.stringify(merged, null, 2)}\n`;
-  return writeManagedJson({ target, content, dryRun });
+  return writeManagedFile({ target, content, dryRun });
 }
 
 /**
@@ -391,14 +399,14 @@ function mergeSettings(template, existing) {
 }
 
 /**
- * Write the managed settings file. A legacy symlink is replaced with a real
- * file by writing a sibling temp file and renaming it over the target — rename
- * replaces the link itself, so the committed template is never written through.
+ * Write a managed file. A legacy symlink is replaced with a real file by writing
+ * a sibling temp file and renaming it over the target — rename replaces the link
+ * itself, so a committed template is never written through.
  * Returns the action taken so the CLI can report the plan (dry-run included).
  * @param {{ target: string, content: string, dryRun: boolean }} options
  * @returns {Promise<ManagedFileResult>}
  */
-async function writeManagedJson({ target, content, dryRun }) {
+async function writeManagedFile({ target, content, dryRun }) {
   const symlink = await isSymlink(target);
   const current = await readFileMaybe(target);
 
@@ -423,6 +431,57 @@ async function writeManagedJson({ target, content, dryRun }) {
     throw err;
   }
   return { path: target, action: symlink ? "removed-symlink" : "written", removedSymlink: symlink };
+}
+
+// ─── Claude user memory (CLAUDE.md) ──────────
+
+/**
+ * Materialise the output-style block into the managed section of ~/.claude/CLAUDE.md.
+ *
+ * The section is delimited by HTML comments, so a re-install replaces only the
+ * text between them and every other line of the user's memory file survives. A
+ * file with exactly one marker (hand-edited or truncated) is left untouched with
+ * a warning, never guessed at.
+ * @param {{ root: string, target: string, dryRun: boolean, warn: Warn }} options
+ * @returns {Promise<ManagedFileResult | null>}
+ */
+async function installInstructions({ root, target, dryRun, warn }) {
+  const block = await readFileMaybe(join(root, INSTRUCTIONS_SOURCE));
+  if (block === null) {
+    warn(`no ${INSTRUCTIONS_SOURCE} source in the package — skipping CLAUDE.md`);
+    return null;
+  }
+  const content = mergeManagedSection(await readFileMaybe(target), block);
+  if (content === null) {
+    warn(`${target} has an unterminated agent-cortex section — left unchanged; fix the markers by hand`);
+    return { path: target, action: "skipped-unmanaged", removedSymlink: false };
+  }
+  return writeManagedFile({ target, content, dryRun });
+}
+
+/**
+ * Return `existing` with the managed section replaced by `block`, or null when
+ * the file carries unmatched markers. A file without markers gets the section
+ * appended, so personal memory text is never disturbed.
+ * @param {string | null} existing
+ * @param {string} block
+ * @returns {string | null}
+ */
+function mergeManagedSection(existing, block) {
+  const managed = `${INSTRUCTIONS_BEGIN}\n${block.trimEnd()}\n${INSTRUCTIONS_END}`;
+  if (existing === null) return `${managed}\n`;
+
+  const start = existing.indexOf(INSTRUCTIONS_BEGIN);
+  const end = existing.indexOf(INSTRUCTIONS_END);
+  if (start === -1 && end === -1) {
+    const head = existing.replace(/\s*$/, "");
+    return head === "" ? `${managed}\n` : `${head}\n\n${managed}\n`;
+  }
+  if (start === -1 || end === -1 || end < start) return null;
+
+  const before = existing.slice(0, start).replace(/\s*$/, "");
+  const after = existing.slice(end + INSTRUCTIONS_END.length).replace(/^\s*/, "").replace(/\s*$/, "");
+  return `${[before, managed, after].filter((part) => part !== "").join("\n\n")}\n`;
 }
 
 /**
@@ -519,15 +578,20 @@ async function isSymlink(filePath) {
  *                                       (default ~/.claude/settings.json). Passing it
  *                                       explicitly materialises settings even with
  *                                       --output — the test/CI seam.
+ * @param {string} [options.instructionsPath] Claude user-memory target
+ *                                       (default ~/.claude/CLAUDE.md). Passing it
+ *                                       explicitly materialises the section even
+ *                                       with --output — the test/CI seam.
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
  * @returns {Promise<{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
  *             marketplaceManifest: object|null, agents: string[],
  *             skills: {names: string[], md: number, files: number, dir: string},
  *             hooks: boolean, hookFiles: string[], handAuthored: string[],
  *             settings: {path: string, action: string, removedSymlink: boolean}|null,
+ *             instructions: {path: string, action: string, removedSymlink: boolean}|null,
  *             pluginVersion: string, warnings: string[], dryRun: boolean }>}
  */
-export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, warn = DEFAULT_WARN } = {}) {
+export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, instructionsPath, warn = DEFAULT_WARN } = {}) {
   const tokenMap = await loadTokenMap(root);
   if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
     throw new Error(
@@ -567,13 +631,20 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     await mkdir(out, { recursive: true });
   }
 
-  // The default install owns ~/.claude/settings.json; --output is the
-  // generate-only form and leaves the user's Claude config alone. An explicit
-  // settingsPath requests the write regardless (the test/CI seam).
+  // The default install owns ~/.claude/settings.json and the managed section of
+  // ~/.claude/CLAUDE.md; --output is the generate-only form and leaves the
+  // user's Claude config alone. Explicit paths request the write regardless
+  // (the test/CI seam).
   const settingsTarget = settingsPath ?? DEFAULT_SETTINGS_PATH;
   const settings =
     isDefaultInstall || settingsPath !== undefined
       ? await installSettings({ root, target: settingsTarget, dryRun, warn: warnSink })
+      : null;
+
+  const instructionsTarget = instructionsPath ?? DEFAULT_INSTRUCTIONS_PATH;
+  const instructions =
+    isDefaultInstall || instructionsPath !== undefined
+      ? await installInstructions({ root, target: instructionsTarget, dryRun, warn: warnSink })
       : null;
 
   const agents = await buildAgents(root);
@@ -597,6 +668,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     hookFiles: hookFiles.map((f) => f.rel),
     handAuthored: handAuthored.map((f) => f.rel),
     settings,
+    instructions,
     warnings,
     dryRun,
   };
@@ -615,11 +687,15 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     if (summary.handAuthored.length)
       console.log(`  hand-authored files: ${summary.handAuthored.join(", ")} (copied from repo claude-extras/)`);
     if (summary.settings) console.log(`  settings → ${summary.settings.path} (${summary.settings.action})`);
+    if (summary.instructions)
+      console.log(`  CLAUDE.md → ${summary.instructions.path} (${summary.instructions.action})`);
     return summary;
   }
 
   // Write phase — the cleanup before buildSkills already cleared stale children.
   if (settings) console.log(`Materialised Claude settings → ${settings.path} (${settings.action})`);
+  if (instructions && instructions.action !== "skipped-unmanaged")
+    console.log(`Materialised CLAUDE.md section → ${instructions.path} (${instructions.action})`);
   const agentOut = join(out, "agents");
   await mkdir(agentOut, { recursive: true });
   for (const { file, content } of agents.files) {

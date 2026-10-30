@@ -51,7 +51,7 @@ Run once at startup:
    b. Claim the parent bead: `bd update <parent-id> --claim`.
    c. Expand the bead if it has no `stage:*` chore children, then dispatch its first ready chore (see _Expanding a chore-less task bead_ and _Dispatching a stage chore_ below).
 8. Record each launched agent in `.agent-cortex/ralph/state.json` (see format below).
-9. Hand over to the completion-detection mechanism in the wake section: start the wake loop it describes when agent work was dispatched, and proceed to **HITL Pause** directly when none was and HITL gate beads are pending.
+9. Hand over to the completion-detection mechanism in the wake section: start the wake loop it describes when agent work was dispatched, and proceed to **HITL Pause** directly when none was and `skills/workflow/ralph/scripts/pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate or an epic tagged `awaiting-epic-pr-merge`. Gates still parked behind their own pipeline do not count (REFERENCE.md, _Gate predicate_).
 
 ---
 
@@ -176,13 +176,13 @@ After initialization, Ralph waits for background agents to complete. Completions
    - **Failure paths** (`OUTCOME: BLOCKED` from any stage): create nothing. The worker already closed its failed chore and built its own remediation — a `stage:fix` chore plus a fresh instance of the failed stage blocked on it. Run the cap backstop (see below); if the parent is at `maxFixRounds`, block the parent instead and record it for shutdown. Remove the inflight entry for this chore; the worker's beads appear in `bd ready` and are picked up in step 7.
 7. **Check for newly ready beads**: run `bd ready -l execution:afk`. For each bead not yet tracked:
    - **Chore bead with `stage:*` label** (a worker-built remediation chore or a pre-created stage): find its parent via `bd show <chore-id>` (follow the `parent-child` dep). Run the cap backstop (see below). If under cap: dispatch it via _Dispatching a stage chore_. If at cap: block the parent (`bd update <parent-id> --status blocked --append-notes "<cap> reached"`) and record it for shutdown — create nothing.
-   - **Childless `feature` bead, in-flight count < 5, no open feature PR HITL gate**: dispatch a decomposition worker (see _Feature decomposition_ above).
-   - **Task bead with no `stage:*` chore children, in-flight count < 5, no open feature PR HITL gate**: claim the parent and dispatch an expansion worker (see _Expanding a chore-less task bead_ above) instead of a stage; otherwise dispatch its first ready chore.
+   - **Childless `feature` bead, in-flight count < 5, no pending human action**: dispatch a decomposition worker (see _Feature decomposition_ above). Check `pendingHumanAction` with `node skills/workflow/ralph/scripts/pending-gates.mjs` — an unblocked `lifecycle:feature-pr` gate means a feature is awaiting a human merge, so hold new parent features. Gates still blocked behind their own pipeline are parked and do not count.
+   - **Task bead with no `stage:*` chore children, in-flight count < 5, no pending human action**: claim the parent and dispatch an expansion worker (see _Expanding a chore-less task bead_ above) instead of a stage; otherwise dispatch its first ready chore. Check `pendingHumanAction` the same way as the row above.
    - **Any other `execution:afk` bead, in-flight count at 5**: hold in memory as Waiting.
    When a parent is removed from `inflight` (completed or failed), immediately promote the first Waiting parent.
    `execution:hitl` beads are absent from this query by construction, so nothing needs filtering out here.
 8. **If nothing remains in flight** — `inflight` holds no stage, decomposition or expansion workers, and `bd ready -l execution:afk` returns nothing (no stage chore, no childless feature to decompose, and no ready, claimable chore-less task bead awaiting expansion — a queued `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate is not claimable, so it keeps ralph paused rather than awake):
-   - If HITL gate beads are pending (`bd list -l lifecycle:feature-pr -l execution:hitl` or `bd list -l awaiting-epic-pr-merge` returns results), proceed to **HITL Pause** (see below).
+   - If `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`; gates still parked behind their own pipeline do not count — REFERENCE.md, _Gate predicate_), proceed to **HITL Pause** (see below).
    - Otherwise, proceed to **Shutdown** (see below).
 
 ### Cap backstop (read-only)
@@ -199,14 +199,13 @@ Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. If `fix_ro
 
 ## HITL Pause
 
-Proceed here when no agent work is in flight (no stage, decomposition or expansion workers in `inflight`), no work is dispatchable (nothing returned by `bd ready -l execution:afk` — no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less `execution:afk` task bead awaiting expansion — claimability is part of dispatchability: an `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it does not keep ralph awake), and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
+Proceed here when no agent work is in flight (no stage, decomposition or expansion workers in `inflight`), no work is dispatchable (nothing returned by `bd ready -l execution:afk` — no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less `execution:afk` task bead awaiting expansion — claimability is part of dispatchability: an `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it does not keep ralph awake), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate (a feature genuinely awaiting human merge) or an epic tagged `awaiting-epic-pr-merge`. Gates still parked behind their own pipeline do not count (REFERENCE.md, _Gate predicate_). Ralph stops rather than burning requests on idle polls.
 
 1. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — their feature branch PRs already target `main` directly.
 2. Run `bd dolt push` and gate it on the exit status: non-zero, retry once, then stop and report the command, exit code and stderr as a sync blocker — no Pending Human Action table.
-3. Collect pending HITL gate beads and their PR URLs:
-   - Run `bd list -l lifecycle:feature-pr -l execution:hitl`
-   - Run `bd list -l awaiting-epic-pr-merge`
-   - For each bead, run `bd show <id>` to retrieve the PR URL from bead notes.
+3. Collect the table rows from the script's `pendingHumanAction` list:
+   - Run `node skills/workflow/ralph/scripts/pending-gates.mjs`
+   - For each entry, run `bd show <id>` to retrieve the PR URL from bead notes. `kind: "feature-pr"` rows read "review and merge the feature PR"; `kind: "epic-pr"` rows read "review and merge the epic PR into main".
 4. Output the **Pending Human Action** summary:
    ```
    ⏸️  Ralph is paused — human action required before work can continue.

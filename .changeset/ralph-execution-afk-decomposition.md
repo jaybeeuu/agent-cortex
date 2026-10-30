@@ -24,7 +24,9 @@ hold together and Q5b's dependency gate does the pausing. The procedure lives in
 into `agents/ralph/agent.md`, and the planning-gate label in `agents/ralph-plan/agent.md` renamed to
 match.
 
-All HITL gate queries move to `execution:hitl` (`bd list -l lifecycle:feature-pr -l execution:hitl`),
-and the parked-versus-pending invariant in _The in-flight invariant_ is unchanged: dispatchable
+All HITL gate queries move to `execution:hitl` and live in one place —
+`skills/workflow/ralph/scripts/pending-gates.mjs`, which counts gates on either HITL axis during the
+cutover (_Gate predicate_) — and the parked-versus-pending invariant in _The in-flight invariant_ is
+unchanged: dispatchable
 still means ready *and* claimable, so a bead behind an open feature-PR gate stays paused work rather
 than re-arming a wait over an empty agent set.

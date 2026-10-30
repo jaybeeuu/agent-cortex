@@ -128,7 +128,7 @@ Steps 2–6 create beads; step 7 expands one. A bead that already exists but has
 
 ## Cross-skill references
 
-- `classify-bead` — deterministic classifier first, rubric subagent only on escalation (step 2).
+- `classify-bead` — deterministic classifier first, rubric subagent only on escalation (step 3).
 - `prd-to-tasks` — decomposes a PRD and calls this skill per slice; a slice that needs design gets the feature path.
 
 ## Examples

@@ -37,9 +37,9 @@ workstream, from container down to stage chore:
 
 | Level | Type | Execution | Created by | Ownership |
 |---|---|---|---|---|
-| Feature | `feature` | `execution:hitl` | `create-task` step 3 | — |
-| Planning bead ("Plan: <feature title>") | `task` | `execution:hitl` | `create-task` step 3 | `--parent <feature>` |
-| Impl task (one per deliverable) | `task` | `execution:afk` | `create-task` step 3 | `--parent <feature>` |
+| Feature | `feature` | `execution:hitl` | `create-task` step 5 | — |
+| Planning bead ("Plan: <feature title>") | `task` | `execution:hitl` | `create-task` step 6 | `--parent <feature>` |
+| Impl task (one per deliverable) | `task` | `execution:afk` | `create-task` step 6 | `--parent <feature>` |
 | Stage chore | `chore` | inherited `execution:afk` | `create-chores.mjs` | `--parent <impl-task>` |
 | PR gate | `task` | `execution:hitl` | `create-chores.mjs` | `--parent <impl-task>`, `--no-inherit-labels` |
 

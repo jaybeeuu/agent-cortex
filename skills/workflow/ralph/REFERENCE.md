@@ -74,12 +74,36 @@ When the `document` chore for a parent task completes:
 3. Report the PR URL in chat as soon as it is created.
 4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` (created by `create-task`).
 5. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
-6. Do not schedule new parent features while this HITL PR gate bead remains open.
-7. Once the PR is merged, a human closes the HITL PR gate bead. After that, close the parent feature bead:
+6. Do not schedule new parent features while this gate is **unblocked** — an unblocked gate is a feature genuinely awaiting a human merge (see _Gate predicate_ below).
+7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake. After that, close the parent feature bead:
    ```bash
    bd close <parent-id>
    ```
    Only then continue with next parent features.
+
+### Gate predicate — parked vs pending
+
+Ralph's only scheduling brake is a gate that is **unblocked**. `create-chores` pre-creates a `lifecycle:feature-pr` gate for *every* planned feature, blocked behind that feature's own `document` chore; such a gate is **parked** — the feature has not reached its PR stage — and must never stop dispatch. Only when the `document` chore closes does the gate unblock, and that is the state in which a human must merge.
+
+Resolve the question with one command instead of ad-hoc `bd` queries:
+
+```bash
+node skills/workflow/ralph/scripts/pending-gates.mjs
+```
+
+| Field | Meaning | Effect on ralph |
+| --- | --- | --- |
+| `pendingHumanAction` | Unblocked `lifecycle:feature-pr` gates (all blockers closed) plus epics tagged `awaiting-epic-pr-merge`, each as `{ id, title, kind }` | Non-empty → do **not** schedule new parent features; the same list is the **Pending Human Action** table |
+| `parked` | Open gates still blocked behind their own pipeline | Informational only — never stops dispatch, never appears in the table |
+
+Gate queries match the HITL axis on either `execution:hitl` (current) or `implementation-type:hitl` (legacy), so gates created on either side of the two-axis migration are counted.
+
+**Invariant — what may block a gate.** `parked` means "blocked by its own pipeline". A gate blocked by its parent **feature** bead is not parked in any harness: that bead stays open until after the merge, so the gate never reaches `bd ready`, never appears in `pendingHumanAction`, and a human merge is silently never requested. Keep the two shapes apart:
+
+- A `create-chores` gate unblocks exactly once, when its `document` chore closes. Until then it is parked and must not stop dispatch.
+- A gate must never carry a `blocks` dependency onto its own feature bead (the native-Claude shape: `bd create ... --labels ...lifecycle:feature-pr` then dep it to `<id>`). Remove it with `bd dep rm <gate> <id>` if present, so the gate is unblocked while its PR awaits merge.
+
+So the predicate is sensitive to *what* blocks a gate, not only whether something does. `agents-native/ralph.md` (the Claude harness) keeps the open-gate form for this reason: its gates stay blocked by design, and its `document` chores never close; F10 (agnt-ctx-s5xd.10) unifies the two predicates.
 
 ---
 
@@ -137,7 +161,7 @@ Run whenever completion handling is triggered (an agent completion):
 
 ## HITL Pause
 
-Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and HITL gate beads are pending (open `lifecycle:feature-pr` beads or epics tagged `awaiting-epic-pr-merge`). Ralph stops rather than burning requests on idle polls.
+Proceed here when no chore beads are in-flight, no `stage:*` chore beads are ready, and `pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate or an epic tagged `awaiting-epic-pr-merge` (see _Gate predicate_). Gates still parked behind their own pipeline do not count. Ralph stops rather than burning requests on idle polls.
 
 1. Regenerate `.agent-cortex/ralph/progress.md` one final time — do not delete it.
 2. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main (skip single-feature epics — their feature branch PRs already target `main`):
@@ -149,12 +173,11 @@ Proceed here when no chore beads are in-flight, no `stage:*` chore beads are rea
    ```bash
    bd dolt push
    ```
-4. Collect pending HITL gate beads and their PR URLs:
+4. Collect the table rows from `pendingHumanAction`:
    ```bash
-   bd list -l lifecycle:feature-pr -l implementation-type:hitl
-   bd list -l awaiting-epic-pr-merge
+   node skills/workflow/ralph/scripts/pending-gates.mjs
    ```
-   For each bead, run `bd show <id>` to retrieve the PR URL from bead notes.
+   For each entry, run `bd show <id>` to retrieve the PR URL from bead notes. `kind: "feature-pr"` rows read "review and merge the feature PR"; `kind: "epic-pr"` rows read "review and merge the epic PR into main".
 5. Output the **Pending Human Action** summary:
    ```
    ⏸️  Ralph is paused — human action required before work can continue.
@@ -221,5 +244,5 @@ All task state is derived from beads; `state.json` holds only runtime bookkeepin
 | What stage is a bead in? | Read the `stage:*` label from `bd show <id>` |
 | Which agent-ID maps to which bead? | `inflight` entries in `.agent-cortex/ralph/state.json` |
 | How many fix rounds? | Count chore beads with label `stage:fix` that are children of the parent task. Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. |
-| Which features are review-gated? | Find open child task beads labelled `lifecycle:feature-pr` and `implementation-type:hitl` |
+| Which features are review-gated? | `pendingHumanAction` entries with `kind: "feature-pr"` from `pending-gates.mjs` — unblocked `lifecycle:feature-pr` gates on either HITL axis. A gate in `parked` is pre-created but not yet actionable |
 | Which epics are review-gated? | `bd list -l awaiting-epic-pr-merge` |

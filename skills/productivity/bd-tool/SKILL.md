@@ -50,7 +50,7 @@ bd create "<title>" -d "<description>" -p <0-3> --validate
 For parent-child relationships (create with `--parent`):
 
 ```bash
-bd create "<title>" --parent <parent-id> --validate
+bd create "<title>" --parent <parent-id> -d "<description with the type's required section>" --validate
 ```
 
 For blocking dependencies between beads:

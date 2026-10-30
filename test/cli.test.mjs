@@ -20,13 +20,13 @@ async function pathExists(p) {
   }
 }
 
-/** Run the CLI; optionally pass a custom env (e.g. a fake HOME). */
-function runCli(args, env = {}) {
+/** Run the CLI; optionally pass a custom env (e.g. a fake HOME) or cwd. */
+function runCli(args, { env = {}, cwd = process.cwd() } = {}) {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
       [CLI_PATH, ...args],
-      { env: { ...process.env, ...env } },
+      { env: { ...process.env, ...env }, cwd },
       (error, stdout, stderr) => {
         resolve({
           exitCode: error ? error.code ?? 1 : 0,
@@ -52,6 +52,21 @@ describe("parseArgs", () => {
   it("returns { command: 'help' } for -h flag", async () => {
     const result = parseArgs(["-h"]);
     assert.deepStrictEqual(result, { command: "help" });
+  });
+
+  it("returns { command: 'version' } for --version", async () => {
+    assert.deepStrictEqual(parseArgs(["--version"]), { command: "version" });
+  });
+
+  it("returns { command: 'version' } for -V", async () => {
+    assert.deepStrictEqual(parseArgs(["-V"]), { command: "version" });
+  });
+
+  it("only honours --version as the first argument", async () => {
+    const result = parseArgs(["install", "pi", "--version"]);
+    assert.equal(result.command, "install");
+    assert.equal(result.harness, "pi");
+    assert.ok(result.optionError.includes("--version"));
   });
 
   it("returns { command: 'install', harness: 'claude' } for install claude", async () => {
@@ -206,6 +221,11 @@ describe("buildHelpText", () => {
     assert.ok(text.includes("install"));
     assert.ok(text.includes("migrate"));
   });
+
+  it("documents the version flags", async () => {
+    const text = buildHelpText();
+    assert.ok(text.includes("--version, -V"), "--version is listed beside --help");
+  });
 });
 
 describe("validateHarness", () => {
@@ -252,6 +272,33 @@ describe("CLI integration", () => {
     const { exitCode, stdout } = await runCli(["-h"]);
     assert.equal(exitCode, 0);
     assert.ok(stdout.includes("Usage:"));
+  });
+
+  it("exits 0 and prints the package version, bare and alone, for --version", async () => {
+    const manifest = JSON.parse(await readFile(join(__dirname, "..", "package.json"), "utf-8"));
+    const { exitCode, stdout } = await runCli(["--version"]);
+    assert.equal(exitCode, 0);
+    assert.equal(stdout, `${manifest.version}\n`);
+    assert.match(stdout, /^\d+\.\d+\.\d+\n$/, "bare semver, no prefix and no trailing prose");
+  });
+
+  it("prints the same version for -V as for --version", async () => {
+    const long = await runCli(["--version"]);
+    const short = await runCli(["-V"]);
+    assert.equal(short.exitCode, 0);
+    assert.equal(short.stdout, long.stdout);
+  });
+
+  it("reports its own package version when run from another directory", async () => {
+    const manifest = JSON.parse(await readFile(join(__dirname, "..", "package.json"), "utf-8"));
+    const elsewhere = await mkdtemp(join(tmpdir(), "agent-cortex-version-"));
+    try {
+      const { exitCode, stdout } = await runCli(["--version"], { cwd: elsewhere });
+      assert.equal(exitCode, 0);
+      assert.equal(stdout, `${manifest.version}\n`);
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
   });
 
   it("exits 1 for install copilot, which is no longer a deploy target", async () => {
@@ -307,7 +354,7 @@ describe("CLI integration", () => {
     // off the developer's real ~/.pi/agent.
     const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-dry-run-home-"));
     try {
-      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { HOME: fakeHome });
+      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { env: { HOME: fakeHome } });
       assert.equal(exitCode, 0);
       assert.ok(stdout.includes("ralph.agent.md"));
       assert.ok(stdout.includes("dry-run"));
@@ -319,7 +366,7 @@ describe("CLI integration", () => {
   it("install pi --dry-run reports the bundled pi packages it would stage", async () => {
     const fakeHome = await mkdtemp(join(tmpdir(), "cli-pi-home-"));
     try {
-      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { HOME: fakeHome });
+      const { exitCode, stdout } = await runCli(["install", "pi", "--dry-run"], { env: { HOME: fakeHome } });
       assert.equal(exitCode, 0);
       assert.ok(stdout.includes("Bundled pi package pi-questions"), "pi-questions staged");
       assert.ok(stdout.includes("Bundled pi package pi-web-access"), "pi-web-access staged");

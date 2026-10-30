@@ -2,6 +2,8 @@
 
 import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mjs";
 
 /** @typedef {import("./installers/pi.mjs").InstallPiResult} InstallPiResult */
@@ -12,6 +14,24 @@ const parsed = parseArgs(argv);
 
 if (parsed.command === "help") {
   process.stdout.write(buildHelpText() + "\n");
+  process.exit(0);
+}
+
+/**
+ * Read the version of the package this CLI ships in: `bin/` sits one level below
+ * the package root, in the repo checkout and in the published tarball alike.
+ * Resolved from this file's own location, never from the cwd or node_modules
+ * resolution, so an installed CLI reports the version it was installed at.
+ * @returns {Promise<string>}
+ */
+async function readPackageVersion() {
+  const manifestPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+  const manifest = /** @type {{ version: string }} */ (JSON.parse(await readFile(manifestPath, "utf-8")));
+  return manifest.version;
+}
+
+if (parsed.command === "version") {
+  process.stdout.write(`${await readPackageVersion()}\n`);
   process.exit(0);
 }
 

@@ -5,8 +5,10 @@ workflow and the gate; this file holds the detail you reach for while running it
 
 ## Command interface the skill relies on
 
-The command is shipped by the `agent-cortex` CLI (`bin/agent-cortex.mjs` + `lib/cli.mjs`) and is
-also exposed as `ctx migrate`. This skill depends on the following behaviour — nothing wider:
+The command is shipped by the `agent-cortex` CLI (`bin/agent-cortex.mjs` + `lib/cli.mjs`), which
+exposes exactly one executable name — `agent-cortex`. From a checkout that is not installed, run
+it as `node bin/agent-cortex.mjs migrate`. There is no shorter alias. This skill depends on the
+following behaviour — nothing wider:
 
 | Contract | Guarantee the skill assumes |
 |---|---|
@@ -17,12 +19,12 @@ also exposed as `ctx migrate`. This skill depends on the following behaviour —
 | Registry detection | Reports the repo's current version and the first step with pending work — the only step a dry run plans — derived from workspace state, not from a flag or a stored marker the agent has to keep. |
 | Step ordering | Applies steps in version order, oldest first. The final summary is one line per step: its name and description, that step's pending bead total, and a `verified` line. It carries no per-group breakdown — derive group sizes from the step-v1 export counts. |
 | Idempotence | A converged repo plans zero targets and exits 0; a re-run after a partial failure resumes rather than repeating writes. |
-| Failure mode | Fails loudly (non-zero exit) when `bd` is missing or a `bd` subcommand errors; never silently skips a group. |
+| Failure mode | Fails loudly (non-zero exit) when `bd` is missing or a `bd` subcommand errors; never silently skips a group. A v1 label value outside `afk\|hitl` is a blocking error that names each offending bead and label and stops before any write — both the dry run and `--apply` refuse. |
 
-Read `<command> --help` in the target workspace before relying on any flag beyond the above. The
-registry grows over time; treat the flags in this table as the floor, and the installed build's
-help output as the truth. If `migrate` is not listed at all, the installed package predates the
-command — upgrade rather than reconstructing the steps by hand.
+Read `agent-cortex migrate --help` in the target workspace before relying on any flag beyond the
+above. The registry grows over time; treat the flags in this table as the floor, and the installed
+build's help output as the truth. If `migrate` is not listed at all, the installed package predates
+the command — upgrade rather than reconstructing the steps by hand.
 
 Scope note: the command touches beads only. Skills, hooks, docs, and agent prompts that mention
 the old labels are follow-up edits in the repo, not command output.
@@ -55,7 +57,9 @@ export records.
 ## Step v1 — label rename
 
 Purpose: `implementation-type:afk|hitl` → `execution:afk|hitl`, strictly renamed and
-agent-agnostic.
+agent-agnostic. Only those two values are mapped: any other value (`wip`, a typo, a value from a
+future axis) is a blocking error naming the bead and the label, raised before any write, so the
+run can never invent a label such as `execution:wip` that nothing queries.
 
 Mechanics the plan reflects:
 

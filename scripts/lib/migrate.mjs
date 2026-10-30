@@ -27,6 +27,14 @@ const MAX_BUFFER = 32 * 1024 * 1024;
 const LEGACY_LABEL_PREFIX = "implementation-type:";
 const EXECUTION_LABEL_PREFIX = "execution:";
 
+/**
+ * The values step v1 is allowed to rename. The documented contract is
+ * `implementation-type:<afk|hitl>`, so any other value is a human decision the
+ * migration must not guess at: renaming `wip` to `execution:wip` would invent a
+ * routing label nothing queries.
+ */
+const V1_LABEL_VALUES = ["afk", "hitl"];
+
 /** @typedef {(args: string[]) => Promise<string>} BdRunner */
 /** @typedef {{ from: string, to: string }} LabelRename */
 /** @typedef {{ id: string, renames: LabelRename[] }} PendingBead */
@@ -134,12 +142,18 @@ async function listIndexedLabels(bd) {
  * bead. Closed beads are included: the migration's goal is an empty legacy
  * namespace, so history labels are renamed too.
  *
+ * A value outside the step's allowlist is a blocking error, not a rename to
+ * guess at — the message names each offending bead and label, and detection
+ * runs before any write, so both the dry run and `--apply` change nothing.
+ *
  * @param {BdRunner} bd
  * @returns {Promise<PendingBead[]>}
  */
 async function findLegacyLabelBeads(bd) {
   /** @type {PendingBead[]} */
   const pending = [];
+  /** @type {string[]} */
+  const unmapped = [];
 
   for (const bead of await exportIssues(bd)) {
     /** @type {LabelRename[]} */
@@ -148,9 +162,24 @@ async function findLegacyLabelBeads(bd) {
       if (!label.startsWith(LEGACY_LABEL_PREFIX)) continue;
       const value = label.slice(LEGACY_LABEL_PREFIX.length);
       if (value === "") throw new Error(`cannot migrate malformed label "${label}" on ${bead.id}`);
+      // Refuse the whole run rather than renaming the rest and leaving an
+      // invented label behind: a half-migrated workspace starves silently.
+      if (!V1_LABEL_VALUES.includes(value)) {
+        unmapped.push(`${bead.id}: ${label}`);
+        continue;
+      }
       renames.push({ from: label, to: `${EXECUTION_LABEL_PREFIX}${value}` });
     }
     if (renames.length > 0) pending.push({ id: bead.id, renames });
+  }
+
+  if (unmapped.length > 0) {
+    throw new Error(
+      `v1 label-rename only maps ${LEGACY_LABEL_PREFIX}${V1_LABEL_VALUES.join("|")} to ` +
+        `${EXECUTION_LABEL_PREFIX}${V1_LABEL_VALUES.join("|")}, but ${unmapped.length} label(s) carry another ` +
+        `value — refusing to migrate:\n${unmapped.map((entry) => `  ${entry}`).join("\n")}\n` +
+        "Correct or remove those labels, then re-run.",
+    );
   }
 
   const residual = (await listIndexedLabels(bd)).filter((label) => label.startsWith(LEGACY_LABEL_PREFIX));

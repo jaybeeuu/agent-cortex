@@ -332,9 +332,13 @@ describe("CLI integration", () => {
 
   it("exits 0 for install claude (into a temp output dir)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "agent-cortex-cli-"));
-    const { exitCode, stdout } = await runCli(["install", "claude", "--output", dir]);
-    assert.equal(exitCode, 0);
-    assert.ok(stdout.includes("claude"));
+    try {
+      const { exitCode, stdout } = await runCli(["install", "claude", "--output", dir]);
+      assert.equal(exitCode, 0);
+      assert.ok(stdout.includes("claude"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("exits 0 for install pi (into a temp output dir)", async () => {

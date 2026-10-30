@@ -1,14 +1,15 @@
 // Integration tests for `agent-cortex install claude`: the install-time
 // generator that materialises the Claude Code plugin. The default target is a
 // home-scoped directory (~/.agent-cortex/claude, overridable via HOME for
-// tests); all tests install into mkdtemp dirs — the real ~/.agent-cortex and
-// the repo's canonical sources (agents/, skills/, claude-extras/, hooks/claude/) are never touched.
+// tests); all tests install into workspaces under a per-process temp root that
+// a file-level after() hook removes, so a failing test cannot leave one behind.
+// The real ~/.agent-cortex and the repo's canonical sources (agents/, skills/,
+// claude-extras/, hooks/claude/) are never touched.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import {
-  mkdtemp,
   mkdir,
   writeFile,
   chmod,
@@ -20,12 +21,12 @@ import {
   readlink,
   symlink,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 import { installClaude } from "../bin/installers/claude.mjs";
 import { composeAgent } from "../scripts/lib/compose-agent.mjs";
 import { makeFakeClaude, registrationActions } from "./helpers/fake-claude.mjs";
+import { createTempRoot } from "./helpers/temp-root.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -64,8 +65,16 @@ function runCli(args, env = {}) {
   });
 }
 
+/** One temp root per file, removed by the file-level `after()` hook that
+ * `createTempRoot` registers. Cleanup therefore happens even when a test throws
+ * before its own `finally`, and each workspace is a distinct subdirectory of the
+ * root so tests in this file cannot collide. */
+const tempRoot = createTempRoot("agent-cortex-installer-");
+
+/** A fresh workspace under the file's shared temp root.
+ * @returns {Promise<string>} */
 async function makeTmp() {
-  return await mkdtemp(join(tmpdir(), "agent-cortex-installer-"));
+  return await tempRoot.createWorkspace();
 }
 
 

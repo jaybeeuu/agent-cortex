@@ -14,7 +14,7 @@ Harness-agnostic rules (tool names and completion detection differ per harness �
 - ALWAYS set the subagent's working directory to the feature worktree path when running stage chores.
 - ALWAYS keep the returned agent/task id in memory so you can read the result later.
 
-Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.mjs` from `skills/planning/create-task/pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready -l execution:afk` returns". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json` (worker-ID-to-bead mapping plus whatever wake-loop handle the wake section tracks) and per-parent log files.
+Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.mjs` from the `create-task` skill's `pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready -l execution:afk` returns". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json` (worker-ID-to-bead mapping plus whatever wake-loop handle the wake section tracks) and per-parent log files.
 
 ## Branching model
 
@@ -85,7 +85,7 @@ A ready `execution:afk` task bead with no `stage:*` chore children has nothing t
      --parent <parent-id> --priority <parent-priority>
    ```
 
-   `<create-task-scripts>` is the absolute path to `skills/planning/create-task/scripts/`, resolved from wherever the skill was loaded. `<parent-priority>` is the parent bead's own priority from `bd show <parent-id>`.
+   `<create-task-scripts>` is the absolute path to the `create-task` skill's `scripts/` directory, resolved from wherever the skill was loaded. `<parent-priority>` is the parent bead's own priority from `bd show <parent-id>`.
 3. Record the worker in `inflight` as an **expansion** entry — it has no chore to key on, so `choreId` is `null`:
    ```json
    { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
@@ -104,7 +104,7 @@ A ready `execution:afk` task bead with no `stage:*` chore children has nothing t
 
 Chores already exist and their deps already encode the order, so dispatch is claim-and-spawn — claim the ready chore (`bd update <chore-id> --claim`) and skip to the prompt.
 
-Load the universal stage runner prompt from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the spawning mechanism described in the wake section, running from the feature worktree. Stage-specific policy comes from `skills/workflow/run-pipeline-stage/playbooks/<stage>.md`. The prompt's lifecycle, remediation, and REPORT sections are the worker's contract — pass them through verbatim, never restate or trim them.
+Load the universal stage runner prompt from the `run-pipeline-stage` skill's `prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the spawning mechanism described in the wake section, running from the feature worktree. Stage-specific policy comes from that skill's `playbooks/<stage>.md`. The prompt's lifecycle, remediation, and REPORT sections are the worker's contract — pass them through verbatim, never restate or trim them.
 
 Add the entry to `inflight` in `state.json`:
 ```json
@@ -193,7 +193,7 @@ Ralph never builds remediation and never closes a leaf bead — the worker that 
 fix_rounds=$(bd children <parent-id> --json | grep -c '"stage:fix"')
 ```
 
-Read `maxFixRounds` from `skills/planning/create-task/pipeline.json`. If `fix_rounds >= maxFixRounds`, create nothing and block the parent: `bd update <parent-id> --status blocked --append-notes "[<ISO-timestamp>] max fix rounds reached (<fix_rounds>/<maxFixRounds>)"`. Record it for the shutdown summary.
+Read `maxFixRounds` from the `create-task` skill's `pipeline.json`. If `fix_rounds >= maxFixRounds`, create nothing and block the parent: `bd update <parent-id> --status blocked --append-notes "[<ISO-timestamp>] max fix rounds reached (<fix_rounds>/<maxFixRounds>)"`. Record it for the shutdown summary.
 
 ---
 
@@ -288,7 +288,7 @@ All beads complete.
 - **Never** re-dispatch a decomposition or an expansion, and never narrow the dispatch query to "chores with `stage:*`": an `execution:afk` bead with no stage chores is work waiting, not work that does not exist.
 - **Always** record every dispatch in `inflight`, stage workers as `kind: "stage"`, decomposition workers as `kind: "decompose"` and expansion workers as `kind: "expand"` with `choreId: null` — an untracked worker is never waited on, and its absence can make HITL Pause or Shutdown fire mid-decomposition.
 - **Never** run `create-task` for a bead that already exists to give it a pipeline — it creates a **second parent**. Expand with `create-chores.mjs --parent <id>`.
-- **Max fix rounds** per parent is a read-only backstop (read `maxFixRounds` from `skills/planning/create-task/pipeline.json`; count `stage:fix` chore children); block the parent at cap and create nothing.
+- **Max fix rounds** per parent is a read-only backstop (read `maxFixRounds` from the `create-task` skill's `pipeline.json`; count `stage:fix` chore children); block the parent at cap and create nothing.
 - **Always** run feature chores in the feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.
 - **Never** auto-merge feature or epic PRs — merge decisions are human-controlled.
 - **Never** continue past feature completion until PR `feature/<parent-id> -> epic/<epic-id>` is merged and the child HITL PR gate bead is closed by a human.

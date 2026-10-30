@@ -51,13 +51,13 @@ Update the top-level bead's `design` field with a high-level implementation plan
 ### 6. Decompose into tasks
 For large workstreams (multiple distinct areas) invoke the **prd-to-tasks** skill. For a single self-contained task invoke **create-task**. Pass the full `bd prime` output and any relevant design context from the `design` field to each skill.
 
-**Planning gate.** Each feature carries exactly one HITL planning bead — the design gate that keeps the feature's implementation children out of `bd ready` until a human confirms planning is sufficient. It is the bead `create-task` builds on its feature path: `skills/planning/create-task/SKILL.md` steps 5–6 is the authority for this shape, so when you delegate the feature to `create-task` the gate already exists and you must not create a second one.
+**Planning gate.** Each feature carries exactly one HITL planning bead — the design gate that keeps the feature's implementation children out of `bd ready` until a human confirms planning is sufficient. It is the bead `create-task` builds on its feature path: that skill's steps 5–6 are the authority for this shape, so when you delegate the feature to `create-task` the gate already exists and you must not create a second one.
 
 Ownership is `--parent`; ordering is `bd dep add`. The planning bead is **owned by the feature** and **blocks every implementation child** of that feature. The feature never depends on its own gate — a container that waits on its own child is neither owner nor ordering.
 
 Every planning bead description must be cold-start-ready so another person can pick it up without prior chat context. Include all of: (1) what is being built and why, (2) decisions already made, (3) open questions/risks, and (4) references (bead IDs, files, or docs) used during planning.
 
-Both routes above create the gate for you, so this block is the shape to build by hand only when the feature already exists and `bd children <feature-id>` lists no `Plan:` child. Never run it beside a gate `create-task` already made: bead creation is not idempotent, so a second run leaves two design gates blocking the same children.
+Both routes above create the gate for you, so this block is the shape to build by hand only when the feature already exists and `bd children <feature-id>` lists no `Plan:` child. Never run it beside a gate `create-task` already made: bead creation is not idempotent, so a second run leaves two design gates blocking the same children. The guard is check-then-act and therefore not atomic — two planners on one feature at the same instant could both pass it and create a gate each; that is acceptable because the only automated creation path goes through `create-task`, this agent runs as a single interactive HITL session, and a stray second planning bead carries no `lifecycle:feature-pr`, so ralph never pauses on it.
 
 ```bash
 # Design gate: human-owned, owned by the feature, blocking every implementation child.
@@ -75,7 +75,7 @@ bd dep add <impl-task-id> <planning-bead-id>
 
 `--no-inherit-labels` is not optional: `bd` copies a parent's labels at create time, so without it a gate under an `execution:afk` feature picks up `execution:afk` beside its own `execution:hitl` and stops routing as human work.
 
-A planning bead is **not** a PR gate and carries no `lifecycle:` label. `create-chores.mjs` owns the `lifecycle:feature-pr` gate — owned by the implementation task, blocked by its `document` chore (`skills/planning/create-task/REFERENCE.md` → PR gate bead); creating one here would put a second, differently-wired gate on the same bead. A standalone task bead needs no planning bead: `create-task` classifies it, and its human checkpoint is that PR gate.
+A planning bead is **not** a PR gate and carries no `lifecycle:` label. `create-chores.mjs` owns the `lifecycle:feature-pr` gate — owned by the implementation task, blocked by its `document` chore (the `create-task` skill's `REFERENCE.md` → PR gate bead); creating one here would put a second, differently-wired gate on the same bead. A standalone task bead needs no planning bead: `create-task` classifies it, and its human checkpoint is that PR gate.
 
 Do not close planning gates in bulk. Only close a gate after the user explicitly confirms that exact feature is ready to implement; leave all unconfirmed gates open and blocking.
 

@@ -61,13 +61,13 @@ gate_id=$(bd create "Plan: <feature title>" --type task --description "<planning
 ## Acceptance Criteria
 
 - [ ] User confirms planning is sufficient for this feature/task." --validate)
-bd tag <planning-gate-id> implementation-type:hitl
+bd tag <planning-gate-id> execution:hitl
 bd dep add <feature-or-task-id> <planning-gate-id>   # feature/task depends on planning gate (gate blocks implementation)
 ```
 
 Do not close planning gates in bulk. Only close a gate after the user explicitly confirms that exact feature/task is ready to implement; leave all unconfirmed gates open and blocking.
 
-Before handing off, ensure every bead created in this step carries an `implementation-type` label — check `bd label list <id>` yourself. Do not spawn `classify-bead` here: planning gates were tagged inline above and `create-task` classifies its beads internally. Only invoke it for a bead that genuinely lacks both the label and a `## Type` field. Then run `bd lint <id>` for every bead created in this step and fix any missing sections before handoff.
+Before handing off, ensure every bead created in this step carries an `execution:` label — check `bd label list <id>` yourself. Do not spawn `classify-bead` here: planning gates were tagged inline above and `create-task` classifies its beads internally. Only invoke it for a bead that genuinely lacks both the label and a `## Type` field. Then run `bd lint <id>` for every bead created in this step and fix any missing sections before handoff.
 
 Tag every bead created in this step with `workflow:ralph`:
 
@@ -100,7 +100,7 @@ Present the bead list (IDs, titles, one-line rationale each) plus planning gate 
 If any planning gates remain open, include an explicit warning that those features/tasks are still blocked and cannot be handed off to ralph yet. Iterate until approved.
 
 ### 8. Hand off to ralph
-Once approved, report: "Plan complete — `bd ready` will show the first tasks for ralph."
+Once approved, report: "Plan complete — `bd ready -l execution:afk` will show the first tasks for ralph."
 
 ## Exploration sub-agent instructions
 

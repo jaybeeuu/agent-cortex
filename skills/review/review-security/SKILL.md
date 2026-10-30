@@ -71,12 +71,10 @@ When running within a ralph review pipeline, the outcome is communicated through
 | "I will scan before pushing, not before committing" | The earlier you catch it, the cheaper it is. Pre-commit scan costs two seconds. |
 | "This is a false positive" | It might be. Verify the context before dismissing it. |
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| Code conventions that help avoid embedding secrets | `style-code` |
-| Documentation conventions that keep examples secret-free | `style-documentation` |
+- [style-code](../../style/style-code/SKILL.md) — the conventions that keep secrets out of the code in the first place.
+- [style-documentation](../../style/style-documentation/SKILL.md) — the conventions that keep examples in docs secret-free.
 
 ## Examples
 

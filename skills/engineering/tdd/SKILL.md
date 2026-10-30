@@ -91,15 +91,13 @@ After all tests pass, run `style-code` to guide the refactoring shape:
 | "This is too simple for TDD" | The simplest changes often have the most hidden assumptions. TDD surfaces them early. |
 | "I already know what the implementation looks like" | Then write the test first to prove it. If the test forces a different interface, the implementation was wrong. |
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| Test-writing conventions (assertions, mocking, structure) | `style-tests` |
-| Code-level style and conventions | `style-code` |
-| Domain terminology for test names and module boundaries | `grill-with-docs` |
+- [style-tests](../../style/style-tests/SKILL.md) — load before writing the first test; it owns assertion strategy, mock discipline, and test-data construction.
+- [style-code](../../style/style-code/SKILL.md) — load at the refactor step for naming and module boundaries.
+- [grill-with-docs](../grill-with-docs/SKILL.md) — load when domain vocabulary is unsettled, so test names and seams use the project's own language.
 
-Reference docs bundled with this skill: `tests.md`, `mocking.md`, `deep-modules.md`, `interface-design.md`, `refactoring.md`.
+Bundled reference docs: `tests.md`, `mocking.md`, `deep-modules.md`, `interface-design.md`, `refactoring.md`.
 
 ## Examples
 

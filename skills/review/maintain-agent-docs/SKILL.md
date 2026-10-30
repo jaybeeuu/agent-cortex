@@ -74,14 +74,12 @@ See [REFERENCE.md](REFERENCE.md) for templates, examples, and detailed section g
 - [ ] Phase 1 complete: audit findings presented as a numbered list; nothing fixed yet.
 - [ ] Phase 2 complete: every proposal reviewed and approved before applying.
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| What and whether to document | `style-documentation` |
-| Tone, structure, and concision for the writing | `style-comms` |
-| Creating or refactoring a skill | `write-a-skill`, `refactor-skill` |
-| Scanning changes for leaked secrets | `review-security` |
+- [style-documentation](../../style/style-documentation/SKILL.md) — what and whether to document, applied to the pages being audited.
+- [style-comms](../../style/style-comms/SKILL.md) — tone and concision for the prose being edited.
+- [refactor-skill](../refactor-skill/SKILL.md) — load when the drift is inside a SKILL.md instead of docs/.
+- [review-security](../review-security/SKILL.md) — run before committing, so audited examples carry no leaked credentials.
 
 ## Examples
 

@@ -72,14 +72,12 @@ description: Sets tone, structure, and concision rules for written communication
 |---|---|
 | "This might potentially cause some issues that we could look at." | "This approach causes two problems: increased latency and a single point of failure." |
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use this skill |
-|---|---|
-| A document template with section structure | `write-a-ticket`, `write-a-prd`, `write-a-skill` |
-| Guidance on what and whether to document | `style-documentation` |
-| Coding style and conventions | `style-code` |
-| Test writing style | `style-tests` |
+- [style-documentation](../style-documentation/SKILL.md) — what and whether to document, decided before the prose choices here.
+- [write-a-prd](../../planning/write-a-prd/SKILL.md) — the section structure for a requirements document.
+- [write-a-ticket](../../planning/write-a-ticket/SKILL.md) — the section structure for an external ticket.
+- [write-a-skill](../../productivity/write-a-skill/SKILL.md) — the section structure for a SKILL.md.
 
 ## Verification checklist
 

@@ -10,17 +10,11 @@ import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = join(__dirname, "..", "bin", "agent-cortex.mjs");
 
-/** True when a path exists (stat succeeds). */
-async function pathExists(p) {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Run the CLI; optionally pass a custom env (e.g. a fake HOME) or cwd. */
+/** Run the CLI; optionally pass a custom env (e.g. a fake HOME), a working
+ * directory for the invocation, or a different CLI path.
+ * @param {string[]} args
+ * @param {{ env?: Record<string, string | undefined>, cwd?: string, cli?: string }} [options]
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>} */
 function runCli(args, { env = {}, cwd = process.cwd(), cli = CLI_PATH } = {}) {
   return new Promise((resolve) => {
     execFile(
@@ -29,7 +23,7 @@ function runCli(args, { env = {}, cwd = process.cwd(), cli = CLI_PATH } = {}) {
       { env: { ...process.env, ...env }, cwd },
       (error, stdout, stderr) => {
         resolve({
-          exitCode: error ? error.code ?? 1 : 0,
+          exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0,
           stdout: stdout,
           stderr: stderr,
         });
@@ -66,7 +60,8 @@ describe("parseArgs", () => {
     const result = parseArgs(["install", "pi", "--version"]);
     assert.equal(result.command, "install");
     assert.equal(result.harness, "pi");
-    assert.ok(result.optionError.includes("--version"));
+    assert.ok(result.optionError);
+    assert.match(result.optionError, /--version/);
   });
 
   it("returns { command: 'install', harness: 'claude' } for install claude", async () => {
@@ -108,14 +103,14 @@ describe("parseArgs", () => {
     const result = parseArgs(["install", "claude", "--bogus"]);
     assert.equal(result.command, "install");
     assert.equal(result.harness, "claude");
-    assert.ok(result.optionError.includes("--bogus"));
+    assert.ok(result.optionError?.includes("--bogus"));
   });
 
   it("reports a missing value for --output for claude", async () => {
     const result = parseArgs(["install", "claude", "--output"]);
     assert.equal(result.command, "install");
     assert.equal(result.harness, "claude");
-    assert.ok(result.optionError.includes("--output"));
+    assert.ok(result.optionError?.includes("--output"));
   });
 
   it("parses --dry-run for install", async () => {
@@ -148,14 +143,14 @@ describe("parseArgs", () => {
     const result = parseArgs(["install", "pi", "--output"]);
     assert.equal(result.command, "install");
     assert.equal(result.harness, "pi");
-    assert.ok(result.optionError.includes("--output"));
+    assert.ok(result.optionError?.includes("--output"));
   });
 
   it("reports an unknown option", async () => {
     const result = parseArgs(["install", "pi", "--bogus"]);
     assert.equal(result.command, "install");
     assert.equal(result.harness, "pi");
-    assert.ok(result.optionError.includes("--bogus"));
+    assert.ok(result.optionError?.includes("--bogus"));
   });
 
   it("keeps the old shape when no options are given", async () => {
@@ -177,13 +172,13 @@ describe("parseArgs", () => {
   it("rejects --apply combined with --dry-run", async () => {
     const result = parseArgs(["migrate", "--apply", "--dry-run"]);
     assert.equal(result.command, "migrate");
-    assert.ok(result.optionError.includes("--apply"));
+    assert.ok(result.optionError?.includes("--apply"));
   });
 
   it("reports an unknown option for migrate", async () => {
     const result = parseArgs(["migrate", "--bogus"]);
     assert.equal(result.command, "migrate");
-    assert.ok(result.optionError.includes("--bogus"));
+    assert.ok(result.optionError?.includes("--bogus"));
   });
 
   it("parses an idea directory override for migrate", async () => {
@@ -203,7 +198,7 @@ describe("parseArgs", () => {
     for (const argv of [["migrate", "--dir"], ["migrate", "--dir", "--apply"], ["migrate", "--dir="]]) {
       const result = parseArgs(argv);
       assert.equal(result.command, "migrate");
-      assert.ok(result.optionError.includes("--dir"), `no --dir error for ${argv.join(" ")}`);
+      assert.ok(result.optionError?.includes("--dir"), `no --dir error for ${argv.join(" ")}`);
     }
   });
 

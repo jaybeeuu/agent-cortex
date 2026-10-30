@@ -53,12 +53,10 @@ description: "Grilling session that challenges your plan against the existing do
 - **`CONTEXT.md` is a glossary and nothing else** — the vocabulary stays stable while the design churns around it.
 - **ADRs are rare** — the three criteria keep the ADR log a history of decisions, not a diary.
 
-## Cross-skill references
+## See Also
 
-| When you need… | Use |
-|---|---|
-| A design interview without touching project docs | `grill-me` |
-| A justified recommendation on architecture or technology | `technical-direction` |
+- [grill-me](../../productivity/grill-me/SKILL.md) — the same interview without the doc updates, when no CONTEXT.md or ADR work is wanted.
+- [technical-direction](../technical-direction/SKILL.md) — continues into a justified recommendation once the terminology has settled.
 
 ## Examples
 

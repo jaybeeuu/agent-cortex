@@ -76,11 +76,12 @@ A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a sma
 - [ ] Phase 3 complete: at least two radically different designs presented and compared, with a recommendation given
 - [ ] Phase 4 complete: refactor bead created via `create-task` and the bead ID reported
 
-## Cross-skill references
+## See Also
 
-- Run `design-an-interface` at step 5 for a guided parallel sub-agent design flow.
-- Run `create-task` at step 7 to file the refactor bead.
-- Run `grill-with-docs` when the deepened module's terminology is unsettled — interface names should match the ubiquitous language.
+- [design-an-interface](../design-an-interface/SKILL.md) — step 5 hands the deep-module redesign to its parallel design flow.
+- [create-task](../../planning/create-task/SKILL.md) — step 7 files the refactor as a bead; never call `bd create` directly.
+- [grill-with-docs](../grill-with-docs/SKILL.md) — load when the deepened module's terminology is unsettled.
+- [style-code](../../style/style-code/SKILL.md) — load when the deepened module needs the naming and boundary conventions it will ship with.
 
 ## Examples
 

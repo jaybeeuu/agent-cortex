@@ -31,7 +31,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const CLI_PATH = join(ROOT, "bin", "agent-cortex.mjs");
 
-/** True when a path exists (stat succeeds). */
+/** A generated hooks.json: hook groups keyed by Claude Code event name. Each group
+ * carries an optional exact-string matcher over the event's sub-type.
+ * @typedef {{ hooks: Record<string, Array<{ matcher: string, hooks: Array<{ command: string }> }>> }} HooksJson */
+
+/** True when a path exists (stat succeeds).
+ * @param {string} p
+ * @returns {Promise<boolean>} */
 async function pathExists(p) {
   try {
     await stat(p);
@@ -41,7 +47,10 @@ async function pathExists(p) {
   }
 }
 
-/** Run the CLI; optionally pass a custom env (e.g. a fake HOME). */
+/** Run the CLI; optionally pass a custom env (e.g. a fake HOME).
+ * @param {string[]} args
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>} */
 function runCli(args, env = {}) {
   return new Promise((resolve) => {
     execFile(
@@ -49,7 +58,7 @@ function runCli(args, env = {}) {
       [CLI_PATH, ...args],
       { env: { ...process.env, ...env } },
       (error, stdout, stderr) => {
-        resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr });
+        resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr });
       },
     );
   });
@@ -60,10 +69,18 @@ async function makeTmp() {
 }
 
 
+/** A snapshot entry: `[relative path, kind]`, plus content or link target when the
+ * entry is a file or a symlink.
+ * @typedef {[string, string] | [string, string, string]} SnapshotEntry */
+
 /** Deterministic snapshot of a generated tree: kind, and for files/symlinks
- * their byte content / link target. */
+ * their byte content / link target.
+ * @param {string} dir
+ * @returns {Promise<SnapshotEntry[]>} */
 async function snapshot(dir) {
+  /** @type {SnapshotEntry[]} */
   const entries = [];
+  /** @param {string} p */
   const walk = async (p) => {
     for (const e of (await readdir(p, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       const full = join(p, e.name);
@@ -79,6 +96,9 @@ async function snapshot(dir) {
   return entries;
 }
 
+/** Relative paths of every file below `dir`, empty when it does not exist.
+ * @param {string} dir
+ * @returns {Promise<string[]>} */
 async function listFiles(dir) {
   if (!(await pathExists(dir))) return [];
   const out = [];
@@ -126,6 +146,7 @@ describe("install claude", () => {
   });
 
   it("composes one ralph body for both harnesses (modulo frontmatter and the wake section)", async () => {
+    /** @type {Record<string, string>} */
     const stripped = {};
     for (const harness of ["pi", "claude"]) {
       const { body } = await composeAgent(ROOT, "ralph", harness);
@@ -195,6 +216,25 @@ describe("install claude", () => {
     }
   });
 
+  it("rewrites cross-skill links so every relative link resolves once skills are flat", async () => {
+    const out = await makeTmp();
+    const { exitCode } = await runCli(["install", "claude", "--output", out]);
+    assert.equal(exitCode, 0);
+
+    const skills = join(out, "skills");
+    const files = (await listFiles(skills)).filter((f) => f.endsWith(".md"));
+    assert.ok(files.length > 0);
+    const unresolved = [];
+    for (const f of files) {
+      const content = await readFile(join(skills, f), "utf-8");
+      for (const [, target] of content.matchAll(/\]\(([^)\s]+)\)/g)) {
+        if (/^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(target)) continue;
+        if (!(await pathExists(join(skills, dirname(f), target)))) unresolved.push(`${f} -> ${target}`);
+      }
+    }
+    assert.deepEqual(unresolved, [], "flattening must not orphan an authored skill link");
+  });
+
   it("copies hand-authored plugin extras (.mcp.json, scripts/) from the canonical claude-extras/ dir", async () => {
     const out = await makeTmp();
     await runCli(["install", "claude", "--output", out]);
@@ -258,6 +298,7 @@ describe("install claude", () => {
     const out = await makeTmp();
     await runCli(["install", "claude", "--output", out]);
     const source = JSON.parse(await readFile(join(ROOT, "hooks", "claude", "hooks.json"), "utf-8"));
+    /** @type {HooksJson} */
     const installed = JSON.parse(await readFile(join(out, "hooks.json"), "utf-8"));
     assert.deepStrictEqual(installed, source);
     assert.ok(source.hooks.SessionStart);
@@ -269,6 +310,7 @@ describe("install claude", () => {
     // against it recurring (see docs/claude-hooks.md for the documented type list).
     const out = await makeTmp();
     await runCli(["install", "claude", "--output", out]);
+    /** @type {HooksJson} */
     const installed = JSON.parse(await readFile(join(out, "hooks.json"), "utf-8"));
     const matcher = installed.hooks.Notification.flatMap((g) => g.hooks).length
       ? installed.hooks.Notification[0].matcher
@@ -302,6 +344,7 @@ describe("install claude", () => {
     const bundled = await readFile(join(out, "hooks", "scripts", "notify.mjs"), "utf-8");
     assert.equal(bundled, canonical);
 
+    /** @type {HooksJson} */
     const installed = JSON.parse(await readFile(join(out, "hooks.json"), "utf-8"));
     const notify = installed.hooks.Notification.flatMap((g) => g.hooks)
       .filter((h) => h.command?.includes("notify.mjs"));
@@ -489,12 +532,16 @@ describe("install claude", () => {
 
 // ─── installClaude — ~/.claude/settings.json ─────────────────────────────────
 
-/** A claude/settings.json template carrying the two CLI-owned keys. */
+/** A claude/settings.json template carrying the two CLI-owned keys.
+ * @param {Record<string, unknown>} [overrides]
+ * @returns {Record<string, unknown>} */
 function settingsTemplate(overrides = {}) {
   return { enabledPlugins: {}, extraKnownMarketplaces: {}, ...overrides };
 }
 
-/** A realistic personal ~/.claude/settings.json (keys the installer must never own). */
+/** A realistic personal ~/.claude/settings.json (keys the installer must never own).
+ * @param {Record<string, unknown>} [overrides]
+ * @returns {Record<string, unknown>} */
 function personalSettings(overrides = {}) {
   return {
     permissions: { allow: ["Bash(pnpm test:*)"] },
@@ -506,7 +553,9 @@ function personalSettings(overrides = {}) {
 }
 
 /** Minimal package root with a claude/settings.json template, enough for
- * installClaude to materialise the plugin subtree into a throwaway output. */
+ * installClaude to materialise the plugin subtree into a throwaway output.
+ * @param {{ template?: Record<string, unknown> | null, settings?: Record<string, unknown> }} [options]
+ * @returns {Promise<{ root: string, output: string, settingsPath: string, cleanup: () => Promise<void> }>} */
 async function makeSettingsFixture({ template = settingsTemplate(), settings } = {}) {
   const root = await makeTmp();
   await writeFile(
@@ -545,8 +594,8 @@ describe("install claude — settings.json", () => {
     try {
       const result = await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
 
-      assert.equal(result.settings.path, fx.settingsPath);
-      assert.equal(result.settings.action, "written");
+      assert.equal(result.settings?.path, fx.settingsPath);
+      assert.equal(result.settings?.action, "written");
       assert.equal((await lstat(fx.settingsPath)).isSymbolicLink(), false, "settings.json is a real file");
       const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
       assert.deepEqual(settings.enabledPlugins, { "context7@claude-plugins-official": true });
@@ -631,7 +680,7 @@ describe("install claude — settings.json", () => {
         dryRun: true,
       });
 
-      assert.equal(result.settings.action, "would-write");
+      assert.equal(result.settings?.action, "would-write");
       assert.equal(await pathExists(fx.settingsPath), false, "nothing written in dry-run");
     } finally {
       await fx.cleanup();
@@ -647,7 +696,7 @@ describe("install claude — settings.json", () => {
       const first = await readFile(fx.settingsPath, "utf-8");
 
       const second = await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
-      assert.equal(second.settings.action, "unchanged");
+      assert.equal(second.settings?.action, "unchanged");
       assert.equal(await readFile(fx.settingsPath, "utf-8"), first);
     } finally {
       await fx.cleanup();
@@ -666,8 +715,8 @@ describe("install claude — settings.json", () => {
 
       const result = await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
 
-      assert.equal(result.settings.action, "removed-symlink");
-      assert.equal(result.settings.removedSymlink, true);
+      assert.equal(result.settings?.action, "removed-symlink");
+      assert.equal(result.settings?.removedSymlink, true);
       assert.equal((await lstat(fx.settingsPath)).isSymbolicLink(), false, "symlink replaced by a real file");
       const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
       assert.deepEqual(settings.enabledPlugins, { "team@official": true });
@@ -680,6 +729,7 @@ describe("install claude — settings.json", () => {
   it("warns and skips when the package ships no claude/settings.json template", async () => {
     const fx = await makeSettingsFixture({ template: null });
     try {
+      /** @type {string[]} */
       const warnings = [];
       const result = await installClaude({
         root: fx.root,
@@ -703,7 +753,9 @@ const MANAGED_END = "<!-- END agent-cortex:output-style -->";
 const OUTPUT_SOURCE = "## Output style (agent-cortex)\n\nRules for replies.\n";
 
 /** Minimal package root carrying the output-style source, enough for
- * installClaude to materialise the managed CLAUDE.md section. */
+ * installClaude to materialise the managed CLAUDE.md section.
+ * @param {{ source?: string | null, memory?: string }} [options]
+ * @returns {Promise<{ root: string, output: string, instructionsPath: string, cleanup: () => Promise<void> }>} */
 async function makeInstructionsFixture({ source = OUTPUT_SOURCE, memory } = {}) {
   const root = await makeTmp();
   await writeFile(
@@ -737,7 +789,7 @@ describe("installClaude — managed CLAUDE.md section", () => {
     try {
       const result = await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
 
-      assert.equal(result.instructions.action, "written");
+      assert.equal(result.instructions?.action, "written");
       assert.equal(await readFile(fx.instructionsPath, "utf-8"), MANAGED_SECTION);
     } finally {
       await fx.cleanup();
@@ -778,7 +830,7 @@ describe("installClaude — managed CLAUDE.md section", () => {
       const first = await readFile(fx.instructionsPath, "utf-8");
 
       const second = await installClaude({ root: fx.root, output: fx.output, instructionsPath: fx.instructionsPath });
-      assert.equal(second.instructions.action, "unchanged");
+      assert.equal(second.instructions?.action, "unchanged");
       assert.equal(await readFile(fx.instructionsPath, "utf-8"), first);
       assert.equal(first.split(MANAGED_BEGIN).length - 1, 1, "exactly one managed section");
     } finally {
@@ -790,6 +842,7 @@ describe("installClaude — managed CLAUDE.md section", () => {
     const memory = `# My memory\n\n${MANAGED_BEGIN}\nHand-edited, no end marker.\n`;
     const fx = await makeInstructionsFixture({ memory });
     try {
+      /** @type {string[]} */
       const warnings = [];
       const result = await installClaude({
         root: fx.root,
@@ -798,7 +851,7 @@ describe("installClaude — managed CLAUDE.md section", () => {
         warn: (m) => warnings.push(m),
       });
 
-      assert.equal(result.instructions.action, "skipped-unmanaged");
+      assert.equal(result.instructions?.action, "skipped-unmanaged");
       assert.equal(await readFile(fx.instructionsPath, "utf-8"), memory, "file untouched");
       assert.ok(warnings.some((w) => w.includes("unterminated")), "unmatched markers are warned about");
     } finally {
@@ -816,7 +869,7 @@ describe("installClaude — managed CLAUDE.md section", () => {
         dryRun: true,
       });
 
-      assert.equal(result.instructions.action, "would-write");
+      assert.equal(result.instructions?.action, "would-write");
       assert.equal(await pathExists(fx.instructionsPath), false, "nothing written in dry-run");
     } finally {
       await fx.cleanup();

@@ -106,13 +106,11 @@ section when there are none.>
 - **Describe the behaviour, not the implementation.** The ticket owns the what and why; the implementer owns the how.
 - **A ticket must stand alone.** Link, don't copy — readers who need the full rationale open the linked document, not a paraphrase.
 
-## Cross-skill references
+## See Also
 
-| When you need…                                          | Use this skill    |
-| ------------------------------------------------------- | ----------------- |
-| To break a spec into a map of tickets                   | `spec-to-tickets` |
-| Tone, structure, and concision for human-facing writing | `style-comms`     |
-| A requirements document that precedes the ticket        | `write-a-prd`     |
+- [spec-to-tickets](../spec-to-tickets/SKILL.md) — load when the spec needs a map of tickets rather than one.
+- [style-comms](../../style/style-comms/SKILL.md) — load for tone and concision rules when the body reads loosely.
+- [write-a-prd](../write-a-prd/SKILL.md) — load when the requirements document that precedes the ticket does not exist.
 
 See [EXAMPLES.md](./EXAMPLES.md) for worked before/after rewrites.
 

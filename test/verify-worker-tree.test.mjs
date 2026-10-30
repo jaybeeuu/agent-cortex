@@ -15,7 +15,8 @@ import { verifyWorkerTree } from "../scripts/lib/verify-worker-tree.mjs";
 
 const execFileAsync = promisify(execFile);
 
-/** Run a git command in `cwd`. */
+/** Run a git command in `cwd`.
+ * @param {string} cwd @param {string[]} args @returns {Promise<void>} */
 async function git(cwd, args) {
   await execFileAsync("git", args, { cwd });
 }
@@ -36,7 +37,8 @@ async function createRepo() {
   return { dir, base: stdout.trim() };
 }
 
-/** Commit a file in the repo, as a delivering worker would. */
+/** Commit a file in the repo, as a delivering worker would.
+ * @param {string} dir @returns {Promise<void>} */
 async function commitWork(dir) {
   await writeFile(join(dir, "worker-output.txt"), "delivered\n");
   await git(dir, ["add", "-A"]);

@@ -25,6 +25,10 @@ const RESOLVE_PUBLISH = fileURLToPath(
 );
 const MANIFEST = fileURLToPath(new URL("../package.json", import.meta.url));
 
+/** Run a script with the given argv/env, resolving with its exit code and streams.
+ * @param {string} script
+ * @param {{ args?: string[], env?: Record<string, string | undefined>, stdin?: string }} [options]
+ * @returns {Promise<{ code: number | null, stdout: string, stderr: string }>} */
 function runScript(script, { args = [], env = {}, stdin = "" } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, ...args], {
@@ -282,7 +286,10 @@ async function createPackageManagerStub({ failAt = "" } = {}) {
 }
 
 /** Run a package.json script body the way npm runs a lifecycle hook: `sh -c`,
- * from the stub directory so nothing real is reachable if a stub is bypassed. */
+ * from the stub directory so nothing real is reachable if a stub is bypassed.
+ * @param {{ dir: string, env: Record<string, string | undefined> }} stub
+ * @param {string} name
+ * @returns {Promise<{ code: number | null, stderr: string }>} */
 async function runLifecycleScript(stub, name) {
   const { scripts } = JSON.parse(await readFile(MANIFEST, "utf8"));
   const body = scripts[name];
@@ -302,6 +309,9 @@ async function runLifecycleScript(stub, name) {
   });
 }
 
+/** The non-empty lines of a fake call log.
+ * @param {string} log
+ * @returns {Promise<string[]>} */
 async function readCalls(log) {
   const text = await readFile(log, "utf8");
   return text.split("\n").filter((line) => line !== "");

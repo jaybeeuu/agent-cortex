@@ -2,16 +2,21 @@
 //
 // `tsconfig.json` is the only thing that decides what `tsc --noEmit -p
 // tsconfig.json` sees, and narrowing it is silent — the repo's product code (the
-// CLI, the harness installers, the Claude hook, the shared libs) simply stops
-// being checked while every command stays green. These cases make that narrowing
-// a build failure: every tooling directory must be in `include`, every `.mjs`
-// file inside those directories must be matched by one of the patterns, the
-// `typecheck` script must run that project, and no `exclude` entry may take the
-// surface back out again.
+// CLI, the harness installers, the Claude hook, the shared libs) and its own test
+// suite simply stop being checked while every command stays green. These cases
+// make that narrowing a build failure: every tooling directory must be in
+// `include`, every `.mjs` file inside those directories must be matched by one of
+// the patterns, the `typecheck` script must run that project, and no `exclude`
+// entry may take the surface back out again.
 //
-// test/ is deliberately NOT part of the surface yet (it is asserted below so the
-// gap stays a decision rather than an oversight); annotating the test fixtures is
-// tracked separately.
+// test/ is part of the surface: its fakes and partial fixtures are typed with
+// JSDoc typedefs rather than excluded, so the coverage the other directories get
+// applies here too.
+//
+// Two boundaries stay `any` on purpose: `JSON.parse` results in tests (the shape is
+// asserted at runtime by the case that reads them) and the `/** @type {any} */` casts
+// in validate-agent-dir.test.mjs that build deliberately malformed frontmatter. New
+// coverage should come from typed fixtures, not from widening those.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -21,17 +26,26 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/** Tooling directories the root typecheck must cover. */
-const REQUIRED_SURFACE = ["bin", "lib", "hooks", "scripts"];
+/** Tooling directories the root typecheck must cover — the test suite included. */
+const REQUIRED_SURFACE = ["bin", "lib", "hooks", "scripts", "test"];
 
-/** Directories the surface must NOT cover (yet) — see the file header. */
-const OUT_OF_SURFACE = ["test"];
-
+/** Parse a JSON file at the repo root. These are data files, not typed modules: the
+ * shape each case relies on is declared where it is read.
+ * @param {string} name
+ * @returns {Promise<any>} */
 async function readJson(name) {
   return JSON.parse(await readFile(join(ROOT, name), "utf-8"));
 }
 
-/** Relative paths of every .mjs file under `dir`. */
+/** The root tsconfig fields these cases read.
+ * @typedef {{ include?: string[], exclude?: string[] }} TsConfig */
+
+/**
+ * Relative paths of every .mjs file under `dir`.
+ * @param {string} dir
+ * @param {string} [prefix]
+ * @returns {Promise<string[]>}
+ */
 async function mjsFiles(dir, prefix = dir) {
   const entries = await readdir(join(ROOT, prefix), { withFileTypes: true });
   const files = [];
@@ -43,7 +57,12 @@ async function mjsFiles(dir, prefix = dir) {
   return files;
 }
 
-/** Whether a tsconfig `include`/`exclude` glob matches `file` (`**` spans directories). */
+/**
+ * Whether a tsconfig `include`/`exclude` glob matches `file` (`**` spans directories).
+ * @param {string} pattern
+ * @param {string} file
+ * @returns {boolean}
+ */
 function patternCovers(pattern, file) {
   const source = (pattern.endsWith("/**") ? `${pattern}/*` : pattern)
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -53,17 +72,19 @@ function patternCovers(pattern, file) {
 
 describe("root typecheck surface", () => {
   it("includes every tooling directory", async () => {
-    const { include } = await readJson("tsconfig.json");
+    /** @type {TsConfig} */
+    const { include = [] } = await readJson("tsconfig.json");
 
     assert.deepEqual(
       REQUIRED_SURFACE.filter((dir) => !include.includes(`${dir}/**/*.mjs`)),
       [],
-      "tsconfig.json include must list bin/, lib/, hooks/ and scripts/",
+      "tsconfig.json include must list bin/, lib/, hooks/, scripts/ and test/",
     );
   });
 
   it("matches every module in each tooling directory", async () => {
-    const { include } = await readJson("tsconfig.json");
+    /** @type {TsConfig} */
+    const { include = [] } = await readJson("tsconfig.json");
     const unchecked = [];
     for (const dir of REQUIRED_SURFACE) {
       for (const file of await mjsFiles(dir)) {
@@ -81,6 +102,7 @@ describe("root typecheck surface", () => {
   });
 
   it("does not exclude tooling paths from the root project", async () => {
+    /** @type {TsConfig} */
     const { exclude = [] } = await readJson("tsconfig.json");
     // Matched against the real modules, not their leading directory: `exclude`
     // resolves relative to this config, so `**/notify.mjs` drops the Claude hook
@@ -91,15 +113,5 @@ describe("root typecheck surface", () => {
     );
 
     assert.deepEqual(excluded, [], "tsconfig.json exclude must not carve tooling paths out of the surface");
-  });
-
-  it("keeps the test/ decision explicit", async () => {
-    const { include } = await readJson("tsconfig.json");
-
-    assert.deepEqual(
-      OUT_OF_SURFACE.filter((dir) => include.includes(`${dir}/**/*.mjs`)),
-      [],
-      "test/ is documented as outside the surface — move it in and update this guard, or annotate it in a follow-up",
-    );
   });
 });

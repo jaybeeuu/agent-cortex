@@ -11,10 +11,30 @@ import { makeFakeBd } from "./helpers/fake-bd.mjs";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const CREATE_CHORES = join(testDir, "..", "skills", "planning", "create-task", "scripts", "create-chores.mjs");
 
+/**
+ * A bead the fake `bd` created, with every flag the fake records.
+ * @typedef {object} FakeBead
+ * @property {string} id
+ * @property {string} title
+ * @property {string[]} labels
+ * @property {string | null} parent
+ * @property {string} type
+ * @property {string} description
+ * @property {boolean} validated
+ */
+
+/** The bead with `id`, or a failure when the run created no such bead.
+ * @param {FakeBead[]} beads @param {string} id @returns {FakeBead} */
+function requireBead(beads, id) {
+  const bead = beads.find((candidate) => candidate.id === id);
+  assert.ok(bead, `the run created no bead with id ${id}`);
+  return bead;
+}
+
 /** Run create-chores.mjs against the fake `bd` with a parent that already
  * carries execution:afk — the label `bd create --parent` inherits.
  * @param {string[]} parentLabels  Labels seeded on the parent bead
- * @returns {Promise<{ ids: Record<string, string>, beads: Array<{ id: string, title: string, labels: string[] }> }>} */
+ * @returns {Promise<{ ids: Record<string, string>, beads: FakeBead[] }>} */
 async function createChoresAgainstFakeBd(parentLabels) {
   const dir = await mkdtemp(join(tmpdir(), "create-chores-"));
   const { bin, state } = await makeFakeBd(dir, {
@@ -36,7 +56,10 @@ async function createChoresAgainstFakeBd(parentLabels) {
   }
 }
 
-/** Run create-chores.mjs with the given env overrides. */
+/** Run create-chores.mjs with the given env overrides.
+ * @param {string[]} args
+ * @param {Record<string, string | undefined>} env
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>} */
 function runScript(args, env) {
   return new Promise((resolve) => {
     execFile(
@@ -44,7 +67,7 @@ function runScript(args, env) {
       [CREATE_CHORES, ...args],
       { env: { ...process.env, ...env } },
       (error, stdout, stderr) => {
-        resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr });
+        resolve({ exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr });
       },
     );
   });
@@ -54,7 +77,7 @@ describe("create-chores", () => {
   it("gives the PR gate exactly its declared labels, without the parent's inherited execution:afk", async () => {
     const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
 
-    const gate = beads.find((b) => b.id === ids.featurePrReview);
+    const gate = requireBead(beads, ids.featurePrReview);
     assert.deepEqual(
       [...gate.labels].sort(),
       ["execution:hitl", "lifecycle:feature-pr"],
@@ -64,7 +87,7 @@ describe("create-chores", () => {
   it("still lets stage chores inherit execution:afk from the parent", async () => {
     const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
 
-    const codeChore = beads.find((b) => b.id === ids.code);
+    const codeChore = requireBead(beads, ids.code);
     assert.deepEqual(
       [...codeChore.labels].sort(),
       ["execution:afk", "stage:code"],
@@ -74,12 +97,12 @@ describe("create-chores", () => {
   it("validates the PR gate task but not the stage chores", async () => {
     const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
 
-    const gate = beads.find((b) => b.id === ids.featurePrReview);
+    const gate = requireBead(beads, ids.featurePrReview);
     assert.equal(gate.type, "task");
     assert.equal(gate.validated, true);
     assert.match(gate.description, /## Acceptance Criteria/);
 
-    const codeChore = beads.find((b) => b.id === ids.code);
+    const codeChore = requireBead(beads, ids.code);
     assert.equal(codeChore.validated, false);
   });
 });

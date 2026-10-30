@@ -144,12 +144,13 @@ stage: the commit is the evidence, the report is the claim.
 | "I'll wire the fix chain myself — faster" | Two owners of one lifecycle is what this skill exists to remove; worker-built chains keep cap accounting and the dependency graph truthful. |
 | "The stage is obvious from the prompt — no tag needed" | Beads are the source of truth; prompt drift desynchronises the log and downstream dispatch. |
 
-## Cross-skill references
+## See Also
 
-- `create-task` owns `pipeline.json` — stages, `maxFixRounds`, and the stage templates.
-- `bd-tool` covers bead mechanics beyond the commands in this skill.
-- `ralph` runs many stage beads concurrently and consumes this skill's log and REPORT contracts, plus its read-only cap backstop.
-- Playbooks delegate to stage skills: `tdd`/`style-code`/`style-tests` (code, fix), `review-security` (review), `style-documentation` (document).
+- [create-task](../../planning/create-task/SKILL.md) — owns `pipeline.json`: stages, `maxFixRounds`, and the stage templates.
+- [bd-tool](../../productivity/bd-tool/SKILL.md) — bead mechanics beyond the commands used here.
+- [ralph](../ralph/SKILL.md) — runs many stage beads concurrently and consumes this skill's log and REPORT contracts.
+
+Each playbook delegates to a stage skill: `tdd`/`style-code`/`style-tests` (code, fix), `review-security` (review), `style-documentation` (document).
 
 ## Examples
 

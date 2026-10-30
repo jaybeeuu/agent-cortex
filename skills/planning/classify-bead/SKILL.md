@@ -77,6 +77,11 @@ Tier precedence (label → `## Type` → heuristics → rubric), the heuristic s
 - Classification gates automation against human attention: AFK beads feed ralph's autonomous pipeline, HITL beads route to a person. Prefer AFK because human time is the scarce resource, and later review gates still catch agent mistakes.
 - The rubric is deterministic, so most classifications are a lookup. The executable encodes that lookup once, and the model is reserved for beads whose evidence is genuinely ambiguous.
 
+## See Also
+
+- [create-task](../create-task/SKILL.md) — calls this classifier for every bead it creates; the two must agree on label vocabulary.
+- [ralph](../../workflow/ralph/SKILL.md) — reads `bd ready -l execution:afk`; a mislabelled bead is invisible to the pipeline.
+
 ## Verification checklist
 
 - [ ] `bd label list <id>` was checked before any other step.

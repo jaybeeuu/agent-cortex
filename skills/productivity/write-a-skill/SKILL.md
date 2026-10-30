@@ -49,11 +49,11 @@ Verify the final document against the verification checklist below before finish
 - **Padding sections with generic content** — Every section must earn its place with content specific to the skill's purpose. Copying generic filler from the template placeholder text produces a weak skill.
 - **Skipping the trigger-phrase interview** — The description's trigger phrases are the main routing signal for the skill. Guessing what users say rather than asking produces a skill that is hard to invoke.
 
-## Cross-skill references
+## See Also
 
-- Use `refactor-skill` when the task is upgrading an existing skill rather than creating a new one.
-- Run `style-code` after writing to check that code conventions in any example snippets or bundled scripts are consistent.
-- Run `review-security` before committing to check for leaked secrets in examples or documentation.
+- [refactor-skill](../../review/refactor-skill/SKILL.md) — load when upgrading an existing skill rather than authoring a new one.
+- [style-code](../../style/style-code/SKILL.md) — load when the skill ships code examples or bundled scripts.
+- [review-security](../../review/review-security/SKILL.md) — run before committing, so examples carry no leaked credentials.
 
 ## Examples
 
@@ -72,4 +72,4 @@ Output: A new `skills/review-security/SKILL.md` with front matter, When to use, 
 - [ ] No ALL-CAPS emphasis
 - [ ] `SKILL.md` ≤ 150 lines (`wc -l skills/<name>/SKILL.md`)
 - [ ] Supporting docs split by purpose when `SKILL.md` exceeds ~150 lines
-- [ ] Cross-skill references point to `refactor-skill` for upgrades where relevant
+- [ ] `See Also` entries link the target `SKILL.md` relatively, state why to load it, and point to `refactor-skill` for upgrades where relevant

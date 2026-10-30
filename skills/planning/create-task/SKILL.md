@@ -128,10 +128,10 @@ Steps 2–6 create beads; step 7 expands one. A bead that already exists but has
 - **The PR gate is a hard human checkpoint.** Every AFK task ends with a `featurePrReview` task that blocks the final document stage, so automated work never merges without a human reviewing the branch.
 - **Each bead states its own execution class.** Containers are human-owned; the work inside them is AFK unless a deliverable genuinely needs a person. Nothing aggregates upward, so a label always answers "who does this?" for that bead.
 
-## Cross-skill references
+## See Also
 
-- `classify-bead` — deterministic classifier first, rubric subagent only on escalation (step 3).
-- `prd-to-tasks` — decomposes a PRD and calls this skill per slice; a slice that needs design gets the feature path.
+- [classify-bead](../classify-bead/SKILL.md) — step 3 defers to its deterministic classifier; the rubric subagent runs only on escalation.
+- [prd-to-tasks](../prd-to-tasks/SKILL.md) — calls this skill per vertical slice; load it when the input is a whole PRD.
 
 ## Examples
 

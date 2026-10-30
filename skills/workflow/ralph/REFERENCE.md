@@ -116,7 +116,7 @@ Decompose it:
    bd children <feature-id> --json
    ```
    Expect an empty list `[]`. A non-empty list, however few children, means stop here.
-2. **Dispatch a decomposition worker** in the feature worktree (`.agent-cortex/worktrees/<feature-id>`) whose whole job is to run the `create-task` hierarchy flow (`prd-to-tasks` → `create-task`) for that one feature and report the IDs it created. The worker builds the Q5 shape:
+2. **Dispatch a decomposition worker** in the feature worktree (`.agent-cortex/worktrees/<feature-id>`) whose whole job is to run the `create-task` hierarchy flow (`prd-to-tasks` → `create-task`) for that one **existing** feature — its planning bead and impl children only, never a second feature bead — and report the IDs it created. The worker builds the Q5 shape:
    - a **planning bead** — `--parent <feature-id>`, `execution:hitl` — held for a human to confirm planning is sufficient;
    - **implementation task children** — `--parent <feature-id>`, `execution:afk`, `--no-inherit-labels` — each wired to wait on the planning bead with `bd dep add <impl-child> <planning-bead>`.
 
@@ -131,7 +131,7 @@ Decompose it:
    ```
    Surface the created IDs in chat. An empty list means the decomposition failed: record the feature for the shutdown summary and continue — do not re-dispatch.
 5. **Never re-dispatch a decomposition.** The bead creation it runs is not idempotent, so a second run duplicates the planning bead and every implementation child beside the first. This is the same hazard as re-running `create-chores.mjs`.
-6. **Go idle.** After decomposition nothing is ready for that feature: `bd ready -l execution:afk` returns its implementation children only after a human closes the planning bead. Returning to the event loop with *nothing* to dispatch is the correct outcome, not a failure to re-expand — that is Q5b working as designed.
+6. **Go idle.** After decomposition nothing is dispatchable for that feature: `bd ready -l execution:afk` still lists the feature itself (it now has children, so it is skipped — never decomposed again) but none of its children until a human closes the planning bead. Returning to the event loop with *nothing* to dispatch is the correct outcome, not a failure to re-expand — that is Q5b working as designed.
 
 ---
 
@@ -242,7 +242,7 @@ Ralph never builds remediation. The worker that fails a stage creates its own `s
 
 Run whenever completion handling is triggered (an agent completion):
 
-1. **Read in-flight entries**: `inflight` in `.agent-cortex/ralph/state.json` — every dispatched worker, stage (`kind: "stage"`) or expansion (`kind: "expand"`). Each entry carries `parentId` and `logLine`.
+1. **Read in-flight entries**: `inflight` in `.agent-cortex/ralph/state.json` — every dispatched worker: stage (`kind: "stage"`), decomposition (`kind: "decompose"`) or expansion (`kind: "expand"`). Each entry carries `parentId` and `logLine`.
 2. For each in-flight entry, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file:
    ```bash
    tail -n +<logLine> .agent-cortex/ralph/ralph-<parentId>.log 2>/dev/null

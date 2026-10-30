@@ -72,4 +72,4 @@ Output: A new `skills/review-security/SKILL.md` with front matter, When to use, 
 - [ ] No ALL-CAPS emphasis
 - [ ] `SKILL.md` ≤ 150 lines (`wc -l skills/<name>/SKILL.md`)
 - [ ] Supporting docs split by purpose when `SKILL.md` exceeds ~150 lines
-- [ ] Cross-skill references point to `refactor-skill` for upgrades where relevant
+- [ ] `See Also` entries link the target `SKILL.md` relatively, state why to load it, and point to `refactor-skill` for upgrades where relevant

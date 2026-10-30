@@ -9,6 +9,16 @@
 // that is correct in the repo and correct in both install layouts.
 //
 // Zero dependencies so it runs on the CI Node (20) and local Node alike.
+//
+// Known limits. The rewrite keys off the first path segment that matches a skill name,
+// so it cannot tell a skill directory from a same-named directory elsewhere: a target
+// like ../../../docs/plan/x.md (plan is a skill name) becomes ../plan/x.md, pointing at
+// a file that does not exist in the flattened install. An angle-bracket target such as
+// <plan> loses its brackets and gains a ../ for the same reason. Neither shape exists in
+// the corpus today — links only ever enter skills/ trees with plain relative targets —
+// so this is a constraint on new links, not a live bug. A non-md file that links back
+// into a skill tree has the same caveat: only markdown under a skill directory is
+// transformed.
 
 const LINK_RE = /\]\(([^)\s]+)\)/g;
 const NON_RELATIVE_RE = /^(?:[a-z][a-z0-9+.-]*:|\/|#)/i;

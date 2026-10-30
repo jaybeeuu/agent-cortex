@@ -92,7 +92,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
    `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path.
 
-   On the feature path, run it **once per AFK impl child**, with `--parent <impl-task-id>` — never the feature ID: stage chores inherit their parent's labels, the script requires an `execution:afk` parent, and the feature is `execution:hitl`. A deliverable created `execution:hitl` in step 6 is not expanded.
+   On the feature path, run it **once per AFK impl child**, with `--parent <impl-task-id>` — never the feature ID: stage chores inherit their parent's labels, the script checks only that it was handed a parent ID (`REFERENCE.md` → PR gate bead), so an `execution:hitl` feature parent yields a chore tree no executor routes. A deliverable created `execution:hitl` in step 6 is not expanded.
 
 8. **Report.** Return the bead ID (or, on the feature path, the feature ID plus every planning and impl child ID), the classification of each expanded bead (`AFK`), and the created stage chore IDs from the script output (including `featurePrReview`) — one mapping per expanded impl child on the feature path.
 

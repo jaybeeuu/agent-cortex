@@ -120,7 +120,7 @@ Decompose it:
    - a **planning bead** — `--parent <feature-id>`, `execution:hitl` — held for a human to confirm planning is sufficient;
    - **implementation task children** — `--parent <feature-id>`, `execution:afk`, `--no-inherit-labels` — each wired to wait on the planning bead with `bd dep add <impl-child> <planning-bead>`.
 
-   This is the same shape `ralph-plan` already builds as a planning gate (its _Decompose into tasks_ step): an `execution:hitl` gate that the work depends on, so the dependency — not a label — is the readiness gate.
+   This is the shape `create-task` builds on its feature path (`SKILL.md` steps 5–6): an `execution:hitl` planning bead owned by the feature, whose impl children depend on it, so the dependency — not a label — is the readiness gate.
 3. **Record it in `inflight`** so its completion is attributable to the feature and it stays in the wait set — it holds no chore, so `choreId` is `null`:
    ```json
    { "kind": "decompose", "choreId": null, "parentId": "<feature-id>", "title": "<feature title>", "agentId": "<agent-id>", "logLine": 1 }

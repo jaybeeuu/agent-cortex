@@ -140,7 +140,7 @@ if (parsed.command === "migrate") {
   // Loaded lazily: the migration registry is only needed on this path.
   const { runMigrate } = await import("../scripts/lib/migrate.mjs");
   try {
-    await runMigrate({ apply: parsed.apply ?? false });
+    await runMigrate({ apply: parsed.apply ?? false, dir: parsed.dir });
   } catch (err) {
     process.stderr.write(`Migration failed: ${/** @type {Error} */ (err).message}\n`);
     process.exit(1);

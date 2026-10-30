@@ -1,40 +1,134 @@
-// Behaviour tests for `agent-cortex migrate` (v1: implementation-type:* →
-// execution:*), driven through the process boundary against a stateful fake
-// `bd` (test/helpers/fake-bd-migrate.mjs) so the real beads database is never
-// touched. Assertions are on the workspace's resulting label state and
-// recorded writes — the observable effect of the command.
+// Behaviour tests for `agent-cortex migrate` — v1 (implementation-type:* →
+// execution:*) and v2 (docs/ideas/*.md → kind:idea beads) — driven through the
+// process boundary against a stateful fake `bd`
+// (test/helpers/fake-bd-migrate.mjs) so the real beads database is never
+// touched. The workspace is a throwaway directory that is also the child
+// process's working directory, so the idea files v2 reads are fixtures, never
+// this repo's own `docs/ideas/`. Assertions are on the workspace's resulting
+// bead state and recorded writes — the observable effect of the command.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { makeFakeBdMigrate } from "./helpers/fake-bd-migrate.mjs";
 
-const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "agent-cortex.mjs");
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const CLI_PATH = join(TEST_DIR, "..", "bin", "agent-cortex.mjs");
+const MIGRATE_PATH = join(TEST_DIR, "..", "scripts", "lib", "migrate.mjs");
+
+/** An idea file in the shape the retired scaffold wrote: the full section set. */
+const IDEA_FILE = `# Idea: model selector
+
+## Status
+Backlog idea (not implementation-ready) — priority P2 (moderate)
+
+## Created
+2026-07-12
+
+## Problem
+Selecting the right model for a task is manual and brittle.
+
+## Who benefits
+Anyone running more than one model.
+
+## Proposed outcome
+A declarative "use case → model chain" mapping.
+
+## How we might do it
+Profiles name a primary model plus ordered fallbacks.
+
+## Validity check
+- Evidence: the model registry already resolves provider/id strings.
+
+## Constraints
+- Must not add LLM calls internally.
+
+## Next validation step
+Sketch the config schema and try it against real usage.
+
+## Notes
+Recorded during a planning session.
+`;
+
+/** The same shape with no priority stated and a legacy problem heading. */
+const LEGACY_IDEA_FILE = `# Idea: qa extension
+
+## Status
+Captured, not yet validated.
+
+## Why it might be useful
+A QA pass could run before each merge.
+
+## Open questions
+- Who owns the fixture data?
+`;
+
+/** Two files that state the same title — the shape `.local.md` variants take. */
+const TWIN_IDEA_FILE = `# Idea: task-session-context
+
+## Problem
+The resume path drops the bead's own progress trail.
+`;
+
+const TWIN_LOCAL_IDEA_FILE = `# Idea: task-session-context
+
+## Problem
+The local-only variant of the same note, with content of its own.
+`;
+
+/** @typedef {{ bin: string, state: string, cwd: string }} Workspace */
 
 /**
- * Run `agent-cortex migrate` against a fake beads workspace.
+ * Run `agent-cortex migrate` against a fake beads workspace, from inside it.
  *
  * @param {string[]} args
- * @param {{ bin: string, state: string }} workspace
+ * @param {Workspace} workspace
  * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>}
  */
-function runMigrate(args, { bin, state }) {
+function runMigrate(args, { bin, state, cwd }) {
+  return runNode([CLI_PATH, "migrate", ...args], { bin, state, cwd });
+}
+
+/**
+ * Run a custom driver script with the fake `bd` in place — how the module-level
+ * idea-directory override is exercised without a CLI flag.
+ *
+ * @param {Workspace} workspace
+ * @param {string} ideaDir
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>}
+ */
+async function runMigrateWithDir({ bin, state, cwd }, ideaDir) {
+  const script = join(cwd, "run-migrate.mjs");
+  await writeFile(
+    script,
+    `import { runMigrate } from ${JSON.stringify(pathToFileURL(MIGRATE_PATH).href)};\n` +
+      `await runMigrate({ apply: false, dir: ${JSON.stringify(ideaDir)} });\n`,
+  );
+  return runNode([script], { bin, state, cwd });
+}
+
+/**
+ * @param {string[]} args
+ * @param {{ bin: string, state: string, cwd: string }} workspace
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>}
+ */
+function runNode(args, { bin, state, cwd }) {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
-      [CLI_PATH, "migrate", ...args],
-      { env: { ...process.env, BD_PATH: bin, FAKE_BD_STATE: state } },
-      (error, stdout, stderr) => resolve({ exitCode: error ? error.code ?? 1 : 0, stdout, stderr }),
+      args,
+      { cwd, env: { ...process.env, BD_PATH: bin, FAKE_BD_STATE: state } },
+      (error, stdout, stderr) => resolve({ exitCode: error ? (error.code ?? 1) : 0, stdout, stderr }),
     );
   });
 }
 
-/** @param {string} statePath @returns {Promise<{ beads: Array<{ id: string, labels: string[] }>, writes: unknown[] }>} */
+/** @param {string} statePath @returns {Promise<FakeState>} */
 async function readState(statePath) {
   return JSON.parse(await readFile(statePath, "utf8"));
 }
@@ -45,22 +139,46 @@ async function readLabels(statePath) {
   return Object.fromEntries(state.beads.map((bead) => [bead.id, bead.labels]));
 }
 
+/** @typedef {{ id: string, labels: string[], title: string, status: string, priority: number,
+ *   description: string, design: string, notes: string, acceptance_criteria: string }} FakeBead */
+/** @typedef {{ beads: FakeBead[], writes: Array<Record<string, unknown>> }} FakeState */
+
+/**
+ * The beads created by a run — the ones the seed did not carry.
+ *
+ * @param {FakeState} state
+ * @param {number} seeded
+ * @returns {FakeBead[]}
+ */
+function createdBeads(state, seeded) {
+  return state.beads.slice(seeded);
+}
+
 /**
  * Create a throwaway fake beads workspace, run `fn`, then remove it.
  *
- * @param {Array<{ id: string, labels: string[], status?: string }>} beads
- * @param {(workspace: { bin: string, state: string }) => Promise<void>} fn
+ * @param {Array<{ id: string, labels: string[], status?: string, title?: string, notes?: string }>} beads
+ * @param {(workspace: Workspace) => Promise<void>} fn
  * @param {{
  *   failOn?: string | null,
  *   listHidesClosed?: boolean,
  *   ignoreLabelRemovals?: boolean,
  *   exportDropsLabel?: string | null,
- * }} [options]
+ *   ideaFiles?: Record<string, string>,
+ *   ideaDir?: string,
+ * }} [options]  `ideaFiles` maps a path below `ideaDir` to its markdown content.
  */
 async function withWorkspace(beads, fn, options = {}) {
+  const { ideaFiles = {}, ideaDir = "docs/ideas", ...fakeOptions } = options;
   const dir = await mkdtemp(join(tmpdir(), "agent-cortex-migrate-"));
   try {
-    await fn(await makeFakeBdMigrate(dir, { beads, ...options }));
+    for (const [name, content] of Object.entries(ideaFiles)) {
+      const path = join(dir, ideaDir, name);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content);
+    }
+    const workspace = await makeFakeBdMigrate(dir, { beads, ...fakeOptions });
+    await fn({ ...workspace, cwd: dir });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -193,7 +311,7 @@ describe("agent-cortex migrate v1 label rename", () => {
         assert.equal(exitCode, 0);
         assert.match(stdout, /bd-closed/);
         assert.match(stdout, /1 bead\(s\) pending/);
-        assert.doesNotMatch(stdout, /already at v1/);
+        assert.doesNotMatch(stdout, /already at v2/);
       },
       { listHidesClosed: true },
     );
@@ -240,8 +358,8 @@ describe("agent-cortex migrate v1 label rename", () => {
   });
 
   it("fails loudly when bd is not available", async () => {
-    await withWorkspace([{ id: "bd-a", labels: ["implementation-type:afk"] }], async ({ state }) => {
-      const { exitCode, stderr } = await runMigrate([], { bin: join(dirname(state), "missing-bd"), state });
+    await withWorkspace([{ id: "bd-a", labels: ["implementation-type:afk"] }], async ({ state, cwd }) => {
+      const { exitCode, stderr } = await runMigrate([], { bin: join(dirname(state), "missing-bd"), state, cwd });
 
       assert.equal(exitCode, 1);
       assert.match(stderr, /bd/);
@@ -258,6 +376,333 @@ describe("agent-cortex migrate v1 label rename", () => {
         assert.match(stderr, /simulated bd error/);
       },
       { failOn: "label add" },
+    );
+  });
+});
+
+describe("agent-cortex migrate v2 ideas to beads", () => {
+  it("plans one line per idea file and writes nothing on the dry run", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrate([], workspace);
+
+        assert.equal(exitCode, 0);
+        assert.match(stdout, /docs\/ideas\/model-selector\.md → Idea: model selector \(P2\)/);
+        assert.match(stdout, /docs\/ideas\/qa-extension\.md → Idea: qa extension \(P4\)/);
+        assert.match(stdout, /2 bead\(s\) pending/);
+        const state = await readState(workspace.state);
+        assert.equal(state.writes.length, 0);
+        assert.deepEqual(state.beads, []);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE, "qa-extension.md": LEGACY_IDEA_FILE } },
+    );
+  });
+
+  it("creates a hitl idea bead per file with the sections in their mapped fields", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const [bead] = createdBeads(await readState(workspace.state), 0);
+        assert.deepEqual([...bead.labels].sort(), ["execution:hitl", "kind:idea"]);
+        assert.equal(bead.title, "Idea: model selector");
+        assert.equal(bead.priority, 2);
+        assert.match(bead.description, /## Problem/);
+        assert.match(bead.description, /## Who benefits/);
+        assert.match(bead.description, /## Proposed outcome/);
+        assert.match(bead.design, /## How we might do it/);
+        assert.match(bead.notes, /## Validity check/);
+        assert.match(bead.notes, /## Constraints/);
+        assert.match(bead.notes, /## Next validation step/);
+        assert.equal(bead.status, "open");
+        // A `task` bead needs acceptance criteria to lint clean.
+        assert.notEqual(bead.acceptance_criteria, undefined);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE } },
+    );
+  });
+
+  it("loses no line of the source file", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const [bead] = createdBeads(await readState(workspace.state), 0);
+        const migrated = [bead.description, bead.design, bead.notes].join("\n");
+        const bodyLines = IDEA_FILE.split("\n")
+          .slice(1) // the `#` heading becomes the bead title
+          .filter((line) => line.trim() !== "");
+
+        for (const line of bodyLines) assert.ok(migrated.includes(line), `dropped: ${line}`);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE } },
+    );
+  });
+
+  it("keeps a legacy heading inside the field it maps to", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const [bead] = createdBeads(await readState(workspace.state), 0);
+        // `## Why it might be useful` is the pre-template name for the problem.
+        assert.match(bead.description, /## Why it might be useful/);
+        assert.match(bead.notes, /## Open questions/);
+      },
+      { ideaFiles: { "qa-extension.md": LEGACY_IDEA_FILE } },
+    );
+  });
+
+  it("falls back to backlog priority when the file states none", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const [bead] = createdBeads(await readState(workspace.state), 0);
+        assert.equal(bead.priority, 4);
+      },
+      { ideaFiles: { "qa-extension.md": LEGACY_IDEA_FILE } },
+    );
+  });
+
+  it("migrates a nested idea directory", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const [bead] = createdBeads(await readState(workspace.state), 0);
+        assert.equal(bead.title, "Idea: model selector");
+      },
+      { ideaFiles: { "model-selector/model-selector.md": IDEA_FILE } },
+    );
+  });
+
+  it("is a no-op on a second run", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+        const afterFirst = await readState(workspace.state);
+
+        const second = await runMigrate(["--apply"], workspace);
+
+        assert.equal(second.exitCode, 0);
+        assert.match(second.stdout, /already at v2/);
+        const afterSecond = await readState(workspace.state);
+        assert.equal(afterSecond.beads.length, afterFirst.beads.length);
+        assert.equal(afterSecond.writes.length, afterFirst.writes.length);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE } },
+    );
+  });
+
+  it("skips a file whose record already exists under the same title", async () => {
+    await withWorkspace(
+      [{ id: "pre-migrated", labels: ["kind:idea", "execution:hitl"], title: "Design: model selector" }],
+      async (workspace) => {
+        const { stdout } = await runMigrate(["--apply"], workspace);
+
+        // The pre-existing record is a `Design: ` title for the same idea, so the
+        // comparison ignores the prefix and the punctuation of the file name.
+        assert.doesNotMatch(stdout, /model-selector\.md/);
+        const state = await readState(workspace.state);
+        const created = createdBeads(state, 1);
+        assert.equal(created.length, 1);
+        assert.equal(created[0].title, "Idea: qa extension");
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE, "qa-extension.md": LEGACY_IDEA_FILE } },
+    );
+  });
+
+  it("skips a file a bead already records under a provenance heading", async () => {
+    await withWorkspace(
+      [
+        {
+          id: "pre-migrated",
+          labels: ["kind:idea", "execution:hitl"],
+          title: "Design: a different title entirely",
+          notes: "## Provenance\n- `docs/ideas/model-selector.md` (2026-07-12) — source.\n",
+        },
+      ],
+      async (workspace) => {
+        const state = await runMigrate(["--apply"], workspace);
+        assert.equal(state.exitCode, 0);
+
+        const created = createdBeads(await readState(workspace.state), 1);
+        assert.deepEqual(
+          created.map((bead) => bead.title),
+          ["Idea: qa extension"],
+        );
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE, "qa-extension.md": LEGACY_IDEA_FILE } },
+    );
+  });
+
+  it("does not treat a passing cross-reference as a record of the file", async () => {
+    await withWorkspace(
+      [
+        {
+          id: "neighbour",
+          labels: ["kind:idea", "execution:hitl"],
+          title: "Design: a different title entirely",
+          notes: "## Status\nSee `docs/ideas/model-selector.md` for the related idea.\n",
+        },
+      ],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const created = createdBeads(await readState(workspace.state), 1);
+        assert.deepEqual(
+          created.map((bead) => bead.title),
+          ["Idea: model selector", "Idea: qa extension"],
+        );
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE, "qa-extension.md": LEGACY_IDEA_FILE } },
+    );
+  });
+
+  it("reports nothing to do when the workspace has no idea directory", async () => {
+    await withWorkspace([], async (workspace) => {
+      const { exitCode, stdout } = await runMigrate([], workspace);
+
+      assert.equal(exitCode, 0);
+      assert.match(stdout, /already at v2/);
+      assert.equal((await readState(workspace.state)).writes.length, 0);
+    });
+  });
+
+  it("cites the source file under a provenance heading", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        assert.equal((await runMigrate(["--apply"], workspace)).exitCode, 0);
+
+        const [bead] = createdBeads(await readState(workspace.state), 0);
+        assert.match(bead.notes, /## Provenance/);
+        assert.match(bead.notes, /docs\/ideas\/model-selector\.md/);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE } },
+    );
+  });
+
+  it("resumes a twin-title apply that died between the two creates", async () => {
+    await withWorkspace(
+      [
+        {
+          id: "already-created",
+          labels: ["kind:idea", "execution:hitl"],
+          title: "Idea: task-session-context",
+          notes: "## Provenance\nMigrated from `docs/ideas/task-session-context.local.md` by `agent-cortex migrate`.",
+        },
+      ],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrate(["--apply"], workspace);
+
+        // Both files state the same title, so a title-keyed skip would call this
+        // workspace done and never record `task-session-context.md`.
+        assert.equal(exitCode, 0);
+        const created = createdBeads(await readState(workspace.state), 1);
+        assert.equal(created.length, 1);
+        assert.equal(created[0].title, "Idea: task-session-context");
+        assert.match(created[0].description, /drops the bead's own progress trail/);
+        assert.match(created[0].notes, /docs\/ideas\/task-session-context\.md/);
+        assert.match(stdout, /v2 ideas-to-beads verified/);
+      },
+      {
+        ideaFiles: {
+          "task-session-context.md": TWIN_IDEA_FILE,
+          "task-session-context.local.md": TWIN_LOCAL_IDEA_FILE,
+        },
+      },
+    );
+  });
+
+  it("still skips a source-less record by its title after a twin is recorded", async () => {
+    await withWorkspace(
+      [
+        {
+          id: "hand-migrated",
+          labels: ["kind:idea", "execution:hitl"],
+          title: "Design: task-session-context",
+          notes: "A summary a human wrote before the step existed.",
+        },
+      ],
+      async (workspace) => {
+        const { stdout } = await runMigrate(["--apply"], workspace);
+
+        assert.doesNotMatch(stdout, /task-session-context/);
+        assert.equal(createdBeads(await readState(workspace.state), 1).length, 0);
+      },
+      {
+        ideaFiles: {
+          "task-session-context.md": TWIN_IDEA_FILE,
+          "task-session-context.local.md": TWIN_LOCAL_IDEA_FILE,
+        },
+      },
+    );
+  });
+
+  it("reads ideas from an overridden directory", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrateWithDir(workspace, "docs/notes");
+
+        assert.equal(exitCode, 0);
+        assert.match(stdout, /docs\/notes\/model-selector\.md → Idea: model selector/);
+        assert.equal((await readState(workspace.state)).writes.length, 0);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE }, ideaDir: "docs/notes" },
+    );
+  });
+
+  it("reads ideas from an overridden directory through the --dir flag", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrate(["--dir", "docs/notes"], workspace);
+
+        assert.equal(exitCode, 0);
+        assert.match(stdout, /docs\/notes\/model-selector\.md → Idea: model selector/);
+        assert.equal((await readState(workspace.state)).writes.length, 0);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE }, ideaDir: "docs/notes" },
+    );
+  });
+
+  it("fails loudly when creating a bead errors", async () => {
+    await withWorkspace(
+      [],
+      async (workspace) => {
+        const { exitCode, stderr } = await runMigrate(["--apply"], workspace);
+
+        assert.equal(exitCode, 1);
+        assert.match(stderr, /simulated bd error/);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE }, failOn: "create" },
+    );
+  });
+
+  it("runs after the label rename in the same apply", async () => {
+    await withWorkspace(
+      [{ id: "bd-legacy", labels: ["implementation-type:afk"] }],
+      async (workspace) => {
+        const { exitCode, stdout } = await runMigrate(["--apply"], workspace);
+
+        assert.equal(exitCode, 0);
+        assert.match(stdout, /v1 label-rename/);
+        assert.match(stdout, /v2 ideas-to-beads/);
+        const state = await readState(workspace.state);
+        assert.deepEqual(state.beads[0].labels, ["execution:afk"]);
+        assert.equal(state.beads.length, 2);
+      },
+      { ideaFiles: { "model-selector.md": IDEA_FILE } },
     );
   });
 });

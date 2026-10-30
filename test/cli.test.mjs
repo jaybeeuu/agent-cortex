@@ -171,6 +171,27 @@ describe("parseArgs", () => {
     assert.ok(result.optionError.includes("--bogus"));
   });
 
+  it("parses an idea directory override for migrate", async () => {
+    assert.deepStrictEqual(parseArgs(["migrate", "--dir", "docs/notes"]), {
+      command: "migrate",
+      apply: false,
+      dir: "docs/notes",
+    });
+    assert.deepStrictEqual(parseArgs(["migrate", "--dir=docs/notes", "--apply"]), {
+      command: "migrate",
+      apply: true,
+      dir: "docs/notes",
+    });
+  });
+
+  it("rejects a --dir without a path for migrate", async () => {
+    for (const argv of [["migrate", "--dir"], ["migrate", "--dir", "--apply"], ["migrate", "--dir="]]) {
+      const result = parseArgs(argv);
+      assert.equal(result.command, "migrate");
+      assert.ok(result.optionError.includes("--dir"), `no --dir error for ${argv.join(" ")}`);
+    }
+  });
+
   it("returns { command: 'unknown', name: 'foo' } for unknown command", async () => {
     const result = parseArgs(["foo"]);
     assert.deepStrictEqual(result, { command: "unknown", name: "foo" });

@@ -21,6 +21,28 @@ function visibleWidth(line: string): number {
 	return line.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
 
+/**
+ * Visible terminal-cell count, ignoring SGR sequences and counting a wide or
+ * astral character as two cells. `String.length` counts a wide character as one
+ * unit, so a width assertion built on it misses the overflow this guards.
+ */
+function cellWidth(line: string): number {
+	return [...line.replace(/\x1b\[[0-9;]*m/g, "")].reduce((cells, character) => {
+		const codePoint = character.codePointAt(0) ?? 0;
+		const wide =
+			codePoint > 0xffff ||
+			(codePoint >= 0x1100 &&
+				(codePoint <= 0x115f ||
+					(codePoint >= 0x2e80 && codePoint <= 0xa4cf) ||
+					(codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+					(codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+					(codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+					(codePoint >= 0xff00 && codePoint <= 0xff60) ||
+					(codePoint >= 0xffe0 && codePoint <= 0xffe6)));
+		return cells + (wide ? 2 : 1);
+	}, 0);
+}
+
 describe("Text", () => {
 	it("wraps a long line to the width it is given", () => {
 		const lines = new Text("alpha beta gamma delta").render(11);
@@ -54,6 +76,19 @@ describe("Text", () => {
 	it("keeps an empty line and renders blank text as one empty line", () => {
 		assert.deepEqual(new Text("a\n\nb").render(10), ["a", "", "b"]);
 		assert.deepEqual(new Text().render(10), [""]);
+	});
+
+	it("counts a wide character as two cells so it cannot overflow the width", () => {
+		// Each of these characters occupies two terminal cells but one string unit.
+		assert.deepEqual(new Text("日本語").render(4), ["日本", "語"]);
+
+		const lines = new Text("日本語のテキストは全角文字です。これは折り返しのテストです。").render(20);
+		assert.ok(lines.length > 1, "wide text must wrap");
+		for (const line of lines) assert.ok(cellWidth(line) <= 20, `width of ${JSON.stringify(line)}`);
+	});
+
+	it("counts an astral character as two cells", () => {
+		assert.deepEqual(new Text("🚀🚀🚀").render(4), ["🚀🚀", "🚀"]);
 	});
 });
 

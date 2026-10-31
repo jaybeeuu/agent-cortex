@@ -12,6 +12,8 @@
  * markdown is drawn as plain text, and only SGR colour sequences (`ESC[…m`) are
  * measured and carried across a wrapped line. Other escapes — OSC-8 hyperlinks,
  * images — count as visible characters, the same way a naive strip does.
+ * Width is measured in terminal cells: a wide (East Asian) character, and any
+ * astral character such as an emoji, counts as two.
  */
 
 /** Lines to draw at a given width — what pi's transcript renderer calls. */
@@ -89,9 +91,31 @@ function emptyLines(count: number, filler: string): string[] {
   return Array.from({ length: Math.max(0, count) }, () => filler);
 }
 
-/** Visible column count of a line: everything except SGR sequences. */
+/** Visible cell count of a line: everything except SGR sequences, wide characters as two. */
 function visibleWidth(line: string): number {
-  return line.replace(SGR, "").length;
+  let cells = 0;
+  for (const character of line.replace(SGR, "")) cells += cellWidth(character.codePointAt(0) ?? 0);
+  return cells;
+}
+
+/**
+ * Terminal cells one character occupies. Wide East Asian characters and astral
+ * characters (emoji included) occupy two; every other character occupies one.
+ * Counting in `String.length` units would let a wide character overflow: it is
+ * one unit but two cells.
+ */
+function cellWidth(codePoint: number): number {
+  if (codePoint > 0xffff) return 2;
+  return codePoint >= 0x1100 &&
+    (codePoint <= 0x115f ||
+      (codePoint >= 0x2e80 && codePoint <= 0xa4cf) ||
+      (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+      (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+      (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+      (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+      (codePoint >= 0xffe0 && codePoint <= 0xffe6))
+    ? 2
+    : 1;
 }
 
 /**
@@ -136,11 +160,13 @@ function breakIndex(text: string, width: number): number {
       continue;
     }
 
-    if (text[index] === " ") lastSpace = index;
-    if (visible === width) return lastSpace > 0 ? lastSpace : index;
+    const codePoint = text.codePointAt(index) ?? 0;
+    const character = String.fromCodePoint(codePoint);
+    if (character === " ") lastSpace = index;
+    if (visible + cellWidth(codePoint) > width) return lastSpace > 0 ? lastSpace : index;
 
-    visible++;
-    index++;
+    visible += cellWidth(codePoint);
+    index += character.length;
   }
 
   return lastSpace > 0 ? lastSpace : index;

@@ -21,8 +21,8 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 import { waitForAgents } from "./wait.ts";
-import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Container, Spacer, Text } from "./components.ts";
 import { Type } from "typebox";
 
 
@@ -236,9 +236,8 @@ async function writePromptToTempFile(agentName: string, prompt: string): Promise
 	const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-subagent-"));
 	const safeName = agentName.replace(/[^\w.-]+/g, "_");
 	const filePath = path.join(tmpDir, `prompt-${safeName}.md`);
-	await withFileMutationQueue(filePath, async () => {
-		await fs.promises.writeFile(filePath, prompt, { encoding: "utf-8", mode: 0o600 });
-	});
+	// No mutation queue: the directory is fresh per call, so nothing else writes this file.
+	await fs.promises.writeFile(filePath, prompt, { encoding: "utf-8", mode: 0o600 });
 	return { dir: tmpDir, filePath };
 }
 
@@ -746,8 +745,6 @@ export default function (pi: ExtensionAPI) {
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 
-			const mdTheme = getMarkdownTheme();
-
 			const renderDisplayItems = (items: DisplayItem[], limit?: number) => {
 				const toShow = limit ? items.slice(-limit) : items;
 				const skipped = limit && items.length > limit ? items.length - limit : 0;
@@ -798,7 +795,7 @@ export default function (pi: ExtensionAPI) {
 						}
 						if (finalOutput) {
 							container.addChild(new Spacer(1));
-							container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
+							container.addChild(new Text(finalOutput.trim(), 0, 0));
 						}
 					}
 					const usageStr = formatUsageStats(r.usage, r.model);
@@ -880,10 +877,10 @@ export default function (pi: ExtensionAPI) {
 							}
 						}
 
-						// Show final output as markdown
+						// Show final output as plain text
 						if (finalOutput) {
 							container.addChild(new Spacer(1));
-							container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
+							container.addChild(new Text(finalOutput.trim(), 0, 0));
 						}
 
 						const stepUsage = formatUsageStats(r.usage, r.model);
@@ -965,10 +962,10 @@ export default function (pi: ExtensionAPI) {
 							}
 						}
 
-						// Show final output as markdown
+						// Show final output as plain text
 						if (finalOutput) {
 							container.addChild(new Spacer(1));
-							container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
+							container.addChild(new Text(finalOutput.trim(), 0, 0));
 						}
 
 						const taskUsage = formatUsageStats(r.usage, r.model);

@@ -5,13 +5,16 @@
  * multiline notification showing:
  *   Line 1: working directory path
  *   Line 2: session name (if set)
- *   Line 3: LLM-generated summary of what the agent did
+ *   Line 3: truncated summary of what the agent did
  *
  * The notification title is the tmux session:window.pane identifier (when
  * available) or "pi".
  *
- * Response summarization uses the tiny model configured in settings.json
- * under the `tinyModel` key.
+ * The summary used to come from a cheap side-model, which needed pi-ai's
+ * `complete()` — a value import that stopped this extension loading outside the
+ * agent-cortex checkout (see test/pi-extensions-load.test.mjs). The truncation
+ * that already served as its fallback is now the only path; `maxSummaryLength`
+ * still sets its length.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -19,11 +22,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 
-import {
-  loadTinyModelConfig,
-  parseModelString,
-  summarizeResponseText,
-} from "../lib/tiny-model.js";
+import { loadTinyModelConfig } from "../lib/tiny-model.js";
 import type { TinyModelConfig } from "../lib/tiny-model.js";
 
 /* ── Context helpers ── */
@@ -215,20 +214,10 @@ export default function (pi: ExtensionAPI) {
     const sessionName = pi.getSessionName();
     if (sessionName) sections.push(sessionName);
 
-    // Section 2: LLM-generated summary of the assistant's response
+    // Section 2: truncated summary of the assistant's response
     const responseText = extractAssistantText(event.messages);
     if (responseText) {
-      try {
-        const summary = await summarizeResponseWithFallback(
-          ctx,
-          responseText,
-          config,
-        );
-        sections.push(summary);
-      } catch {
-        // If summary fails (e.g. config not loaded), just show raw text
-        sections.push(responseText.slice(0, config?.maxSummaryLength ?? 100).replace(/\s+/g, ' ').trim());
-      }
+      sections.push(truncateToOneLine(responseText, config?.maxSummaryLength ?? 100));
     }
 
     // Desktop notification
@@ -237,45 +226,6 @@ export default function (pi: ExtensionAPI) {
     // Terminal bell (tmux catches this via monitor-bell + visual-bell)
     ringBell();
   });
-}
-
-/**
- * Summarize response text using the configured tiny model, falling back
- * to simple truncation if the LLM call fails or is disabled.
- */
-async function summarizeResponseWithFallback(
-  ctx: any,
-  responseText: string,
-  config: TinyModelConfig,
-): Promise<string> {
-  if (!config.enabled) {
-    return truncateToOneLine(responseText, config.maxSummaryLength);
-  }
-
-  try {
-    const { provider, id } = parseModelString(config.model);
-    const model = ctx.modelRegistry.find(provider, id);
-    if (!model) {
-      return truncateToOneLine(responseText, config.maxSummaryLength);
-    }
-
-    const { apiKey, headers } =
-      await ctx.modelRegistry.getApiKeyAndHeaders(model);
-
-    const summary = await summarizeResponseText(
-      model,
-      apiKey,
-      headers,
-      responseText,
-      config.maxSummaryLength,
-    );
-
-    if (summary) return summary;
-  } catch (err) {
-    console.warn("[notify] LLM summary failed, falling back:", err);
-  }
-
-  return truncateToOneLine(responseText, config.maxSummaryLength);
 }
 
 /**

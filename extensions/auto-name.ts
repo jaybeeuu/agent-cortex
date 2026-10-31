@@ -1,30 +1,29 @@
 /**
- * Auto-name sessions using a tiny side-agent LLM.
+ * Auto-name sessions from the first user prompt.
  *
- * On the first user prompt of a new session, calls a cheap configured model
- * (default: opencode/mimo-v2.5-free) to generate a concise session title,
- * then sets it via pi.setSessionName(). Falls back to simple truncation if
- * the LLM call fails.
+ * On the first prompt of a new session, names the session with a trimmed
+ * version of that prompt, then sets it via pi.setSessionName(). Existing names
+ * (set via --name or /name) are never overwritten.
+ *
+ * The name used to come from a cheap side-model, which needed pi-ai's
+ * `complete()` — a value import that stopped this extension loading outside the
+ * agent-cortex checkout (see test/pi-extensions-load.test.mjs). The truncation
+ * that already served as its fallback is now the only path; `tinyModel.enabled`
+ * still turns naming off entirely.
  *
  * Config (in settings.json under `tinyModel`):
  * ```json
  * {
  *   "tinyModel": {
- *     "model": "opencode/mimo-v2.5-free",
+ *     "enabled": true,
  *     "maxNameLength": 50
  *   }
  * }
  * ```
- *
- * Existing names (set via --name or /name) are never overwritten.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  loadTinyModelConfig,
-  parseModelString,
-  generateNameFromPrompt,
-} from "./lib/tiny-model.js";
+import { loadTinyModelConfig } from "./lib/tiny-model.js";
 import type { TinyModelConfig } from "./lib/tiny-model.js";
 
 export default function (pi: ExtensionAPI) {
@@ -41,7 +40,7 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("input", async (event, ctx) => {
+  pi.on("input", async (event, _ctx) => {
     if (!config.enabled || hasNamed) return;
     if (event.source === "rpc") return;
     if (pi.getSessionName()) {
@@ -51,46 +50,14 @@ export default function (pi: ExtensionAPI) {
     if (!event.text?.trim()) return;
 
     hasNamed = true;
-
-    // Fire the LLM call asynchronously — don't block the agent
-    (async () => {
-      try {
-        const { provider, id } = parseModelString(config.model);
-        const model = ctx.modelRegistry.find(provider, id);
-        if (!model) {
-          // Model not found; fall back to truncation
-          fallbackName(event.text, config.maxNameLength, pi);
-          return;
-        }
-
-        const { apiKey, headers } =
-          await ctx.modelRegistry.getApiKeyAndHeaders(model);
-
-        const name = await generateNameFromPrompt(
-          model,
-          apiKey,
-          headers,
-          event.text,
-          config.maxNameLength,
-        );
-
-        if (name) {
-          pi.setSessionName(name);
-        } else {
-          fallbackName(event.text, config.maxNameLength, pi);
-        }
-      } catch (err) {
-        console.warn("[auto-name] LLM call failed, falling back:", err);
-        fallbackName(event.text, config.maxNameLength, pi);
-      }
-    })();
+    nameFromPrompt(event.text, config.maxNameLength, pi);
   });
 }
 
 /**
- * Fallback: truncate the first line of the prompt to use as a session name.
+ * Name the session with the first line of the prompt, truncated to `maxLength`.
  */
-function fallbackName(
+function nameFromPrompt(
   text: string,
   maxLength: number,
   pi: ExtensionAPI,

@@ -405,10 +405,13 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
 /**
  * Copy the repo's extensions/ tree into the staged package verbatim.
  *
- * The extensions import `@earendil-works/*`, which pi's loader supplies, so no
- * dependency tree is needed. `node_modules` (pnpm workspace links) and symlinks
- * are never copied: the staged package owns its dependencies and must contain
- * real files only.
+ * The extensions import nothing from pi's runtime — only `import type`, which is
+ * erased, and the one module pi documents as host-provided (`typebox`) — so no
+ * dependency tree of their own is needed. A value import of `@earendil-works/*`
+ * would only resolve where pnpm installed it and would break the staged package
+ * everywhere else, which test/pi-extensions-load.test.mjs guards. `node_modules`
+ * (pnpm workspace links) and symlinks are never copied: the staged package owns
+ * its dependencies and must contain real files only.
  * @param {{ root: string, output: string, dryRun: boolean }} options
  * @returns {Promise<{ files: number, dir: string }>}
  */

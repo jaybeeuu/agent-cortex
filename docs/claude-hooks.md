@@ -40,9 +40,9 @@ itself and user-preferences.md is a pi-harness document.
 
 ## `auto-name.ts` → Reject (built-in)
 
-pi names sessions via a tiny side-model call on the first prompt. Claude Code
-already auto-generates descriptive session titles (visible in `claude --resume`;
-a background model request in interactive and headless/SDK sessions) and supports
+pi names sessions by truncating the first prompt. Claude Code already
+auto-generates descriptive session titles (visible in `claude --resume`; a
+background model request in interactive and headless/SDK sessions) and supports
 explicit naming via `--name` / `/rename`. A hook-based title generator would
 duplicate platform behaviour with an extra LLM call — rejected. (SessionStart
 hooks can also set `sessionTitle` in JSON output for the rare case where a

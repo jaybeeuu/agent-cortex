@@ -201,7 +201,7 @@ The staged package contains:
 | `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`; the version tracks the package |
 | `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
 | `skills/` | token-substituted skill copies (real files, never symlinks) |
-| `extensions/` | copy of the repo `extensions/` tree |
+| `extensions/` | copy of the repo `extensions/` tree — imports nothing from pi's runtime except the host-aliased `typebox`, so pi loads it from any directory |
 | `token-map.json` | the token map `agent-modes` reads from the package root |
 | `node_modules/` | the required third-party pi packages and their transitive closure |
 

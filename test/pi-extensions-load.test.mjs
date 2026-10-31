@@ -24,6 +24,16 @@
 // for extensions (pi's docs/packages.md) and aliases it in every loader, so it is
 // the one bare import an extension may make. Nothing else is supplied — an import
 // of pi itself must fail.
+//
+// The harness must not depend on this machine having `typebox`: the repo declares
+// no such dependency, so the package resolves here only through a global pi
+// install, and a bare runner has nothing but its `pnpm install` tree. The loader
+// therefore prefers the real package when it resolves and otherwise aliases
+// `typebox` to a local stub with exactly the members the extensions call (see
+// TYPEBOX_STUB). The stub proves the import resolves and the extension's module
+// body runs; it does not validate a schema or render JSON Schema, so a wrong
+// argument to a `Type.*` call would pass here. The acceptance rule is about which
+// imports an extension makes, and both the static scan and this load prove that.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -45,13 +55,82 @@ const require = createRequire(import.meta.url);
 const PI_RUNTIME = "@earendil-works/";
 
 /**
+ * Which `typebox` the loader supplies: `auto` prefers the real package and falls
+ * back to the stub, `package` requires the real one, `stub` forces the stub.
+ * @typedef {"auto" | "package" | "stub"} TypeboxMode
+ */
+
+/**
+ * The `typebox` members the extensions call while building their tool schemas,
+ * taken from the sources (`grep -rn "Type\." extensions/`): `Object`, `String`,
+ * `Number`, `Boolean`, `Array`, `Optional`, `Union`, `Literal`. Each returns a
+ * plain descriptor — enough for the module body to run, no validation.
+ */
+const TYPEBOX_STUB = `const schema = (kind, args) => ({ kind, args });
+
+export const Type = {
+  Object: (...args) => schema("object", args),
+  String: (...args) => schema("string", args),
+  Number: (...args) => schema("number", args),
+  Boolean: (...args) => schema("boolean", args),
+  Array: (...args) => schema("array", args),
+  Optional: (...args) => schema("optional", args),
+  Union: (...args) => schema("union", args),
+  Literal: (...args) => schema("literal", args),
+};
+`;
+
+/**
+ * The real `typebox` entry point, when this machine has one.
+ * @returns {string | undefined}
+ */
+function resolveTypebox() {
+  try {
+    return require.resolve("typebox");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The `typebox` module to alias, written into `dir` when the stub is chosen.
+ * @param {string} dir
+ * @param {TypeboxMode} mode
+ * @returns {Promise<string>} File URL of the module
+ */
+async function typeboxModule(dir, mode) {
+  const resolved = mode === "stub" ? undefined : resolveTypebox();
+  if (resolved !== undefined) return pathToFileURL(resolved).href;
+  if (mode === "package") throw new Error("typebox is not resolvable — cannot prove the package path");
+
+  const stubPath = join(dir, "typebox-stub.mjs");
+  await writeFile(stubPath, TYPEBOX_STUB);
+  return pathToFileURL(stubPath).href;
+}
+
+/**
+ * The `typebox` sources this machine can prove. The stub always runs: it is the
+ * fallback a bare runner uses. The real package is added only where it resolves,
+ * so a local run proves both paths and CI proves the one it has.
+ * @returns {TypeboxMode[]}
+ */
+function typeboxModes() {
+  /** @type {TypeboxMode[]} */
+  const modes = ["auto"];
+  if (resolveTypebox() !== undefined) modes.push("package");
+  modes.push("stub");
+  return modes;
+}
+
+/**
  * Write the loader that imports each extension entrypoint and reports which ones
  * throw, plus the resolve hook that supplies `typebox` the way pi does.
+ * @param {TypeboxMode} [mode]
  * @returns {Promise<string>} Path of the loader module
  */
-async function writeLoader() {
+async function writeLoader(mode = "auto") {
   const dir = await mkdtemp(join(tmpdir(), "pi-load-"));
-  const typeboxEntry = pathToFileURL(require.resolve("typebox")).href;
+  const typeboxEntry = await typeboxModule(dir, mode);
 
   await writeFile(
     join(dir, "host-modules.mjs"),
@@ -90,10 +169,11 @@ process.stdout.write(JSON.stringify({ entries: entries.length, failures }));
 /**
  * Load every entrypoint from a temp directory outside the repo.
  * @param {string[]} entries Absolute entrypoint paths
+ * @param {TypeboxMode} [mode] How to supply `typebox`
  * @returns {Promise<{ entries: number, failures: { entry: string, message: string }[] }>}
  */
-async function loadEntries(entries) {
-  const loaderPath = await writeLoader();
+async function loadEntries(entries, mode = "auto") {
+  const loaderPath = await writeLoader(mode);
   const tsxEsm = pathToFileURL(require.resolve("tsx/esm")).href;
   const cwd = await mkdtemp(join(tmpdir(), "pi-load-cwd-"));
 
@@ -283,8 +363,14 @@ describe("staged pi package — extension loading", () => {
       const entries = await discoverInDir(join(output, "extensions"));
 
       assert.ok(entries.length >= 8, `expected every staged extension, got ${entries.join(", ")}`);
-      const { failures } = await loadEntries(entries);
-      assert.deepEqual(failures, [], "every staged extension must load on its own");
+      for (const typebox of typeboxModes()) {
+        const { failures } = await loadEntries(entries, typebox);
+        assert.deepEqual(
+          failures,
+          [],
+          `every staged extension must load on its own (typebox: ${typebox})`,
+        );
+      }
     } finally {
       await rm(dirname(output), { recursive: true, force: true });
     }

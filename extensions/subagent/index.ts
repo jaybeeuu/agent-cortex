@@ -23,6 +23,11 @@ import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 import { waitForAgents } from "./wait.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "./components.ts";
+// `typebox` is the one bare runtime import an extension may make: pi documents
+// it as host-provided and its loader aliases it (pi's docs/packages.md), so it
+// resolves in the staged package too. Every `@earendil-works/*` import here is
+// `import type`, which is erased; a value import of pi's runtime breaks the
+// package outside this checkout (test/pi-extensions-load.test.mjs).
 import { Type } from "typebox";
 
 

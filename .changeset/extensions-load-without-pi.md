@@ -13,5 +13,11 @@ transcript components are now local, and the extensions declare no peer dependen
 callers lose their model-backed behaviour, since an extension has no completion API of its own:
 `auto-name` names a session from its first prompt truncated (the fallback it already had) and
 `notify` summarises with that same truncation. Subagent output renders as plain text instead of
-markdown. `test/pi-extensions-load.test.mjs` stages the package and loads every extension from a
-temp directory with pi absent, so a re-introduced `@earendil-works/*` import fails the suite.
+markdown.
+
+One bare runtime import remains: `typebox`. pi documents it as a host-provided module for
+extensions and aliases it in its loader, so it resolves in the staged package. Everything imported
+from `@earendil-works/*` is `import type`, which is erased. `test/pi-extensions-load.test.mjs`
+stages the package and loads every extension from a temp directory with pi absent. A static scan in
+the same file then rejects any value import from `@earendil-works/*` — including an unused one, which
+tsx elides before the loader sees it.

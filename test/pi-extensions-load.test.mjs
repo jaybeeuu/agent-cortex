@@ -14,6 +14,12 @@
 // a temp directory outside the repo with pi absent, so a re-introduced
 // `@earendil-works/*` value import turns the suite red.
 //
+// The load case alone is not enough: tsx/esbuild elides a value import that
+// nothing references, so an unused import never reaches the loader. The static
+// scan below reads every extension source and rejects a value import of pi's
+// runtime whether or not it is referenced — the acceptance rule is about the
+// source, not about what the bundler happens to emit.
+//
 // `typebox` is supplied to the loader: pi documents it as a host-provided module
 // for extensions (pi's docs/packages.md) and aliases it in every loader, so it is
 // the one bare import an extension may make. Nothing else is supplied — an import
@@ -31,6 +37,12 @@ import { installPi } from "../bin/installers/pi.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
+
+/**
+ * The package prefix no extension may value-import. `typebox` is not under it:
+ * pi supplies that module to extensions, so it is allowed.
+ */
+const PI_RUNTIME = "@earendil-works/";
 
 /**
  * Write the loader that imports each extension entrypoint and reports which ones
@@ -110,6 +122,87 @@ async function loadEntries(entries) {
 }
 
 /**
+ * Every extension source file under `dir`, recursively, skipping node_modules.
+ * @param {string} dir
+ * @returns {Promise<string[]>}
+ */
+async function sourceFiles(dir) {
+  /** @type {string[]} */
+  const files = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name !== "node_modules") files.push(...(await sourceFiles(path)));
+    } else if (/\.(ts|tsx)$/.test(entry.name)) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+/**
+ * Static import/export statements and their module specifiers. The clause may
+ * span lines (a multi-line named import) but never a semicolon, so each match is
+ * one statement.
+ */
+const STATIC_FROM = /^[ \t]*(?:import|export)\b([^;]*?)\bfrom\s*["']([^"']+)["']/gm;
+
+/** Side-effect imports (`import "x"`), dynamic imports and requires: always value. */
+const BARE_LOADS = [/^[ \t]*import\s*["']([^"']+)["']/gm, /\b(?:import|require)\s*\(\s*["']([^"']+)["']\s*\)/g];
+
+/**
+ * Whether an import clause binds no runtime value: `import type …`, or a named
+ * list whose every specifier is inline `type` (both are erased).
+ * @param {string} clause
+ * @returns {boolean}
+ */
+function isTypeOnly(clause) {
+  const trimmed = clause.trim();
+  if (/^type\s/.test(trimmed)) return true;
+  const named = /^\{([\s\S]*)\}$/.exec(trimmed);
+  if (named === null) return false;
+  const specifiers = named[1]
+    .split(",")
+    .map((specifier) => specifier.trim())
+    .filter(Boolean);
+  return (
+    specifiers.length > 0 &&
+    specifiers.every((specifier) => /^type\s+[\w$]+(?:\s+as\s+[\w$]+)?$/.test(specifier))
+  );
+}
+
+/**
+ * Every value import of pi's runtime in the extension sources, as
+ * `file:line specifier`. `extensions/` is the shipped surface: the staged package
+ * copies it verbatim, so a violation here is a violation after install.
+ * @returns {Promise<string[]>}
+ */
+async function runtimeImports() {
+  /** @type {string[]} */
+  const violations = [];
+  for (const file of await sourceFiles(join(REPO_ROOT, "extensions"))) {
+    const content = await readFile(file, "utf-8");
+    /** @param {number} index @returns {number} */
+    const lineOf = (index) => content.slice(0, index).split("\n").length;
+
+    for (const match of content.matchAll(STATIC_FROM)) {
+      const [, clause, specifier] = match;
+      if (!specifier.startsWith(PI_RUNTIME)) continue;
+      if (isTypeOnly(clause)) continue;
+      violations.push(`${file}:${lineOf(match.index)} ${specifier}`);
+    }
+
+    for (const pattern of BARE_LOADS) {
+      for (const match of content.matchAll(pattern)) {
+        if (!match[1].startsWith(PI_RUNTIME)) continue;
+        violations.push(`${file}:${lineOf(match.index)} ${match[1]}`);
+      }
+    }
+  }
+  return violations;
+}
+
+/**
  * The entrypoints a directory contributes, per pi's discovery rules: direct
  * `*.ts`/`*.js` files, and each subdirectory's manifest-declared extensions or
  * its `index.ts`/`index.js`. One level deep, no recursion.
@@ -169,6 +262,18 @@ async function exists(path) {
     }
   }
 }
+
+describe("extension sources — runtime coupling", () => {
+  it("value-imports nothing from pi's runtime", async () => {
+    const violations = await runtimeImports();
+
+    assert.deepEqual(
+      violations,
+      [],
+      "an extension must not value-import @earendil-works/*; pi supplies only typebox",
+    );
+  });
+});
 
 describe("staged pi package — extension loading", () => {
   it("loads every agent-cortex extension with pi absent", async () => {

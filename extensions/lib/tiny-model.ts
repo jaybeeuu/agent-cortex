@@ -15,11 +15,13 @@
  *
  * The model call itself is gone. It went through pi-ai's `complete()`, a value
  * import of pi's runtime, and that import stopped the extension loading outside
- * the agent-cortex checkout (see test/pi-extensions-load.test.mjs). An extension
- * has no model API of its own — pi's ExtensionAPI exposes the registry and the
- * active model, not a completion call — so both callers fall back to the
- * truncation they already used when the model failed. The `model` key is no
- * longer read and is ignored if present.
+ * the agent-cortex checkout (see test/pi-extensions-load.test.mjs). The
+ * ExtensionAPI promises no completion call. Newer hosts (pi 1.4.0) expose
+ * `ModelRegistry.complete`, but the installed host (0.73.1) does not. Calling it
+ * would need an untyped cast to a method that exists on one version only.
+ * Extensions also make no internal LLM calls (AGENTS.md), so this feature stays
+ * off. Both callers fall back to the truncation they already used when the model
+ * failed. The `model` key is no longer read and is ignored if present.
  */
 
 import { homedir } from "node:os";

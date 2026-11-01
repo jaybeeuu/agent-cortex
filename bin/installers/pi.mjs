@@ -815,6 +815,7 @@ function reportDanglingSources(dangling, settingsPath, warn) {
   for (const { source, path } of dangling) {
     warn(
       `pi package source "${source}" cannot be identified: ${path} does not exist. ` +
+        `pi loads nothing from it and still lists it, so everything it was registered for is missing. ` +
         `It is left configured in ${settingsPath} — a missing path may be temporarily absent. ` +
         `Drop it with:\n  pi remove ${path}\n` +
         `(pass the resolved path: pi resolves a relative remove argument against the current directory)`,

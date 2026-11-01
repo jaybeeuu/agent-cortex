@@ -357,6 +357,7 @@ describe("registerPi", () => {
       const reported = warnings.join("\n");
       assert.ok(reported.includes(pruned), `names the path that no longer exists: ${reported}`);
       assert.match(reported, /cannot be identified/, "says why it leaves the entry alone");
+      assert.match(reported, /pi loads nothing from it/, "says what the user loses while the entry stays");
       assert.ok(
         reported.includes(`pi remove ${pruned}`),
         "gives the absolute path as the remove argument, so it matches from any directory",

@@ -56,8 +56,8 @@ If the verdict is FAIL, report each finding as a required change. Do not proceed
 
 When running within a ralph review pipeline, the outcome is communicated through the
 `---REPORT---` block that ralph parses — set `OUTCOME: BLOCKED` in that block and list each
-finding under `BLOCKING_ISSUES` (see the review template at
-`skills/planning/create-task/templates/review.md`).
+finding under `BLOCKING_ISSUES` with its file and line (see the review template in the
+`create-task` skill's `templates/review.md`).
 
 ## Red Flags
 

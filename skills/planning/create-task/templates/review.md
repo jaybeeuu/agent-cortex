@@ -23,7 +23,9 @@ verdict is FAIL, set `OUTCOME: BLOCKED` immediately and list each finding under
 description and project conventions. Only flag genuine correctness issues or clear deviations
 from stated requirements — not stylistic preferences.
 
-End your response with a ---REPORT--- block:
+End your response with a ---REPORT--- block. The `run-pipeline-stage` skill's
+`prompts/stage-runner.md` holds the authoritative REPORT contract — if this block and that
+prompt differ, follow the prompt and correct this template.
 ---REPORT---
 BEAD_ID: <id>
 STAGE_COMPLETED: review
@@ -33,7 +35,7 @@ COMMIT: <sha, or "none" if this stage added no commit>
 PUSHED: <yes|no>
 PR: none
 OUTCOME: <SUCCESS|BLOCKED>
-BLOCKING_ISSUES:         ← include only if OUTCOME is BLOCKED
-1. <required change>
-2. <required change>
+BLOCKING_ISSUES:         ← include only if OUTCOME is BLOCKED; one numbered line per finding
+1. <path:line — what is wrong and what to fix>
+2. <path:line — what is wrong and what to fix>
 ---

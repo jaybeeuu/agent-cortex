@@ -23,7 +23,6 @@
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Key } from "@earendil-works/pi-tui";
 import { discoverAgents, DEFAULT_TOOLS, type AgentDef } from "./discover.ts";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 
@@ -196,8 +195,10 @@ export default function agentModesExtension(pi: ExtensionAPI): void {
       },
     });
 
-    // Ctrl+Shift+A to cycle agents (A = Agent)
-    pi.registerShortcut(Key.ctrlShift("a"), {
+    // Ctrl+Shift+A to cycle agents (A = Agent). Spelled out rather than built
+    // with pi-tui's Key helper: a value import of pi-tui stops the extension
+    // loading outside the agent-cortex checkout (test/pi-extensions-load.test.mjs).
+    pi.registerShortcut("ctrl+shift+a", {
       description: "Next agent mode",
       handler: async (ctx) => {
         const next = (activeAgentIndex + 1) % (agents.length + 1);

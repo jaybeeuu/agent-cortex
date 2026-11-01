@@ -7,7 +7,7 @@ Delegate tasks to specialized subagents with isolated context windows.
 - **Isolated context**: Each subagent runs in a separate `pi` process
 - **Streaming output**: See tool calls and progress as they happen
 - **Parallel streaming**: All parallel tasks stream updates simultaneously
-- **Markdown rendering**: Final output rendered with proper formatting (expanded view)
+- **Plain-text output**: Final output wrapped to the terminal width (expanded view)
 - **Usage tracking**: Shows turns, tokens, cost, and context usage per agent
 - **Abort support**: Ctrl+C propagates to kill subagent processes
 
@@ -125,7 +125,7 @@ pending `wait_for_agents` returns immediately with whatever is known so far.
 **Expanded view** (Ctrl+O):
 - Full task text
 - All tool calls with formatted arguments
-- Final output rendered as Markdown
+- Final output rendered as width-wrapped plain text
 - Per-task usage (for chain/parallel)
 
 **Parallel mode streaming**:

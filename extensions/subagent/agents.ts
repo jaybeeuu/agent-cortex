@@ -3,9 +3,10 @@
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { parseFrontmatter } from "./frontmatter.ts";
 
 export type AgentScope = "user" | "project" | "both";
 
@@ -143,6 +144,21 @@ function isRenderedAgentsTree(agentsDir: string): boolean {
 		return false;
 	}
 	return !entries.some((entry) => entry.isDirectory() && fs.existsSync(path.join(agentsDir, entry.name, "agent.md")));
+}
+
+/**
+ * pi's user config directory, which holds pi's own `agents/` directory.
+ *
+ * Read here rather than through `getAgentDir()` from
+ * `@earendil-works/pi-coding-agent`: a value import of pi's runtime makes this
+ * extension fail to load outside the agent-cortex checkout
+ * (test/pi-extensions-load.test.mjs). Same contract — `PI_CODING_AGENT_DIR`
+ * wins when set, otherwise `~/.pi/agent`.
+ */
+function getAgentDir(): string {
+	const override = process.env.PI_CODING_AGENT_DIR;
+	if (override) return path.resolve(override.replace(/^~(?=$|[\\/])/, os.homedir()));
+	return path.join(os.homedir(), ".pi", "agent");
 }
 
 /**

@@ -4,20 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test --import tsx/esm wait.test.ts agents.test.ts",
+    "test": "node --test --import tsx/esm wait.test.ts agents.test.ts frontmatter.test.ts components.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^0.78.1",
     "@earendil-works/pi-ai": "^0.78.1",
     "@earendil-works/pi-coding-agent": "^0.78.1",
-    "@earendil-works/pi-tui": "^0.78.1",
     "@types/node": "^22.0.0",
     "tsx": "^4.0.0",
     "typebox": "^1.1.38",
     "typescript": "^5.0.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.78.1"
+    "typebox": "*"
   }
 }

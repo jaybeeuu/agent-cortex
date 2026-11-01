@@ -20,6 +20,8 @@
 // `failLoad` simulates a plugin whose commands succeed but whose manifest never
 // loads: install/update exit 0 and record the plugin at version "unknown" with
 // the given error, exactly as a real Claude Code does for an invalid manifest.
+// `silentInstall` simulates an install that exits 0 without registering
+// anything, so the plugin never appears in `plugin list --json`.
 //
 // Written async throughout (the fake is a child process and the helper's own
 // I/O is test code) — the repo's check-no-sync lint scans test/ for *Sync.
@@ -46,6 +48,7 @@ const FAKE_CLAUDE_SCRIPT = [
   "  const failWhen = await fs.readFile(failWhenFile, 'utf8').catch(() => null);",
   "  if (failWhen && joined.includes(failWhen)) process.exit(1);",
   "  const failLoad = await fs.readFile(path.join(dir, 'failLoad.txt'), 'utf8').catch(() => null);",
+  "  const silentInstall = await fs.readFile(path.join(dir, 'silentInstall.txt'), 'utf8').catch(() => null);",
   "",
   "  if (argv[0] !== 'plugin') process.exit(0);",
   "",
@@ -103,6 +106,7 @@ const FAKE_CLAUDE_SCRIPT = [
   "  }",
   "",
   "  if (sub === 'install') {",
+  "    if (silentInstall) process.exit(0);",
   "    const id = rest[0];",
   "    if (!state.installed.some((i) => i.id === id)) {",
   "      const [name, market] = id.split('@');",
@@ -137,13 +141,14 @@ const FAKE_CLAUDE_SCRIPT = [
 
 /** Create a stateful fake `claude` binary in `dir`.
  * @param {string} dir  Directory to hold bin, calls.log, state.json
- * @param {{ failWhen?: string|null, failLoad?: string|null }} [options]
+ * @param {{ failWhen?: string|null, failLoad?: string|null, silentInstall?: boolean }} [options]
  *   `failWhen`: invocations whose argv contains the substring exit 1.
  *   `failLoad`: install/update succeed but record the plugin at version
  *   "unknown" carrying this error, as a real CLI does for a manifest it cannot
  *   load.
+ *   `silentInstall`: install exits 0 without registering the plugin.
  * @returns {Promise<{ bin: string, log: string, state: string }>} */
-export async function makeFakeClaude(dir, { failWhen = null, failLoad = null } = {}) {
+export async function makeFakeClaude(dir, { failWhen = null, failLoad = null, silentInstall = false } = {}) {
   const bin = join(dir, "claude");
   const log = join(dir, "calls.log");
   const state = join(dir, "state.json");
@@ -152,6 +157,7 @@ export async function makeFakeClaude(dir, { failWhen = null, failLoad = null } =
   await writeFile(state, JSON.stringify({ markets: [], installed: [] }));
   if (failWhen) await writeFile(join(dir, "failWhen.txt"), failWhen);
   if (failLoad) await writeFile(join(dir, "failLoad.txt"), failLoad);
+  if (silentInstall) await writeFile(join(dir, "silentInstall.txt"), "1");
   return { bin, log, state };
 }
 

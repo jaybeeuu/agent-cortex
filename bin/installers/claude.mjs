@@ -55,7 +55,9 @@
 // exiting non-zero only with --require-register. After the commands run,
 // `claude plugin list --json` is re-read: a plugin Claude Code reports as failed
 // to load fails the install with its validation error, because those commands
-// exit 0 on a manifest they reject.
+// exit 0 on a manifest they reject. When that list cannot be read, or omits the
+// plugin, the load state is unconfirmed and the installer warns instead of
+// claiming success.
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
@@ -969,9 +971,10 @@ async function installedPluginVersion(claudeBin, pluginId) {
  * Verdict of `claude plugin list --json` on whether `pluginId` actually loads.
  * An entry carries `errors` when the materialised manifest could not be loaded
  * (the CLI then also reports version "unknown") — a broken plugin that every
- * install command still exits 0 on. Missing or unexpected output yields
- * `unknown`: no verdict, rather than a false failure.
- * @typedef {{ verdict: "unknown" } | { verdict: "loaded" } | { verdict: "failed", errors: string[] }} PluginLoadVerdict
+ * install command still exits 0 on. Unreadable or unexpected output yields
+ * `unknown`, and a readable list that omits the plugin yields `not-listed`:
+ * both are no verdict, never a false failure.
+ * @typedef {{ verdict: "unknown" } | { verdict: "not-listed" } | { verdict: "loaded" } | { verdict: "failed", errors: string[] }} PluginLoadVerdict
  */
 
 /**
@@ -1003,7 +1006,7 @@ async function pluginLoadVerdict(claudeBin, pluginId) {
   }
   if (!Array.isArray(entries)) return { verdict: "unknown" };
   const entry = entries.find((/** @type {any} */ e) => e?.id === pluginId);
-  if (entry === undefined) return { verdict: "unknown" };
+  if (entry === undefined) return { verdict: "not-listed" };
   const errors = Array.isArray(entry.errors) ? stringValues(/** @type {unknown[]} */ (entry.errors)) : [];
   return errors.length > 0 ? { verdict: "failed", errors } : { verdict: "loaded" };
 }
@@ -1039,6 +1042,8 @@ async function pluginLoadVerdict(claudeBin, pluginId) {
  * reported as a success: the plugin commands exit 0 on an invalid manifest, so
  * the run throws with Claude's validation error (which names the manifest)
  * rather than leaving every skill and agent in the plugin silently unavailable.
+ * When that list cannot be read, or does not list the plugin, the load state is
+ * unconfirmed: the install warns and skips the success line.
  *
  * @param {object} options
  * @param {string} [options.root]            Marketplace root carrying .claude-plugin/…
@@ -1137,8 +1142,23 @@ export async function registerClaude({
         `every skill and agent in the plugin stays unavailable until the manifest loads; fix it and re-run`,
     );
   }
-  console.log(
-    `Installed — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,
-  );
+  // No verdict is not a success either: an unreadable list or a list that omits
+  // the plugin leaves its load state unconfirmed, so warn instead of claiming
+  // the plugin is installed and working.
+  if (load.verdict === "unknown") {
+    warn(
+      `could not read "${claudeBin} plugin list --json", so the plugin's load state is unconfirmed — ` +
+        `verify with "${claudeBin} plugin list" (restart Claude Code to apply)`,
+    );
+  } else if (load.verdict === "not-listed") {
+    warn(
+      `"${pluginId}" is not in "${claudeBin} plugin list --json" after registration, so it may not have registered — ` +
+        `verify with "${claudeBin} plugin list" (restart Claude Code to apply)`,
+    );
+  } else {
+    console.log(
+      `Installed — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,
+    );
+  }
   return summary;
 }

@@ -91,6 +91,9 @@ async function makeSweepTree() {
   await writeFiles(root, {
     "skills/engineering/tdd/SKILL.md": "---\nname: tdd\n---\n\nBody.\n",
     "skills/workflow/ralph/SKILL.md": "---\nname: ralph\n---\n\nBody.\n",
+    // Ships again at HEAD, so the root names it — its LEGACY_ORPHAN_SKILLS
+    // entry was dropped once it did.
+    "skills/productivity/migration/SKILL.md": "---\nname: migration\n---\n\nBody.\n",
     "agents/plan/agent.md": "# plan\n",
     "extensions/skill-stats/index.ts": "export default () => {};\n",
   });
@@ -197,7 +200,7 @@ describe("sweepLegacyPiUserDirs — a user's copy of a shipped name", () => {
 });
 
 describe("sweepLegacyPiUserDirs — skills", () => {
-  it("removes the skill copies inside the package's skill groups — including one it no longer ships — and keeps a skill of the user's own", async () => {
+  it("removes the copies of the skills the package ships and keeps a skill of the user's own", async () => {
     const tree = await makeSweepTree();
     try {
       await sweepTree(tree);
@@ -206,9 +209,24 @@ describe("sweepLegacyPiUserDirs — skills", () => {
       assert.equal(
         await pathExists(tree.path("skills/productivity/migration")),
         false,
-        "copy of a skill this package no longer ships removed",
+        "copy of a skill the package ships again is attributed from the package root",
       );
       assert.equal(await pathExists(tree.path("skills/mine/SKILL.md")), true, "user skill kept");
+    } finally {
+      await tree.cleanup();
+    }
+  });
+
+  it("keeps a skill copy the package does not ship, even inside a skill group it does", async () => {
+    const tree = await makeSweepTree();
+    try {
+      // `skills/productivity/migration` is no longer a named orphan: only the
+      // package root can attribute a copy, so an unshipped skill stays put.
+      await rm(join(tree.root, "skills", "productivity", "migration"), { recursive: true, force: true });
+
+      await sweepTree(tree);
+
+      assert.equal(await pathExists(tree.path("skills/productivity/migration/SKILL.md")), true, "unshipped copy kept");
     } finally {
       await tree.cleanup();
     }

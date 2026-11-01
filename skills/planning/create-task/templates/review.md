@@ -16,8 +16,8 @@ Log stage start, security scan result, review outcome, and stage complete (see P
 
 ## Instructions
 **First**, invoke the `review-security` skill and run the scan against the changes. If the
-verdict is FAIL, set `REVIEW_OUTCOME: CHANGES_REQUESTED` immediately and list each finding
-as a required change — do not proceed with the quality review.
+verdict is FAIL, set `OUTCOME: BLOCKED` immediately and list each finding under
+`BLOCKING_ISSUES` — do not proceed with the quality review.
 
 **Then**, review the implementation for correctness, quality, and alignment with the task
 description and project conventions. Only flag genuine correctness issues or clear deviations
@@ -26,11 +26,14 @@ from stated requirements — not stylistic preferences.
 End your response with a ---REPORT--- block:
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: reviewing
+STAGE_COMPLETED: review
 SUMMARY: <2–3 sentence summary of what you reviewed>
 FILES_CHANGED: none
-REVIEW_OUTCOME: <APPROVED|CHANGES_REQUESTED>
-CHANGES_REQUESTED:       ← include only if REVIEW_OUTCOME is CHANGES_REQUESTED
+COMMIT: <sha, or "none" if this stage added no commit>
+PUSHED: <yes|no>
+PR: none
+OUTCOME: <SUCCESS|BLOCKED>
+BLOCKING_ISSUES:         ← include only if OUTCOME is BLOCKED
 1. <required change>
 2. <required change>
 ---

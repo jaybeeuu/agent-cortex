@@ -229,6 +229,12 @@ A superseded raw-repo source that `pi remove` cannot drop fails the install
 reporting success would leave the two-source state registration exists to
 prevent. Nothing is installed on that path — remove the source by hand and re-run.
 
+A source whose path no longer exists, and a package the staged bundle ships that
+you also registered standalone, are reported and left configured: the installer
+never removes an entry you added. Each report gives the `pi remove` command that
+resolves it, with the resolved path, because `pi remove` resolves a relative
+argument against the current directory.
+
 Re-run `agent-cortex install pi` after every `git pull` to refresh the staged
 package; registration is already in place, so that re-run changes nothing in
 pi's settings. Verify with `pi list` and `pi config` (restart pi to apply).

@@ -59,8 +59,12 @@
 // pi's own user settings (settings.json, keybindings.json) are NOT written by
 // the installer: they are pi's config, not the package's, and `pi install` is
 // the command that owns them. They are READ (never written) to decide
-// install-vs-no-op and to find stale raw-repo sources; the committed pi/*.json
-// templates remain reference copies.
+// install-vs-no-op, to find stale raw-repo sources, and to report two states
+// the installer cannot resolve on its own: a configured source whose path no
+// longer exists (it cannot be identified, so only `pi remove <resolved path>`
+// can drop it), and a package the user also registers standalone that the
+// staged package bundles (both copies load, and their tools collide). The
+// committed pi/*.json templates remain reference copies.
 //
 // LEGACY SWEEP (sweepLegacyPiUserDirs): the pre-staged-model installer rendered
 // agents and skills into pi's own user directory (~/.pi/agent). Those copies are
@@ -198,13 +202,14 @@ const DEFAULT_WARN = (/** @type {string} */ msg) => console.warn(`[pi-installer]
 
 // Artifacts the pre-staged-model installer wrote into pi's own user directory
 // that the package root can no longer name on its own: the orphaned
-// `pipeline-worker` agent (an older render with no canonical source today) and
-// the `migration` skill (authored on a branch this epic does not carry).
+// `pipeline-worker` agent (an older render with no canonical source today).
 // Everything else is attributed from the package root — see
 // sweepLegacyPiUserDirs. Drop an entry once it is either shipped again (the
-// root-derived rules then cover it) or gone for good.
+// root-derived rules then cover it) or gone for good; `productivity/migration`
+// was dropped that way once the skill shipped again.
 const LEGACY_ORPHAN_AGENTS = ["pipeline-worker"];
-const LEGACY_ORPHAN_SKILLS = ["productivity/migration"];
+/** @type {string[]} Skills an older render shipped under a name the root no longer has. */
+const LEGACY_ORPHAN_SKILLS = [];
 
 // A path record some install flows leave in pi's user directory, listing the
 // copies they wrote there. It describes the same tree the sweep removes, so it
@@ -582,6 +587,11 @@ async function readDependencyNames(dir) {
  *     `git pull && agent-cortex install pi` is a true no-op)
  *   a source resolves to a raw agent-cortex checkout (this package's own name)
  *     → `pi remove` it first, so exactly one agent-cortex source stays
+ *   a local source whose path does not exist → reported with the command that
+ *     drops it (see reportDanglingSources)
+ *   a package the staged package bundles is also configured standalone →
+ *     reported with the copy that wins and the command that resolves it (see
+ *     reportBundledCollisions)
  *
  * A superseded source that survives its removal fails the run: pi would load
  * both sources side by side, so reporting success would leave the very state
@@ -615,7 +625,19 @@ export async function registerPi({
   const stagedPath = resolve(output);
   const rawPackageName = (await readJsonObject(join(root, "package.json")))?.name;
   const sources = await readConfiguredPackages(settingsPath);
-  const { registered, stale } = await classifySources({ sources, settingsPath, stagedPath, rawPackageName });
+  const { registered, stale, dangling } = await classifySources({ sources, settingsPath, stagedPath, rawPackageName });
+
+  // Both reports describe state this installer must not change on its own — a
+  // source it cannot identify, and a source the user configured deliberately —
+  // so they are reported on every path, including the no-op and dry-run ones.
+  reportDanglingSources(dangling, settingsPath, warn);
+  await reportBundledCollisions({
+    sources,
+    settingsPath,
+    stagedPath,
+    bundledPackages: await readBundledPackages(stagedPath),
+    warn,
+  });
 
   // The same sequence a human would run by hand, in the order the installer
   // runs it: drop the superseded sources, then register the staged package.
@@ -628,7 +650,7 @@ export async function registerPi({
   console.log(`Registering the staged pi package with pi (via ${piBin})…`);
 
   if (dryRun) {
-    console.log(`  would read: ${settingsPath} (install-vs-no-op and stale raw-repo sources)`);
+    console.log(`  would read: ${settingsPath} (install-vs-no-op, stale raw-repo sources, unusable sources)`);
     for (const { path } of stale) console.log(`  would run: ${piBin} remove ${path}`);
     if (registered) console.log(`  already configured: ${stagedPath}`);
     else console.log(`  would run: ${piBin} install ${stagedPath}`);
@@ -739,17 +761,23 @@ function resolveSourcePath(source, settingsDir) {
 
 /**
  * Split the configured local sources into "the staged package is already
- * registered" and "a raw agent-cortex checkout superseded by it". A source
- * whose directory is gone is left alone: a missing path cannot be told apart
- * from a temporarily absent one, and removing it could drop a package the user
- * still wants.
+ * registered", "a raw agent-cortex checkout superseded by it", and "a source
+ * whose path is not there".
+ *
+ * The third group is reported, never acted on: a missing path cannot be told
+ * apart from a temporarily absent one, and removing it could drop a package the
+ * user still wants. It also cannot be identified by name — reading the source
+ * package.json to recognise a raw agent-cortex checkout fails on a path that is
+ * not there — which is how such an entry survived a whole install unnoticed.
  * @param {{ sources: string[], settingsPath: string, stagedPath: string, rawPackageName: string | undefined }} options
- * @returns {Promise<{ registered: boolean, stale: { path: string }[] }>}
+ * @returns {Promise<{ registered: boolean, stale: { path: string }[], dangling: { source: string, path: string }[] }>}
  */
 async function classifySources({ sources, settingsPath, stagedPath, rawPackageName }) {
   const settingsDir = dirname(settingsPath);
   /** @type {{ path: string }[]} */
   const stale = [];
+  /** @type {{ source: string, path: string }[]} */
+  const dangling = [];
   let registered = false;
   for (const source of sources) {
     if (!isLocalSource(source)) continue;
@@ -758,10 +786,137 @@ async function classifySources({ sources, settingsPath, stagedPath, rawPackageNa
       registered = true;
       continue;
     }
+    // A local source may also be a single extension file, so absence means
+    // neither a directory nor a file is there.
+    if (!(await isDirectory(path)) && !(await isFile(path))) {
+      dangling.push({ source, path });
+      continue;
+    }
     if (rawPackageName === undefined) continue;
     if ((await readJsonObject(join(path, "package.json")))?.name === rawPackageName) stale.push({ path });
   }
-  return { registered, stale };
+  return { registered, stale, dangling };
+}
+
+/**
+ * Report a configured local source whose path does not exist, with the command
+ * that drops it.
+ *
+ * The source is named twice — as configured and as its resolved path — because
+ * pi matches a local source by its resolved path: a relative `pi remove`
+ * argument resolves against the CURRENT directory, not against the directory
+ * holding settings.json (pi 1.x, probed against 1.4.0), so the obvious
+ * `pi remove <as configured>` misses from anywhere else and leaves the entry
+ * stuck.
+ * @param {{ source: string, path: string }[]} dangling
+ * @param {string} settingsPath
+ * @param {Warn} warn
+ */
+function reportDanglingSources(dangling, settingsPath, warn) {
+  for (const { source, path } of dangling) {
+    warn(
+      `pi package source "${source}" cannot be identified: ${path} does not exist. ` +
+        `pi loads nothing from it and still lists it, so everything it was registered for is missing. ` +
+        `It is left configured in ${settingsPath} — a missing path may be temporarily absent. ` +
+        `Drop it with:\n  pi remove ${path}\n` +
+        `(pass the resolved path: pi 1.x resolves a relative remove argument against the current directory, not ${settingsPath})`,
+    );
+  }
+}
+
+/**
+ * Names of the third-party pi packages the staged package ships its own copy
+ * of, read from its generated manifest.
+ *
+ * Bundling stamps one `node_modules/<name>/…` resource path per package that
+ * ships pi resources (see resolvePiPackages), so the manifest names exactly the
+ * set that can load a second time beside a standalone registration. A package
+ * without a `pi` manifest key is only a module and cannot collide.
+ * @param {string} stagedPath
+ * @returns {Promise<string[]>}
+ */
+async function readBundledPackages(stagedPath) {
+  const manifest = await readJsonObject(join(stagedPath, "package.json"));
+  if (manifest === null) return [];
+  /** @type {Set<string>} */
+  const names = new Set();
+  for (const resource of [...asStringList(manifest.pi?.extensions), ...asStringList(manifest.pi?.skills)]) {
+    const match = /^node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(resource);
+    if (match !== null) names.add(match[1]);
+  }
+  return [...names];
+}
+
+/**
+ * Report every pi package the staged package bundles that the user also
+ * registers standalone.
+ *
+ * Staging copies each third-party pi package under the staged node_modules, so
+ * a standalone registration of the same package loads a second copy: pi keeps
+ * both — precedence follows load order on pi 1.x — and reports the overlap as
+ * tool-name, shortcut, and skill conflicts at startup, long after the install
+ * said it succeeded. The installer cannot drop the standalone entry (it is
+ * the user's configuration) and must not drop the bundle, so it says which
+ * copy wins and which command resolves it.
+ * @param {{ sources: string[], settingsPath: string, stagedPath: string,
+ *           bundledPackages: string[], warn: Warn }} options
+ * @returns {Promise<void>}
+ */
+async function reportBundledCollisions({ sources, settingsPath, stagedPath, bundledPackages, warn }) {
+  if (bundledPackages.length === 0) return;
+  const settingsDir = dirname(settingsPath);
+  const bundled = new Set(bundledPackages);
+  // pi 1.x loads configured sources in order, so the first one listed wins a
+  // shared tool name (probed against pi 1.4.0 — pi's behaviour, not a contract,
+  // so the message dates the claim); `-1` means the staged package is not
+  // configured at all, and `pi install` appends, so a standalone entry stays
+  // listed first.
+  const stagedIndex = sources.findIndex((source) => isLocalSource(source) && resolveSourcePath(source, settingsDir) === stagedPath);
+  for (const [index, source] of sources.entries()) {
+    const local = isLocalSource(source);
+    const path = local ? resolveSourcePath(source, settingsDir) : undefined;
+    if (path === stagedPath) continue;
+    const name = await configuredPackageName(source, settingsDir);
+    if (name === undefined || !bundled.has(name)) continue;
+
+    const bundledDir = join(stagedPath, "node_modules", name);
+    const standalone = path ?? source;
+    const winner =
+      stagedIndex === -1 || index < stagedIndex
+        ? `${standalone} takes precedence because it is listed first in ${settingsPath}`
+        : `the bundled copy at ${bundledDir} takes precedence because ${settingsPath} lists the staged package first`;
+    warn(
+      `pi loads "${name}" twice: standalone from ${standalone}, and bundled at ${bundledDir}. ` +
+        `The copies collide on tool names, extension shortcuts, and skills; on pi 1.x ${winner}. ` +
+        `The staged package always ships its own copy, so drop the standalone one with:\n` +
+        `  pi remove ${standalone}`,
+    );
+  }
+}
+
+/**
+ * The package name a configured source registers, or `undefined` when the
+ * installer cannot name it: an `npm:` spec by its name, a local source by the
+ * `name` in its package.json.
+ * @param {string} source
+ * @param {string} settingsDir
+ * @returns {Promise<string | undefined>}
+ */
+async function configuredPackageName(source, settingsDir) {
+  if (source.trim().startsWith("npm:")) return npmPackageName(source);
+  if (!isLocalSource(source)) return undefined;
+  return (await readJsonObject(join(resolveSourcePath(source, settingsDir), "package.json")))?.name;
+}
+
+/**
+ * `npm:@scope/name@^1.2.3` → `@scope/name`.
+ * @param {string} source
+ * @returns {string}
+ */
+function npmPackageName(source) {
+  const spec = source.trim().slice("npm:".length).trim();
+  const at = spec.indexOf("@", spec.startsWith("@") ? 1 : 0);
+  return at === -1 ? spec : spec.slice(0, at);
 }
 
 /**

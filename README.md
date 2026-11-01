@@ -233,6 +233,9 @@ Re-run `agent-cortex install pi` after every `git pull` to refresh the staged
 package; registration is already in place, so that re-run changes nothing in
 pi's settings. Verify with `pi list` and `pi config` (restart pi to apply).
 
+Refreshing the installed runtime after a release, and trying uncommitted work without
+overwriting it, are recorded in [`docs/dev-loop.md`](docs/dev-loop.md).
+
 ### Desktop notifications
 
 Desktop notifications are handled by the local `extensions/notify/` extension
@@ -270,7 +273,7 @@ instructions file, leaving the rest of that file — and a `.bak` copy — intac
 
 A plain `agent-cortex install claude` **materialises** the plugin into the home install
 root `~/.agent-cortex/claude` — **4 agents** (`strategy`, `plan`, `ralph-plan`, `ralph`),
-**29 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
+**34 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
 symlinks), `SessionStart` + `Notification` hooks, and 2 MCP servers — writes a marketplace
 manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude`, and
 registers it with Claude Code, and merges the committed `claude/settings.json` template into
@@ -306,8 +309,11 @@ claude --plugin-dir /tmp/agent-cortex-claude
 claude --plugin-dir /tmp/agent-cortex-claude plugin details agent-cortex
 ```
 
-`SKILL.md` edits are picked up live in that session; agent, hook, and MCP changes need
-`/reload-plugins`.
+Edits to the generated copy of a `SKILL.md` are picked up live; re-run the generator after
+editing the checkout. Agent, hook, and MCP changes need `/reload-plugins`.
+
+Trying uncommitted work without overwriting the installed runtime is recorded in
+[`docs/dev-loop.md`](docs/dev-loop.md).
 
 #### Install persistently (recommended)
 

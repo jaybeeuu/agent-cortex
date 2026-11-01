@@ -233,6 +233,9 @@ Re-run `agent-cortex install pi` after every `git pull` to refresh the staged
 package; registration is already in place, so that re-run changes nothing in
 pi's settings. Verify with `pi list` and `pi config` (restart pi to apply).
 
+Refreshing the installed runtime after a release, and trying uncommitted work without
+overwriting it, are recorded in [`docs/dev-loop.md`](docs/dev-loop.md).
+
 ### Desktop notifications
 
 Desktop notifications are handled by the local `extensions/notify/` extension

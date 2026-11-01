@@ -75,7 +75,10 @@ temp-dir install plus structural checks:
 - **Manifests** are generated too: the plugin's `.claude-plugin/plugin.json` (its `version`
   tracks `package.json`, so it never goes stale) and `hooks.json` (copied from the canonical
   `hooks/claude/hooks.json` source), plus any support files under `hooks/claude/` bundled into
-  the plugin's `hooks/` so hook commands can reach them via `$CLAUDE_PLUGIN_ROOT`. Hand-authored
+  the plugin's `hooks/` so hook commands can reach them via `$CLAUDE_PLUGIN_ROOT`. Its
+  `repository` is always a string: `package.json`'s object form is reduced to its `url`, then
+  its `directory`, and dropped when neither exists. Claude rejects any other shape and drops
+  the whole plugin — every skill and agent in it — with that one field. Hand-authored
   extras — `.mcp.json` and `scripts/` — are copied into every install from the `claude-extras/`
   dir, which is their canonical store. See `docs/claude-hooks.md` for the
   extension→hook mapping and the rejections (auto-name, agent-guardrails, skill-stats, subagent, agent-modes).
@@ -333,7 +336,11 @@ exit code: `claude plugin marketplace list --json` picks add-vs-update and
 `claude plugin list --json` picks install-vs-update against the materialised version. A
 fresh install adds the marketplace and installs the plugin; a re-run is the update path
 (`marketplace update`, plus `plugin update` only when a newer version is materialised); a
-repeat install at the same version is a true no-op. It requires the `claude` plugin CLI
+repeat install at the same version is a true no-op. Those commands exit 0 on a manifest Claude
+rejects, so the installer re-reads `claude plugin list --json` after they run. A plugin that
+list reports as failed to load fails the install with Claude's validation message. A list the
+installer cannot read, or one that omits the plugin, warns that the load state is unconfirmed
+and prints no success line. It requires the `claude` plugin CLI
 (Claude Code v2+): with a missing or pre-v2 CLI the installer warns and prints the manual
 commands below, exiting 0 — `--require-register` makes registration mandatory and fails
 non-zero when it can't run:

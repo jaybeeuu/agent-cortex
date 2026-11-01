@@ -309,8 +309,11 @@ claude --plugin-dir /tmp/agent-cortex-claude
 claude --plugin-dir /tmp/agent-cortex-claude plugin details agent-cortex
 ```
 
-`SKILL.md` edits are picked up live in that session; agent, hook, and MCP changes need
-`/reload-plugins`.
+Edits to the generated copy of a `SKILL.md` are picked up live; re-run the generator after
+editing the checkout. Agent, hook, and MCP changes need `/reload-plugins`.
+
+Trying uncommitted work without overwriting the installed runtime is recorded in
+[`docs/dev-loop.md`](docs/dev-loop.md).
 
 #### Install persistently (recommended)
 

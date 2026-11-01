@@ -276,6 +276,65 @@ describe("registerClaude", () => {
     }
   });
 
+  it("fails with Claude's validation error when the installed plugin cannot load", async () => {
+    // An invalid manifest leaves the plugin installed but unable to load: the
+    // commands exit 0 and `plugin list` reports version "unknown" plus errors.
+    // Reporting success there would hide every skill and agent in the plugin.
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const validationError =
+      "Manifest validation failed: repository: Invalid input: expected string, received object " +
+      "(in /home/tester/.agent-cortex/claude/.claude-plugin/plugin.json)";
+    const fake = await makeFakeClaude(tmp, { failLoad: validationError });
+    try {
+      await assert.rejects(registerClaude({ root, claudeBin: fake.bin }), (err) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /failed to load/);
+        assert.ok(err.message.includes(validationError), "names Claude's validation error and the manifest");
+        return true;
+      });
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("warns instead of claiming success when claude plugin list omits the plugin after registration", async () => {
+    // An install that exits 0 without registering anything leaves no entry, so
+    // the load state is unconfirmed: warn, but never fail the run on absence.
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp, { silentInstall: true });
+    try {
+      /** @type {string[]} */
+      const warnings = [];
+      const result = await registerClaude({ root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
+      assert.equal(result.registered, true);
+      assert.match(warnings.join("\n"), /not in .*plugin list --json/);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("warns instead of claiming success when claude plugin list --json cannot be read", async () => {
+    // Unreadable state is no verdict: the install must not fail, and must not
+    // call the plugin loaded either.
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp, { failWhen: "plugin list --json" });
+    try {
+      /** @type {string[]} */
+      const warnings = [];
+      const result = await registerClaude({ root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
+      assert.equal(result.registered, true);
+      assert.match(warnings.join("\n"), /load state is unconfirmed/);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails when the checkout has no marketplace manifest", async () => {
     const tmp = await makeTmp();
     const root = await mkdtemp(join(tmpdir(), "agent-cortex-no-market-"));

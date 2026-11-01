@@ -52,7 +52,12 @@
 // re-run is the update path, and a repeat install at the same version is a
 // true no-op. If the `claude` CLI is missing or predates the plugin subcommand
 // (v2+), the installer warns and prints the manual registration commands,
-// exiting non-zero only with --require-register.
+// exiting non-zero only with --require-register. After the commands run,
+// `claude plugin list --json` is re-read: a plugin Claude Code reports as failed
+// to load fails the install with its validation error, because those commands
+// exit 0 on a manifest they reject. When that list cannot be read, or omits the
+// plugin, the load state is unconfirmed and the installer warns instead of
+// claiming success.
 //
 // Zero dependencies so it runs on the CI Node and local Node alike.
 
@@ -254,6 +259,26 @@ async function copyTree(src, dest, transform, dryRun) {
 }
 
 /**
+ * Normalise package.json's `repository` field into the string Claude Code's
+ * plugin manifest requires. npm permits a string or an object
+ * (`{ type, url, directory }`); Claude rejects anything but a string, and one
+ * invalid manifest makes the whole plugin fail to load, so the object form must
+ * never be copied through. Prefer `url`, fall back to `directory`, and omit the
+ * field when neither is usable rather than emitting junk.
+ * @param {unknown} repository  parsed package.json `repository` value
+ * @returns {string | undefined}
+ */
+function normaliseRepository(repository) {
+  if (typeof repository === "string") return repository.trim() === "" ? undefined : repository;
+  if (repository === null || typeof repository !== "object") return undefined;
+  const { url, directory } = /** @type {{ url?: unknown, directory?: unknown }} */ (repository);
+  for (const candidate of [url, directory]) {
+    if (typeof candidate === "string" && candidate.trim() !== "") return candidate;
+  }
+  return undefined;
+}
+
+/**
  * plugin.json manifest; version tracks the package so it can never go stale.
  * @param {string} root
  * @returns {Promise<string>}
@@ -268,7 +293,9 @@ async function buildPluginJson(root) {
         description: "Personal Claude Code plugin with custom agents and skills",
         author: { name: "jaybeeuu" },
         license: pkg.license ?? "MIT",
-        repository: pkg.repository,
+        // JSON.stringify drops an undefined value, so an unusable repository
+        // is omitted instead of emitted as junk.
+        repository: normaliseRepository(pkg.repository),
         hooks: "./hooks.json",
       },
       null,
@@ -941,6 +968,50 @@ async function installedPluginVersion(claudeBin, pluginId) {
 }
 
 /**
+ * Verdict of `claude plugin list --json` on whether `pluginId` actually loads.
+ * An entry carries `errors` when the materialised manifest could not be loaded
+ * (the CLI then also reports version "unknown") — a broken plugin that every
+ * install command still exits 0 on. Unreadable or unexpected output yields
+ * `unknown`, and a readable list that omits the plugin yields `not-listed`:
+ * both are no verdict, never a false failure.
+ * @typedef {{ verdict: "unknown" } | { verdict: "not-listed" } | { verdict: "loaded" } | { verdict: "failed", errors: string[] }} PluginLoadVerdict
+ */
+
+/**
+ * The string members of `values`, in order.
+ * @param {unknown[]} values
+ * @returns {string[]}
+ */
+function stringValues(values) {
+  /** @type {string[]} */
+  const strings = [];
+  for (const value of values) if (typeof value === "string") strings.push(value);
+  return strings;
+}
+
+/**
+ * @param {string} claudeBin
+ * @param {string} pluginId
+ * @returns {Promise<PluginLoadVerdict>}
+ */
+async function pluginLoadVerdict(claudeBin, pluginId) {
+  const out = await queryClaudeCommand(claudeBin, ["plugin", "list", "--json"]);
+  if (out == null) return { verdict: "unknown" };
+  /** @type {any} */
+  let entries;
+  try {
+    entries = JSON.parse(out.trim() || "[]");
+  } catch {
+    return { verdict: "unknown" };
+  }
+  if (!Array.isArray(entries)) return { verdict: "unknown" };
+  const entry = entries.find((/** @type {any} */ e) => e?.id === pluginId);
+  if (entry === undefined) return { verdict: "not-listed" };
+  const errors = Array.isArray(entry.errors) ? stringValues(/** @type {unknown[]} */ (entry.errors)) : [];
+  return errors.length > 0 ? { verdict: "failed", errors } : { verdict: "loaded" };
+}
+
+/**
  * Register the materialised plugin with Claude Code by driving the `claude
  * plugin` CLI against the home install root as the marketplace source.
  * Idempotent by STATE, not by exit code (the CLI exits 0 on re-add /
@@ -966,6 +1037,13 @@ async function installedPluginVersion(claudeBin, pluginId) {
  * to complete registration manually, exiting non-zero only when
  * `requireRegister` is set — the default is warn-only because the plugin is
  * already materialised by then; the file side of the install succeeded.
+ *
+ * A plugin that `claude plugin list --json` reports as failed to load is never
+ * reported as a success: the plugin commands exit 0 on an invalid manifest, so
+ * the run throws with Claude's validation error (which names the manifest)
+ * rather than leaving every skill and agent in the plugin silently unavailable.
+ * When that list cannot be read, or does not list the plugin, the load state is
+ * unconfirmed: the install warns and skips the success line.
  *
  * @param {object} options
  * @param {string} [options.root]            Marketplace root carrying .claude-plugin/…
@@ -1054,8 +1132,33 @@ export async function registerClaude({
     console.log(`  ${claudeBin} ${args.join(" ")}`);
     await runClaudeCommand(claudeBin, args);
   }
-  console.log(
-    `Installed — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,
-  );
+  // The commands exiting 0 does not mean the plugin loads: a manifest Claude
+  // rejects still installs and updates cleanly. Claiming success there would
+  // hide that every skill and agent in the plugin is unavailable.
+  const load = await pluginLoadVerdict(claudeBin, pluginId);
+  if (load.verdict === "failed") {
+    throw new Error(
+      `plugin "${pluginId}" is installed but Claude Code reports it as failed to load: ${load.errors.join("; ")} — ` +
+        `every skill and agent in the plugin stays unavailable until the manifest loads; fix it and re-run`,
+    );
+  }
+  // No verdict is not a success either: an unreadable list or a list that omits
+  // the plugin leaves its load state unconfirmed, so warn instead of claiming
+  // the plugin is installed and working.
+  if (load.verdict === "unknown") {
+    warn(
+      `could not read "${claudeBin} plugin list --json", so the plugin's load state is unconfirmed — ` +
+        `verify with "${claudeBin} plugin list" (restart Claude Code to apply)`,
+    );
+  } else if (load.verdict === "not-listed") {
+    warn(
+      `"${pluginId}" is not in "${claudeBin} plugin list --json" after registration, so it may not have registered — ` +
+        `verify with "${claudeBin} plugin list" (restart Claude Code to apply)`,
+    );
+  } else {
+    console.log(
+      `Installed — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,
+    );
+  }
   return summary;
 }

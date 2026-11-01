@@ -68,6 +68,35 @@ async function makeTmp() {
   return await mkdtemp(join(tmpdir(), "agent-cortex-installer-"));
 }
 
+/** A minimal package root the Claude generator can materialise from: the
+ * package.json under test plus empty agents/ and skills/ trees. The fields the
+ * case cares about (e.g. `repository`) pass through `pkg`; everything else
+ * takes an incidental default.
+ * @param {Record<string, unknown>} [pkg]
+ * @returns {Promise<string>} */
+async function makePackageRoot(pkg = {}) {
+  const root = await makeTmp();
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({ name: "agent-cortex", version: "1.2.3", license: "MIT", ...pkg }),
+  );
+  await writeFile(
+    join(root, "token-map.json"),
+    JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+  );
+  await mkdir(join(root, "agents"));
+  await mkdir(join(root, "skills"));
+  return root;
+}
+
+/** Materialise the plugin from `root` and return its generated manifest.
+ * @param {string} root
+ * @returns {Promise<Record<string, unknown>>} */
+async function generatePluginManifest(root) {
+  const out = join(root, "out");
+  await installClaude({ root, output: out });
+  return JSON.parse(await readFile(join(out, ".claude-plugin", "plugin.json"), "utf-8"));
+}
 
 /** A snapshot entry: `[relative path, kind]`, plus content or link target when the
  * entry is a file or a symlink.
@@ -292,6 +321,43 @@ describe("install claude", () => {
     assert.equal(plugin.name, "agent-cortex");
     assert.equal(plugin.version, pkgVersion);
     assert.equal(plugin.hooks, "./hooks.json");
+  });
+
+  it("normalises npm's object repository to its url so Claude Code can load the manifest", async () => {
+    // The shape that broke the published 2.2.0 install: npm's object form is not
+    // a valid manifest value, and one invalid manifest hides every skill and
+    // agent in the plugin.
+    const root = await makePackageRoot({
+      repository: { type: "git", url: "https://github.com/jaybeeuu/agent-cortex" },
+    });
+    try {
+      const plugin = await generatePluginManifest(root);
+      assert.equal(plugin.repository, "https://github.com/jaybeeuu/agent-cortex");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the object repository's directory when it carries no url", async () => {
+    const root = await makePackageRoot({ repository: { type: "git", directory: "packages/agent-cortex" } });
+    try {
+      const plugin = await generatePluginManifest(root);
+      assert.equal(plugin.repository, "packages/agent-cortex");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("omits repository rather than emitting junk when package.json has no usable value", async () => {
+    for (const repository of [undefined, 42]) {
+      const root = await makePackageRoot({ repository });
+      try {
+        const plugin = await generatePluginManifest(root);
+        assert.ok(!("repository" in plugin), `repository ${JSON.stringify(repository)} is omitted`);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
   });
 
   it("generates hooks.json from the canonical hooks/claude/ source", async () => {

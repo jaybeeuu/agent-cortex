@@ -17,6 +17,9 @@
 // State lives in `state.json` next to the binary, so a test can re-run the CLI
 // against the same fake and observe the update path. `failWhen` makes any
 // invocation whose argv contains the substring exit 1 (probe/command failures).
+// `failLoad` simulates a plugin whose commands succeed but whose manifest never
+// loads: install/update exit 0 and record the plugin at version "unknown" with
+// the given error, exactly as a real Claude Code does for an invalid manifest.
 //
 // Written async throughout (the fake is a child process and the helper's own
 // I/O is test code) — the repo's check-no-sync lint scans test/ for *Sync.
@@ -42,6 +45,7 @@ const FAKE_CLAUDE_SCRIPT = [
   "",
   "  const failWhen = await fs.readFile(failWhenFile, 'utf8').catch(() => null);",
   "  if (failWhen && joined.includes(failWhen)) process.exit(1);",
+  "  const failLoad = await fs.readFile(path.join(dir, 'failLoad.txt'), 'utf8').catch(() => null);",
   "",
   "  if (argv[0] !== 'plugin') process.exit(0);",
   "",
@@ -103,7 +107,8 @@ const FAKE_CLAUDE_SCRIPT = [
   "    if (!state.installed.some((i) => i.id === id)) {",
   "      const [name, market] = id.split('@');",
   "      const m = state.markets.find((x) => x.name === market);",
-  "      state.installed.push({ id, version: m ? (await pluginJsonVersion(m.path)) ?? '0.0.0' : '0.0.0' });",
+  "      const version = failLoad ? 'unknown' : m ? (await pluginJsonVersion(m.path)) ?? '0.0.0' : '0.0.0';",
+  "      state.installed.push({ id, version, ...(failLoad ? { errors: [failLoad] } : {}) });",
   "      await writeState(state);",
   "    }",
   "    process.exit(0);",
@@ -114,8 +119,10 @@ const FAKE_CLAUDE_SCRIPT = [
   "    const entry = state.installed.find((i) => i.id.startsWith(name + '@'));",
   "    if (entry) {",
   "      const m = state.markets.find((x) => x.name === entry.id.split('@')[1]);",
-  "      const v = m ? await pluginJsonVersion(m.path) : undefined;",
+  "      const v = failLoad ? 'unknown' : m ? await pluginJsonVersion(m.path) : undefined;",
   "      if (v) entry.version = v;",
+  "      if (failLoad) entry.errors = [failLoad];",
+  "      else delete entry.errors;",
   "      await writeState(state);",
   "    }",
   "    process.exit(0);",
@@ -130,10 +137,13 @@ const FAKE_CLAUDE_SCRIPT = [
 
 /** Create a stateful fake `claude` binary in `dir`.
  * @param {string} dir  Directory to hold bin, calls.log, state.json
- * @param {{ failWhen?: string|null }} [options]  Invocations whose argv contains
- *                                                failWhen exit 1
+ * @param {{ failWhen?: string|null, failLoad?: string|null }} [options]
+ *   `failWhen`: invocations whose argv contains the substring exit 1.
+ *   `failLoad`: install/update succeed but record the plugin at version
+ *   "unknown" carrying this error, as a real CLI does for a manifest it cannot
+ *   load.
  * @returns {Promise<{ bin: string, log: string, state: string }>} */
-export async function makeFakeClaude(dir, { failWhen = null } = {}) {
+export async function makeFakeClaude(dir, { failWhen = null, failLoad = null } = {}) {
   const bin = join(dir, "claude");
   const log = join(dir, "calls.log");
   const state = join(dir, "state.json");
@@ -141,6 +151,7 @@ export async function makeFakeClaude(dir, { failWhen = null } = {}) {
   await chmod(bin, 0o755);
   await writeFile(state, JSON.stringify({ markets: [], installed: [] }));
   if (failWhen) await writeFile(join(dir, "failWhen.txt"), failWhen);
+  if (failLoad) await writeFile(join(dir, "failLoad.txt"), failLoad);
   return { bin, log, state };
 }
 

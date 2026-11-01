@@ -476,6 +476,7 @@ describe("registerPi — bundled packages the user also registers standalone", (
 
       const reported = warnings.join("\n");
       assert.match(reported, /the bundled copy at .*pi-questions takes precedence/, "the first-listed source wins the tool name");
+      assert.match(reported, /on pi 1\.x/, "dates the load-order claim to the release line it was probed against");
       assert.ok(reported.includes("pi remove npm:pi-questions"), "still names the command that resolves it");
     } finally {
       await tree.cleanup();

@@ -14,8 +14,8 @@ than the settings file, so the obvious `pi remove <as configured>` misses. The i
 remove the entry itself — a missing path may be temporarily absent.
 
 A pi package the staged package bundles and the user also registers standalone is reported with
-both copies, the copy that takes precedence (load order decides, so the first-listed source wins),
-and the `pi remove` command that resolves it. The staged package always ships its own copy, so the
+both copies, the copy that takes precedence (load order decides, and on pi 1.x the first-listed
+source wins), and the `pi remove` command that resolves it. The staged package always ships its own copy, so the
 standalone entry is the one to drop; the installer does not remove packages the user configured.
 
 `LEGACY_ORPHAN_SKILLS` no longer lists `productivity/migration`: it ships again, so the package root

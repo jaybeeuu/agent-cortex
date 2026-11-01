@@ -805,8 +805,9 @@ async function classifySources({ sources, settingsPath, stagedPath, rawPackageNa
  * The source is named twice — as configured and as its resolved path — because
  * pi matches a local source by its resolved path: a relative `pi remove`
  * argument resolves against the CURRENT directory, not against the directory
- * holding settings.json, so the obvious `pi remove <as configured>` misses from
- * anywhere else and leaves the entry stuck.
+ * holding settings.json (pi 1.x, probed against 1.4.0), so the obvious
+ * `pi remove <as configured>` misses from anywhere else and leaves the entry
+ * stuck.
  * @param {{ source: string, path: string }[]} dangling
  * @param {string} settingsPath
  * @param {Warn} warn
@@ -818,7 +819,7 @@ function reportDanglingSources(dangling, settingsPath, warn) {
         `pi loads nothing from it and still lists it, so everything it was registered for is missing. ` +
         `It is left configured in ${settingsPath} — a missing path may be temporarily absent. ` +
         `Drop it with:\n  pi remove ${path}\n` +
-        `(pass the resolved path: pi resolves a relative remove argument against the current directory)`,
+        `(pass the resolved path: pi 1.x resolves a relative remove argument against the current directory, not ${settingsPath})`,
     );
   }
 }
@@ -852,11 +853,11 @@ async function readBundledPackages(stagedPath) {
  *
  * Staging copies each third-party pi package under the staged node_modules, so
  * a standalone registration of the same package loads a second copy: pi keeps
- * both — precedence follows load order — and reports the overlap as tool-name,
- * shortcut, and skill conflicts at startup, long after the install said it
- * succeeded. The installer cannot drop the standalone entry (it is the user's
- * configuration) and must not drop the bundle, so it says which copy wins and
- * which command resolves it.
+ * both — precedence follows load order on pi 1.x — and reports the overlap as
+ * tool-name, shortcut, and skill conflicts at startup, long after the install
+ * said it succeeded. The installer cannot drop the standalone entry (it is
+ * the user's configuration) and must not drop the bundle, so it says which
+ * copy wins and which command resolves it.
  * @param {{ sources: string[], settingsPath: string, stagedPath: string,
  *           bundledPackages: string[], warn: Warn }} options
  * @returns {Promise<void>}
@@ -865,8 +866,11 @@ async function reportBundledCollisions({ sources, settingsPath, stagedPath, bund
   if (bundledPackages.length === 0) return;
   const settingsDir = dirname(settingsPath);
   const bundled = new Set(bundledPackages);
-  // pi loads configured sources in order, so the first one listed wins a shared
-  // tool name; `-1` means the staged package is not configured at all.
+  // pi 1.x loads configured sources in order, so the first one listed wins a
+  // shared tool name (probed against pi 1.4.0 — pi's behaviour, not a contract,
+  // so the message dates the claim); `-1` means the staged package is not
+  // configured at all, and `pi install` appends, so a standalone entry stays
+  // listed first.
   const stagedIndex = sources.findIndex((source) => isLocalSource(source) && resolveSourcePath(source, settingsDir) === stagedPath);
   for (const [index, source] of sources.entries()) {
     const local = isLocalSource(source);
@@ -883,7 +887,7 @@ async function reportBundledCollisions({ sources, settingsPath, stagedPath, bund
         : `the bundled copy at ${bundledDir} takes precedence because ${settingsPath} lists the staged package first`;
     warn(
       `pi loads "${name}" twice: standalone from ${standalone}, and bundled at ${bundledDir}. ` +
-        `The copies collide on tool names, extension shortcuts, and skills; ${winner}. ` +
+        `The copies collide on tool names, extension shortcuts, and skills; on pi 1.x ${winner}. ` +
         `The staged package always ships its own copy, so drop the standalone one with:\n` +
         `  pi remove ${standalone}`,
     );

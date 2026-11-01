@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.4.1
+
+### Patch Changes
+
+- 7a6288b: Align the review REPORT contract on the run-pipeline-stage playbook shape: the review template
+  and the `review-security` skill now emit `OUTCOME: SUCCESS|BLOCKED` with `BLOCKING_ISSUES`,
+  instead of the unparsed `REVIEW_OUTCOME`/`CHANGES_REQUESTED` keys.
+- 58d6627: Make the generated Claude plugin manifest valid: `repository` is always emitted as a string, normalising npm's object form to its `url` (falling back to `directory`, and omitted when neither exists) instead of copying the object through. An object there made Claude Code reject the whole plugin, hiding every skill and agent. The installer now also re-reads `claude plugin list --json` after registering and fails with Claude's validation error when the plugin reports failed to load, instead of reporting success. When that list cannot be read, or does not list the plugin, the installer warns that the load state is unconfirmed and omits its success message.
+- 00fbab3: Record the dev loop in `docs/dev-loop.md`: the three-command refresh of the installed runtime
+  (`pnpm add -g …@latest`, then `agent-cortex install pi` and `agent-cortex install claude`, with
+  `--dry-run` for the plan and a pi restart (or `/reload-plugins` in Claude Code) to apply), the
+  installed layout under `~/.agent-cortex`, and how to try uncommitted work without overwriting it —
+  stage the checkout with `install pi --output <scratch dir>` and load it with `pi -ne -e
+<scratch dir>`, which writes no settings and needs no undo. The page also states the boundary plainly: the checkout is what is
+  developed, `~/.agent-cortex` is what is run, and a path inside `~/src` is never a package source,
+  with the two historical violations named as anti-patterns. `README.md` links it from the pi
+  staging section and the Claude one-session section, and its Claude plugin section now states the
+  correct skill count (34, not 29).
+- dda3a31: `agent-cortex install pi` now reports the two ways a machine ends up in a mixed state, instead of
+  leaving them to surface later as missing tools or conflict errors.
+
+  A configured package source whose path no longer exists is named with the command that drops it.
+  Detection is an existence check, so it no longer depends on reading the source `package.json` —
+  which is exactly what failed on a pruned worktree path, letting the entry survive a whole install
+  and every `pi remove` afterwards. The report gives `pi remove <resolved path>`: pi matches a local
+  source by resolved path, and a relative argument resolves against the current directory rather
+  than the settings file, so the obvious `pi remove <as configured>` misses. The installer does not
+  remove the entry itself — a missing path may be temporarily absent.
+
+  A pi package the staged package bundles and the user also registers standalone is reported with
+  both copies, the copy that takes precedence (load order decides, and on pi 1.x the first-listed
+  source wins), and the `pi remove` command that resolves it. The staged package always ships its own copy, so the
+  standalone entry is the one to drop; the installer does not remove packages the user configured.
+
+  `LEGACY_ORPHAN_SKILLS` no longer lists `productivity/migration`: it ships again, so the package root
+  attributes its copy, and the entry now follows its own instruction to be dropped once that holds.
+
 ## 2.4.0
 
 ### Minor Changes

@@ -10,7 +10,8 @@ node <skill-scripts>/create-chores.mjs --parent <bead-id> [--priority <0-4>]
 
 - Reads `<skill>/pipeline.json`; creates each stage chore via `bd create` and wires dependencies via `bd dep add`.
 - Prints a JSON object mapping each stage ID to its chore bead ID, plus `featurePrReview` for the PR gate.
-- Expands a bead that already exists — it never creates a parent. It is also not idempotent: running it against a bead that already has stage chores creates a second chain, so callers check for existing `stage:*` children first (ralph's expansion guard).
+- Expands a bead that already exists — it never creates a parent.
+- **Idempotent**: it reads that parent's children once (`bd children <parent-id> --json`) and adopts an existing child by its role label — `stage:<id>` for a stage chore, `lifecycle:feature-pr` for the gate — creating only what is missing. Deps that are already wired are skipped. A re-run on an expanded bead creates nothing and prints the same mapping, so re-running after a failed expansion is the recovery path. Adoption is scoped to that parent's children and keyed on labels, never titles, so a stray chore from another bead is never adopted.
 
 ## Stage chore beads
 

@@ -81,7 +81,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
    The planning bead is cold-start ready — what and why, decisions already made, open questions and risks, references — and needs `## Acceptance Criteria`, which `--validate` requires for type `task` (template in `REFERENCE.md` → Hierarchy). A deliverable that genuinely needs a human — visual sign-off, credentials, hardware — is created `-l execution:hitl` and stops there.
 
-7. **Expand into pipeline stage chores.** Run the `create-chores` script, which reads this skill's `pipeline.json` and deterministically creates all stage chores plus the PR gate bead in one shot:
+7. **Expand into pipeline stage chores.** Run the `create-chores` script, which reads this skill's `pipeline.json` and creates the stage chores plus the PR gate bead — adopting any the parent already has, so a re-run converges on the existing tree instead of duplicating it:
 
    ```bash
    # Run from the TARGET project's directory — bd resolves its beads DB from cwd;
@@ -92,13 +92,15 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
    `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path.
 
+   The script is idempotent: it adopts an existing child by its `stage:<id>` or `lifecycle:feature-pr` label, creates only what is missing, and skips deps that are already wired. If an expansion fails partway, re-run this command — it completes the partial chain and prints the full mapping.
+
    On the feature path, run it **once per AFK impl child**, with `--parent <impl-task-id>` — never the feature ID: stage chores inherit their parent's labels, the script checks only that it was handed a parent ID (`REFERENCE.md` → PR gate bead), so an `execution:hitl` feature parent yields a chore tree no executor routes. A deliverable created `execution:hitl` in step 6 is not expanded.
 
 8. **Report.** Return the bead ID (or, on the feature path, the feature ID plus every planning and impl child ID), the classification of each expanded bead (`AFK`), and the created stage chore IDs from the script output (including `featurePrReview`) — one mapping per expanded impl child on the feature path.
 
 ### Expanding an existing bead
 
-Steps 2–6 create beads; step 7 expands one. A bead that already exists but has no `stage:*` chore children — an AFK task filed before the pipeline existed, or one ralph found chore-less — is a supported entry point: run step 7's `create-chores.mjs --parent <existing-id> --priority <its-own-priority>` directly, then report the mapping. No create steps, no new description, no re-classification.
+Steps 2–6 create beads; step 7 expands one. A bead that already exists but has no `stage:*` chore children — an AFK task filed before the pipeline existed, or one ralph found chore-less — is a supported entry point: run step 7's `create-chores.mjs --parent <existing-id> --priority <its-own-priority>` directly, then report the mapping. No create steps, no new description, no re-classification. A partial chain from a failed run is repaired the same way: re-running adopts the chores that exist, creates the missing ones, and reparents nothing.
 
 **Never re-run `create-task` for an existing bead.** It creates a bead first and expands second, so the run leaves a **second parent** beside the original, which stays chore-less — the duplicate ralph's expansion guard exists to prevent. `create-chores.mjs` expands a bead that already exists; only step 2 creates a bead.
 
@@ -110,6 +112,7 @@ Steps 2–6 create beads; step 7 expands one. A bead that already exists but has
 - **Skipping the classifier and classifying by hand.** The rubric is a subagent's job; a hand-rolled guess drifts from it.
 - **Expanding an HITL bead.** If classification is HITL, stop — creating a chore tree for human-driven work is wrong.
 - **Expanding an existing bead by re-running `create-task`.** That step creates a bead, so the original stays chore-less and gains a second parent beside it. Run `create-chores.mjs --parent <existing-id>` instead.
+- **Treating a failed expansion as unrecoverable.** `create-chores.mjs` is idempotent: re-run it and it adopts the chores that exist, creates the rest, and reports the whole mapping.
 - **Hardcoding `<skill-scripts>`.** The install path differs per harness (plugin cache, installed-plugins, dev checkout); resolve it at runtime.
 - **Creating a feature with no planning bead.** A feature that goes straight to impl children is a feature nobody designed. The planning bead keeps the children blocked until the design is confirmed.
 - **Expressing ownership as a dependency.** `bd dep add <child> <parent>` mixes hierarchy into the readiness gate; pass `--parent` at create time instead.

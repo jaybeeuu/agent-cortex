@@ -1,6 +1,6 @@
 {
   "tinyModel": {
-    "model": "opencode/mimo-v2.5-free",
+    "model": "opencode-go/deepseek-v4.1-flash",
     "maxNameLength": 40,
     "maxSummaryLength": 100
   },
@@ -17,10 +17,7 @@
   "enabledModels": [
     "opencode/big-pickle",
     "opencode-go/qwen3.7-plus",
-    "opencode-go/deepseek-v4-flash",
     "opencode-go/kimi-k3",
-    "opencode/deepseek-v4-flash",
-    "opencode/mimo-v2.5-free",
     "opencode-go/deepseek-v4.1-flash"
   ],
   "compaction": {

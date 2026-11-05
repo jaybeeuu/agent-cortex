@@ -66,6 +66,10 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   Tooling code in `bin/`, `scripts/`, `lib/`, `hooks/`, and `test/` must be async —
   enforced by `scripts/check-no-sync.mjs` (runs via `pnpm lint`). Skill-owned
   scripts (`skills/*/scripts`) and `extensions/` are the remaining sync surfaces.
+- **Temp workspaces in tests**: a test file that needs workspaces under the system temp dir
+  gets them from `createTempRoot()` in `test/helpers/temp-root.mjs`. That helper removes the
+  whole root from a file-level `after()` hook, so a test that throws before its own cleanup
+  cannot leak its workspace. Do not call `mkdtemp(tmpdir())` directly.
 - **Share generic tooling helpers in `scripts/lib/`**: tooling code (installers under
   `bin/installers/`, hooks, other scripts) imports shared utilities from `scripts/lib/`
   (e.g. `compose-agent.mjs`, `fs.mjs`) rather than redefining them inline.

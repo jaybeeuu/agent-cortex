@@ -204,7 +204,7 @@ describe("install claude", () => {
 
   it("copies skill dirs flat with substituted tokens, no symlinks, including the ralph-coupled skills", async () => {
     const out = await makeTmp();
-    const { exitCode } = await runCli(["install", "claude", "--output", out]);
+    const { exitCode, stdout } = await runCli(["install", "claude", "--output", out]);
     assert.equal(exitCode, 0);
 
     const skills = join(out, "skills");
@@ -237,10 +237,14 @@ describe("install claude", () => {
     assert.ok(techDir.includes("via WebFetch"), "web_fetch mapped to WebFetch");
     assert.doesNotMatch(techDir, /\{\{TOOL:/);
 
-    // null-mapped tool dropped from prose (claude has no read_agent step)
+    // Skills avoid null-mapped tool tokens: a null mapping is dropped, which
+    // leaves the sentence that named it broken (claude reports subagent results
+    // inline, so there is no read_agent/wait_for_agents step to name). The
+    // shipped sources must therefore stay harness-neutral in those spots.
     const design = await readFile(join(skills, "design-an-interface", "SKILL.md"), "utf-8");
     assert.ok(design.includes("with Task,"), "task mapped to Task");
     assert.doesNotMatch(design, /\{\{TOOL:|read_agent/);
+    assert.doesNotMatch(stdout, /has no claude mapping/, "no shipped skill uses a tool the claude column cannot map");
   });
 
   it("leaves no literal tokens in any installed skill markdown", async () => {

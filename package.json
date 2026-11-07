@@ -1,6 +1,6 @@
 {
   "name": "@jaybeeuu/agent-cortex",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "Personal PI package with custom agents, skills, and extensions",
   "keywords": [
     "pi-package"

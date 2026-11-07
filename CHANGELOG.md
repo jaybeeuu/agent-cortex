@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.4.2
+
+### Patch Changes
+
+- 199cefe: Point the shipped pi settings at models that still exist. `tinyModel.model` was
+  `opencode/mimo-v2.5-free`, which the provider catalogue has dropped, so the
+  setting resolved to nothing and pi fell back to another free model. That fallback
+  returns `429 FreeUsageLimitError` once the free quota is spent, and the 429 JSON
+  became the entire output of the background call that runs auto-naming and
+  notifications — so a subagent run died at session start while the agent itself was
+  on a paid model. `tinyModel.model` is now `opencode-go/deepseek-v4.1-flash`.
+  `enabledModels` also drops three ids that do not resolve — `opencode-go/deepseek-v4-flash`,
+  `opencode/deepseek-v4-flash` and `opencode/mimo-v2.5-free` — which made pi print a
+  `No models match pattern` warning on every startup.
+- 6b6080b: Stop the test suite from leaking temp workspaces into `/tmp`. Each test file that
+  creates workspaces under the system temp dir now shares one temp root that a
+  file-level `after()` hook removes, so the removal happens whether the tests
+  passed, failed, or threw before reaching their own cleanup — previously a single
+  green run of `test/installer.test.mjs` left 21 workspaces behind (7.4 MB apparent,
+  13 MB on disk: each is a materialised plugin tree of skills, agents and hooks),
+  plus one from `test/cli.test.mjs`'s `install claude --output` case. Repeated runs
+  could fill a small tmpfs and make unrelated tests fail with ENOSPC. A regression
+  guard runs a deliberately failing test file and asserts the run leaves nothing
+  behind.
+
 ## 2.4.1
 
 ### Patch Changes

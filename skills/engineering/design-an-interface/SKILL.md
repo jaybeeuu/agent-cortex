@@ -55,7 +55,7 @@ description: "Generate multiple radically different interface designs for a modu
    4. Trade-offs of this approach
    ```
 
-   Collect each agent's output with {{TOOL:read_agent}} when it finishes.
+   Collect each agent's output as it finishes.
 
 3. **Present designs.** Show each design sequentially — signature, usage examples, what it hides — so the user absorbs each approach before any comparison happens.
 

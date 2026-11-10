@@ -143,7 +143,8 @@ async function readLabels(statePath) {
 
 /** @typedef {{ id: string, labels: string[], title: string, status: string, priority: number,
  *   description: string, design: string, notes: string, acceptance_criteria: string }} FakeBead */
-/** @typedef {{ beads: FakeBead[], writes: Array<Record<string, unknown>> }} FakeState */
+/** @typedef {{ op: string, ids?: string[], applied?: number, label?: string }} FakeWrite */
+/** @typedef {{ beads: FakeBead[], writes: FakeWrite[] }} FakeState */
 
 /**
  * The beads created by a run — the ones the seed did not carry.
@@ -166,6 +167,7 @@ function createdBeads(state, seeded) {
  *   listHidesClosed?: boolean,
  *   ignoreLabelRemovals?: boolean,
  *   exportDropsLabel?: string | null,
+ *   maxIdsPerWrite?: number,
  *   ideaFiles?: Record<string, string>,
  *   ideaDir?: string,
  * }} [options]  `ideaFiles` maps a path below `ideaDir` to its markdown content.
@@ -343,6 +345,53 @@ describe("agent-cortex migrate v1 label rename", () => {
         assert.match(stderr, /bd-closed/);
       },
       { ignoreLabelRemovals: true },
+    );
+  });
+
+  it("converges when bd applies only one chunk of ids per call", async () => {
+    // 50 beads is more than one write chunk — the shape that partial-applied
+    // when every id went into a single call.
+    const beads = Array.from({ length: 50 }, (_, index) => ({
+      id: `bd-${index}`,
+      labels: [index % 2 === 0 ? "implementation-type:afk" : "implementation-type:hitl"],
+    }));
+
+    await withWorkspace(
+      beads,
+      async (workspace) => {
+        const { exitCode } = await runMigrate(["--apply"], workspace);
+
+        assert.equal(exitCode, 0);
+        assert.deepEqual(
+          await readLabels(workspace.state),
+          Object.fromEntries(
+            beads.map(({ id }, index) => [id, [index % 2 === 0 ? "execution:afk" : "execution:hitl"]]),
+          ),
+        );
+        // No call carries more ids than bd applies in one go.
+        const oversized = (await readState(workspace.state)).writes.filter((w) => (w.ids?.length ?? 0) > 20);
+        assert.deepEqual(oversized, []);
+      },
+      { maxIdsPerWrite: 20 },
+    );
+  });
+
+  it("fails verification instead of reporting success when bd applies less than a chunk", async () => {
+    const beads = Array.from({ length: 50 }, (_, index) => ({
+      id: `bd-${index}`,
+      labels: ["implementation-type:afk"],
+    }));
+
+    await withWorkspace(
+      beads,
+      async (workspace) => {
+        const { exitCode, stdout, stderr } = await runMigrate(["--apply"], workspace);
+
+        assert.equal(exitCode, 1);
+        assert.match(stderr, /v1 label-rename verification failed/);
+        assert.doesNotMatch(stdout, /label-rename verified/);
+      },
+      { maxIdsPerWrite: 12 },
     );
   });
 

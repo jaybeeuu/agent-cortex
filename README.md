@@ -485,7 +485,8 @@ is an empty legacy namespace, not just a clean live one (see
 A bare `agent-cortex migrate` is a **dry run** — it prints the per-bead plan and writes
 nothing. `--apply` runs every pending step in order and verifies each before moving on. It
 shells out to the `bd` CLI on `PATH` (`BD_PATH` overrides) and fails loudly, rather than
-half-applying, when `bd` is missing or a `bd` subcommand errors.
+half-applying, when `bd` is missing or a `bd` subcommand errors. Label writes carry at most 20
+ids per `bd` call, because `bd` can exit 0 having applied only part of a longer list.
 
 Detection reads `bd export --all` and cross-checks `bd label list-all`, never a
 label-filtered `bd list`: on bd 1.3.1 that query can omit closed beads, which once let a

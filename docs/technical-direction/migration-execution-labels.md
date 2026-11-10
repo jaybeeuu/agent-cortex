@@ -70,10 +70,12 @@
   `migrate` detects the current version of the target repo's state and applies each step in
   order up to the latest. Steps:
   1. **v1: label rename** (F1) — `implementation-type:afk|hitl` → `execution:afk|hitl`:
-     `bd list --label-pattern 'implementation-type:*' --json`; group ids by label value
+     `bd export --all` (closed beads included), cross-checked against `bd label list-all --json`;
+     group ids by label value
      (a bead with both gets both); dry-run default (per-bead plan + summary, zero writes,
-     exit 0); `--apply` batched `bd label add execution:<v> <ids...>` then
-     `bd label remove implementation-type:<v> <ids...>` per group; idempotent re-run
+     exit 0); `--apply` chunked at 20 ids per call — `bd label add execution:<v> <ids…>` then
+     `bd label remove implementation-type:<v> <ids…>` per chunk, per group — because bd exits 0
+     having applied only a prefix of a longer id list; idempotent re-run
      (zero targets → no-op); fail loudly if `bd` missing or a subcommand errors.
      Scope: ALL beads including closed (F7 acceptance "zero implementation-type:* labels
      remain" requires it; bd label history tolerates it).

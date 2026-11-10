@@ -274,6 +274,8 @@ async function findLegacyLabelBeads({ bd }) {
 /**
  * Split `items` into consecutive runs of at most `size` — one `bd` call's worth.
  *
+ * `size` must be positive: a size of 0 never advances the loop.
+ *
  * @template T
  * @param {T[]} items
  * @param {number} size

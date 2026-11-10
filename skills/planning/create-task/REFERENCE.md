@@ -11,7 +11,8 @@ node <skill-scripts>/create-chores.mjs --parent <bead-id> [--priority <0-4>]
 - Reads `<skill>/pipeline.json`; creates each stage chore via `bd create` and wires dependencies via `bd dep add`.
 - Prints a JSON object mapping each stage ID to its chore bead ID, plus `featurePrReview` for the PR gate.
 - Expands a bead that already exists — it never creates a parent.
-- **Idempotent**: it reads that parent's children once (`bd children <parent-id> --json`) and adopts an existing child by its role label — `stage:<id>` for a stage chore, `lifecycle:feature-pr` for the gate — creating only what is missing. Deps that are already wired are skipped. A re-run on an expanded bead creates nothing and prints the same mapping, so re-running after a failed expansion is the recovery path. Adoption is scoped to that parent's children and keyed on labels, never titles, so a stray chore from another bead is never adopted.
+- **Idempotent**: it reads that parent's children once (`bd children <parent-id> --json`) and adopts an existing child by its role label — `stage:<id>` for a stage chore, `lifecycle:feature-pr` for the gate — creating only what is missing. Deps that are already wired are skipped. A re-run on an expanded bead creates nothing and prints the same mapping, so re-running after a failed expansion is the recovery path.
+- Adoption ignores bead status and reads only labels: a chore a later stage already closed is still adopted and reprinted in the mapping, which keeps a re-run convergent instead of creating a duplicate. When a role label appears twice under one parent the first-listed child wins. Adoption is scoped to that parent's children and keyed on labels, never titles, so a stray chore from another bead is never adopted.
 
 ## Stage chore beads
 

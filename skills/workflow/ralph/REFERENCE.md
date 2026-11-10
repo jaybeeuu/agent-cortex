@@ -57,8 +57,11 @@ A ready `execution:afk` task bead with **no** `stage:*` chore children has nothi
    ```
    Expect `0` printed. `grep -c` exits `1` when it counts zero matches, so add `|| true` when the
    check runs under `set -e` or inside an `&&` chain — the printed count is the answer, not the exit
-   status. A bead with a full chain never needs an expansion; a partial chain from a failed run is
-   repaired by re-running step 2's command, which is idempotent.
+   status. A bead with a full chain — one `stage:*` chore per stage in `pipeline.json` (four for the
+   shipped pipeline) plus the `lifecycle:feature-pr` gate — never needs an expansion. The check
+   answers "no chores at all", so a **partial** chain (a lower count from a failed run) passes it
+   and its missing stages never arrive. Nothing detects that automatically: re-run step 2's command
+   against that parent by hand, which is idempotent.
 2. **Dispatch an expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
    ```bash
    node <create-task-scripts>/create-chores.mjs \
@@ -94,8 +97,11 @@ On completion, remove the entry from `inflight` and confirm the chore tree exist
 bd children <parent-id> --json | grep -c '"stage:'
 ```
 
-Expect a non-zero count — one match per `stage:*` label in the chain. A printed `0` means the
-expansion failed. Surface the worker's output in chat, record the parent for the shutdown summary, and re-dispatch the expansion: `create-chores.mjs` is idempotent, so the second run adopts the chores that already exist, creates only the missing ones, and prints the full mapping — re-running is the recovery path. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
+Expect one match per `stage:*` label in the chain — four for the shipped `pipeline.json`; the
+`featurePrReview` gate carries `lifecycle:feature-pr` instead, so it is not counted. A lower count
+means the expansion did not finish: `0` created nothing, and a partial chain leaves stages that
+will never become ready. Either way, surface the worker's output in chat, record the parent for the
+shutdown summary, and re-dispatch the expansion: `create-chores.mjs` is idempotent, so the second run adopts the chores that already exist, creates only the missing ones, and prints the full mapping — re-running is the recovery path. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
 
 ---
 

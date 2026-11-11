@@ -395,7 +395,19 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
     const groupDir = join(skillsSrc, group);
     if (!(await isDirectory(groupDir))) continue;
     for (const name of (await readdir(groupDir)).sort()) {
-      if (!(await isFile(join(groupDir, name, "SKILL.md")))) continue;
+      if (!(await isFile(join(groupDir, name, "SKILL.md")))) {
+        // pi advertises a skill by the absolute path of its SKILL.md, and this
+        // installer carries exactly skills/<group>/<name>. A skill authored
+        // below that depth would be dropped without a trace, so fail instead.
+        const nested = await findSkillFiles(join(groupDir, name));
+        if (nested.length > 0) {
+          throw new Error(
+            `skill "${nested[0]}" is not at skills/<group>/<name>/SKILL.md — ` +
+              "the installer copies exactly that depth, so pi would never advertise this skill",
+          );
+        }
+        continue;
+      }
       skills += 1;
       const stats = await copyTree(join(groupDir, name), join(skillsDir, group, name), { dryRun, transform });
       md += stats.md;
@@ -403,6 +415,28 @@ async function installSkills({ root, skillsDir, dryRun, pluginRoot, tokenMap, wa
     }
   }
   return { skills, md, files, dir: skillsDir };
+}
+
+/**
+ * Every `SKILL.md` below `dir`, recursively — the skills pi would advertise if
+ * its discovery walked the repository tree instead of the staged one.
+ * @param {string} dir
+ * @returns {Promise<string[]>}
+ */
+async function findSkillFiles(dir) {
+  /** @type {string[]} */
+  const found = [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) found.push(...(await findSkillFiles(join(dir, entry.name))));
+    else if (entry.isFile() && entry.name === "SKILL.md") found.push(join(dir, entry.name));
+  }
+  return found;
 }
 
 // ─── Extensions ──────────────────────────────────────────────────────────────

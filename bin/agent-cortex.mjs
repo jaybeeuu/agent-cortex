@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
+import { parseArgs, buildHelpText, resolveProgramName, validateHarness } from "../lib/cli.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
@@ -10,10 +10,12 @@ import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mj
 /** @typedef {import("./installers/pi.mjs").RegisterPiResult} RegisterPiResult */
 
 const argv = process.argv.slice(2);
-const parsed = parseArgs(argv);
+// `agent-cortex`, `cortex` and `ctx` all run this file; the text names the one used.
+const programName = resolveProgramName(process.argv[1]);
+const parsed = parseArgs(argv, programName);
 
 if (parsed.command === "help") {
-  process.stdout.write(buildHelpText() + "\n");
+  process.stdout.write(buildHelpText(programName) + "\n");
   process.exit(0);
 }
 
@@ -53,7 +55,7 @@ if (parsed.command === "version") {
 }
 
 if (parsed.command === "unknown") {
-  process.stderr.write(`Unknown command: ${parsed.name}\nRun "agent-cortex --help" for usage.\n`);
+  process.stderr.write(`Unknown command: ${parsed.name}\nRun "${programName} --help" for usage.\n`);
   process.exit(1);
 }
 
@@ -65,7 +67,7 @@ if (parsed.command === "install") {
 
   const check = validateHarness(parsed.harness);
   if (!check.ok) {
-    process.stderr.write(`${check.error}\nRun "agent-cortex --help" for usage.\n`);
+    process.stderr.write(`${check.error}\nRun "${programName} --help" for usage.\n`);
     process.exit(1);
   }
 

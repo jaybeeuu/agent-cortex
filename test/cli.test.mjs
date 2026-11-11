@@ -5,7 +5,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { parseArgs, buildHelpText, validateHarness } from "../lib/cli.mjs";
+import { parseArgs, buildHelpText, resolveProgramName, validateHarness } from "../lib/cli.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = join(__dirname, "..", "bin", "agent-cortex.mjs");
@@ -27,6 +27,27 @@ function runCli(args, { env = {}, cwd = process.cwd(), cli = CLI_PATH } = {}) {
           stdout: stdout,
           stderr: stderr,
         });
+      },
+    );
+  });
+}
+
+/** List the files `npm pack --dry-run` would ship, without running lifecycle scripts.
+ * @returns {Promise<string[]>} */
+function packedFiles() {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "npm",
+      ["pack", "--dry-run", "--json", "--ignore-scripts"],
+      { cwd: join(__dirname, "..") },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        /** @type {{ files: { path: string }[] }[]} */
+        const report = JSON.parse(stdout);
+        resolve(report[0].files.map((file) => file.path));
       },
     );
   });
@@ -206,6 +227,31 @@ describe("parseArgs", () => {
     const result = parseArgs(["foo"]);
     assert.deepStrictEqual(result, { command: "unknown", name: "foo" });
   });
+
+  it("names the invoked command in the usage hint of an option error", async () => {
+    for (const argv of [["install", "pi", "--bogus"], ["migrate", "--bogus"]]) {
+      const result = parseArgs(argv, "ctx");
+      assert.match(result.optionError ?? "", /Run "ctx --help" for usage\./, `hint for ${argv.join(" ")}`);
+    }
+  });
+});
+
+describe("resolveProgramName", () => {
+  it("keeps the three published command names", async () => {
+    for (const name of ["agent-cortex", "cortex", "ctx"]) {
+      assert.equal(resolveProgramName(name), name);
+    }
+  });
+
+  it("reads the name from the invoked script path", async () => {
+    assert.equal(resolveProgramName("/usr/local/bin/ctx"), "ctx");
+  });
+
+  it("falls back to agent-cortex for any other name", async () => {
+    for (const name of ["agent-cortex.mjs", "node", "", undefined]) {
+      assert.equal(resolveProgramName(name), "agent-cortex", `fallback for ${JSON.stringify(name)}`);
+    }
+  });
 });
 
 describe("buildHelpText", () => {
@@ -220,6 +266,21 @@ describe("buildHelpText", () => {
   it("documents the version flags", async () => {
     const text = buildHelpText();
     assert.ok(text.includes("--version, -V"), "--version is listed beside --help");
+  });
+
+  it("defaults to the agent-cortex help text", async () => {
+    assert.equal(buildHelpText(), buildHelpText("agent-cortex"));
+  });
+
+  it("names the invoked command in the usage line", async () => {
+    assert.match(buildHelpText("ctx"), /^Usage: ctx <command> \[options\]/);
+    assert.match(buildHelpText("cortex"), /^Usage: cortex <command> \[options\]/);
+  });
+
+  it("changes only the usage line when the program name changes", async () => {
+    const fallback = buildHelpText("agent-cortex").split("\n");
+    const aliased = buildHelpText("ctx").split("\n");
+    assert.deepEqual(aliased.filter((line, index) => line !== fallback[index]), ["Usage: ctx <command> [options]"]);
   });
 });
 
@@ -430,5 +491,32 @@ describe("CLI integration", () => {
     const { exitCode, stderr } = await runCli(["bogus"]);
     assert.equal(exitCode, 1);
     assert.ok(stderr.includes("Unknown command"));
+  });
+
+  it("prints exactly the default help text when the invoked name is not a known command", async () => {
+    // `node bin/agent-cortex.mjs` passes "agent-cortex.mjs" as argv[1], so this
+    // also pins the fallback: the help text stays what agent-cortex printed.
+    const { exitCode, stdout } = await runCli(["--help"]);
+    assert.equal(exitCode, 0);
+    assert.equal(stdout, `${buildHelpText("agent-cortex")}\n`);
+  });
+
+  it("names the resolved command in the unknown-command hint", async () => {
+    const { stderr } = await runCli(["bogus"]);
+    assert.match(stderr, /Run "agent-cortex --help" for usage\./);
+  });
+});
+
+describe("published command names", () => {
+  it("declares cortex and ctx beside agent-cortex, and packs the script they run", async () => {
+    /** @type {{ bin: Record<string, string> }} */
+    const manifest = JSON.parse(await readFile(join(__dirname, "..", "package.json"), "utf-8"));
+    for (const name of ["agent-cortex", "cortex", "ctx"]) {
+      assert.equal(manifest.bin[name], "./bin/agent-cortex.mjs", `${name} shim`);
+    }
+    const shipped = new Set(await packedFiles());
+    for (const target of new Set(Object.values(manifest.bin))) {
+      assert.ok(shipped.has(target.replace(/^\.\//, "")), `${target} is missing from the packed tarball`);
+    }
   });
 });

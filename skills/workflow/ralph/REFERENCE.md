@@ -47,7 +47,7 @@ are fine.
 
 ## Expansion Guard
 
-Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. Ralph's dispatch is therefore always "claim what `bd ready -l execution:afk` returns".
+Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. It is idempotent: a re-run adopts the chores that already exist under the parent, creates only the missing ones, and skips deps that are already wired. Ralph's dispatch is therefore always "claim what `bd ready -l execution:afk` returns".
 
 A ready `execution:afk` task bead with **no** `stage:*` chore children has nothing to dispatch. Expand it, then dispatch the resulting `stage:code` chore:
 
@@ -57,7 +57,11 @@ A ready `execution:afk` task bead with **no** `stage:*` chore children has nothi
    ```
    Expect `0` printed. `grep -c` exits `1` when it counts zero matches, so add `|| true` when the
    check runs under `set -e` or inside an `&&` chain — the printed count is the answer, not the exit
-   status.
+   status. A bead with a full chain — one `stage:*` chore per stage in `pipeline.json` (four for the
+   shipped pipeline) plus the `lifecycle:feature-pr` gate — never needs an expansion. The check
+   answers "no chores at all", so a **partial** chain (a lower count from a failed run) passes it
+   and its missing stages never arrive. Nothing detects that automatically: re-run step 2's command
+   against that parent by hand, which is idempotent.
 2. **Dispatch an expansion worker** in the feature worktree (`.agent-cortex/worktrees/<parent-id>`) whose whole job is to run the pre-creator against the existing bead and report the JSON it printed:
    ```bash
    node <create-task-scripts>/create-chores.mjs \
@@ -93,8 +97,11 @@ On completion, remove the entry from `inflight` and confirm the chore tree exist
 bd children <parent-id> --json | grep -c '"stage:'
 ```
 
-Expect a non-zero count — one match per `stage:*` label in the chain. A printed `0` means the
-expansion failed. Surface the worker's output in chat and record the parent for the shutdown summary — **never re-dispatch the expansion**, because `create-chores.mjs` is not idempotent and a second run duplicates the chain beside the first. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
+Expect one match per `stage:*` label in the chain — four for the shipped `pipeline.json`; the
+`featurePrReview` gate carries `lifecycle:feature-pr` instead, so it is not counted. A lower count
+means the expansion did not finish: `0` created nothing, and a partial chain leaves stages that
+will never become ready. Either way, surface the worker's output in chat, record the parent for the
+shutdown summary, and re-dispatch the expansion: `create-chores.mjs` is idempotent, so the second run adopts the chores that already exist, creates only the missing ones, and prints the full mapping — re-running is the recovery path. Then continue at the normal dispatch pass: either way nothing is created and nothing is closed by ralph.
 
 ---
 
@@ -130,7 +137,7 @@ Decompose it:
    bd children <feature-id> --json
    ```
    Surface the created IDs in chat. An empty list means the decomposition failed: record the feature for the shutdown summary and continue — do not re-dispatch.
-5. **Never re-dispatch a decomposition.** The bead creation it runs is not idempotent, so a second run duplicates the planning bead and every implementation child beside the first. This is the same hazard as re-running `create-chores.mjs`.
+5. **Never re-dispatch a decomposition.** The bead creation it runs is not idempotent, so a second run duplicates the planning bead and every implementation child beside the first. This hazard belongs to `create-task`'s bead creation alone — `create-chores.mjs` is idempotent, so re-running an expansion is its recovery path.
 6. **Go idle.** After decomposition nothing is dispatchable for that feature: `bd ready -l execution:afk` still lists the feature itself (it now has children, so it is skipped — never decomposed again) but none of its children until a human closes the planning bead. Returning to the event loop with *nothing* to dispatch is the correct outcome, not a failure to re-expand — that is Q5b working as designed.
 
 ---

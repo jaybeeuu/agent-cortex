@@ -151,7 +151,10 @@ long-lived credential in repository secrets to save one click per release.
 
 ## Installation
 
-The CLI installs under three names — `agent-cortex`, `cortex` and `ctx` — that run the same command.
+The CLI installs under three names — `agent-cortex`, `cortex` and `ctx` — that run the
+same command, and the help and error text names the one you invoked. That naming is POSIX
+only: the npm and pnpm shims on Windows call `bin/agent-cortex.mjs` directly, so the text
+falls back to `agent-cortex` there.
 
 ### Pi package staging (`agent-cortex install pi`)
 

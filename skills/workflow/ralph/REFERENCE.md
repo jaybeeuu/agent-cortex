@@ -204,6 +204,27 @@ For each parent task bead (`<parent-id>`):
 
 ---
 
+## Pruning Worktrees
+
+A worktree outlives its bead: ralph leaves the directory behind when a feature closes, and a crashed run leaves one with no bead at all. `skills/workflow/ralph/scripts/prune-worktrees.mjs` converges `.agent-cortex/worktrees/*` with bead state.
+
+```bash
+node skills/workflow/ralph/scripts/prune-worktrees.mjs                  # remove closed-bead worktrees, report the rest
+node skills/workflow/ralph/scripts/prune-worktrees.mjs --remove-orphans # also remove open-bead and missing-bead worktrees
+```
+
+**Candidacy comes from bead state, never from git ancestry.** The repo squash-merges, so every landed branch still reports as unmerged. A directory named after a bead that `bd show` reports `closed` is the only proof that admits removal; an open bead, a missing bead, or a bead `bd` could not answer for is kept unless `--remove-orphans` asks otherwise. A bead `bd` could not read is never removed, whatever the flags say.
+
+**A candidate that fails a guard is refused, and the reason is printed.** The guards are: dirty working tree, `locked` worktree, detached HEAD, directory not registered with git, branch with no upstream, and branch with unpushed commits.
+
+**Removal is three commands.** `git worktree remove <path>`, then `git branch -D <branch>`, then `git push origin --delete <branch>`. The remote branch name is the worktree's own checked-out branch, so ralph's `feature/<parent-id>` deletes `origin/feature/<parent-id>`. A remote ref that git already reports as gone is not a failure.
+
+**Exit status is 1 whenever any scanned worktree survived the run.** An open bead counts as survival, so a normal run against a live backlog exits 1. Read the per-worktree report; do not treat the status as a verdict on the worktree you asked about.
+
+**An unregistered stale directory is refused forever.** Earlier git runs may have dropped its registration, so every scan reports it and never removes it. Clean it up by hand: `git worktree prune`, then `rm -rf <path>`.
+
+---
+
 ## Feature PR Gate
 
 When the `document` chore for a parent task completes:

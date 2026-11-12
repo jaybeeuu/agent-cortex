@@ -96,7 +96,7 @@ bd show <id>                   # full detail, including the worker's notes
 - **Multi-feature epics** (two or more feature task children): the epic runs on `epic/<epic-id>`, based on `origin/main` — never local `main`. Each `execution:afk` parent task runs on `feature/<parent-id>`, based from its epic branch, in the dedicated worktree `.agent-cortex/worktrees/<parent-id>`.
 - Feature PR gate: `feature/<parent-id>` → `epic/<epic-id>` (or → `main` for single-feature epics). Epic PR gate: `epic/<epic-id>` → `main`.
 - **Never stack branches.** `feature/<parent-id>` is based on `epic/<epic-id>` (or `origin/main`), never on another `feature/*`. A dependency between two tasks lives in the bead graph (`bd dep add <waiting> <blocked-on>`) so the dependent task stays out of `bd ready` until its dependency has merged — stacking the branch defeats that gate by hand and costs a rebase-on-squash later (see `git-workflow` rule 3).
-- Branch/worktree setup and the PR commands live in REFERENCE.md (_Feature branches and worktrees_, _Feature PR gate_).
+- Branch/worktree setup and the PR commands live in REFERENCE.md (_Feature branches and worktrees_, _Feature PR gate_). Closed-bead worktrees are reclaimed by `skills/workflow/ralph/scripts/prune-worktrees.mjs`, which removes worktrees whose bead is closed, reports the rest, and removes an orphan only with `--remove-orphans` (REFERENCE.md, _Pruning Worktrees_).
 
 ### 7. HITL pause and shutdown
 

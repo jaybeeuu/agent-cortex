@@ -22,6 +22,12 @@
 //                                           layout (scripts/lib/skill-links.mjs),
 //                                           so a grouped-tree handoff still
 //                                           resolves in the plugin.
+//   <output>/docs/...                       documents the skills read after
+//                                           install (docs/skills/skill-anatomy.md),
+//                                           copied verbatim once per install — a
+//                                           skill names them by {{PATH:key}}, so
+//                                           the token map decides both location
+//                                           and shipment
 //   <output>/hooks.json + hooks/<scripts>   from hooks/claude/ (support files
 //                                           referenced via ${CLAUDE_PLUGIN_ROOT})
 //   <output>/.mcp.json + scripts/           hand-authored extras copied from
@@ -67,6 +73,7 @@ import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
+import { installDocs } from "../../scripts/lib/docs.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 import { flattenSkillLinks } from "../../scripts/lib/skill-links.mjs";
 
@@ -642,6 +649,7 @@ async function isSymlink(filePath) {
  * @property {object | null} marketplaceManifest
  * @property {string[]} agents
  * @property {{ names: string[], md: number, files: number, dir: string }} skills
+ * @property {{ files: string[], dir: string }} docs
  * @property {boolean} hooks
  * @property {string[]} hookFiles
  * @property {string[]} handAuthored
@@ -703,7 +711,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   // or a tmp dir, never claude-extras/, but clearing the output first would
   // still destroy sources if they ever collided). They are re-copied fresh in
   // the write phase. In dry-run nothing is cleaned or written.
-  const cleanable = ["agents", "skills", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"];
+  const cleanable = ["agents", "skills", "docs", ".claude-plugin", "hooks", "scripts", "hooks.json", ".mcp.json"];
   const handAuthored = await buildHandAuthored(root);
 
   // Regenerate the plugin children (removes stale output from earlier flows,
@@ -734,6 +742,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   const agents = await buildAgents(root);
   const skillOut = join(out, "skills");
   const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
+  const docs = await installDocs({ root, output: out, dryRun, tokenMap });
   const pluginJson = await buildPluginJson(root);
   const hooksSrc = join(root, "hooks", "claude", "hooks.json");
   const hooksJson = (await isFile(hooksSrc)) ? await readFile(hooksSrc, "utf-8") : null;
@@ -748,6 +757,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     pluginVersion: JSON.parse(pluginJson).version,
     agents: agents.files.map((f) => f.file.replace(/\.md$/, "")),
     skills: { names: skills.names, md: skills.md, files: skills.files, dir: skillOut },
+    docs,
     hooks: hooksJson !== null,
     hookFiles: hookFiles.map((f) => f.rel),
     handAuthored: handAuthored.map((f) => f.rel),
@@ -761,6 +771,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     console.log(`DRY-RUN — would generate into ${out}, no files written:`);
     console.log(`  agents: ${summary.agents.join(", ")}`);
     console.log(`  skills: ${summary.skills.names.length} copied → ${skillOut}/<name>/ (token-substituted)`);
+    if (docs.files.length) console.log(`  docs: ${docs.files.join(", ")} → ${docs.dir}/ (verbatim copies)`);
     console.log(`  .claude-plugin/plugin.json (version ${JSON.parse(pluginJson).version})`);
     if (isDefaultInstall && manifestPath) {
       console.log(`  marketplace manifest → ${manifestPath} (plugin agent-cortex @ ./${basename(out)})`);
@@ -791,6 +802,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   console.log(
     `Copied ${summary.skills.names.length} skill(s) → ${skillOut}/<name>/ (token-substituted, no symlinks)`,
   );
+  if (docs.files.length) console.log(`Copied ${docs.files.length} doc(s) → ${docs.dir}/ (verbatim)`);
 
   await mkdir(join(out, ".claude-plugin"), { recursive: true });
   await writeFile(join(out, ".claude-plugin", "plugin.json"), pluginJson);

@@ -8,7 +8,7 @@ description: Refactor an existing SKILL.md to the canonical anatomy template thr
 ## When to use
 
 - A skill's SKILL.md predates the anatomy template and needs upgrading.
-- You want to align a skill with `docs/skills/skill-anatomy.md` before the refactor wave touches it.
+- You want to align a skill with `{{PATH:skill_anatomy}}` before the refactor wave touches it.
 - You want to compare a skill's structure to the current template standard.
 - Trigger phrases: "refactor this skill", "restructure this skill", "review this skill", "upgrade X to the template", "align with anatomy".
 
@@ -27,7 +27,7 @@ Read the target skill's `skills/<name>/SKILL.md` and the canonical anatomy refer
 
 ```bash
 cat skills/<name>/SKILL.md
-cat docs/skills/skill-anatomy.md
+cat {{PATH:skill_anatomy}}
 ```
 
 If the target has no `SKILL.md` yet, abort — this skill upgrades existing files; use `write-a-skill` for new creation.

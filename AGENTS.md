@@ -103,6 +103,10 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   install contains that tree, so it was never a portable skill.
 - Skill names use kebab-case and are grouped by prefix where related (e.g. `review-security`,
   `review-code`; `style-code`, `style-comms`, `style-documentation`).
+- A skill that reads a document names it with a `{{PATH:...}}` token, never a repo-relative path:
+  the token map's `docs/` entries are exactly the documents an install ships, and
+  `test/installed-docs.test.mjs` fails when a rendered skill names a repository doc the install does
+  not contain.
 
 ## Agent Conventions
 
@@ -113,7 +117,8 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   time. The Claude plugin is materialised by the install-time generator
   `bin/installers/claude.mjs`: a plain `agent-cortex install claude` copies it into
   `~/.agent-cortex/claude` (skills copied flat with `{{TOOL:...}}`/`{{PATH:...}}` substituted,
-  never symlinked), writes the marketplace manifest at
+  never symlinked, plus the bundled docs that skills read — one copy per install, verbatim), writes the
+  marketplace manifest at
   `~/.agent-cortex/.claude-plugin/marketplace.json`, merges the committed `claude/settings.json`
   template into `~/.claude/settings.json`, and registers it with Claude Code via the
   `claude plugin` CLI. The settings merge preserves personal config: the CLI owns exactly the
@@ -126,7 +131,8 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `ralph` included, composes from its `claude/` harness dir).
 - The pi package is materialised by `bin/installers/pi.mjs`: `agent-cortex install pi` stages a
   self-contained pi package in `~/.agent-cortex/pi` (manifest, flat rendered agents, token-substituted
-  skills, a copy of `extensions/`, `token-map.json`, and the bundled `pi.packages` closure under
+  skills, the bundled docs that skills read, a copy of `extensions/`, `token-map.json`, and the bundled
+  `pi.packages` closure under
   `node_modules/`) and registers that directory with pi through the `pi` CLI — pi's own
   `~/.pi/agent/settings.json` is read, never written. `--output <dir>` stages only (no registration,
   no sweep) and `--dry-run` reports the plan. Once registration succeeds, a one-shot migration sweeps

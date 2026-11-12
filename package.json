@@ -18,6 +18,7 @@
     "scripts/",
     "skills/",
     "agents/",
+    "docs/skills/skill-anatomy.md",
     "extensions/*.ts",
     "extensions/lib/",
     "extensions/*/*.ts",

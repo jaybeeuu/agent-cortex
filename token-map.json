@@ -39,6 +39,10 @@
     "skills_dir": {
       "claude": { "base": "plugin_root", "relative": "skills" },
       "pi": { "base": "plugin_root", "relative": "skills" }
+    },
+    "skill_anatomy": {
+      "claude": { "base": "plugin_root", "relative": "docs/skills/skill-anatomy.md" },
+      "pi": { "base": "plugin_root", "relative": "docs/skills/skill-anatomy.md" }
     }
   },
   "agents": {
@@ -75,7 +79,8 @@
     },
     "paths": {
       "pi": "plugin_root is the staged package `agent-cortex install pi` materialises at ~/.agent-cortex/pi; pi loads that directory by path and the shipped extensions resolve their own resources relative to it (agent-modes computes plugin_root from its actual install location). A checkout or symlinked install differs — installers compute plugin_root from the actual resolution and can override it (--plugin-root).",
-      "claude": "plugin_root stays ${CLAUDE_PLUGIN_ROOT} (env var) for the materialised plugin — never a literal ~/.agent-cortex/claude. Claude Code copies marketplace-installed plugins (including local directory sources like ~/.agent-cortex/claude) into its own cache and expands the env var per context, so a literal home path in substituted files would break under cache-copy; the installer passes the env form through verbatim."
+      "claude": "plugin_root stays ${CLAUDE_PLUGIN_ROOT} (env var) for the materialised plugin — never a literal ~/.agent-cortex/claude. Claude Code copies marketplace-installed plugins (including local directory sources like ~/.agent-cortex/claude) into its own cache and expands the env var per context, so a literal home path in substituted files would break under cache-copy; the installer passes the env form through verbatim.",
+      "skill_anatomy": "A path entry whose relative path sits under docs/ names a document the install ships: both installers copy it from the package root into the staged tree at that relative path (scripts/lib/docs.mjs), so a skill can read it on a machine with no checkout. One copy per install serves every skill that references it — write-a-skill and refactor-skill both do. The repo's docs/ stays the single source of truth; the staged copy is a verbatim copy, never a second authored version."
     },
     "agents": {
       "prefix": "Claude strips the agent-cortex: name prefix during conversion (NAME_PREFIX in bin/installers/claude.mjs): pi agents are agent-cortex:<slug>, claude agents are <slug>."

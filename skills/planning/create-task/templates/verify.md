@@ -21,7 +21,7 @@ Discover and run the project's test and lint commands, then report the outcome.
 1. `package.json` `scripts` — look for keys named `test`, `lint`, `check`, `typecheck`, or similar.
 2. `Makefile` — look for targets named `test`, `lint`, `check`.
 3. Other well-known config files (e.g. `pyproject.toml`, `Cargo.toml`) — look for test/lint targets.
-4. If no commands are found, report PASS with summary "No test or lint commands found".
+4. If no commands are found, report `OUTCOME: SUCCESS` with summary "No test or lint commands found".
 
 **Step 2 — Run each discovered command** in the project root. Capture stdout and stderr.
 

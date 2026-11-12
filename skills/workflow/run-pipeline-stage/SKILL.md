@@ -1,6 +1,6 @@
 ---
 name: run-pipeline-stage
-description: Execute a single pipeline stage for a bead (code, verify, review, document) via its playbook and read-only routing, reporting the outcome in a fixed REPORT shape. Use when you want to "work through beads inline", "pick up a specific stage bead", or run one stage "without the full ralph orchestrator".
+description: Execute a single pipeline stage for a bead (code, verify, review, document, housekeeping) via its playbook and read-only routing, reporting the outcome in a fixed REPORT shape. Use when you want to "work through beads inline", "pick up a specific stage bead", or run one stage "without the full ralph orchestrator".
 ---
 
 # Run Pipeline Stage

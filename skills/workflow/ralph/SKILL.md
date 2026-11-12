@@ -45,7 +45,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 
 ### 2. Expansion guard (stage chores are pre-created)
 
-A ready `execution:afk` task bead with no `stage:*` chore children has nothing to dispatch, so it is not dispatched as work. Expand it first: dispatch a worker in the feature worktree that runs `create-chores.mjs --parent <id> --priority <parent-priority>` against the existing bead and reports the returned `code`/`verify`/`review`/`document`/`featurePrReview` mapping — the next `bd ready -l execution:afk` pass then picks up `stage:code` (see REFERENCE.md, _Expansion Guard_).
+A ready `execution:afk` task bead with no `stage:*` chore children has nothing to dispatch, so it is not dispatched as work. Expand it first: dispatch a worker in the feature worktree that runs `create-chores.mjs --parent <id> --priority <parent-priority>` against the existing bead and reports the returned `code`/`verify`/`review`/`document`/`housekeeping`/`featurePrReview` mapping — the next `bd ready -l execution:afk` pass then picks up `stage:code` (see REFERENCE.md, _Expansion Guard_).
 
 The expansion is idempotent and re-running it is the recovery path: the script adopts the chores that already exist under the parent, creates only the missing ones, and reports the whole mapping. The auto-recovery fires only when a re-check finds no `stage:*` chore at all; a **partial** chain (a count below the stage total) needs a manual re-run of that same command.
 

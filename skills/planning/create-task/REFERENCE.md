@@ -28,7 +28,7 @@ One per stage in `pipeline.json` (currently `code`, `verify`, `review`, `documen
 after them — so the script wires those stages to it in a second pass, once the gate exists. The
 `housekeeping` stage uses it: its chore must not become ready until a human has merged the PR and
 closed the gate, and the `blocks` edge keeps it out of `bd ready` while the feature is in flight.
-The gate itself still waits on the last stage that does not wait on the gate (`document`)..
+The gate itself still waits on the last stage that does not wait on the gate (`document`).
 
 ## PR gate bead (`featurePrReview`)
 

@@ -39,8 +39,8 @@ Verify registration, not files: `pi list` lists one agent-cortex source pointing
 
 | Path | What it is |
 |---|---|
-| `~/.agent-cortex/pi` | Staged pi package — manifest, flat rendered agents, token-substituted skills, a copy of `extensions/`, `token-map.json`, bundled `node_modules`. This is the source `pi list` registers. |
-| `~/.agent-cortex/claude` | The materialised Claude plugin — agents, flat skills, `hooks.json`, `.mcp.json`, `scripts/`. |
+| `~/.agent-cortex/pi` | Staged pi package — manifest, flat rendered agents, token-substituted skills, the docs those skills read, a copy of `extensions/`, `token-map.json`, bundled `node_modules`. This is the source `pi list` registers. |
+| `~/.agent-cortex/claude` | The materialised Claude plugin — agents, flat skills, the docs those skills read, `hooks.json`, `.mcp.json`, `scripts/`. |
 | `~/.agent-cortex/.claude-plugin/marketplace.json` | Marketplace manifest exposing `./claude`. |
 | `~/.agent-cortex/legacy-sweep.json` | The one-shot record of the legacy `~/.pi/agent` sweep, so it never runs twice. |
 

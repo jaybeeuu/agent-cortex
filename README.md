@@ -209,6 +209,7 @@ The staged package contains:
 | `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`; the version tracks the package |
 | `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
 | `skills/` | token-substituted skill copies (real files, never symlinks) |
+| `docs/` | the repository documents those skills read (currently `docs/skills/skill-anatomy.md`), copied verbatim once per install so the reference resolves on a machine without the checkout |
 | `extensions/` | copy of the repo `extensions/` tree — imports nothing from pi's runtime except the host-aliased `typebox`, so pi loads it from any directory |
 | `token-map.json` | the token map `agent-modes` reads from the package root |
 | `node_modules/` | the required third-party pi packages and their transitive closure |
@@ -475,7 +476,7 @@ version — picked up at install time) — then run
 `agent-cortex install claude` (re-materialises the home plugin, merges settings, and
 re-registers it; `--output <dir>` generates a preview only). The only committed file under
 `claude/` is the settings template; `~/.agent-cortex/claude` is generated in full
-(`.claude-plugin/plugin.json`, `agents/`, `skills/`, `hooks.json`, `.mcp.json`, `scripts/`)
+(`.claude-plugin/plugin.json`, `agents/`, `skills/`, `docs/`, `hooks.json`, `.mcp.json`, `scripts/`)
 so never edit anything under it. CI validates the Claude materialiser (structural checks on
 a temp-dir install) so sources and installer can never silently diverge.
 

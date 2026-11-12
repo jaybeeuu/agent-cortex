@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.5.0
+
+### Minor Changes
+
+- 8ca9462: New `cortex` and `ctx` commands: both run the same CLI as `agent-cortex`. The help text and the error hints now name the command that was invoked, so `ctx --help` prints `Usage: ctx <command>`; any other script name falls back to `agent-cortex`.
+- 45992c7: `create-chores.mjs` is now idempotent: a re-run adopts the stage chores and PR gate that already exist under the parent, creates only what is missing, and skips deps that are already wired. Re-running it after a failed chore expansion is now the recovery path, so ralph no longer refuses to re-dispatch an expansion.
+
+### Patch Changes
+
+- 2cab55e: Chunk the `migrate` v1 label rename: each `bd label add` and `bd label remove` call
+  now carries at most 20 bead ids. One call carrying every id in a large workspace
+  applied only part of the list and still reported success, so v1 never converged and a
+  workspace could report itself migrated with hundreds of legacy labels attached.
+- dd4e69c: Fail `agent-cortex install pi` when a skill sits outside `skills/<group>/<name>`.
+
+  pi advertises a skill by the absolute path of its `SKILL.md`, and the installer copies exactly
+  `skills/<group>/<name>`. A skill authored deeper was skipped without a trace, so no session was
+  ever told about it. The install now stops and names the offending path.
+
+  `docs/dev-loop.md` records the related limit that needs no code: a session lists its skills when
+  it starts, so a session already open across a re-stage holds the paths it was given.
+
 ## 2.4.2
 
 ### Patch Changes

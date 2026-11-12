@@ -8,9 +8,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.78.1",
-    "@earendil-works/pi-ai": "^0.78.1",
-    "@earendil-works/pi-coding-agent": "^0.78.1",
+    "@earendil-works/pi-agent-core": "^1.5.2",
+    "@earendil-works/pi-ai": "^1.5.2",
+    "@earendil-works/pi-coding-agent": "^1.5.2",
     "@types/node": "^22.0.0",
     "tsx": "^4.0.0",
     "typebox": "^1.1.38",

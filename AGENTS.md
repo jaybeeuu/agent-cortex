@@ -152,6 +152,12 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   registration makes the flag fail with `Unknown option`.
 - Extensions that persist data should write to `~/.pi/agent-cortex/` (global, cross-project)
   and tag records with the project path for per-project slicing.
+- Extensions reference pi as `import type` only, so each workspace carries `@earendil-works/pi-*`
+  as a `devDependency` for `tsc` and nothing at runtime. Pin it to the pi version the CLI actually
+  runs (`pi --version`), so `pnpm typecheck` checks the installed API. The guard is
+  `extensions/agent-modes/index.test.ts`: its `ExtensionAPI` double is a complete literal, so a pi
+  release that grows the interface fails `tsc` there. Add the member to the double — a cast such as
+  `as unknown as ExtensionAPI` silently drops the check.
 - PI extensions with Claude Code equivalents are ported to `hooks/claude/`; the port/reject
   audit with rationale lives in `docs/claude-hooks.md`.
 

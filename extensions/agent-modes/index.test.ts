@@ -64,6 +64,8 @@ function createFakePi(flagValues: Record<string, boolean | string> = {}): FakePi
       const list = handlers.get(event) ?? [];
       list.push(handler);
       handlers.set(event, list);
+      // `ExtensionAPI.on` returns an unsubscribe function.
+      return () => {};
     },
     registerFlag: (name, options) => {
       flags.push([name, options]);
@@ -77,8 +79,16 @@ function createFakePi(flagValues: Record<string, boolean | string> = {}): FakePi
     registerShortcut: () => {},
     registerTool: () => {},
     registerMessageRenderer: () => {},
+    registerMarkdownTransformer: () => {},
+    registerEntryRenderer: () => {},
+    registerToolRenderer: () => {},
     registerProvider: () => {},
     unregisterProvider: () => {},
+    registerMcpServer: () => {},
+    unregisterMcpServer: () => {},
+    unregisterVirtualModel: () => {},
+    registerVirtualModel: () => {},
+    getMcpServers: () => [],
     sendMessage: () => {},
     sendUserMessage: () => {},
     appendEntry: () => {},
@@ -89,6 +99,9 @@ function createFakePi(flagValues: Record<string, boolean | string> = {}): FakePi
       throw new Error("not implemented");
     },
     getAllTools: () => [],
+    getSettings: () => {
+      throw new Error("not implemented");
+    },
     getCommands: () => [],
     setModel: async () => false,
     getThinkingLevel: () => "off",

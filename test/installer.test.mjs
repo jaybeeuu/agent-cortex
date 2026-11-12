@@ -541,6 +541,29 @@ describe("install claude", () => {
     assert.equal(all.filter((c) => c === "plugin install agent-cortex@jaybeeuu -y").length, 1);
   });
 
+  it("a same-version re-install keeps the enabledPlugins entry Claude Code wrote", async () => {
+    // The reproduction from the bug: install, enable the plugin in Claude Code,
+    // re-run the installer at the same version. The entry must survive, or the
+    // plugin stays installed but disabled while every command exits 0.
+    const fakeHome = await makeTmp();
+    const fakeBin = await makeTmp();
+    await makeFakeClaude(fakeBin);
+    const env = { HOME: fakeHome, PATH: `${fakeBin}:${process.env.PATH}` };
+    const settingsPath = join(fakeHome, ".claude", "settings.json");
+
+    const first = await runCli(["install", "claude"], env);
+    assert.equal(first.exitCode, 0);
+    // What Claude Code writes into the user's settings when the plugin is enabled.
+    const settings = JSON.parse(await readFile(settingsPath, "utf-8"));
+    settings.enabledPlugins = { "agent-cortex@jaybeeuu": true };
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+
+    const second = await runCli(["install", "claude"], env);
+    assert.equal(second.exitCode, 0);
+    const after = JSON.parse(await readFile(settingsPath, "utf-8"));
+    assert.deepEqual(after.enabledPlugins, { "agent-cortex@jaybeeuu": true });
+  });
+
   it("warns with manual commands when the claude CLI is missing; --require-register fails the run", async () => {
     const fakeHome = await makeTmp();
     const env = { HOME: fakeHome, PATH: "/nonexistent" };
@@ -718,7 +741,7 @@ describe("install claude — settings.json", () => {
     }
   });
 
-  it("owns only enabledPlugins + extraKnownMarketplaces — personal entries under them are replaced by the template", async () => {
+  it("asserts the enabledPlugins + extraKnownMarketplaces entries the template declares and leaves the rest alone", async () => {
     const fx = await makeSettingsFixture({
       template: settingsTemplate({
         enabledPlugins: { "team@official": true },
@@ -727,7 +750,7 @@ describe("install claude — settings.json", () => {
         },
       }),
       settings: personalSettings({
-        enabledPlugins: { "personal@mine": true },
+        enabledPlugins: { "personal@mine": true, "team@official": false },
         extraKnownMarketplaces: { mine: { source: { source: "github", repo: "me/mine" } } },
       }),
     });
@@ -735,13 +758,38 @@ describe("install claude — settings.json", () => {
       await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
       const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
 
-      assert.deepEqual(settings.enabledPlugins, { "team@official": true }, "template owns enabledPlugins");
+      assert.deepEqual(
+        settings.enabledPlugins,
+        { "personal@mine": true, "team@official": true },
+        "a declared entry wins over the live value; undeclared entries survive",
+      );
       assert.deepEqual(
         settings.extraKnownMarketplaces,
-        { official: { source: { source: "github", repo: "anthropics/plugins" } } },
-        "template owns extraKnownMarketplaces",
+        {
+          mine: { source: { source: "github", repo: "me/mine" } },
+          official: { source: { source: "github", repo: "anthropics/plugins" } },
+        },
+        "undeclared marketplaces survive beside the declared one",
       );
-      assert.ok(!("personal@mine" in settings.enabledPlugins));
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("keeps the enabledPlugins entry Claude Code wrote when the template declares none — an empty key owns nothing", async () => {
+    // Claude Code writes enabledPlugins when the user enables an installed
+    // plugin, so a same-version re-install must not write an empty template map
+    // over it: the plugin would stay installed but disabled, and nothing would
+    // report it.
+    const fx = await makeSettingsFixture({
+      template: settingsTemplate(),
+      settings: personalSettings({ enabledPlugins: { "agent-cortex@jaybeeuu": true } }),
+    });
+    try {
+      await installClaude({ root: fx.root, output: fx.output, settingsPath: fx.settingsPath });
+      const settings = JSON.parse(await readFile(fx.settingsPath, "utf-8"));
+
+      assert.deepEqual(settings.enabledPlugins, { "agent-cortex@jaybeeuu": true });
     } finally {
       await fx.cleanup();
     }

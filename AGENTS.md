@@ -116,8 +116,10 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   never symlinked), writes the marketplace manifest at
   `~/.agent-cortex/.claude-plugin/marketplace.json`, merges the committed `claude/settings.json`
   template into `~/.claude/settings.json`, and registers it with Claude Code via the
-  `claude plugin` CLI. The settings merge preserves personal config: the CLI owns exactly
-  `enabledPlugins` + `extraKnownMarketplaces`, and every other key is left untouched. Only
+  `claude plugin` CLI. The settings merge preserves personal config: the CLI owns exactly the
+  `enabledPlugins` + `extraKnownMarketplaces` entries the template declares, entries it does not
+  declare survive (including the one Claude Code writes when the user enables the plugin), and
+  every other key is left untouched. Only
   that settings template is committed under `claude/` — the generated plugin subtree is not;
   hand-authored plugin extras live in `claude-extras/` (`.mcp.json`, `scripts/`), and
   `--output <dir>` is the generate-only form (tests/CI materialiser checks); every agent,

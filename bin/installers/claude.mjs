@@ -85,13 +85,16 @@ const PACKAGE_ROOT = join(MODULE_DIR, "..", "..");
  */
 
 /**
- * Registration plan/outcome returned by registerClaude.
+ * Register plan/outcome returned by registerClaude.
  * @typedef {object} RegisterClaudeResult
  * @property {string} marketplace
  * @property {string} plugin
  * @property {string[][]} commands
  * @property {boolean} dryRun
  * @property {boolean} registered
+ * @property {boolean | null} enabled  Whether the user's settings enable the plugin;
+ *                                     null when the settings could not be read or
+ *                                     its state is unconfirmed.
  * @property {string[]} skipped
  */
 
@@ -400,9 +403,13 @@ async function buildHandAuthored(root) {
  *   - template keys fill in defaults the live file lacks; every value already
  *     present in the live file wins (deeply), and unknown keys are preserved,
  *     so personal config survives re-install;
- *   - `enabledPlugins` and `extraKnownMarketplaces` are CLI-owned: they are
- *     rewritten from the template outright. `permissions`, `hooks`, `env`,
- *     `statusLine` and every other key are never touched.
+ *   - `enabledPlugins` and `extraKnownMarketplaces` are CLI-owned in the other
+ *     direction: the entries the template declares are asserted (the template
+ *     value wins for those), and entries it does not declare are kept. A
+ *     template key that is empty or absent declares nothing and therefore owns
+ *     nothing — silence never deletes, so a re-install cannot erase the entry
+ *     Claude Code writes when the user enables the plugin. `permissions`,
+ *     `hooks`, `env`, `statusLine` and every other key are never touched.
  * @param {{ root: string, target: string, dryRun: boolean, warn: Warn }} options
  * @returns {Promise<ManagedFileResult | null>}
  */
@@ -410,14 +417,30 @@ async function installSettings({ root, target, dryRun, warn }) {
   const template = await readTemplateJson(join(root, SETTINGS_TEMPLATE), warn);
   if (template === null) return null;
 
-  const merged = mergeSettings(template, await readJsonObject(target, warn));
+  const existing = await readJsonObject(target, warn);
+  const merged = mergeSettings(template, existing);
   for (const key of SETTINGS_OWNED_KEYS) {
-    if (key in template) merged[key] = template[key];
-    else delete merged[key];
+    const value = mergeOwnedSetting(template[key], existing[key]);
+    if (value === undefined) delete merged[key];
+    else merged[key] = value;
   }
 
   const content = `${JSON.stringify(merged, null, 2)}\n`;
   return writeManagedFile({ target, content, dryRun });
+}
+
+/**
+ * Merge one CLI-owned settings key. The template asserts the entries it
+ * declares — its value wins for exactly those — and every entry it does not
+ * declare survives from the live file. An empty or absent template key declares
+ * nothing, so the live value passes through untouched: silence never deletes.
+ * @param {unknown} template
+ * @param {unknown} existing
+ * @returns {unknown}
+ */
+function mergeOwnedSetting(template, existing) {
+  if (!isPlainObject(template) || !isPlainObject(existing)) return existing === undefined ? template : existing;
+  return { ...existing, ...template };
 }
 
 /**
@@ -1045,6 +1068,11 @@ async function pluginLoadVerdict(claudeBin, pluginId) {
  * When that list cannot be read, or does not list the plugin, the load state is
  * unconfirmed: the install warns and skips the success line.
  *
+ * A loaded plugin that the user's settings do not enable loads nothing either:
+ * Claude Code reads `enabledPlugins` from that file, and registration skips the
+ * install as "already installed", so the run warns with the command that fixes
+ * it rather than reporting a working install.
+ *
  * @param {object} options
  * @param {string} [options.root]            Marketplace root carrying .claude-plugin/…
  *                                           (defaults to the repo containing this module)
@@ -1052,6 +1080,8 @@ async function pluginLoadVerdict(claudeBin, pluginId) {
  * @param {boolean} [options.dryRun]         Plan and report without running or writing
  * @param {object} [options.manifest]        Pre-parsed marketplace manifest (skips the file read)
  * @param {string} [options.pluginVersion]   Materialised plugin version (default: read from plugin.json)
+ * @param {string} [options.settingsPath]    Claude user settings the enablement check reads
+ *                                           (default ~/.claude/settings.json)
  * @param {boolean} [options.requireRegister] Exit non-zero when registration cannot run
  * @param {(msg: string) => void} [options.warn] Warning sink (default: console.warn)
  * @returns {Promise<RegisterClaudeResult>}
@@ -1062,6 +1092,7 @@ export async function registerClaude({
   dryRun = false,
   manifest,
   pluginVersion,
+  settingsPath = DEFAULT_SETTINGS_PATH,
   requireRegister = false,
   warn = DEFAULT_WARN,
 } = {}) {
@@ -1072,7 +1103,7 @@ export async function registerClaude({
   const version = pluginVersion ?? (await readMaterialisedPluginVersion(root, manifestObj));
   const home = resolve(root);
 
-  const summary = /** @type {RegisterClaudeResult} */ ({ marketplace, plugin, commands: [], dryRun, registered: true, skipped: [] });
+  const summary = /** @type {RegisterClaudeResult} */ ({ marketplace, plugin, commands: [], dryRun, registered: true, enabled: null, skipped: [] });
   console.log(`Registering plugin "${pluginId}" with Claude Code (via ${claudeBin})…`);
 
   const manualCommands = [
@@ -1156,9 +1187,22 @@ export async function registerClaude({
         `verify with "${claudeBin} plugin list" (restart Claude Code to apply)`,
     );
   } else {
-    console.log(
-      `Installed — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,
-    );
+    // Installed but disabled is a plugin that loads nothing: Claude Code gates
+    // every skill and agent on the user's enabledPlugins entry, and the install
+    // path above skips a same-version re-install as "already installed", so
+    // this is the only place that state is reported.
+    const enabled = (await readJsonObject(settingsPath, warn)).enabledPlugins?.[pluginId] === true;
+    summary.enabled = enabled;
+    if (enabled) {
+      console.log(
+        `Installed and enabled — verify with "claude plugin list" / "claude plugin details ${plugin}" (restart Claude Code to apply).`,
+      );
+    } else {
+      warn(
+        `"${pluginId}" is installed but not enabled in ${settingsPath} — Claude Code loads nothing from a disabled plugin; ` +
+          `enable it with "${claudeBin} plugin enable ${pluginId}" and restart Claude Code`,
+      );
+    }
   }
   return summary;
 }

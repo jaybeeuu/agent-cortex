@@ -292,7 +292,8 @@ symlinks), `SessionStart` + `Notification` hooks, and 2 MCP servers — writes a
 manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude`, and
 registers it with Claude Code, and merges the committed `claude/settings.json` template into
 `~/.claude/settings.json`: the template supplies defaults, personal values win, and the
-installer owns exactly `enabledPlugins` + `extraKnownMarketplaces` — every other key
+installer owns exactly the `enabledPlugins` + `extraKnownMarketplaces` entries the template
+declares — entries it does not declare are left alone — while every other key
 (`permissions`, `hooks`, `env`, `statusLine`, unknown keys) is preserved. It also writes the
 managed section of `~/.claude/CLAUDE.md` — the reply-shape block the pi `output-style`
 extension appends, taken from the same source file — and leaves every other line of that
@@ -360,10 +361,15 @@ agent-cortex install claude --require-register       # register or fail the inst
 
 The install also merges the committed `claude/settings.json` template into
 `~/.claude/settings.json` (the settings file Claude Code reads at user scope). The template
-supplies defaults and personal values win; the installer owns exactly `enabledPlugins` +
-`extraKnownMarketplaces`, so `permissions`, `hooks`, `env`, `statusLine` and unknown keys are
-never touched. A legacy symlinked `settings.json` is replaced with a real file rather than
-written through, and `--output` leaves the user's Claude config alone.
+supplies defaults and personal values win; the installer owns exactly the `enabledPlugins` +
+`extraKnownMarketplaces` entries the template declares, so entries it does not declare (including
+the one Claude Code writes when you enable the plugin) survive, and `permissions`, `hooks`, `env`,
+`statusLine` and unknown keys are never touched. A legacy symlinked `settings.json` is replaced
+with a real file rather than written through, and `--output` leaves the user's Claude config
+alone. When registration finds the plugin installed but the settings do not enable it, the install
+warns and names `claude plugin enable <plugin>@<marketplace>` — a disabled plugin loads nothing.
+That check reads the user-scope file only, so a plugin enabled at project or local scope still
+warns; `claude plugin list` reports the effective state.
 
 It also writes the managed section of `~/.claude/CLAUDE.md` (Claude's user memory), delimited
 by `<!-- BEGIN agent-cortex:output-style -->` / `<!-- END agent-cortex:output-style -->`. The

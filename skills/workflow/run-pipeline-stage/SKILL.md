@@ -5,7 +5,7 @@ description: Execute a single pipeline stage for a bead (code, verify, review, d
 
 # Run Pipeline Stage
 
-Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `stage:fix`) come from the pipeline definition in `skills/planning/create-task/pipeline.json`. This skill executes one stage and owns that bead's lifecycle: the runner that does the work appends its own notes, closes its own leaf execution bead on **both** outcomes, and builds its own remediation children when the stage fails. The orchestrator dispatches and routes — it never edits or closes a leaf bead.
+Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `stage:housekeeping`, `stage:fix`) come from the pipeline definition in `skills/planning/create-task/pipeline.json`. This skill executes one stage and owns that bead's lifecycle: the runner that does the work appends its own notes, closes its own leaf execution bead on **both** outcomes, and builds its own remediation children when the stage fails. The orchestrator dispatches and routes — it never edits or closes a leaf bead.
 
 ## When to use
 
@@ -58,7 +58,8 @@ The worker built anything this stage needed; routing picks up whatever `bd ready
 | `review` | `OUTCOME: SUCCESS` | Dispatch the ready `stage:document` chore |
 | `fix` | `OUTCOME: SUCCESS` | Dispatch the ready re-run chore that was blocked on the fix |
 | `document` | `OUTCOME: SUCCESS` | Open/update the feature PR and the HITL gate bead |
-| `code` / `verify` / `review` / `fix` / `document` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh instance of its own stage; dispatch the ready fix chore |
+| `housekeeping` | `OUTCOME: SUCCESS` | Create nothing — this is the last stage; its closed chore ends the pipeline |
+| `code` / `verify` / `review` / `fix` / `document` / `housekeeping` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh instance of its own stage; dispatch the ready fix chore |
 | any | parent status `blocked` | Nothing — the worker or the cap backstop blocked it; record it for shutdown |
 
 Cap backstop (read-only): before dispatching a `stage:*` chore, count the parent's fix rounds and, if already at `maxFixRounds` (`skills/planning/create-task/pipeline.json`, currently `4`), block the parent and create nothing:

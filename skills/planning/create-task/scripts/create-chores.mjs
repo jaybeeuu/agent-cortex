@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
  * @property {string} description
  * @property {string} template
  * @property {string[]} dependsOn
+ * @property {string[]} [labels]  Labels beside `stage:<id>`; e.g. `lifecycle:housekeeping`
  */
 
 /**
@@ -136,6 +137,10 @@ function wireBlocks(beadId, dependsOnId, blocks) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+// Reserved `dependsOn` target: the PR gate bead. The gate is not a stage — it is
+// created after them — so a stage that waits on it is wired in a second pass.
+const GATE_ROLE = 'featurePrReview';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -150,6 +155,10 @@ const adoptable = readAdoptable(parentId);
 /** @type {Map<string, string>} */
 const stageToBeadId = new Map();
 
+/** Stages that wait on the gate rather than on another stage, held until it exists.
+ * @type {Array<{ beadId: string, blocks: Set<string> }>} */
+const gateDependents = [];
+
 for (const stage of pipeline.stages) {
   const adopted = adoptable.get(`stage:${stage.id}`);
 
@@ -160,7 +169,7 @@ for (const stage of pipeline.stages) {
         '--type', 'chore',
         '--description', JSON.stringify(stage.description),
         '--priority', priority,
-        '--labels', `stage:${stage.id}`,
+        '--labels', [`stage:${stage.id}`, ...(stage.labels ?? [])].join(','),
         '--parent', parentId,
         '--silent',
       ]);
@@ -171,6 +180,7 @@ for (const stage of pipeline.stages) {
   const blocks = adopted ? adopted.blocks : new Set();
 
   for (const depStageId of stage.dependsOn) {
+    if (depStageId === GATE_ROLE) { continue; }
     const depBeadId = stageToBeadId.get(depStageId);
     if (!depBeadId) {
       console.error(`Stage '${stage.id}' depends on '${depStageId}', but it has not been created yet. Check dependsOn ordering in pipeline.json.`);
@@ -178,15 +188,17 @@ for (const stage of pipeline.stages) {
     }
     wireBlocks(beadId, depBeadId, blocks);
   }
+
+  if (stage.dependsOn.includes(GATE_ROLE)) { gateDependents.push({ beadId, blocks }); }
 }
 
-const finalStageId = pipeline.stages.at(-1)?.id;
-if (!finalStageId) {
-  console.error('No pipeline stages found in pipeline.json.');
-  process.exit(1);
-}
+// The gate waits on the last stage that does not itself wait on the gate, so the
+// chain stays acyclic once a stage can follow the gate.
+const chainStageIds = pipeline.stages
+  .filter((stage) => !stage.dependsOn.includes(GATE_ROLE))
+  .map((stage) => stage.id);
 
-const documentStageBeadId = stageToBeadId.get('document') ?? stageToBeadId.get(finalStageId);
+const documentStageBeadId = stageToBeadId.get('document') ?? stageToBeadId.get(chainStageIds.at(-1) ?? '');
 if (!documentStageBeadId) {
   console.error('Could not resolve the final stage bead needed for PR gate dependency.');
   process.exit(1);
@@ -219,6 +231,12 @@ const prGateBeadId = adoptedGate
 /** @type {Set<string>} */
 const gateBlocks = adoptedGate ? adoptedGate.blocks : new Set();
 wireBlocks(prGateBeadId, documentStageBeadId, gateBlocks);
+
+// Second pass: the stages that wait on the gate finally get their dep, now that the
+// gate bead exists.
+for (const { beadId, blocks } of gateDependents) {
+  wireBlocks(beadId, prGateBeadId, blocks);
+}
 
 /** @type {Record<string, string>} */
 const result = {

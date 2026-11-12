@@ -47,7 +47,7 @@ are fine.
 
 ## Expansion Guard
 
-Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. It is idempotent: a re-run adopts the chores that already exist under the parent, creates only the missing ones, and skips deps that are already wired. Ralph's dispatch is therefore always "claim what `bd ready -l execution:afk` returns".
+Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate, plus the `housekeeping` chore blocked behind that gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. It is idempotent: a re-run adopts the chores that already exist under the parent, creates only the missing ones, and skips deps that are already wired. Ralph's dispatch is therefore always "claim what `bd ready -l execution:afk` returns".
 
 A ready `execution:afk` task bead with **no** `stage:*` chore children has nothing to dispatch. Expand it, then dispatch the resulting `stage:code` chore:
 
@@ -57,7 +57,7 @@ A ready `execution:afk` task bead with **no** `stage:*` chore children has nothi
    ```
    Expect `0` printed. `grep -c` exits `1` when it counts zero matches, so add `|| true` when the
    check runs under `set -e` or inside an `&&` chain — the printed count is the answer, not the exit
-   status. A bead with a full chain — one `stage:*` chore per stage in `pipeline.json` (four for the
+   status. A bead with a full chain — one `stage:*` chore per stage in `pipeline.json` (five for the
    shipped pipeline) plus the `lifecycle:feature-pr` gate — never needs an expansion. The check
    answers "no chores at all", so a **partial** chain (a lower count from a failed run) passes it
    and its missing stages never arrive. Nothing detects that automatically: re-run step 2's command
@@ -72,7 +72,7 @@ A ready `execution:afk` task bead with **no** `stage:*` chore children has nothi
    ```json
    { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
    ```
-4. **Report the mapping** the worker returns — `code`, `verify`, `review`, `document`, `featurePrReview` — and close nothing. The worker owns no bead on this run; the expansion is bookkeeping, not a stage.
+4. **Report the mapping** the worker returns — `code`, `verify`, `review`, `document`, `housekeeping`, `featurePrReview` — and close nothing. The worker owns no bead on this run; the expansion is bookkeeping, not a stage.
 5. **Dispatch normally.** The next `bd ready -l execution:afk` pass picks up the `stage:code` chore, and the pre-created chain carries the rest.
 6. **Handle the completion as an expansion completion**, not a stage completion — see below.
 
@@ -97,7 +97,7 @@ On completion, remove the entry from `inflight` and confirm the chore tree exist
 bd children <parent-id> --json | grep -c '"stage:'
 ```
 
-Expect one match per `stage:*` label in the chain — four for the shipped `pipeline.json`; the
+Expect one match per `stage:*` label in the chain — five for the shipped `pipeline.json`; the
 `featurePrReview` gate carries `lifecycle:feature-pr` instead, so it is not counted. A lower count
 means the expansion did not finish: `0` created nothing, and a partial chain leaves stages that
 will never become ready. Either way, surface the worker's output in chat, record the parent for the
@@ -223,6 +223,16 @@ node skills/workflow/ralph/scripts/prune-worktrees.mjs --remove-orphans # also r
 
 **An unregistered stale directory is refused forever.** Earlier git runs may have dropped its registration, so every scan reports it and never removes it. Clean it up by hand: `git worktree prune`, then `rm -rf <path>`.
 
+### Housekeeping chore
+
+Pruning is a pipeline stage, not a habit: `create-chores.mjs` pre-creates a `stage:housekeeping` chore for every expanded task, carrying `lifecycle:housekeeping` and blocked behind that task's `lifecycle:feature-pr` gate. It stays out of `bd ready` until a human closes the gate, so it never competes with pipeline work.
+
+- **Executor.** A dispatched worker — the `stage:housekeeping` chore in `bd ready -l execution:afk` — runs `prune-worktrees.mjs` from the **main checkout**, never from the feature worktree: the worktree it removes can be the parent's own. Ralph dispatches it with the main checkout as cwd for that reason.
+- **Retry once.** Exit status `1` means some scanned worktree survived, and an open bead counts as survival, so a live backlog always exits non-zero. The worker therefore retries the run once. The retry is the whole allowance — never a third run.
+- **Never close over a worktree the script did not remove.** The outcome comes from the per-worktree report, not the exit status: the chore succeeds when no `closed-bead` worktree is left `refused`. A closed-bead worktree still `refused` after the retry fails the chore, and the chore is left **open** with the printed reasons in its notes. A `kept` or `refused` entry for an open bead is a normal report, not a failure.
+
+Ralph creates nothing for this stage and closes nothing: the worker owns the chore, as it owns every leaf bead.
+
 ---
 
 ## Feature PR Gate
@@ -240,15 +250,15 @@ When the `document` chore for a parent task completes:
 4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` and `execution:hitl` (created by `create-task`).
 5. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
 6. Do not schedule new parent features while this gate is **unblocked** — an unblocked gate is a feature genuinely awaiting a human merge (see _Gate predicate_ below).
-7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake. After that, close the parent feature bead:
+7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake **and** the pre-created `stage:housekeeping` chore. After that, close the parent feature bead:
    ```bash
    bd close <parent-id>
    ```
-   Only then continue with next parent features.
+   The housekeeping run that follows removes the parent's worktree, because its bead now reads `closed`. Only then continue with next parent features.
 
 ### Gate predicate — parked vs pending
 
-Ralph's only scheduling brake is a gate that is **unblocked**. `create-chores` pre-creates a `lifecycle:feature-pr` gate for *every* planned feature, blocked behind that feature's own `document` chore; such a gate is **parked** — the feature has not reached its PR stage — and must never stop dispatch. Only when the `document` chore closes does the gate unblock, and that is the state in which a human must merge.
+Ralph's only scheduling brake is a gate that is **unblocked**. `create-chores` pre-creates a `lifecycle:feature-pr` gate for *every* planned feature, blocked behind that feature's own `document` chore; such a gate is **parked** — the feature has not reached its PR stage — and must never stop dispatch. Only when the `document` chore closes does the gate unblock, and that is the state in which a human must merge. The feature's `stage:housekeeping` chore waits on the gate bead itself, so it becomes ready only after that human closes it.
 
 Resolve the question with one command instead of ad-hoc `bd` queries:
 

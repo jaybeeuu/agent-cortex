@@ -21,7 +21,7 @@ Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.
 - **Single-feature epics** (epic has exactly one feature task child): skip the epic branch entirely. The feature branch (`feature/<parent-id>`) is based directly from `origin/main`. The HITL PR targets `main` directly. No epic PR is required.
 - **Multi-feature epics** (epic has two or more feature task children): each epic runs on `epic/<epic-id>` (base: `origin/main`, never local `main`). Each feature branch is based from its epic branch. Completed features PR into `epic/<epic-id>`; the completed epic PRs into `main`.
 - Each parent feature task runs on `feature/<parent-id>` in `.agent-cortex/worktrees/<parent-id>`.
-- Each implemented bead owns a child HITL PR-gate task bead (`lifecycle:feature-pr`, blocked by its own `document` chore) for PR review/merge.
+- Each implemented bead owns a child HITL PR-gate task bead (`lifecycle:feature-pr`, blocked by its own `document` chore) for PR review/merge, plus a `stage:housekeeping` chore blocked behind that gate.
 - Completed features must be reviewed by PR merge from the agent branch (`feature/<parent-id>`) into its base (epic branch for multi-feature epics, `main` for single-feature epics), then the HITL PR task bead must be closed by a human before Ralph continues feature scheduling.
 - Completed multi-feature epics must be reviewed by PR merge into `main`.
 
@@ -93,10 +93,12 @@ A ready `execution:afk` task bead with no `stage:*` chore children has nothing t
    { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
    ```
    That entry is what keeps it in the wait set and makes its completion attributable to the parent.
-4. The worker reports the returned mapping — `code`, `verify`, `review`, `document`, `featurePrReview` — and closes nothing. It emits **no** `---REPORT---` block and owns no bead, so there is nothing to parse and no close to confirm.
+4. The worker reports the returned mapping — `code`, `verify`, `review`, `document`, `housekeeping`, `featurePrReview` — and closes nothing. It emits **no** `---REPORT---` block and owns no bead, so there is nothing to parse and no close to confirm.
 5. Its completion means the parent now has a `stage:*` chain: the event loop's next `bd ready -l execution:afk` pass picks up the `stage:code` chore (event loop step 7).
 
 **Expansion completion contract.** An expansion worker is dispatched like a stage worker but is not one: no chore claim, no `---REPORT---`, no leaf-bead close. Handle its completion with the expansion branch in event-loop step 3, which confirms the chain exists (`bd children <parent-id> --json | grep -c '"stage:'` prints one match per stage chore — the gate carries `lifecycle:feature-pr` and is not counted) and dispatches the ready `stage:code` chore. A count below the stage total in `pipeline.json` is a partial chain, whose missing stages never arrive, so re-dispatch the expansion instead of dispatching on. If the parent still has no `stage:*` children the expansion failed: surface the worker's output in chat, record the parent for the shutdown summary, and re-dispatch the expansion — `create-chores.mjs` is idempotent, so a second run adopts the chores that exist, creates only the missing ones, and reports the whole mapping. Either way, create nothing and close nothing yourself.
+
+**Housekeeping chore.** One stage runs outside the pipeline's ordering: `stage:housekeeping`, labelled `lifecycle:housekeeping` and blocked behind the PR gate bead, so it becomes ready only after a human merges the PR and closes the gate. Dispatch it with the **main checkout** as cwd — not the feature worktree — because the worktree it removes can be the parent's own. The worker runs `prune-worktrees.mjs`, retries once on a non-zero exit (exit `1` is normal: an open bead counts as survival), and then decides from the per-worktree report. It fails the chore and leaves it **open** when a `closed-bead` worktree is still `refused`; a `kept` or `refused` entry for an open bead is a normal report. Never close a chore over a worktree the script did not remove.
 
 **Never expand an existing bead by running `create-task`** (or any other command that creates a bead). `create-task` creates a bead first and expands second, so running it for an existing bead leaves a **second parent** beside the original, which stays chore-less and never gets dispatched. `create-chores.mjs` expands a bead that already exists; it never creates parents.
 

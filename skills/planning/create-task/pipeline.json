@@ -28,6 +28,14 @@
       "description": "Review changes and update documentation if key decisions, behaviour changes, or constraints were introduced.",
       "template": "templates/document.md",
       "dependsOn": ["review"]
+    },
+    {
+      "id": "housekeeping",
+      "title": "Housekeeping",
+      "description": "Remove the worktrees of closed beads. Run `node <ralph-scripts>/prune-worktrees.mjs` from the main checkout and retry once if it exits non-zero. The exit status is 1 whenever any worktree survives — an open bead counts as survival — so fail this chore only when a closed-bead worktree is still refused after the retry, and leave it open. Never close it over a worktree the script did not remove.",
+      "template": "templates/housekeeping.md",
+      "labels": ["lifecycle:housekeeping"],
+      "dependsOn": ["featurePrReview"]
     }
   ]
 }

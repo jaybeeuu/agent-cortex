@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.6.0
+
+### Minor Changes
+
+- c14bf85: `ctx version` now reports the installed harness versions beside the running CLI version: one line per installed harness read from the fingerprint its installer wrote (`~/.agent-cortex/pi/package.json`, `~/.agent-cortex/claude/.claude-plugin/plugin.json`), marked `current`, `stale`, `ahead` when the installed copy is newer, or `unknown` when the fingerprint is missing or unreadable. `ctx version --json` prints the same data as records. The command is read-only — no install, no network, no writes — and `--version` still prints the bare CLI version.
+
+### Patch Changes
+
+- ccb1788: Add `skills/workflow/ralph/scripts/prune-worktrees.mjs`, the deterministic pass that converges the
+  ralph worktree set with bead state. It scans `.agent-cortex/worktrees/*`, classifies each directory
+  by its bead as a closed-bead worktree, an open-bead worktree, or an orphan, and removes a
+  closed-bead worktree with its local and remote branch. A dirty tree, a locked worktree, or an
+  unpushed branch refuses that worktree with the reason. Orphans are reported only, and
+  `--remove-orphans` is the single path that removes one.
+
 ## 2.5.1
 
 ### Patch Changes

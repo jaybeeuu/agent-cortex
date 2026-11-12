@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.5.1
+
+### Patch Changes
+
+- e87b2d0: Align the code, verify, document, and fix REPORT templates on the authoritative
+  `run-pipeline-stage` contract. Each template now emits `STAGE_COMPLETED` with its stage name
+  (`code`, `verify`, `document`, `fix`) plus `COMMIT`, `PUSHED`, `PR`, and
+  `OUTCOME: SUCCESS|BLOCKED`, and lists blocked work under `BLOCKING_ISSUES`. The unparsed
+  `VERIFY_OUTCOME`/`VERIFY_FAILURES` keys are gone, so an orchestrator can route every stage's
+  report.
+- 83ed526: Stop `agent-cortex install claude` erasing Claude Code's `enabledPlugins` entry.
+
+  The settings merge now asserts only the `enabledPlugins` and `extraKnownMarketplaces` entries the
+  committed `claude/settings.json` template declares; entries it does not declare survive, so a
+  same-version re-run keeps the entry Claude Code writes when the plugin is enabled. Registration
+  also reports an installed-but-not-enabled plugin, naming `claude plugin enable <plugin>@<marketplace>`.
+
+- 34bcea7: Type-check the extensions against the pi version that is actually installed.
+
+  The extension workspaces pinned `@earendil-works/pi-coding-agent`, `pi-agent-core`, and `pi-ai` at
+  `^0.78.1` for `import type` only, while `pi --version` reported 1.5.2. `pnpm typecheck` therefore
+  validated against an API that no installed pi provides. The pins now follow the running CLI at
+  `^1.5.2`, and the `agent-modes` `ExtensionAPI` test double gains the members 1.5.x declares:
+  `registerMarkdownTransformer`, `registerEntryRenderer`, `registerToolRenderer`, `registerVirtualModel`,
+  `registerMcpServer`, `unregisterMcpServer`, `getMcpServers`, `unregisterVirtualModel`, and
+  `getSettings`, plus the unsubscribe return value of `on`.
+
+- fa84942: Move the composable agent-directory validator from
+  `skills/productivity/validate-agent-dir/scripts/` to `scripts/validate-agent-dir.mjs`. The
+  directory had no `SKILL.md`, so neither installer shipped it while it still looked like a shipped
+  skill, and the module validates this repository's own `agents/` layout — repo tooling, not a
+  portable skill. Its filesystem probes are now async (`validateAgentDir` returns a promise),
+  matching the no-`*Sync` rule for `scripts/`.
+
+  `agents/README.md` (Validation) and `test/validate-agent-dir.test.mjs` point at the new path. No
+  skill, agent, hook, or installer behaviour changes.
+
 ## 2.5.0
 
 ### Minor Changes

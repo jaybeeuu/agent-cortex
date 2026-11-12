@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
 import { parseArgs, buildHelpText, resolveProgramName, validateHarness } from "../lib/cli.mjs";
+import {
+  collectVersionReport,
+  formatVersionReport,
+  serialiseVersionReport,
+} from "../lib/harness-versions.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
@@ -45,8 +50,22 @@ async function readPackageVersion() {
 }
 
 if (parsed.command === "version") {
+  if (parsed.optionError) {
+    process.stderr.write(`${parsed.optionError}\n`);
+    process.exit(1);
+  }
   try {
-    process.stdout.write(`${await readPackageVersion()}\n`);
+    const cliVersion = await readPackageVersion();
+    // `--version` prints the bare version for scripts; the `version` subcommand
+    // adds one line per installed harness, read from the installers'
+    // fingerprints (read-only — no install, no network, no writes).
+    if (parsed.report === true) {
+      const report = await collectVersionReport({ cli: cliVersion });
+      const output = parsed.json === true ? serialiseVersionReport(report) : formatVersionReport(report);
+      process.stdout.write(`${output}\n`);
+    } else {
+      process.stdout.write(`${cliVersion}\n`);
+    }
   } catch (err) {
     process.stderr.write(`${/** @type {Error} */ (err).message}\n`);
     process.exit(1);

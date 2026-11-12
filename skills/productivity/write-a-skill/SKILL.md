@@ -25,7 +25,7 @@ Clarify the skill goal with the user. Ask what triggers users would actually say
 
 ### 2. Draft from the anatomy template
 
-Read `docs/skills/skill-anatomy.md` as the source of truth. Follow the annotated template for section ordering and front-matter fields. Target ~150 lines for `SKILL.md` but stay under the 150-line hard cap. When the workflow branches or has decision points, include one inline ASCII workflow diagram per the anatomy doc's diagram style guide — ASCII only, never Mermaid.
+Read `{{PATH:skill_anatomy}}` as the source of truth. Follow the annotated template for section ordering and front-matter fields. Target ~150 lines for `SKILL.md` but stay under the 150-line hard cap. When the workflow branches or has decision points, include one inline ASCII workflow diagram per the anatomy doc's diagram style guide — ASCII only, never Mermaid.
 
 ### 3. Apply voice and tone rules
 
@@ -62,7 +62,7 @@ Output: A new `skills/review-security/SKILL.md` with front matter, When to use, 
 
 ## Verification checklist
 
-- [ ] `docs/skills/skill-anatomy.md` was read before drafting
+- [ ] `{{PATH:skill_anatomy}}` was read before drafting
 - [ ] Required sections present: `## When to use`, `## Workflow`, `## Verification checklist`
 - [ ] Section order follows the anatomy template
 - [ ] Workflow diagram (if present) is ASCII-only and follows the anatomy diagram style guide

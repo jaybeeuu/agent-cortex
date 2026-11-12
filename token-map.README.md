@@ -51,10 +51,20 @@ rather than inventing a dotted form:
   `ask_user`) — and `task` / `read_agent` / `wait_for_agents` subagent tools, the last three
   supplied by this repo's own `extensions/subagent` rather than by pi; `skill` maps
   to `read` (skills load by reading the listed SKILL.md path).
-- **`paths`** — `plugin_root`, `agents_dir`, and `skills_dir`. These are the install-time
-  variables that differ per harness. `plugin_root` is the anchor; the other two resolve
-  relative to it (`{base, relative}` specs) so a harness only overrides the single root it
-  actually installs into.
+- **`paths`** — `plugin_root`, `agents_dir`, `skills_dir`, and `skill_anatomy`. These are the
+  install-time variables that differ per harness. `plugin_root` is the anchor; the others
+  resolve relative to it (`{base, relative}` specs) so a harness only overrides the single
+  root it actually installs into.
+  A path entry whose relative path sits under `docs/` names a document the install ships:
+  both installers copy it from the package root into the staged tree at that relative path
+  (`scripts/lib/docs.mjs`), so a skill can read it on a machine with no checkout. One copy
+  per install serves every skill that references it, and the token map decides both the
+  location and the shipment — `skill_anatomy` is read by both `write-a-skill` and
+  `refactor-skill`. The repo's `docs/` stays the single source of truth; the staged file is
+  a verbatim copy, never a second authored version.
+  A second shipped doc is declared twice: the `paths` entry sets its install location, and
+  `package.json` `files` must list the same path. The test stages from the checkout, so only
+  the `files` whitelist catches a doc that the published package omits.
   Claude's `plugin_root` stays the `${CLAUDE_PLUGIN_ROOT}` env-var token, never a literal
   `~/.agent-cortex/claude`: Claude Code **copies** marketplace-installed plugins — including
   local directory sources like `~/.agent-cortex/claude` — into its own cache, so only the

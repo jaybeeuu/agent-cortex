@@ -304,6 +304,9 @@ function printPiInstall(result) {
     process.stdout.write(`  ✓ ${agent.name}.agent.md → ${agent.filePath}\n`);
   }
   process.stdout.write(`  ✓ Substituted ${result.skills.md} markdown file(s) across ${result.skills.skills} skill(s) → ${result.skills.dir}\n`);
+  if (result.docs.files.length > 0) {
+    process.stdout.write(`  ✓ Copied ${result.docs.files.length} doc(s) → ${result.docs.dir}\n`);
+  }
   process.stdout.write(`  ✓ Copied ${result.extensions.files} extension file(s) → ${result.extensions.dir}\n`);
   for (const name of result.packages.bundled) {
     process.stdout.write(`  ✓ Bundled pi package ${name} → ${join(result.packages.dir, name)}\n`);

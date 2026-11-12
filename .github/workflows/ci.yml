@@ -233,7 +233,10 @@ jobs:
             exit 1
           fi
 
-          # token substitution: no literal tokens survive materialisation
+          # token substitution: no literal tokens survive materialisation.
+          # Shipped docs are copied verbatim rather than substituted, so they are
+          # in scope too: a doc that teaches the token syntax describes the braces
+          # in words instead of printing them (see docs/skills/skill-anatomy.md).
           TOKENS=$(grep -rlE '\{\{(TOOL|PATH|SECTION):' "$OUT" || true)
           if [ -n "$TOKENS" ]; then
             echo "::error::literal substitution tokens in materialised Claude plugin:"

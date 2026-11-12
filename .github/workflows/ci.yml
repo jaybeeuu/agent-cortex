@@ -233,8 +233,11 @@ jobs:
             exit 1
           fi
 
-          # token substitution: no literal tokens survive materialisation
-          TOKENS=$(grep -rlE '\{\{(TOOL|PATH|SECTION):' "$OUT" || true)
+          # token substitution: no literal tokens survive materialisation.
+          # Shipped docs are prose, not substituted text: the anatomy guide has to
+          # show the token syntax it teaches, so scanning it would fail every time.
+          # Substitution applies to skills, agents and hooks, which stay in scope.
+          TOKENS=$(grep -rlE '\{\{(TOOL|PATH|SECTION):' "$OUT" --exclude-dir=docs || true)
           if [ -n "$TOKENS" ]; then
             echo "::error::literal substitution tokens in materialised Claude plugin:"
             echo "$TOKENS"

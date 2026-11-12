@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.7.0
+
+### Minor Changes
+
+- 464c761: Add `ctx update`, which refreshes installed harnesses by re-running their installers. Bare
+  `ctx update` lists every harness with its installed version and the CLI version, then asks which
+  to refresh; a non-interactive shell prints the same table plus the flags and exits non-zero
+  instead of blocking. `ctx update pi claude` refreshes exactly the named harnesses, `ctx update -a`
+  refreshes every harness that is not at the CLI version, and `ctx update -a -f` re-runs every
+  installer regardless of version. The report gives each harness its previous and new version and
+  the artifacts the installer wrote. Selection and reporting are the only additions: every refresh
+  goes through the existing `bin/installers/` entry points, so update-vs-install stays the
+  installer's decision.
+
+### Patch Changes
+
+- bfce679: Add a `housekeeping` pipeline stage that runs after the human merge gate. `create-chores.mjs` now
+  creates a `stage:housekeeping` chore labelled `lifecycle:housekeeping` and blocked behind the
+  `lifecycle:feature-pr` gate bead, so it stays out of `bd ready` until a human merges the PR and
+  closes the gate. A dispatched worker then runs `prune-worktrees.mjs` from the main checkout, retries
+  once on a non-zero exit, and fails the chore without closing it when a closed-bead worktree is still
+  refused. The four existing stages and the gate are unchanged.
+- 8d11154: Ship the skill anatomy doc into both installs. `write-a-skill` and `refactor-skill` read
+  `docs/skills/skill-anatomy.md`, but neither install contained it, so the reference was dead on any
+  machine without the checkout. Both installers now copy the document into the staged tree once per
+  install (`scripts/lib/docs.mjs`), and the skills name it through a new `{{PATH:skill_anatomy}}` entry
+  in `token-map.json`, so the token map stays the single source of the per-harness path. A new test
+  stages both installs and fails when a rendered skill references a repository doc the install does
+  not contain.
+
 ## 2.6.0
 
 ### Minor Changes

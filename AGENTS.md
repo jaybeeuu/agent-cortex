@@ -96,7 +96,11 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   deliberately sits at the top of that range rather than splitting — its principles must load
   automatically with the skill.
 - Add utility scripts to `scripts/` when an operation is deterministic and would otherwise be
-  regenerated each time (e.g. install scripts, scanners).
+  regenerated each time (e.g. install scripts, scanners). A `skills/<group>/<name>/` directory
+  with no `SKILL.md` is not tooling: both installers skip it silently, and `pnpm check:skills`
+  does not flag it either, because that check scans `SKILL.md` files only. `scripts/validate-agent-dir.mjs`
+  is the worked example — it validates this repository's own composable `agents/` tree, and no
+  install contains that tree, so it was never a portable skill.
 - Skill names use kebab-case and are grouped by prefix where related (e.g. `review-security`,
   `review-code`; `style-code`, `style-comms`, `style-documentation`).
 

@@ -245,7 +245,8 @@ agents, token-substituted skills, extensions) at `~/.agent-cortex/pi`.
 
 ## Validation
 
-Use the `validate-agent-dir` script to validate agent directories:
+Validate an agent directory with the repo tooling at `scripts/validate-agent-dir.mjs` (not a
+shipped skill), or run its test suite:
 
 ```bash
 node --test test/validate-agent-dir.test.mjs

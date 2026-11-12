@@ -120,8 +120,8 @@ if (parsed.command === "install") {
   // materialises the plugin into the home install root (~/.agent-cortex/claude)
   // with copied, token-substituted skills, writes the marketplace manifest at
   // ~/.agent-cortex/.claude-plugin/marketplace.json, merges the committed
-  // claude/settings.json template into ~/.claude/settings.json (owning only
-  // enabledPlugins + extraKnownMarketplaces), and registers it with Claude Code
+  // claude/settings.json template into ~/.claude/settings.json (asserting only
+  // the enabledPlugins + extraKnownMarketplaces entries the template declares), and registers it with Claude Code
   // (marketplace add → install → update); `--output <dir>` is the generate-only
   // form (tests/CI validation), and the generated claude/ plugin subtree is
   // never committed — only the settings template is.
@@ -147,6 +147,9 @@ if (parsed.command === "install") {
           root: /** @type {string} */ (result.marketplaceRoot),
           manifest: /** @type {object} */ (result.marketplaceManifest),
           pluginVersion: result.pluginVersion,
+          // The enablement check reads the same file this install just merged:
+          // a plugin Claude Code does not enable loads nothing.
+          ...(result.settings ? { settingsPath: result.settings.path } : {}),
           dryRun: parsed.dryRun ?? false,
           requireRegister: parsed.requireRegister ?? false,
         });

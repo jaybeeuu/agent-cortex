@@ -12,16 +12,22 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, rm, readFile, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile, rm, readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { registerClaude } from "../bin/installers/claude.mjs";
 import { makeFakeClaude, registrationActions } from "./helpers/fake-claude.mjs";
+import { createTempRoot } from "./helpers/temp-root.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const CLI_PATH = join(ROOT, "bin", "agent-cortex.mjs");
+
+// One temp root per file, removed by the file-level `after()` hook it registers.
+// `settingsPath` keeps every registerClaude call away from the developer's real
+// ~/.claude/settings.json: these tests never touch the real home directory.
+const tempRoot = createTempRoot("agent-cortex-claude-register-");
+const settingsPath = join(await tempRoot.createWorkspace(), "settings.json");
 
 /** Run the CLI; optionally pass a custom env (e.g. a fake HOME).
  * @param {string[]} args
@@ -53,7 +59,7 @@ async function pathExists(p) {
 }
 
 function makeTmp() {
-  return mkdtemp(join(tmpdir(), "agent-cortex-claude-installer-"));
+  return tempRoot.createWorkspace();
 }
 
 /** Raw argv lines of every invocation the fake recorded.
@@ -75,7 +81,7 @@ async function actionsSince(log, since = 0) {
  * marketplace manifest exposing ./claude plus the materialised plugin.json the
  * fake reads for the installed version. */
 async function makeMarketplaceRoot({ name = "jaybeeuu", plugin = "agent-cortex", version = "1.0.0" } = {}) {
-  const root = await mkdtemp(join(tmpdir(), "agent-cortex-marketplace-"));
+  const root = await tempRoot.createWorkspace();
   await mkdir(join(root, ".claude-plugin"), { recursive: true });
   await writeFile(
     join(root, ".claude-plugin", "marketplace.json"),
@@ -101,7 +107,7 @@ describe("registerClaude", () => {
     const root = await makeMarketplaceRoot();
     const fake = await makeFakeClaude(tmp);
     try {
-      const result = await registerClaude({ root, claudeBin: fake.bin });
+      const result = await registerClaude({ settingsPath, root, claudeBin: fake.bin });
       assert.equal(result.marketplace, "jaybeeuu");
       assert.equal(result.plugin, "agent-cortex");
       assert.equal(result.dryRun, false);
@@ -127,7 +133,7 @@ describe("registerClaude", () => {
     const root = await makeMarketplaceRoot({ name: "scratchmkt", plugin: "scratchplug" });
     const fake = await makeFakeClaude(tmp);
     try {
-      const result = await registerClaude({ root, claudeBin: fake.bin });
+      const result = await registerClaude({ settingsPath, root, claudeBin: fake.bin });
       assert.equal(result.marketplace, "scratchmkt");
       assert.equal(result.plugin, "scratchplug");
       const actions = await actionsSince(fake.log);
@@ -145,14 +151,14 @@ describe("registerClaude", () => {
     const root = await makeMarketplaceRoot();
     const fake = await makeFakeClaude(tmp);
     try {
-      await registerClaude({ root, claudeBin: fake.bin });
+      await registerClaude({ settingsPath, root, claudeBin: fake.bin });
       assert.deepEqual(await actionsSince(fake.log), [
         `plugin marketplace add ${root}`,
         "plugin install agent-cortex@jaybeeuu -y",
       ]);
       const run1End = (await callLines(fake.log)).length;
 
-      const second = await registerClaude({ root, claudeBin: fake.bin });
+      const second = await registerClaude({ settingsPath, root, claudeBin: fake.bin });
       assert.equal(second.registered, true);
       // Second run: the marketplace is present so only the update path runs;
       // the plugin is already at the materialised version so nothing installs.
@@ -175,7 +181,7 @@ describe("registerClaude", () => {
     const root = await makeMarketplaceRoot({ version: "1.0.0" });
     const fake = await makeFakeClaude(tmp);
     try {
-      await registerClaude({ root, claudeBin: fake.bin });
+      await registerClaude({ settingsPath, root, claudeBin: fake.bin });
       assert.deepEqual(await actionsSince(fake.log), [
         `plugin marketplace add ${root}`,
         "plugin install agent-cortex@jaybeeuu -y",
@@ -188,7 +194,7 @@ describe("registerClaude", () => {
         JSON.stringify({ name: "agent-cortex", version: "2.0.0", description: "test plugin" }),
       );
 
-      const updated = await registerClaude({ root, claudeBin: fake.bin });
+      const updated = await registerClaude({ settingsPath, root, claudeBin: fake.bin });
       assert.deepEqual(await actionsSince(fake.log, run1End), [
         "plugin marketplace update jaybeeuu",
         "plugin update agent-cortex -y",
@@ -199,7 +205,7 @@ describe("registerClaude", () => {
 
       // At the new version another run is back to update-path-only.
       const run2End = (await callLines(fake.log)).length;
-      await registerClaude({ root, claudeBin: fake.bin });
+      await registerClaude({ settingsPath, root, claudeBin: fake.bin });
       assert.deepEqual(await actionsSince(fake.log, run2End), ["plugin marketplace update jaybeeuu"]);
     } finally {
       await rm(tmp, { recursive: true, force: true });
@@ -212,7 +218,7 @@ describe("registerClaude", () => {
     const root = await makeMarketplaceRoot();
     const fake = await makeFakeClaude(tmp);
     try {
-      const result = await registerClaude({ root, claudeBin: fake.bin, dryRun: true });
+      const result = await registerClaude({ settingsPath, root, claudeBin: fake.bin, dryRun: true });
       assert.equal(result.dryRun, true);
       assert.equal(result.registered, true);
       // Dry-run cannot know live state without spawning — no commands decided.
@@ -228,7 +234,7 @@ describe("registerClaude", () => {
   it("defaults the claude binary to `claude` from PATH (dry-run only — no spawn)", async () => {
     const root = await makeMarketplaceRoot();
     try {
-      const result = await registerClaude({ root, dryRun: true });
+      const result = await registerClaude({ settingsPath, root, dryRun: true });
       assert.equal(result.marketplace, "jaybeeuu");
       assert.equal(result.plugin, "agent-cortex");
       assert.equal(result.dryRun, true);
@@ -244,7 +250,7 @@ describe("registerClaude", () => {
     try {
       /** @type {string[]} */
       const warnings = [];
-      const result = await registerClaude({ root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
+      const result = await registerClaude({ settingsPath, root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
       assert.equal(result.registered, false);
       const manual = warnings.join("\n");
       assert.match(manual, /NOT registered/);
@@ -252,7 +258,7 @@ describe("registerClaude", () => {
       assert.match(manual, /claude plugin install agent-cortex@jaybeeuu -y/);
 
       await assert.rejects(
-        registerClaude({ root, claudeBin: fake.bin, requireRegister: true }),
+        registerClaude({ settingsPath, root, claudeBin: fake.bin, requireRegister: true }),
         /require-register/,
       );
     } finally {
@@ -267,7 +273,7 @@ describe("registerClaude", () => {
     const fake = await makeFakeClaude(tmp, { failWhen: "plugin install" });
     try {
       await assert.rejects(
-        registerClaude({ root, claudeBin: fake.bin }),
+        registerClaude({ settingsPath, root, claudeBin: fake.bin }),
         /claude plugin install agent-cortex@jaybeeuu -y/,
       );
     } finally {
@@ -287,7 +293,7 @@ describe("registerClaude", () => {
       "(in /home/tester/.agent-cortex/claude/.claude-plugin/plugin.json)";
     const fake = await makeFakeClaude(tmp, { failLoad: validationError });
     try {
-      await assert.rejects(registerClaude({ root, claudeBin: fake.bin }), (err) => {
+      await assert.rejects(registerClaude({ settingsPath, root, claudeBin: fake.bin }), (err) => {
         assert.ok(err instanceof Error);
         assert.match(err.message, /failed to load/);
         assert.ok(err.message.includes(validationError), "names Claude's validation error and the manifest");
@@ -308,7 +314,7 @@ describe("registerClaude", () => {
     try {
       /** @type {string[]} */
       const warnings = [];
-      const result = await registerClaude({ root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
+      const result = await registerClaude({ settingsPath, root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
       assert.equal(result.registered, true);
       assert.match(warnings.join("\n"), /not in .*plugin list --json/);
     } finally {
@@ -326,7 +332,7 @@ describe("registerClaude", () => {
     try {
       /** @type {string[]} */
       const warnings = [];
-      const result = await registerClaude({ root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
+      const result = await registerClaude({ settingsPath, root, claudeBin: fake.bin, warn: (m) => warnings.push(m) });
       assert.equal(result.registered, true);
       assert.match(warnings.join("\n"), /load state is unconfirmed/);
     } finally {
@@ -335,13 +341,55 @@ describe("registerClaude", () => {
     }
   });
 
+  it("warns when the registered plugin is not enabled in Claude's user settings", async () => {
+    // Installed but disabled is the silent failure the erase bug produced: every
+    // plugin command exits 0 and Claude Code loads nothing from the plugin.
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp);
+    const settings = join(await tempRoot.createWorkspace(), "settings.json");
+    await writeFile(settings, JSON.stringify({ permissions: { allow: [] } }, null, 2) + "\n");
+    try {
+      /** @type {string[]} */
+      const warnings = [];
+      const result = await registerClaude({ root, claudeBin: fake.bin, settingsPath: settings, warn: (m) => warnings.push(m) });
+      assert.equal(result.enabled, false);
+      assert.match(warnings.join("\n"), /not enabled/);
+      assert.match(warnings.join("\n"), /claude plugin enable agent-cortex@jaybeeuu/);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports the plugin as enabled without warning when the user's settings enable it", async () => {
+    const tmp = await makeTmp();
+    const root = await makeMarketplaceRoot();
+    const fake = await makeFakeClaude(tmp);
+    const settings = join(await tempRoot.createWorkspace(), "settings.json");
+    await writeFile(
+      settings,
+      JSON.stringify({ enabledPlugins: { "agent-cortex@jaybeeuu": true } }, null, 2) + "\n",
+    );
+    try {
+      /** @type {string[]} */
+      const warnings = [];
+      const result = await registerClaude({ root, claudeBin: fake.bin, settingsPath: settings, warn: (m) => warnings.push(m) });
+      assert.equal(result.enabled, true);
+      assert.doesNotMatch(warnings.join("\n"), /not enabled/);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails when the checkout has no marketplace manifest", async () => {
     const tmp = await makeTmp();
-    const root = await mkdtemp(join(tmpdir(), "agent-cortex-no-market-"));
+    const root = await tempRoot.createWorkspace();
     const fake = await makeFakeClaude(tmp);
     try {
       await assert.rejects(
-        registerClaude({ root, claudeBin: fake.bin }),
+        registerClaude({ settingsPath, root, claudeBin: fake.bin }),
         /marketplace\.json/,
       );
       // The failed manifest read happens before any claude invocation.
@@ -367,7 +415,7 @@ describe("install claude CLI: registration", () => {
   });
 
   it("--output <dir> generates only — no registration plan is printed", async () => {
-    const out = await mkdtemp(join(tmpdir(), "agent-cortex-cli-out-"));
+    const out = await tempRoot.createWorkspace();
     try {
       const { exitCode, stdout } = await runCli(["install", "claude", "--output", out]);
       assert.equal(exitCode, 0);

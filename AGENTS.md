@@ -5,8 +5,32 @@ Instructions for agents working on this repository.
 ## What This Repo Is
 
 A personal collection of custom agents and skills, shipped to pi and Claude Code, plus PI
-extensions and Claude hooks for enhancing the coding agent runtime. Changes here affect the
-behaviour of every agent, skill, and PI extension available in the author's coding sessions.
+extensions and Claude hooks for enhancing the coding agent runtime.
+
+This repository builds a **tool for installation on other machines**, not a service that runs here.
+`agent-cortex` is published to npm, installed into `~/.agent-cortex/`, and then used by other
+projects on other machines. Changes reach every install, so the installed package — not this
+checkout — is the thing being designed.
+
+## Decisions are generic, not local
+
+Every command, skill, agent, extension, hook, and test ships to machines that do not have this
+checkout, this branch layout, or this CI provider. Design against the installed artefact and the
+consumer's environment, never against what happens to work here.
+
+- A rule belongs in shipped code (`skills/`, `agents/`, `extensions/`, `hooks/`, `bin/`, `lib/`)
+  only when it is true on an arbitrary machine. Facts about *this* checkout — branch bases, merge
+  method, signature rules, required checks, release mechanics — belong in `AGENTS.md`, `docs/`, or
+  the tracker.
+- Never hardcode a path, hostname, harness version, or CI provider into shipped code. Read it from
+  the environment, or make it configuration with a documented default.
+- A check that only passes because this checkout is present is not a check. Stage an install and
+  exercise the artefact outside the repo (`--output <dir>`, `test/pi-extensions-load.test.mjs`).
+- When a behaviour cannot be made generic, fork it explicitly at install time through the
+  `{{TOOL:...}}` / `{{PATH:...}}` token grammar, and record why the fork exists.
+- Evidence from this repository is a sample, not the specification. A one-off instruction for this
+  checkout — "merge these PRs now", "rebase that branch" — never becomes shipped policy unless the
+  owner says the policy itself should change.
 
 ## Structure
 
@@ -81,12 +105,11 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Skill Conventions
 
-- **Skills are portable, not repo documentation.** `skills/` is installed onto arbitrary machines
-  (pi, Claude Code), so it describes general practice and the author's portable
-  preferences — never how this repository is configured or how to work in it. Facts about this
-  checkout (branch bases, merge method, signature rules, required checks, release mechanics) belong
-  in `AGENTS.md`, `docs/`, or the tracker. Repo-local `.agents/skills/` follows the same rule: a
-  skill is a skill, not a place for this repo's configuration.
+- **Skills are portable, not repo documentation.** See _Decisions are generic, not local_ above.
+  `skills/` is installed onto arbitrary machines (pi, Claude Code), so it describes general practice
+  and the author's portable preferences — never how this repository is configured or how to work in
+  it. Repo-local `.agents/skills/` follows the same rule: a skill is a skill, not a place for this
+  repo's configuration.
 - `SKILL.md` must include a YAML front-matter block with `name` and `description`. `pnpm lint`
   enforces this (`pnpm check:skills`), because PI silently drops a skill whose frontmatter it
   cannot parse.

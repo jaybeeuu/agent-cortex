@@ -34,10 +34,16 @@ worktree this run may remove can be your own.
      (missing node, unreadable directory). A refused closed-bead worktree is a worktree this run did
      not remove, whatever the reason printed.
 
-4. **Never close this chore over a worktree the script did not remove.** On BLOCKED, leave the chore
-   open, report the surviving worktrees and their reasons, and follow the remediation section of
-   `prompts/stage-runner.md`. A `kept` or `refused` entry for an open bead is a normal report, not a
-   failure.
+4. **Never close this chore over a worktree the script did not remove.** This stage is the one
+   exception to the close-on-both-outcomes rule, because this stage is last in the chain and nothing
+   waits on its close. Close it only when every `closed-bead` worktree is gone; the worktree removal
+   is the only thing this stage completes.
+
+   On BLOCKED, **do not close the chore**. Leave it open — return it to `open` status if your claim
+   moved it to `in_progress` — report the surviving worktrees with the reasons the pruner printed,
+   and hand the chore back to a human. Create no `stage:fix` chore and no fresh `stage:housekeeping`
+   chore: there is nothing for a fix round to repair, and no later stage to re-block. A `kept` or
+   `refused` entry for an open bead is a normal report, not a failure.
 
 Do not delete a worktree by hand, do not pass `--remove-orphans`, and do not edit the pruner. This
 stage reports what the script did.

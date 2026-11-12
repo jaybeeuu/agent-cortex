@@ -38,9 +38,18 @@ not a transcript.
    ```
    The outcome lives in the close reason, the milestone notes, and the REPORT. A closed bead
    with a `BLOCKED` reason is a completed stage, not abandoned work.
+
+   **Exception — `housekeeping`.** It closes its bead only when the pruner removed every
+   `closed-bead` worktree. On `BLOCKED` it leaves the bead **open** and builds nothing (see
+   _Remediation_ below).
 3. **Do not create the next stage on success.** Routing forward is the orchestrator's job.
 
 ## Remediation (only when your outcome is BLOCKED)
+
+**Exception — `housekeeping` builds nothing.** It changes no files and sits last in the chain, so a
+`stage:fix` chore and a fresh instance have nothing to repair and nothing to re-block. It leaves its
+bead open, reports `OUTCOME: BLOCKED` with the surviving worktrees, and hands the chore to a human.
+Every step below applies to every other stage.
 
 A fresh instance of this stage is required: the bead you are closing cannot re-run itself.
 
@@ -89,6 +98,9 @@ dirty worktree counts as a failed stage whatever the outcome line claims.
 3. Report `COMMIT`, `PUSHED`, and `PR`. The `document` stage also opens or updates the feature PR
    and reports its URL; every earlier stage reports `PR: none`.
 
+**Exception — `housekeeping`.** It changes no files, so it commits and pushes nothing. Report
+`COMMIT: none` and `PUSHED: no` with `OUTCOME: SUCCESS`; never create an empty commit.
+
 ## Instructions
 1. Read and follow the playbook file listed above.
 2. Treat the bead as the source-of-truth specification (not a prompt script).
@@ -101,7 +113,7 @@ End your response with a `---REPORT---` block in exactly this format:
 ```
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: <code|verify|review|document|fix>
+STAGE_COMPLETED: <code|verify|review|document|housekeeping|fix>
 SUMMARY: <2-3 sentence summary of what was done>
 FILES_CHANGED: <comma-separated list, or "none">
 COMMIT: <sha of the stage commit, or "none">

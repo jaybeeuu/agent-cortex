@@ -1,6 +1,7 @@
 // @ts-check
-// Repo-level tests for skills/productivity/validate-agent-dir. The validator
-// has no CLI — it is a pure module, so these tests import it by path.
+// Repo-level tests for the composable agent directory validator at
+// `scripts/validate-agent-dir.mjs`. The validator has no CLI — it is a pure
+// module, so these tests import it by path.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +12,7 @@ import { tmpdir } from "node:os";
 import {
   validateFrontmatter,
   validateAgentDir,
-} from "../skills/productivity/validate-agent-dir/scripts/validate-agent-dir.mjs";
+} from "../scripts/validate-agent-dir.mjs";
 
 /**
  * @typedef {object} Frontmatter
@@ -161,7 +162,7 @@ describe("validateAgentDir", () => {
     const tmpDir = await makeTmpDir();
     try {
       await createAgentDir(tmpDir, "ralph", makeFrontmatter());
-      const result = validateAgentDir(join(tmpDir, "agents", "ralph"));
+      const result = await validateAgentDir(join(tmpDir, "agents", "ralph"));
       assert.equal(result.ok, true);
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
@@ -193,7 +194,7 @@ describe("validateAgentDir", () => {
         "utf-8"
       );
 
-      const result = validateAgentDir(agentDir);
+      const result = await validateAgentDir(agentDir);
       assert.equal(result.ok, true);
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
@@ -210,7 +211,7 @@ describe("validateAgentDir", () => {
         "# Body\n\n{{SECTION:wake}}",
         { "wake.md": "# Wake mechanism\n\nYou are woken when a worker completes." }
       );
-      const result = validateAgentDir(join(tmpDir, "agents", "ralph"));
+      const result = await validateAgentDir(join(tmpDir, "agents", "ralph"));
       assert.equal(result.ok, true);
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
@@ -229,7 +230,7 @@ describe("validateAgentDir", () => {
         "utf-8"
       );
 
-      const result = validateAgentDir(agentDir);
+      const result = await validateAgentDir(agentDir);
       assert.equal(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes("agent.md")));
     } finally {
@@ -244,7 +245,7 @@ describe("validateAgentDir", () => {
       await mkdir(agentDir, { recursive: true });
       await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
 
-      const result = validateAgentDir(agentDir);
+      const result = await validateAgentDir(agentDir);
       assert.equal(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes("harness")));
     } finally {
@@ -268,7 +269,7 @@ describe("validateAgentDir", () => {
         "utf-8"
       );
 
-      const result = validateAgentDir(agentDir);
+      const result = await validateAgentDir(agentDir);
       assert.equal(result.ok, false);
       assert.ok(result.errors.some((e) => e.includes("tools")));
     } finally {

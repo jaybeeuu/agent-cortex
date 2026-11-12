@@ -245,7 +245,9 @@ agents, token-substituted skills, extensions) at `~/.agent-cortex/pi`.
 
 ## Validation
 
-Use the `validate-agent-dir` script to validate agent directories:
+The composable layout is validated by the repo tooling at `scripts/validate-agent-dir.mjs` — a
+module, not a shipped skill, with no CLI. Import `validateAgentDir` to check a directory, or run
+its test suite:
 
 ```bash
 node --test test/validate-agent-dir.test.mjs

@@ -2,11 +2,14 @@
 // Validator for the composable agent directory layout: `agent.md` plus at
 // least one harness subdirectory with a valid `frontmatter.json`.
 //
-// Zero dependencies: import the pure functions, or run the test suite at
-// `test/validate-agent-dir.test.mjs`.
+// Repo tooling, not a shipped skill: the composable layout exists only in this
+// repository's `agents/` tree, and installs carry flat rendered agents. Run the
+// test suite at `test/validate-agent-dir.test.mjs`.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+
+import { isDirectory, isFile } from "./lib/fs.mjs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,28 +99,31 @@ export function validateFrontmatter(fm) {
 
 /**
  * @param {string} agentDirPath
- * @returns {ValidationResult}
+ * @returns {Promise<ValidationResult>}
  */
-export function validateAgentDir(agentDirPath) {
+export async function validateAgentDir(agentDirPath) {
   /** @type {string[]} */
   const errors = [];
 
   // Check agent.md exists
   const agentMdPath = join(agentDirPath, "agent.md");
-  if (!existsSync(agentMdPath)) {
+  if (!(await isFile(agentMdPath))) {
     errors.push("missing agent.md");
   }
 
   // Check for at least one harness subdirectory with frontmatter.json
-  if (!existsSync(agentDirPath)) {
+  if (!(await isDirectory(agentDirPath))) {
     return { ok: false, errors: ["agent directory does not exist"] };
   }
 
-  const entries = readdirSync(agentDirPath);
-  const harnessDirs = entries.filter((entry) => {
-    const fullPath = join(agentDirPath, entry);
-    return statSync(fullPath).isDirectory() && entry !== "node_modules";
-  });
+  const entries = await readdir(agentDirPath);
+  /** @type {string[]} */
+  const harnessDirs = [];
+  for (const entry of entries) {
+    if (entry !== "node_modules" && (await isDirectory(join(agentDirPath, entry)))) {
+      harnessDirs.push(entry);
+    }
+  }
 
   if (harnessDirs.length === 0) {
     errors.push("no harness subdirectories found (need at least one with frontmatter.json)");
@@ -126,12 +132,12 @@ export function validateAgentDir(agentDirPath) {
   // Validate each harness directory
   for (const harnessDir of harnessDirs) {
     const frontmatterPath = join(agentDirPath, harnessDir, "frontmatter.json");
-    if (!existsSync(frontmatterPath)) {
+    if (!(await isFile(frontmatterPath))) {
       continue; // Skip directories without frontmatter.json
     }
 
     try {
-      const content = readFileSync(frontmatterPath, "utf-8");
+      const content = await readFile(frontmatterPath, "utf-8");
       const fm = JSON.parse(content);
       const result = validateFrontmatter(fm);
       if (!result.ok) {

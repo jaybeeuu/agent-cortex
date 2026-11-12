@@ -368,6 +368,8 @@ the one Claude Code writes when you enable the plugin) survive, and `permissions
 with a real file rather than written through, and `--output` leaves the user's Claude config
 alone. When registration finds the plugin installed but the settings do not enable it, the install
 warns and names `claude plugin enable <plugin>@<marketplace>` — a disabled plugin loads nothing.
+That check reads the user-scope file only, so a plugin enabled at project or local scope still
+warns; `claude plugin list` reports the effective state.
 
 It also writes the managed section of `~/.claude/CLAUDE.md` (Claude's user memory), delimited
 by `<!-- BEGIN agent-cortex:output-style -->` / `<!-- END agent-cortex:output-style -->`. The

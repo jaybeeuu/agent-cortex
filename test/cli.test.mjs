@@ -1,14 +1,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parseArgs, buildHelpText, resolveProgramName, validateHarness } from "../lib/cli.mjs";
+import { writeFingerprint } from "./helpers/harness-fingerprint.mjs";
+import { createTempRoot } from "./helpers/temp-root.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = join(__dirname, "..", "bin", "agent-cortex.mjs");
+const tempRoot = createTempRoot("agent-cortex-cli-");
 
 /** Run the CLI; optionally pass a custom env (e.g. a fake HOME), a working
  * directory for the invocation, or a different CLI path.
@@ -75,6 +78,21 @@ describe("parseArgs", () => {
 
   it("returns { command: 'version' } for -V", async () => {
     assert.deepStrictEqual(parseArgs(["-V"]), { command: "version" });
+  });
+
+  it("returns a harness report flag for the version subcommand", async () => {
+    assert.deepStrictEqual(parseArgs(["version"]), { command: "version", report: true });
+  });
+
+  it("returns json for version --json", async () => {
+    assert.deepStrictEqual(parseArgs(["version", "--json"]), { command: "version", report: true, json: true });
+  });
+
+  it("returns an optionError for an unknown version option", async () => {
+    const result = parseArgs(["version", "--bogus"]);
+    assert.equal(result.command, "version");
+    assert.ok(result.optionError);
+    assert.match(result.optionError, /--bogus/);
   });
 
   it("only honours --version as the first argument", async () => {
@@ -504,6 +522,96 @@ describe("CLI integration", () => {
   it("names the resolved command in the unknown-command hint", async () => {
     const { stderr } = await runCli(["bogus"]);
     assert.match(stderr, /Run "agent-cortex --help" for usage\./);
+  });
+});
+
+describe("version command", () => {
+  /** A fake HOME holding the harness artifact roots the case asks for.
+   * @param {{ harness: "pi" | "claude", content: string }[]} fingerprints
+   * @returns {Promise<string>}
+   */
+  async function createHome(fingerprints) {
+    const home = join(await tempRoot.createWorkspace(), "home");
+    await mkdir(home, { recursive: true });
+    for (const { harness, content } of fingerprints) {
+      await writeFingerprint(home, harness, content);
+    }
+    return home;
+  }
+
+  /** @returns {Promise<string>} */
+  async function cliVersion() {
+    /** @type {{ version: string }} */
+    const manifest = JSON.parse(await readFile(join(__dirname, "..", "package.json"), "utf-8"));
+    return manifest.version;
+  }
+
+  it("prints the CLI version first, then each installed harness with a stale marker", async () => {
+    const home = await createHome([
+      { harness: "pi", content: JSON.stringify({ version: "0.0.1" }) },
+      { harness: "claude", content: JSON.stringify({ version: "0.0.2" }) },
+    ]);
+
+    const { exitCode, stdout } = await runCli(["version"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(stdout.trimEnd().split("\n"), [
+      await cliVersion(),
+      "claude 0.0.2 stale",
+      "pi 0.0.1 stale",
+    ]);
+  });
+
+  it("prints the CLI version alone when no harness is installed", async () => {
+    const home = await createHome([]);
+
+    const { exitCode, stdout } = await runCli(["version"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 0);
+    assert.equal(stdout, `${await cliVersion()}\n`);
+  });
+
+  it("reports unknown for a harness root whose fingerprint is broken", async () => {
+    const home = await createHome([{ harness: "claude", content: "{ not json" }]);
+
+    const { exitCode, stdout } = await runCli(["version"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 0);
+    assert.equal(stdout.trimEnd().split("\n").at(-1), "claude unknown unknown");
+  });
+
+  it("prints one JSON record per installed harness for version --json", async () => {
+    const home = await createHome([{ harness: "pi", content: JSON.stringify({ version: "0.0.1" }) }]);
+
+    const { exitCode, stdout } = await runCli(["version", "--json"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 0);
+    assert.deepStrictEqual(JSON.parse(stdout), {
+      cli: await cliVersion(),
+      harnesses: [{ harness: "pi", installed: "0.0.1", cli: await cliVersion(), staleness: "stale" }],
+    });
+  });
+
+  it("writes nothing to the home directory", async () => {
+    const home = await createHome([{ harness: "pi", content: JSON.stringify({ version: "0.0.1" }) }]);
+    const snapshot = async () => {
+      const entries = (await readdir(home, { recursive: true })).sort();
+      return Promise.all(
+        entries.map(async (entry) => `${entry} ${(await stat(join(home, entry))).mtimeMs}`),
+      );
+    };
+    const before = await snapshot();
+
+    const { exitCode } = await runCli(["version"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(await snapshot(), before, "the report path is read-only");
+  });
+
+  it("exits 1 and prints error for an unknown version option", async () => {
+    const { exitCode, stderr } = await runCli(["version", "--bogus"]);
+    assert.equal(exitCode, 1);
+    assert.ok(stderr.includes("--bogus"));
   });
 });
 

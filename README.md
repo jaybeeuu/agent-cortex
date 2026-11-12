@@ -243,9 +243,9 @@ never removes an entry you added. Each report gives the `pi remove` command that
 resolves it, with the resolved path, because `pi remove` resolves a relative
 argument against the current directory.
 
-Re-run `agent-cortex install pi` after every `git pull` to refresh the staged
-package; registration is already in place, so that re-run changes nothing in
-pi's settings. Verify with `pi list` and `pi config` (restart pi to apply).
+Re-run `agent-cortex install pi` (or `agent-cortex update pi`) after every `git pull` to refresh
+the staged package; registration is already in place, so that re-run changes nothing in pi's
+settings. Verify with `pi list` and `pi config` (restart pi to apply).
 
 Refreshing the installed runtime after a release, and trying uncommitted work without
 overwriting it, are recorded in [`docs/dev-loop.md`](docs/dev-loop.md).
@@ -408,8 +408,9 @@ from a different root is refreshed in place rather than re-pointed at the fresh 
 install. Re-point it with
 `claude plugin marketplace remove jaybeeuu` and re-run the install.
 
-The plain install IS the update — there is no separate build step. (`--output <dir>` only
-generates a preview and never refreshes an installed plugin.)
+The plain install IS the update — there is no separate build step, and `agent-cortex update claude`
+is the same materialise-and-register run selected by name. (`--output <dir>` only generates a
+preview and never refreshes an installed plugin.)
 
 #### Uninstall
 
@@ -501,6 +502,42 @@ Only plain release versions are compared, so a prerelease on either side also re
 
 The command is read-only: it stats and reads those manifests, and never installs, writes, or
 reaches the network.
+
+## Refreshing installed harnesses (`agent-cortex update`)
+
+`agent-cortex update` re-runs a harness installer and reports what changed. It installs nothing
+itself: every refresh goes through the same path as `agent-cortex install <harness>`, so update and
+install can never disagree about what is out of date.
+
+```sh
+agent-cortex update                 # list the harnesses, then ask which to refresh
+agent-cortex update pi claude       # refresh exactly these, no prompt
+agent-cortex update -a              # refresh every harness not at the CLI version
+agent-cortex update -a -f           # re-run every installer regardless of version
+```
+
+The prompt lists every supported harness with its installed version, the CLI version, and a status
+marker (`current`, `stale`, `ahead`, `unknown`, or `missing`) — the data `agent-cortex version`
+reports, plus a row for a harness with no install. Answer with row numbers counted from the top
+row, `a` for every harness, or blank to cancel.
+
+A harness named on the command line always refreshes, whatever version it reports, and takes
+precedence over `-a`. `-a` refreshes every harness that does not report `current`, so an
+uninstalled, stale, ahead, or unreadable harness is refreshed. `-f` requires `-a`: alone it says
+nothing about which harnesses to touch. An unknown name fails before any installer runs.
+
+A shell that is not a terminal cannot answer the prompt, so a bare `agent-cortex update` there
+prints the same table plus the flags above and exits non-zero — a script can never mistake
+"nothing chosen" for "nothing to do".
+
+The report gives each refreshed harness its previous version, its new version, and the artifacts
+the installer wrote; harnesses already at the CLI version are listed as skipped. A harness's new
+version is read back from the manifest its installer wrote, so a refresh that failed to
+materialise reports `unknown` rather than claiming the CLI version.
+
+This refreshes the installs, not the CLI. Bump the global package first
+(`pnpm add -g @jaybeeuu/agent-cortex@latest`), then update the harnesses — see
+[`docs/dev-loop.md`](docs/dev-loop.md).
 
 ## Migrating a beads workspace
 

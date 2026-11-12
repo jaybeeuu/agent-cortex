@@ -8,13 +8,18 @@ release, and how to try the first without touching it.
 
 ```sh
 pnpm add -g @jaybeeuu/agent-cortex@latest
-agent-cortex install pi
-agent-cortex install claude
+agent-cortex update -a
 ```
 
 The first line is not optional. A global CLI whose shim points at a deleted pnpm store path
 fails every call with `MODULE_NOT_FOUND`, and re-installing is the fix: the published tarball
 ships `bin/` and `scripts/`, so `pnpm add -g` restores the command.
+
+The second line refreshes both harness installs. `agent-cortex update -a` re-runs the installer
+of every harness whose installed version differs from the new CLI, so it is the same work as
+`agent-cortex install pi` and `agent-cortex install claude` in sequence — update delegates to
+install rather than materialising anything itself. Use `agent-cortex update -a -f` to re-run both
+installers even when the version already matches.
 
 - `agent-cortex install <harness>` is idempotent and safe to re-run. A re-run at the same version
   rewrites the staged files identically and makes no registration change; a newer version

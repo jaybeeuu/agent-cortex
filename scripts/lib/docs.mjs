@@ -8,8 +8,11 @@
 // reference by install-relative path, so the token map stays the single source
 // of where the install puts it.
 //
-// The copies are verbatim. The anatomy doc quotes `{{TOOL:name}}` syntax as
-// documentation, so token substitution must never run over it.
+// The copies are verbatim, and no token substitution runs over them. A shipped doc
+// therefore must not print a substitution token: one that needs to teach the
+// syntax describes the wrapper in words (see the tool-reference section of the
+// anatomy guide). test/installed-docs.test.mjs fails when a shipped doc carries
+// one, because the materialised plugin must contain no literal token.
 //
 // Zero dependencies so it runs on the CI Node (20) and local Node alike.
 

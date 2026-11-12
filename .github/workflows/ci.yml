@@ -234,10 +234,10 @@ jobs:
           fi
 
           # token substitution: no literal tokens survive materialisation.
-          # Shipped docs are prose, not substituted text: the anatomy guide has to
-          # show the token syntax it teaches, so scanning it would fail every time.
-          # Substitution applies to skills, agents and hooks, which stay in scope.
-          TOKENS=$(grep -rlE '\{\{(TOOL|PATH|SECTION):' "$OUT" --exclude-dir=docs || true)
+          # Shipped docs are copied verbatim rather than substituted, so they are
+          # in scope too: a doc that teaches the token syntax describes the braces
+          # in words instead of printing them (see docs/skills/skill-anatomy.md).
+          TOKENS=$(grep -rlE '\{\{(TOOL|PATH|SECTION):' "$OUT" || true)
           if [ -n "$TOKENS" ]; then
             echo "::error::literal substitution tokens in materialised Claude plugin:"
             echo "$TOKENS"

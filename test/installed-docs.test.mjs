@@ -121,6 +121,21 @@ describe("installed docs", () => {
       assert.equal(await readFile(shipped[0], "utf-8"), await readFile(join(ROOT, ANATOMY), "utf-8"));
     });
 
+    it(`${harness}: ships docs that print no literal substitution token`, async () => {
+      const out = await stageInstall(harness);
+      const docs = (await listFiles(out)).filter((file) => relative(out, file).startsWith("docs/"));
+      assert.ok(docs.length > 0, `expected the ${harness} install to ship docs`);
+
+      const literalToken = /\{\{(?:TOOL|PATH|SECTION):/;
+      /** @type {string[]} */
+      const offenders = [];
+      for (const file of docs) {
+        if (literalToken.test(await readFile(file, "utf-8"))) offenders.push(relative(out, file));
+      }
+
+      assert.deepEqual(offenders, [], `docs are copied verbatim, so a literal token would reach the reader unsubstituted: ${offenders.join(", ")}`);
+    });
+
     it(`${harness}: every repo-owned doc reference in a rendered skill resolves inside the install`, async () => {
       const out = await stageInstall(harness);
       const skills = (await listFiles(join(out, "skills"))).filter((file) => file.endsWith(".md"));

@@ -241,6 +241,48 @@ describe("parseArgs", () => {
     }
   });
 
+  it("returns { command: 'update' } with no selection for bare update", async () => {
+    assert.deepStrictEqual(parseArgs(["update"]), { command: "update", harnesses: [], all: false, force: false });
+  });
+
+  it("collects the harnesses named after update", async () => {
+    assert.deepStrictEqual(parseArgs(["update", "pi", "claude"]), {
+      command: "update",
+      harnesses: ["pi", "claude"],
+      all: false,
+      force: false,
+    });
+  });
+
+  it("parses -a and --all for update", async () => {
+    for (const flag of ["-a", "--all"]) {
+      assert.deepStrictEqual(parseArgs(["update", flag]), { command: "update", harnesses: [], all: true, force: false });
+    }
+  });
+
+  it("parses -f and --force beside -a for update", async () => {
+    for (const flag of ["-f", "--force"]) {
+      assert.deepStrictEqual(parseArgs(["update", "-a", flag]), {
+        command: "update",
+        harnesses: [],
+        all: true,
+        force: true,
+      });
+    }
+  });
+
+  it("rejects -f without -a for update", async () => {
+    const result = parseArgs(["update", "-f"]);
+    assert.equal(result.command, "update");
+    assert.ok(result.optionError?.includes("--force"), "--force names the flag it needs");
+  });
+
+  it("reports an unknown option for update", async () => {
+    const result = parseArgs(["update", "--bogus"]);
+    assert.equal(result.command, "update");
+    assert.ok(result.optionError?.includes("--bogus"));
+  });
+
   it("returns { command: 'unknown', name: 'foo' } for unknown command", async () => {
     const result = parseArgs(["foo"]);
     assert.deepStrictEqual(result, { command: "unknown", name: "foo" });
@@ -284,6 +326,13 @@ describe("buildHelpText", () => {
   it("documents the version flags", async () => {
     const text = buildHelpText();
     assert.ok(text.includes("--version, -V"), "--version is listed beside --help");
+  });
+
+  it("documents the update command and its flags", async () => {
+    const text = buildHelpText();
+    for (const expected of ["update [<harness>...]", "-a, --all", "-f, --force"]) {
+      assert.ok(text.includes(expected), `help lists ${expected}`);
+    }
   });
 
   it("defaults to the agent-cortex help text", async () => {
@@ -612,6 +661,79 @@ describe("version command", () => {
     const { exitCode, stderr } = await runCli(["version", "--bogus"]);
     assert.equal(exitCode, 1);
     assert.ok(stderr.includes("--bogus"));
+  });
+});
+
+describe("update command", () => {
+  /** @returns {Promise<string>} A fake HOME holding no install root yet. */
+  async function createHome() {
+    const home = join(await tempRoot.createWorkspace(), "home");
+    await mkdir(home, { recursive: true });
+    return home;
+  }
+
+  /** @returns {Promise<string>} */
+  async function cliVersion() {
+    /** @type {{ version: string }} */
+    const manifest = JSON.parse(await readFile(join(__dirname, "..", "package.json"), "utf-8"));
+    return manifest.version;
+  }
+
+  it("exits 1 for an unknown harness name and runs no installer", async () => {
+    const home = await createHome();
+
+    const { exitCode, stderr } = await runCli(["update", "docker"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 1);
+    assert.match(stderr, /Unknown harness "docker"/);
+    assert.deepEqual(await readdir(home), [], "no install root was written");
+  });
+
+  it("prints the harness table and the available flags, then exits 1 when update is not on a terminal", async () => {
+    const home = await createHome();
+    await writeFingerprint(home, "pi", JSON.stringify({ version: "0.0.1" }));
+
+    const { exitCode, stdout, stderr } = await runCli(["update"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 1, "a non-interactive update fails instead of blocking");
+    assert.match(stdout, /^harness\s+installed\s+cli\s+status$/m, "the table header is printed");
+    assert.match(stdout, /^claude\s+not installed\s+\d+\.\d+\.\d+\s+missing$/m, "the uninstalled harness has a row");
+    assert.match(stdout, /^pi\s+0\.0\.1\s+\d+\.\d+\.\d+\s+stale$/m, "the stale harness has its two versions");
+    assert.match(stdout, /agent-cortex update -a -f/, "the flags are listed so the next run is not a guess");
+    assert.equal(stderr, "");
+  });
+
+  it("refreshes the named harness only and leaves the other install root untouched", async () => {
+    const home = await createHome();
+    // An empty PATH keeps registration from spawning a real Claude Code CLI:
+    // the installer warns and prints the manual commands instead.
+    const emptyPath = join(await tempRoot.createWorkspace(), "empty-path");
+    await mkdir(emptyPath, { recursive: true });
+
+    const { exitCode, stdout } = await runCli(["update", "claude"], { env: { HOME: home, PATH: emptyPath } });
+
+    assert.equal(exitCode, 0);
+    /** @type {{ version: string }} */
+    const plugin = JSON.parse(await readFile(join(home, ".agent-cortex", "claude", ".claude-plugin", "plugin.json"), "utf-8"));
+    assert.equal(plugin.version, await cliVersion());
+    assert.match(stdout, /claude not installed → \d+\.\d+\.\d+/, "the report shows the version it reached");
+    await assert.rejects(
+      readFile(join(home, ".agent-cortex", "pi", "package.json"), "utf-8"),
+      /ENOENT/,
+      "the pi staging root is never created",
+    );
+  });
+
+  it("reports nothing to update for -a when every harness is already at the CLI version", async () => {
+    const home = await createHome();
+    const version = await cliVersion();
+    await writeFingerprint(home, "pi", JSON.stringify({ version }));
+    await writeFingerprint(home, "claude", JSON.stringify({ version }));
+
+    const { exitCode, stdout } = await runCli(["update", "-a"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 0);
+    assert.equal(stdout.trimEnd(), `Nothing to update — every harness is at ${version}.`);
   });
 });
 

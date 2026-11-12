@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  collectHarnessStatus,
   collectVersionReport,
   formatVersionReport,
   serialiseVersionReport,
@@ -129,6 +130,31 @@ describe("collectVersionReport", () => {
       "unknown",
       "an uncomparable installed version is never reported as current",
     );
+  });
+});
+
+describe("collectHarnessStatus", () => {
+  it("lists every harness, marking an absent install as missing", async () => {
+    const home = await createHome(await tempRoot.createWorkspace());
+    await writeFingerprint(home, "pi", JSON.stringify({ version: "2.4.2" }));
+
+    const statuses = await collectHarnessStatus({ cli: "2.5.1", home });
+
+    assert.deepStrictEqual(statuses, [
+      { harness: "claude", installed: null, cli: "2.5.1", staleness: "missing" },
+      { harness: "pi", installed: "2.4.2", cli: "2.5.1", staleness: "stale" },
+    ]);
+  });
+
+  it("marks an installed harness at the CLI version as current", async () => {
+    const home = await createHome(await tempRoot.createWorkspace());
+    await writeFingerprint(home, "claude", JSON.stringify({ version: "2.5.1" }));
+
+    const statuses = await collectHarnessStatus({ cli: "2.5.1", home });
+
+    assert.deepStrictEqual(statuses.filter((entry) => entry.staleness === "current"), [
+      { harness: "claude", installed: "2.5.1", cli: "2.5.1", staleness: "current" },
+    ]);
   });
 });
 

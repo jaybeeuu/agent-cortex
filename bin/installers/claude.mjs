@@ -634,6 +634,25 @@ async function isSymlink(filePath) {
 }
 
 /**
+ * Result of generating (or planning) the Claude Code plugin.
+ * @typedef {object} InstallClaudeResult
+ * @property {string} output
+ * @property {string | null} marketplaceRoot
+ * @property {string | null} manifestPath
+ * @property {object | null} marketplaceManifest
+ * @property {string[]} agents
+ * @property {{ names: string[], md: number, files: number, dir: string }} skills
+ * @property {boolean} hooks
+ * @property {string[]} hookFiles
+ * @property {string[]} handAuthored
+ * @property {{ path: string, action: string, removedSymlink: boolean } | null} settings
+ * @property {{ path: string, action: string, removedSymlink: boolean } | null} instructions
+ * @property {string} pluginVersion
+ * @property {string[]} warnings
+ * @property {boolean} dryRun
+ */
+
+/**
  * Generate the Claude Code plugin subtree.
  *
  * @param {object} options
@@ -654,13 +673,7 @@ async function isSymlink(filePath) {
  *                                       explicitly materialises the section even
  *                                       with --output — the test/CI seam.
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
- * @returns {Promise<{ output: string, marketplaceRoot: string|null, manifestPath: string|null,
- *             marketplaceManifest: object|null, agents: string[],
- *             skills: {names: string[], md: number, files: number, dir: string},
- *             hooks: boolean, hookFiles: string[], handAuthored: string[],
- *             settings: {path: string, action: string, removedSymlink: boolean}|null,
- *             instructions: {path: string, action: string, removedSymlink: boolean}|null,
- *             pluginVersion: string, warnings: string[], dryRun: boolean }>}
+ * @returns {Promise<InstallClaudeResult>}
  */
 export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, instructionsPath, warn = DEFAULT_WARN } = {}) {
   const tokenMap = await loadTokenMap(root);

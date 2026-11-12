@@ -1,11 +1,22 @@
 #!/usr/bin/env node
 
-import { parseArgs, buildHelpText, resolveProgramName, validateHarness } from "../lib/cli.mjs";
+import { parseArgs, buildHelpText, resolveProgramName, validateHarness, SUPPORTED_HARNESSES } from "../lib/cli.mjs";
 import {
   collectVersionReport,
+  collectHarnessStatus,
   formatVersionReport,
   serialiseVersionReport,
 } from "../lib/harness-versions.mjs";
+import {
+  describeClaudeArtifacts,
+  describePiArtifacts,
+  formatHarnessTable,
+  formatUpdateFlags,
+  formatUpdateReport,
+  promptHarnessSelection,
+  runUpdate,
+  selectHarnesses,
+} from "../lib/harness-update.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
@@ -90,50 +101,76 @@ if (parsed.command === "install") {
     process.exit(1);
   }
 
-  if (parsed.harness === "pi") {
+  try {
+    await installHarness(/** @type {"pi" | "claude"} */ (parsed.harness), {
+      dryRun: parsed.dryRun ?? false,
+      ...(parsed.output ? { output: parsed.output } : {}),
+      ...(parsed.pluginRoot ? { pluginRoot: parsed.pluginRoot } : {}),
+      requireRegister: parsed.requireRegister ?? false,
+    });
+  } catch (err) {
+    process.stderr.write(`Install failed: ${/** @type {Error} */ (err).message}\n`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+if (parsed.command === "update") {
+  process.exitCode = await runUpdateCommand(parsed, programName);
+}
+
+/**
+ * Run one harness's installer and, for a plain install, its registration.
+ * `install <harness>` and `update` both come through here, so update-vs-install
+ * stays the installer's decision and neither command grows a second install path.
+ * @param {"pi" | "claude"} harness
+ * @param {object} [options]
+ * @param {boolean} [options.dryRun]
+ * @param {string} [options.output]
+ * @param {string} [options.pluginRoot]
+ * @param {boolean} [options.requireRegister]
+ * @returns {Promise<string[]>} What the installer wrote, for the update report
+ */
+async function installHarness(harness, { dryRun = false, output, pluginRoot, requireRegister = false } = {}) {
+  if (harness === "pi") {
     // A plain `agent-cortex install pi` stages the package into the home
     // install root (~/.agent-cortex/pi) and registers that directory with pi
     // through pi's own `pi install` (idempotent by state: a re-run is a no-op
     // update); `--output <dir>` is the stage-only form (tests/CI) and prints
     // the registration command instead.
-    try {
-      const result = await installPi({
-        dryRun: parsed.dryRun ?? false,
-        warn: () => {}, // warnings surface once in the printed summary
-        ...(parsed.output ? { output: parsed.output } : {}),
-        ...(parsed.pluginRoot ? { pluginRoot: parsed.pluginRoot } : {}),
+    const result = await installPi({
+      dryRun,
+      warn: () => {}, // warnings surface once in the printed summary
+      ...(output ? { output } : {}),
+      ...(pluginRoot ? { pluginRoot } : {}),
+    });
+    printPiInstall(result);
+    if (output === undefined) {
+      const registration = await registerPi({
+        output: result.output,
+        dryRun,
+        requireRegister,
+        warn: (msg) => process.stdout.write(`  ⚠ ${msg}\n`),
       });
-      printPiInstall(result);
-      if (parsed.output === undefined) {
-        const registration = await registerPi({
-          output: result.output,
-          dryRun: parsed.dryRun ?? false,
-          requireRegister: parsed.requireRegister ?? false,
-          warn: (msg) => process.stdout.write(`  ⚠ ${msg}\n`),
-        });
-        // The old installer's rendered copies are only stale once the staged
-        // package is what pi loads — and nothing is deleted on a dry run. The
-        // flag is passed through as well, so the sweep's own guarantee does not
-        // depend on this guard staying in place.
-        if (registration.registered && !(parsed.dryRun ?? false)) {
-          printPiSweep(
-            await sweepLegacyPiUserDirs({
-              piUserDir: dirname(registration.settingsPath),
-              dryRun: parsed.dryRun ?? false,
-            }),
-          );
-        }
-      } else {
-        process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
+      // The old installer's rendered copies are only stale once the staged
+      // package is what pi loads — and nothing is deleted on a dry run. The
+      // flag is passed through as well, so the sweep's own guarantee does not
+      // depend on this guard staying in place.
+      if (registration.registered && !dryRun) {
+        printPiSweep(
+          await sweepLegacyPiUserDirs({
+            piUserDir: dirname(registration.settingsPath),
+            dryRun,
+          }),
+        );
       }
-    } catch (err) {
-      process.stderr.write(`Install failed: ${/** @type {Error} */ (err).message}\n`);
-      process.exit(1);
+    } else {
+      process.stdout.write(`  → register it with pi: pi install ${result.output}\n`);
     }
-    process.exit(0);
+    return describePiArtifacts(result);
   }
 
-  process.stdout.write(`Installing agent-cortex for "${parsed.harness}" harness…\n`);
+  process.stdout.write(`Installing agent-cortex for "${harness}" harness…\n`);
 
   // claude is the first wired harness: a plain `agent-cortex install claude`
   // materialises the plugin into the home install root (~/.agent-cortex/claude)
@@ -144,40 +181,90 @@ if (parsed.command === "install") {
   // (marketplace add → install → update); `--output <dir>` is the generate-only
   // form (tests/CI validation), and the generated claude/ plugin subtree is
   // never committed — only the settings template is.
-  if (parsed.harness === "claude") {
-    // Avoid loading the installer on the help/summary paths and for other harnesses.
-    const { installClaude, registerClaude } = await import("./installers/claude.mjs");
-    try {
-      const result = await installClaude({
-        dryRun: parsed.dryRun ?? false,
-        warn: () => {}, // warnings surface once via result.warnings
-        ...(parsed.output ? { output: parsed.output } : {}),
-      });
-      for (const warning of result.warnings) {
-        process.stdout.write(`  ⚠ ${warning}\n`);
+
+  // Avoid loading the installer on the help/summary paths and for other harnesses.
+  const { installClaude, registerClaude } = await import("./installers/claude.mjs");
+  const result = await installClaude({
+    dryRun,
+    warn: () => {}, // warnings surface once via result.warnings
+    ...(output ? { output } : {}),
+  });
+  for (const warning of result.warnings) {
+    process.stdout.write(`  ⚠ ${warning}\n`);
+  }
+  // Runtime registration happens only for the plain install — `--output`
+  // keeps generating only (documented in --help).
+  if (output === undefined) {
+    await registerClaude({
+      // A default install always materialises the marketplace manifest; the
+      // generate-only form (--output) is the only path where it is null, and
+      // this branch is not that path.
+      root: /** @type {string} */ (result.marketplaceRoot),
+      manifest: /** @type {object} */ (result.marketplaceManifest),
+      pluginVersion: result.pluginVersion,
+      // The enablement check reads the same file this install just merged:
+      // a plugin Claude Code does not enable loads nothing.
+      ...(result.settings ? { settingsPath: result.settings.path } : {}),
+      dryRun,
+      requireRegister,
+    });
+  }
+  return describeClaudeArtifacts(result);
+}
+
+/**
+ * `ctx update`: choose the harnesses, refresh each through its installer, report
+ * what changed. Every write happens inside `installHarness`'s call into the
+ * harness installer — this command adds selection and reporting only.
+ * @param {import("../lib/cli.mjs").ParsedArgs} parsed
+ * @param {string} programName
+ * @returns {Promise<number>} The exit code
+ */
+async function runUpdateCommand(parsed, programName) {
+  if (parsed.optionError) {
+    process.stderr.write(`${parsed.optionError}\n`);
+    return 1;
+  }
+  try {
+    const cliVersion = await readPackageVersion();
+    const statuses = await collectHarnessStatus({ cli: cliVersion });
+    const all = parsed.all ?? false;
+    let harnesses = parsed.harnesses ?? [];
+
+    // Bare `ctx update` asks; a non-interactive shell gets the same table plus
+    // the flags that select without a prompt, and a non-zero exit so a script
+    // never mistakes "nothing chosen" for "nothing to do".
+    if (harnesses.length === 0 && !all) {
+      if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+        process.stdout.write(`${formatHarnessTable(statuses)}\n\n${formatUpdateFlags(programName)}\n`);
+        return 1;
       }
-      // Runtime registration happens only for the plain install — `--output`
-      // keeps generating only (documented in --help).
-      if (parsed.output === undefined) {
-        await registerClaude({
-          // A default install always materialises the marketplace manifest; the
-          // generate-only form (--output) is the only path where it is null, and
-          // this branch is not that path.
-          root: /** @type {string} */ (result.marketplaceRoot),
-          manifest: /** @type {object} */ (result.marketplaceManifest),
-          pluginVersion: result.pluginVersion,
-          // The enablement check reads the same file this install just merged:
-          // a plugin Claude Code does not enable loads nothing.
-          ...(result.settings ? { settingsPath: result.settings.path } : {}),
-          dryRun: parsed.dryRun ?? false,
-          requireRegister: parsed.requireRegister ?? false,
-        });
+      harnesses = await promptHarnessSelection({ statuses });
+      if (harnesses.length === 0) {
+        process.stdout.write("No harness selected; nothing updated.\n");
+        return 0;
       }
-      process.exit(0);
-    } catch (err) {
-      process.stderr.write(`Install failed: ${/** @type {Error} */ (err).message}\n`);
-      process.exit(1);
     }
+
+    const plan = selectHarnesses({ statuses, harnesses, all, force: parsed.force ?? false });
+    if (plan.unknown.length > 0) {
+      const names = plan.unknown.map((name) => `"${name}"`).join(", ");
+      process.stderr.write(
+        `Unknown harness ${names}. Supported harnesses: ${SUPPORTED_HARNESSES.join(", ")}\nRun "${programName} --help" for usage.\n`,
+      );
+      return 1;
+    }
+
+    const entries = await runUpdate({
+      cli: cliVersion,
+      targets: plan.targets,
+      refresh: (harness) => installHarness(/** @type {"pi" | "claude"} */ (harness), {}),
+    });
+    process.stdout.write(`${formatUpdateReport({ cli: cliVersion, entries, skipped: plan.skipped })}\n`);
+    return 0;
+  } catch (err) {
+    process.stderr.write(`Update failed: ${/** @type {Error} */ (err).message}\n`);
+    return 1;
   }
 }
 

@@ -41,6 +41,15 @@ const EXECUTION_LABEL_PREFIX = "execution:";
 const V1_LABEL_VALUES = ["afk", "hitl"];
 
 /**
+ * Ids per `bd label add` / `bd label remove` call. bd applies a label change id
+ * by id, so one call carrying every id in a large workspace takes minutes and
+ * can report success having persisted only part of the list — which is how a
+ * 710-bead rename silently left 280 beads unrenamed. A chunk keeps each call
+ * small enough to apply in full.
+ */
+const LABEL_BATCH_SIZE = 20;
+
+/**
  * Where loose idea records live, relative to the working directory. This is the
  * one path the command assumes, and it is deliberately the directory every
  * workspace with idea files already uses — a workspace without one simply has
@@ -263,8 +272,26 @@ async function findLegacyLabelBeads({ bd }) {
 }
 
 /**
+ * Split `items` into consecutive runs of at most `size` — one `bd` call's worth.
+ *
+ * `size` must be positive: a size of 0 never advances the loop.
+ *
+ * @template T
+ * @param {T[]} items
+ * @param {number} size
+ * @returns {T[][]}
+ */
+function chunkItems(items, size) {
+  /** @type {T[][]} */
+  const chunks = [];
+  for (let start = 0; start < items.length; start += size) chunks.push(items.slice(start, start + size));
+  return chunks;
+}
+
+/**
  * Apply the label rename in batches: add the target label for a group of beads,
  * then remove the legacy one, so a bead is never left without its axis label.
+ * Both writes carry one chunk of ids, never the whole workspace.
  *
  * @param {StepContext} ctx
  * @param {Pending[]} pending
@@ -283,8 +310,10 @@ async function renameLegacyLabels({ bd }, pending) {
 
   for (const from of [...groups.keys()].sort()) {
     const { to, ids } = /** @type {{ to: string, ids: string[] }} */ (groups.get(from));
-    await bd(["label", "add", ...ids, to]);
-    await bd(["label", "remove", ...ids, from]);
+    for (const chunk of chunkItems(ids, LABEL_BATCH_SIZE)) {
+      await bd(["label", "add", ...chunk, to]);
+      await bd(["label", "remove", ...chunk, from]);
+    }
   }
 }
 

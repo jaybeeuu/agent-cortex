@@ -77,9 +77,15 @@ Mechanics the plan reflects:
 2. Group bead ids by label value. A bead carrying both `afk` and `hitl` appears in both groups;
    that is a data problem worth inspecting, not a conflict the tool resolves for you.
 3. Per group, on `--apply`: `bd label add <ids…> execution:<value>` then
-   `bd label remove <ids…> implementation-type:<value>`. Add-then-remove keeps the routing label
-   present at every instant, so nothing is unroutable mid-flight.
+   `bd label remove <ids…> implementation-type:<value>`, at most 20 ids per call. Add-then-remove
+   keeps the routing label present at every instant, so nothing is unroutable mid-flight.
 4. Re-running after convergence finds zero targets — the no-op that proves idempotence.
+
+The 20-id ceiling is a `bd` limit, not a preference. `bd label add|remove` applies a list id by
+id and exits 0 even when it persisted only a prefix of it: one call carrying 710 ids left 280
+beads unrenamed while reporting success. Every call in this skill therefore carries one chunk of
+20 ids, and the per-step verification re-detects from the export instead of trusting the exit
+code. Any hand-run recipe below needs the same ceiling.
 
 Verification commands:
 
@@ -153,7 +159,8 @@ inversion.
 
 Every `bd label` call in this skill passes issue ids first and the label last, matching the CLI's
 `bd label add [issue-id...] [label[,label...]]`. Reversing that order fails: the ids are resolved
-before the trailing argument is read as a label.
+before the trailing argument is read as a label. Keep each hand-run call to about 20 ids for the
+same reason the command chunks: a longer list exits 0 having applied only part of itself.
 
 ```bash
 # Invert the v1 rename for a specific group

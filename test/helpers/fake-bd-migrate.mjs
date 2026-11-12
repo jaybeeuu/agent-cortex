@@ -20,7 +20,10 @@
 //   - every write is appended to `writes`, so a test can prove a dry run wrote
 //     nothing;
 //   - `failOn` makes a command (`create`) or a subcommand (`label add`) exit 1,
-//     exercising the fail-loud path.
+//     exercising the fail-loud path;
+//   - `maxIdsPerWrite` makes a label write apply only the first N ids of the
+//     call and report success for the rest, which is how bd handles a label
+//     call carrying every id in a large workspace (see LABEL_BATCH_SIZE).
 //
 // State lives in `state.json` next to the binary. Written async throughout —
 // the repo's check-no-sync lint scans test/ (including helpers).
@@ -180,7 +183,10 @@ function row(bead) {
   if (command === "label" && (sub === "add" || sub === "remove")) {
     const args = argv.slice(2);
     const label = args.pop();
-    for (const id of args) {
+    // A large id list is only partly applied, silently: every id is
+    // acknowledged either way.
+    const applied = state.maxIdsPerWrite > 0 ? args.slice(0, state.maxIdsPerWrite) : args;
+    for (const id of applied) {
       const bead = state.beads.find((candidate) => candidate.id === id);
       if (!bead) {
         console.error("bd label " + sub + ": unknown issue " + id);
@@ -224,15 +230,24 @@ function row(bead) {
  *   listHidesClosed?: boolean,
  *   ignoreLabelRemovals?: boolean,
  *   exportDropsLabel?: string | null,
+ *   maxIdsPerWrite?: number,
  * }} seed
  *        Pre-existing beads, plus optional degradations that model bd builds
  *        which lose data: a label-filtered list that hides closed beads, a
- *        label removal that does not stick, and an export that drops a label.
+ *        label removal that does not stick, an export that drops a label, and a
+ *        label write that applies only the first N ids it is given.
  * @returns {Promise<{ bin: string, state: string }>}
  */
 export async function makeFakeBdMigrate(
   dir,
-  { beads, failOn = null, listHidesClosed = false, ignoreLabelRemovals = false, exportDropsLabel = null },
+  {
+    beads,
+    failOn = null,
+    listHidesClosed = false,
+    ignoreLabelRemovals = false,
+    exportDropsLabel = null,
+    maxIdsPerWrite = 0,
+  },
 ) {
   const bin = join(dir, "bd");
   const state = join(dir, "state.json");
@@ -240,7 +255,7 @@ export async function makeFakeBdMigrate(
   await chmod(bin, 0o755);
   await writeFile(
     state,
-    JSON.stringify({ beads, failOn, listHidesClosed, ignoreLabelRemovals, exportDropsLabel, writes: [] }),
+    JSON.stringify({ beads, failOn, listHidesClosed, ignoreLabelRemovals, exportDropsLabel, maxIdsPerWrite, writes: [] }),
   );
   return { bin, state };
 }

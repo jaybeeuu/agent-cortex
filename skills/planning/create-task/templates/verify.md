@@ -26,18 +26,24 @@ Discover and run the project's test and lint commands, then report the outcome.
 **Step 2 — Run each discovered command** in the project root. Capture stdout and stderr.
 
 **Step 3 — Evaluate**:
-- If all commands exit 0: `VERIFY_OUTCOME: PASS`.
-- If any command exits non-zero: `VERIFY_OUTCOME: FAIL`. List each failure concisely.
+- If all commands exit 0: `OUTCOME: SUCCESS`.
+- If any command exits non-zero: `OUTCOME: BLOCKED`. List each failure concisely under
+  `BLOCKING_ISSUES`.
 
 Do not fix failures — report them only.
 
-End your response with a ---REPORT--- block:
+End your response with a ---REPORT--- block. The `run-pipeline-stage` skill's
+`prompts/stage-runner.md` holds the authoritative REPORT contract — if this block and that
+prompt differ, follow the prompt and correct this template.
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: verifying
+STAGE_COMPLETED: verify
 SUMMARY: <what commands were run and overall outcome>
 FILES_CHANGED: none
-VERIFY_OUTCOME: <PASS|FAIL>
-VERIFY_FAILURES:          ← only if VERIFY_OUTCOME is FAIL
-- <test/lint failure summary>
+COMMIT: <sha, or "none" if this stage added no commit>
+PUSHED: <yes|no>
+PR: none
+OUTCOME: <SUCCESS|BLOCKED>
+BLOCKING_ISSUES:         ← include only if OUTCOME is BLOCKED; one line per failure
+- <command, its exit status, and the failure summary>
 ---

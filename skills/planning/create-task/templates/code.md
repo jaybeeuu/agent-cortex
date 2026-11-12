@@ -31,10 +31,21 @@ Implement the task described above using a test-driven approach:
 
 Make only the changes required to complete this task — do not refactor unrelated code.
 
-End your response with a ---REPORT--- block:
+Commit and push the stage's work before reporting (see _Deliver before reporting_ in
+`prompts/stage-runner.md`). A dirty worktree counts as a failed stage.
+
+End your response with a ---REPORT--- block. The `run-pipeline-stage` skill's
+`prompts/stage-runner.md` holds the authoritative REPORT contract — if this block and that
+prompt differ, follow the prompt and correct this template.
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: coding
+STAGE_COMPLETED: code
 SUMMARY: <2–3 sentence summary of what was done>
 FILES_CHANGED: <comma-separated list, or "none">
+COMMIT: <sha of the stage commit, or "none">
+PUSHED: <yes|no>
+PR: none
+OUTCOME: <SUCCESS|BLOCKED>
+BLOCKING_ISSUES:         ← include only if OUTCOME is BLOCKED; one line per issue
+- <what blocks the stage and what would unblock it>
 ---

@@ -44,6 +44,10 @@ anything written there is a second source of a skill that already ships in `~/.a
 pi's own `~/.pi/agent/settings.json` belongs to pi: the installer reads it to decide the plan and
 lets the `pi` CLI write it.
 
+A session lists its skills when it starts, by the absolute path of each `SKILL.md`. A re-stage
+replaces those files, so a session that was already open holds the paths it was given. Start a
+new session after staging instead of reading a skill that has moved.
+
 ## Try uncommitted work (pi)
 
 Stage the checkout into a scratch package and load that package for one session. Run the commands

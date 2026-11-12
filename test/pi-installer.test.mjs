@@ -407,6 +407,24 @@ describe("installPi — skills", () => {
       await fx.cleanup();
     }
   });
+
+  // pi advertises a skill by the absolute path of its SKILL.md. The installer
+  // copies exactly skills/<group>/<name>, so a skill authored anywhere else is
+  // silently never advertised — fail the install instead of staging it short.
+  it("refuses to stage a skill that is not at skills/<group>/<name>", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha" } } });
+      await writeFixture(fx, "skills/engineering/nested/deep/SKILL.md", "---\nname: deep\ndescription: d\n---\n");
+
+      await assert.rejects(
+        () => installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
+        /skills\/<group>\/<name>/,
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
 });
 
 // ─── Extensions ──────────────────────────────────────────────────────────────

@@ -123,6 +123,9 @@ BLOCKING_ISSUES:                              ← only if OUTCOME is BLOCKED
 - <specific blocking issue>
 ```
 
+Stage-chore templates under `create-task/templates/` mirror this contract. A template that drifts
+still emits a well-formed block with unread keys, so routing fails silently.
+
 Subagents report facts — do not ask them to suggest or predict the next step. A REPORT claiming
 `OUTCOME: SUCCESS` with `PUSHED: no`, or a `COMMIT` that is not on the branch, records a failed
 stage: the commit is the evidence, the report is the claim.

@@ -89,3 +89,14 @@ The deliverable this feature produces and the problem it solves.
 | document | Document | review |
 
 `maxFixRounds: 4` — the maximum fix-retry rounds allowed for a stage's verify loop before the PR gate. Adjust stages only in `pipeline.json`; the script and templates follow it.
+
+## Stage templates
+
+`templates/` holds one prompt skeleton per stage; a dispatcher fills one to compose that stage's
+chore prompt. The REPORT contract is not defined here —
+`skills/workflow/run-pipeline-stage/prompts/stage-runner.md` owns it and every template mirrors it.
+Drift between the two fails silently: a worker that follows a drifted template emits a well-formed
+block with keys no one reads, so routing stops at that stage. Drift has already broken routing
+twice. Compare a template with the authority whenever either changes. The intended guard is a lint
+parity check beside `scripts/check-skill-frontmatter.mjs`, not a test — a test here would assert on
+file text, which is a content inventory, and `style-tests` bans that shape.

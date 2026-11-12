@@ -18,10 +18,21 @@ Apply only the changes described in the Task section above. Do not make any othe
 
 **Use context7** when working with any third-party library — fetch live docs to ensure you use the correct, up-to-date API for the version in this project.
 
-End your response with a ---REPORT--- block:
+Commit and push the fix before reporting (see _Deliver before reporting_ in
+`prompts/stage-runner.md`). A dirty worktree counts as a failed stage.
+
+End your response with a ---REPORT--- block. The `run-pipeline-stage` skill's
+`prompts/stage-runner.md` holds the authoritative REPORT contract — if this block and that
+prompt differ, follow the prompt and correct this template.
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: fixing
+STAGE_COMPLETED: fix
 SUMMARY: <2–3 sentence summary of what was changed>
 FILES_CHANGED: <comma-separated list, or "none">
+COMMIT: <sha of the stage commit, or "none">
+PUSHED: <yes|no>
+PR: none
+OUTCOME: <SUCCESS|BLOCKED>
+BLOCKING_ISSUES:         ← include only if OUTCOME is BLOCKED; one line per issue
+- <what remains unresolved and what would unblock it>
 ---

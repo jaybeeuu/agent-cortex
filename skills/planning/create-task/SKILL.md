@@ -141,7 +141,7 @@ Steps 2–6 create beads; step 7 expands one. A bead that already exists but has
 Input: title `Add export API to invoices`, description `…`, priority `2`, parent `feature-456`. Output: the bead ID plus the script's JSON mapping stage IDs → chore bead IDs, with `featurePrReview` as the HITL PR gate:
 
 ```json
-{"code": "abc123", "verify": "def456", "review": "ghi789", "document": "jkl012", "featurePrReview": "bd-mno345"}
+{"code": "abc123", "verify": "def456", "review": "ghi789", "document": "jkl012", "housekeeping": "mno345", "featurePrReview": "bd-pqr678"}
 ```
 
 Feature path input: "several endpoints, a UI, and a migration". Output: `feature-456` (`execution:hitl`), `plan-457` ("Plan: …", `execution:hitl`, owned by the feature, blocking every child), and one `execution:afk` impl child per deliverable, each expanded into its own stage chores plus PR gate.

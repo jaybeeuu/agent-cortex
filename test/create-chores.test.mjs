@@ -28,6 +28,7 @@ const CREATE_CHORES = join(testDir, "..", "skills", "planning", "create-task", "
  * @typedef {object} FakeDep
  * @property {string} issue_id
  * @property {string} depends_on_id
+ * @property {string} type
  */
 
 /**
@@ -121,15 +122,16 @@ async function withFakeBd(beads, body) {
 /** Run create-chores.mjs against a fake `bd` with a parent that already
  * carries `parentLabels` — the labels `bd create --parent` inherits.
  * @param {string[]} parentLabels  Labels seeded on the parent bead
- * @returns {Promise<{ ids: Record<string, string>, beads: FakeBead[] }>} */
+ * @returns {Promise<{ ids: Record<string, string>, beads: FakeBead[], deps: FakeDep[] }>} */
 async function createChoresAgainstFakeBd(parentLabels) {
-  /** @type {{ ids: Record<string, string>, beads: FakeBead[] }} */
-  let outcome = { ids: {}, beads: [] };
+  /** @type {{ ids: Record<string, string>, beads: FakeBead[], deps: FakeDep[] }} */
+  let outcome = { ids: {}, beads: [], deps: [] };
 
   await withFakeBd([{ ...parentBead(), labels: parentLabels }], async ({ run, readState }) => {
     const { exitCode, stdout, stderr } = await run();
     assert.equal(exitCode, 0, stderr);
-    outcome = { ids: JSON.parse(stdout), beads: (await readState()).beads };
+    const state = await readState();
+    outcome = { ids: JSON.parse(stdout), beads: state.beads, deps: state.deps };
   });
 
   return outcome;
@@ -171,6 +173,26 @@ describe("create-chores", () => {
       [...codeChore.labels].sort(),
       ["execution:afk", "stage:code"],
     );
+  });
+
+  it("carries the housekeeping label alongside its stage label", async () => {
+    const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
+
+    const housekeeping = beads.find((candidate) => candidate.id === ids.housekeeping);
+    assert.ok(housekeeping, `the run created no bead with id ${ids.housekeeping}`);
+    assert.deepEqual(
+      [...housekeeping.labels].sort(),
+      ["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"],
+    );
+  });
+
+  it("blocks the housekeeping chore behind the PR gate bead, not behind a stage", async () => {
+    const { ids, deps } = await createChoresAgainstFakeBd(["execution:afk"]);
+
+    const housekeepingDeps = deps
+      .filter((dep) => dep.issue_id === ids.housekeeping)
+      .map((dep) => [dep.depends_on_id, dep.type]);
+    assert.deepEqual(housekeepingDeps, [[ids.featurePrReview, "blocks"]]);
   });
 
   it("validates the PR gate task but not the stage chores", async () => {
@@ -217,8 +239,48 @@ describe("create-chores on an already expanded parent", () => {
         "stage:verify": 1,
         "stage:review": 1,
         "stage:document": 1,
+        "stage:housekeeping": 1,
         "lifecycle:feature-pr": 1,
       });
+    });
+  });
+
+  it("adds the housekeeping chore to a chain expanded before the stage existed", async () => {
+    const seeded = [
+      parentBead(),
+      stageChore("bd-1", "code"),
+      stageChore("bd-2", "verify", ["bd-1"]),
+      stageChore("bd-3", "review", ["bd-2"]),
+      stageChore("bd-4", "document", ["bd-3"]),
+      {
+        id: "bd-5",
+        title: "[parent-1] PR Review and Merge",
+        labels: ["execution:hitl", "lifecycle:feature-pr"],
+        parent: "parent-1",
+        dependsOn: ["bd-4"],
+      },
+    ];
+
+    await withFakeBd(seeded, async ({ run, readState }) => {
+      const { exitCode, stdout, stderr } = await run();
+      assert.equal(exitCode, 0, stderr);
+
+      const mapping = JSON.parse(stdout);
+      assert.equal(mapping.featurePrReview, "bd-5");
+
+      const created = (await readState()).beads.slice(seeded.length);
+      assert.deepEqual(
+        created.map((bead) => [...bead.labels].sort()),
+        [["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"]],
+      );
+
+      const state = await readState();
+      assert.deepEqual(
+        state.deps
+          .filter((dep) => dep.issue_id === created[0].id)
+          .map((dep) => dep.depends_on_id),
+        ["bd-5"],
+      );
     });
   });
 
@@ -264,6 +326,7 @@ describe("create-chores after a mid-chain failure", () => {
         [
           ["execution:afk", "stage:review"],
           ["execution:afk", "stage:document"],
+          ["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"],
           ["execution:hitl", "lifecycle:feature-pr"],
         ],
       );
@@ -283,6 +346,7 @@ describe("create-chores after a mid-chain failure", () => {
         { issue_id: mapping.review, depends_on_id: "bd-2" },
         { issue_id: mapping.document, depends_on_id: mapping.review },
         { issue_id: mapping.featurePrReview, depends_on_id: mapping.document },
+        { issue_id: mapping.housekeeping, depends_on_id: mapping.featurePrReview },
       ]);
     });
   });

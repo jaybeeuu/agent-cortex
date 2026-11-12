@@ -478,6 +478,30 @@ re-registers it; `--output <dir>` generates a preview only). The only committed 
 so never edit anything under it. CI validates the Claude materialiser (structural checks on
 a temp-dir install) so sources and installer can never silently diverge.
 
+## Checking installed versions (`agent-cortex version`)
+
+`agent-cortex version` prints the running CLI version, then one line for each installed
+harness: its name, the version its installer recorded, and a marker. The fingerprint is the
+manifest the installer already writes — `~/.agent-cortex/pi/package.json` for pi and
+`~/.agent-cortex/claude/.claude-plugin/plugin.json` for Claude Code — so the report needs no
+separate state file.
+
+```sh
+agent-cortex version            # CLI version, then one line per installed harness
+agent-cortex version --json     # the same data as JSON records
+agent-cortex --version          # the bare CLI version, for scripts
+```
+
+The marker is `current` when the installed copy matches the running CLI, `stale` when it is
+older, and `ahead` when it is newer — a downgraded CLI leaves its installs ahead of it. A
+harness root that exists with a missing or broken fingerprint reports `unknown` for both the
+version and the marker, because an install that cannot be read is never reported as `current`.
+Only plain release versions are compared, so a prerelease on either side also reports
+`unknown`. A harness with no installer gets no line.
+
+The command is read-only: it stats and reads those manifests, and never installs, writes, or
+reaches the network.
+
 ## Migrating a beads workspace
 
 `agent-cortex migrate` brings the `.beads` workspace it runs in — any repo, not just this

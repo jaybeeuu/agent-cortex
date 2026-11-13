@@ -15,7 +15,11 @@ thinking level). `/clear` carries the identity across in one command.
 | `/clear` | Replace the session with an empty one, keeping its identity |
 
 What it keeps: the session display name, the model, the thinking level, and the
-active agent. What it drops: every message, tool call, and file content.
+agent selected at launch. What it drops: every message, tool call, and file
+content.
+
+An agent switched mid-session with `/agent` is session state, not launch state,
+so it does not cross into the replacement.
 
 It never asks for confirmation, never summarises, never carries a handoff
 message, and never deletes the cleared session file. The cleared session stays
@@ -49,14 +53,13 @@ not survive the crossing.
 The active agent needs no handling: the replacement runtime is built from the
 same launch configuration, so an agent selected with `--agent <name>` re-applies
 its own system prompt and tool set at `session_start`, exactly as it does at
-startup. (An agent switched mid-session with `/agent` is session state, not
-launch state: it does not cross into the replacement.)
+startup.
 
 ## Claude Code parity
 
-This extension is PI-only. Claude Code already ships `/clear`, so there is no
-hook port and no hook equivalent to keep in step. The audit in
-`docs/claude-hooks.md` therefore records no entry for this capability.
+This extension is PI-only. Claude Code already ships `/clear`, and it keeps the
+model and the permission mode, so there is nothing to port: no hook, no command,
+and no settings entry.
 
 ## Development
 

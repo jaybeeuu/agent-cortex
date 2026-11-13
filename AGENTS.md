@@ -168,6 +168,11 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   directory outside the checkout, so a re-introduced runtime import fails the suite.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
+- The planner ↔ ralph peer channel is PI only and ships as skill text alone. A consuming repository
+  installs `@cryptolibertus/pi-peer` itself; it is never a `package.json` dependency of this package
+  and never part of the bundled `pi.packages` closure. The convention lives once in
+  `skills/workflow/ralph/REFERENCE.md` and is cross-referenced from `plan`. The Claude fork is
+  deferred, so the manual handoff instruction stays the Claude Code path.
 
 ## PI Extension Conventions
 

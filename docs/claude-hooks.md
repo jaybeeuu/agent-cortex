@@ -22,6 +22,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `skill-stats/` | — | **Reject** — no equivalent |
 | `subagent/` | — | **Reject** — native |
 | `agent-modes/` | — | **Reject** — no equivalent |
+| `session-clear/` | — | **Reject** — built-in `/clear` |
 
 ## `session-start/` → SessionStart (port)
 
@@ -142,3 +143,10 @@ tool-restriction/prompt-switching of the main agent; the closest equivalents are
 native (permission modes like plan mode configured via settings, and subagents
 — already covered above). The `--agent <name>` start flag is covered by
 `claude --agent` in newer versions. Rejected.
+
+## `session-clear/` → Reject (built-in)
+
+pi has no "same session identity, empty context" command, so the extension adds
+`/clear` on top of `ctx.newSession()`. Claude Code ships `/clear` itself, and it
+keeps the model and the permission mode, so there is nothing to port: no hook, no
+command, no settings entry. Rejected as duplicate.

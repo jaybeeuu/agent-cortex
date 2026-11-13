@@ -30,18 +30,19 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 ### 1. Initialize (run once at startup)
 
 1. Run `bd prime` and hold the output verbatim in memory.
-2. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
-3. Create the workspace: `mkdir -p .agent-cortex/ralph`.
-4. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "inflight": [] }`.
-5. Read `skills/planning/create-task/pipeline.json` and hold it in memory — you need its `maxFixRounds` for the read-only cap backstop.
-6. Run **`bd ready -l execution:afk`**. That single query *is* the dispatch predicate — every ready `execution:afk` bead is ralph's work, whether it is a feature, a task or a chore. Classify each result by its shape to decide which procedure carries it:
+2. Publish your peer identity: run the session as `PI_PEER_ID=ralph pi`, then confirm the planner is reachable with `peer_list`, which reports `1 online - planner`. If it reports no planner, tell the human once that `.pi/peers.json` must list **both** roles and continue — messaging is a reporting channel, never a gate on dispatch (REFERENCE.md, _Peer messaging (planner ↔ ralph)_).
+3. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
+4. Create the workspace: `mkdir -p .agent-cortex/ralph`.
+5. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "inflight": [] }`.
+6. Read `skills/planning/create-task/pipeline.json` and hold it in memory — you need its `maxFixRounds` for the read-only cap backstop.
+7. Run **`bd ready -l execution:afk`**. That single query *is* the dispatch predicate — every ready `execution:afk` bead is ralph's work, whether it is a feature, a task or a chore. Classify each result by its shape to decide which procedure carries it:
    - **`feature` bead with no children**: not dispatchable work yet — decompose it (_Feature decomposition_ below) and re-run the query.
    - **Bead carrying a `stage:*` label**: a pipeline stage chore — dispatch it (_Event loop_, and _Dispatching a Chore Bead_ in REFERENCE.md).
    - **`task` or other bead with no `stage:*` chore children**: expand it first (_Expansion guard_ below), then dispatch its ready `stage:code` chore.
    - **Bead that already has its children** (a decomposed feature, an expanded task parent): skip it — it is not dispatchable itself, and its `stage:*` chore is dispatched on its own.
    `execution:hitl` beads are not in this query and are not ralph's to touch: record them for the Pending Human Action summary. That includes every feature still at its default `execution:hitl` label.
-7. Dispatch each unit from its parent's worktree, up to 5 in flight: a stage chore via the event loop, a childless feature via a decomposition worker (_Feature decomposition_), a chore-less task via an expansion worker (_Expansion guard_). Create branches and worktrees first (REFERENCE.md, _Feature Branches and Worktrees_).
-8. Hand over to your harness's completion-detection mechanism: PI keeps a blocking wait outstanding over every in-flight agent ID, and Claude re-invokes you as each worker completes. If no **agent work** was dispatched — `state.json`'s `inflight` holds no entries, so no stage, decomposition or expansion worker is running — and `skills/workflow/ralph/scripts/pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md). A decomposition- or expansion-only init is in flight, not idle: keep the completion mechanism running and continue at the event loop.
+8. Dispatch each unit from its parent's worktree, up to 5 in flight: a stage chore via the event loop, a childless feature via a decomposition worker (_Feature decomposition_), a chore-less task via an expansion worker (_Expansion guard_). Create branches and worktrees first (REFERENCE.md, _Feature Branches and Worktrees_).
+9. Hand over to your harness's completion-detection mechanism: PI keeps a blocking wait outstanding over every in-flight agent ID, and Claude re-invokes you as each worker completes. If no **agent work** was dispatched — `state.json`'s `inflight` holds no entries, so no stage, decomposition or expansion worker is running — and `skills/workflow/ralph/scripts/pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md). A decomposition- or expansion-only init is in flight, not idle: keep the completion mechanism running and continue at the event loop.
 
 ### 2. Expansion guard (stage chores are pre-created)
 
@@ -66,6 +67,8 @@ On each completion notification (a background agent finished):
 3. Confirm the stage worker closed its chore bead: `bd show <bead-id>` should read `closed` with the outcome in its close reason. If it is still open the worker died mid-stage — read its notes and re-dispatch; never close it yourself.
 4. Route the parent per the dispatch table — nothing is created here: the pre-created chain already encodes the order, and the worker owns any remediation it needs.
 
+   Report the outcome to the planner on the peer channel: `update` with the bead id when a chore is dispatched or a stage completes, `done` with the run summary when the run finishes, `blocked` naming the gate bead when ralph parks at HITL Pause, and `failed` with the bead id and reason when a worker reports BLOCKED or the cap backstop blocks a parent (REFERENCE.md, _Peer messaging (planner ↔ ralph)_).
+
    | Stage completed | Condition | Next action |
    |-----------------|-----------|-------------|
    | `code` | — | Closing the code chore unblocks the pre-created verify chore |
@@ -80,6 +83,8 @@ On each completion notification (a background agent finished):
 
 5. Run `bd ready -l execution:afk` and dispatch new ready work while the in-flight count is under 5 — max 5 parent features, counted from `state.json`'s `inflight` (a parent counts while any of its workers — stage, `kind: "decompose"` or `kind: "expand"` — sits in `inflight`; REFERENCE.md, _State Files_). A ready childless feature is decomposed, not staged, and a ready bead with no chore tree is expanded (see _Feature decomposition_ and _Expansion guard_ above). Before each dispatch run the read-only cap backstop (REFERENCE.md, _Cap Backstop_): at `maxFixRounds` block the parent and create nothing. Do not schedule new parent features while `pending-gates.mjs` reports a non-empty `pendingHumanAction` — that is, while a `lifecycle:feature-pr` gate is **unblocked**. Gates still blocked behind their own pipeline (pre-created for a feature that has not reached its PR stage) are parked and never stop dispatch.
 6. If nothing is in flight (no stage, decomposition or expansion workers) and nothing is dispatchable (`bd ready -l execution:afk` returns no stage chore, no childless feature to decompose, and no ready, claimable chore-less task awaiting expansion — a queued `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it is paused work, not dispatchable work), proceed to HITL Pause (REFERENCE.md) when `pendingHumanAction` is non-empty, otherwise to Shutdown (REFERENCE.md).
+
+An inbound peer message arrives as its own turn, not as a completion notification, so handle it outside this loop. Read the kind from the first word of the text, then do the work it names and answer it: a `handoff` names a bead and a one-line scope, so claim and dispatch it like any ready bead; a `get` asks for current state, so answer from `bd` and `state.json`; an `ask` needs an answer. **Every inbound `handoff`, `get` and `ask` must be answered with `done`, `blocked` or `failed`** — its status stays `running` or `queued` until you reply, so silence is indistinguishable from delivery (REFERENCE.md, _Peer messaging (planner ↔ ralph)_).
 
 ### 5. Reporting status (beads are the view)
 
@@ -103,8 +108,8 @@ bd show <id>                   # full detail, including the worker's notes
 
 Both paths end in a **gated** `bd dolt push`: on a non-zero exit, retry once, then stop and report the command, exit code and stderr as a sync blocker instead of printing any completion or Pending Human Action summary. A sync that never reached the remote is a failed shutdown, not a finished one.
 
-- **HITL Pause** — when nothing is in flight (no stage, decomposition or expansion workers), nothing is dispatchable (nothing returned by `bd ready -l execution:afk`, including no ready, claimable chore-less task awaiting expansion), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`; gates still parked behind their own pipeline do not count): open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run the gated `bd dolt push`, output the Pending Human Action table, then stop completely until re-prompted.
-- **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run the gated `bd dolt push`, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
+- **HITL Pause** — when nothing is in flight (no stage, decomposition or expansion workers), nothing is dispatchable (nothing returned by `bd ready -l execution:afk`, including no ready, claimable chore-less task awaiting expansion), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`; gates still parked behind their own pipeline do not count): open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run the gated `bd dolt push`, send the planner one `blocked` message naming each gate bead, output the Pending Human Action table, then stop completely until re-prompted.
+- **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run the gated `bd dolt push`, send the planner a `done` message with the run summary, then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
 
 ## Red Flags
 
@@ -117,6 +122,7 @@ Both paths end in a **gated** `bd dolt push`: on a non-zero exit, retry once, th
 - Loop counting from a stage runner's prose when the same fact is queryable from beads.
 - Editing bead files directly instead of using `bd` commands.
 - Auto-merging a PR, or continuing past a feature/epic gate before a human merge.
+- Leaving an inbound `handoff`, `get` or `ask` unanswered, or building a registry, inbox, watcher or message transport — pi-peer owns delivery, wake and the ledger; ralph owns only the `done`/`blocked`/`failed` reply.
 
 ## Common Rationalizations
 
@@ -162,4 +168,5 @@ Do not invoke `classify-bead` from this loop — classification was applied at p
 - [ ] Ralph closed no leaf execution bead and created no fix bead; every closed chore carries its worker's close reason.
 - [ ] Any chore-less `execution:afk` task bead was expanded with `create-chores.mjs` (one parent bead), never with `create-task`; a failed expansion was recovered by re-running that same idempotent command.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.
+- [ ] Peer identity was published (`PI_PEER_ID=ralph`), every inbound `handoff`/`get`/`ask` was answered with `done`, `blocked` or `failed`, and `update`/`done`/`blocked`/`failed` reached the planner as the run progressed.
 - [ ] Every `bd dolt push` before HITL Pause/Shutdown exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no completion or Pending Human Action summary printed; status was reported from `bd` commands rather than a generated file, and the chat received no empty poll updates.

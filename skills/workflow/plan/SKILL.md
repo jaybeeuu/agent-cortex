@@ -156,7 +156,7 @@ For each task (within each epic), create a bead, classify it, and expand AFK tas
 
 ### Phase 4 — Prepare handoff to ralph
 
-Deliver a handoff bead and instructions for running ralph.
+Deliver a handoff bead, message the running ralph session, and give the instructions for running ralph.
 
 17. Determine the entry point:
 
@@ -188,7 +188,15 @@ Deliver a handoff bead and instructions for running ralph.
     ```
     **Gate on the exit status.** Non-zero: retry once, then stop and report the command, exit code and stderr as a sync blocker — the handoff has not left this machine, so do not present the handoff summary.
 
-20. Present the handoff summary:
+20. Send the handoff to the running ralph session, now that the bead exists:
+    ```
+    handoff <handoff-id> — <one-line scope>
+    ```
+    Send it with the `peer_send` tool, intent `task`, and write the kind as the first word of the text — never type into a busy session's terminal, where stray keystrokes are queued as user prompts. Ralph answers `done`, `blocked` or `failed`; `running` or `queued` means delivered, not done, so never read the send itself as acknowledgement. Run `peer_list` first: with no online ralph there is no receiver, so report that in the summary and keep the manual instruction below as the handoff path. The full kind table, the acknowledgement rule and the per-session setup live in [ralph's REFERENCE](../ralph/REFERENCE.md) (_Peer messaging (planner ↔ ralph)_).
+
+21. While the planning session stays open, treat ralph's `blocked` messages as your pending-human list: each one names a gate bead awaiting a human, so run `bd show <id>` and surface it together with ralph's `done`, `failed` and `update` reports instead of watching a terminal.
+
+22. Present the handoff summary:
     ```
     ✅ Plan complete. Ready for ralph.
 
@@ -214,6 +222,7 @@ Deliver a handoff bead and instructions for running ralph.
 - [ ] Every handoff-path bead lints clean (`bd lint`)
 - [ ] Bead state pushed with `bd dolt push`, and the push exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no handoff summary presented
 - [ ] Handoff summary presented with the exact instruction to give an agent
+- [ ] Handoff message sent to ralph through `peer_send` (kind `handoff`, naming the handoff bead), or a missing receiver reported in the summary with the manual instruction kept
 
 ## Phase-gate checklist
 
@@ -228,6 +237,7 @@ Deliver a handoff bead and instructions for running ralph.
 - **Skipping the user interview.** The agent has incomplete context. The interview resolves ambiguities that would otherwise surface mid-execution as rework.
 - **Creating horizontal slices.** "All the DB work first, then all the API work" is not tracer bullets. Every task must deliver end-to-end value.
 - **Moving past Phase 2 without user approval.** The task breakdown shapes the entire execution. Do not create beads until the breakdown is approved.
+- **Treating a sent handoff as an accepted one.** A `handoff` message carries no receipt: ralph's status stays `running` or `queued` until it answers `done`, `blocked` or `failed`, so a send that returned is not proof the work started.
 
 ## Common Rationalizations
 
@@ -251,7 +261,7 @@ Deliver a handoff bead and instructions for running ralph.
 - [prd-to-tasks](../../planning/prd-to-tasks/SKILL.md) — load when the PRD is already written and only decomposition is needed.
 - [spec-to-tickets](../../planning/spec-to-tickets/SKILL.md) — load instead when the PRD must become external tickets rather than beads.
 - [create-task](../../planning/create-task/SKILL.md) — Phase 3's per-task bead creation and pipeline expansion; it invokes `classify-bead` internally, so this skill never classifies directly.
-- [ralph](../ralph/SKILL.md) — the downstream consumer of the handoff bead — hand off by running a separate agent with "Use the ralph skill. Start from bead #<handoff-id>".
+- [ralph](../ralph/SKILL.md) — the downstream consumer of the handoff bead — hand off by sending ralph a `handoff` message naming the bead, with "Use the ralph skill. Start from bead #<handoff-id>" as the manual fallback when no ralph session is online. Its [REFERENCE.md](../ralph/REFERENCE.md) owns the planner ↔ ralph message convention.
 
 ## Examples
 
@@ -293,3 +303,4 @@ Full bead tree:
 - [ ] Handoff bead tagged `workflow:ralph`
 - [ ] Bead state pushed with `bd dolt push`, and the push exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no handoff summary presented
 - [ ] Handoff summary includes the exact instruction to give an agent
+- [ ] Handoff message sent to ralph (kind `handoff`, naming the handoff bead) through `peer_send`; ralph's `done`/`blocked`/`failed` replies were the only evidence of completion, never the send itself

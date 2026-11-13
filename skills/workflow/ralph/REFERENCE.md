@@ -389,6 +389,65 @@ When nothing is in flight AND nothing is dispatchable — `inflight` holds no en
 
 ---
 
+## Peer messaging (planner ↔ ralph)
+
+The planner session (`plan` skill) and ralph are separate sessions with no shared terminal. Delivery, discovery, idle wake and the message ledger all belong to the published **pi-peer** package. **Never build a registry, inbox, watcher or transport in its place** — this section defines only the message vocabulary and the reply rule that sit on top of it, and it is the single place both skills read.
+
+### Adoption in a consuming repository
+
+1. **Install once per repository:** `pi install npm:@cryptolibertus/pi-peer`.
+2. **List both roles** in `.pi/peers.json`: `planner` and `ralph`. The peer list is configuration, so both entries are required — see _Discovery is two-way only when both roles are listed_ below.
+3. **Start each session with its own identity:** `PI_PEER_ID=planner pi` for the planning session, `PI_PEER_ID=ralph pi` for ralph. The identity is per session, so it is set at start, not stored in the file. Confirm with `peer_list` — it reports `1 online - <peer id>` when discovery works.
+4. **Ignore the state files** the package writes — see _Files a consuming repository gains_ below.
+
+### Discovery is two-way only when both roles are listed
+
+`.pi/peers.json` is a **static peer list, not a live registry**: the runtime merges `.pi/settings.json`, `.pi/peers.json` and the `PI_PEER_*` environment, then polls only the peers the file names. `/peer setup` never overwrites an existing `.pi/peers.json`, so a setup run in the second session leaves the file alone.
+
+A single-entry file therefore makes discovery one-way: the listed peer sees the other as online, while the unlisted peer reports `no peers` and its sends write no message record. That is configuration, not a fault. The missing step is `/peer setup --peer <peer-id>`, which adds a trusted peer to the existing file. Two entries plus `PI_PEER_ID` per session is the whole setup — and because a send is not proof of receipt, a message stays unverified until the receiver answers.
+
+### Message kinds
+
+The kinds map **onto** pi-peer's existing intents (`ask`, `review`, `notify`, `coordinate`, `task`); they never replace or re-implement the package protocol.
+
+| Kind | Carries | Maps to intent | Direction |
+|------|---------|----------------|-----------|
+| `handoff` | bead id + one-line scope | `task` | planner → ralph |
+| `done` | bead id + run summary | `notify` | ralph → planner |
+| `blocked` | gate bead id awaiting a human | `notify` | ralph → planner |
+| `failed` | bead id + reason | `notify` | ralph → planner |
+| `update` | bead id + stage progress | `notify` | ralph → planner |
+| `get` | peer id, asks for current state | `coordinate` | either → either |
+| `ask` | question text, needs an answer | `ask` | either → either |
+
+Write the kind as the first word of the message text, e.g. `handoff agnt-ctx-abc.1 — implement the retry budget`.
+
+### Acknowledgement rule
+
+Statuses stay `running` or `queued` until the receiver answers, so **a sender cannot tell "delivered" from "done"**. Every inbound `handoff`, `get` and `ask` must be answered with exactly one of three reply kinds:
+
+- `done` — carried out; name the bead id and give a one-line result (for `get`, the requested state).
+- `blocked` — cannot proceed; name the gate bead that is waiting for a human.
+- `failed` — could not be carried out; name the bead and the reason.
+
+`update`, `done`, `blocked` and `failed` are reports, so they need no reply. Never leave a `handoff`, `get` or `ask` unanswered — reply that it is queued rather than staying silent.
+
+### Sending
+
+Send through the `peer_send` tool (and the `/peer send <id> "<text>" --intent <intent> --no-await` command) from a scripted call, **never** by typing text into a busy TUI: during the package's adoption spike, stray keystrokes aimed at a running session were queued as user prompts twice, so the receiving agent read them as new instructions.
+
+### Files a consuming repository gains
+
+| File | Purpose | Tracked? |
+|------|---------|----------|
+| `.pi/peers.json` | the peer list plus this machine's identity | no |
+| `.pi/peer-messages.json` | message records with source, target, status and conversation id | no |
+| `.pi/peer-control-ledger.jsonl` | the control ledger | no |
+
+All three are machine state, not tracked content. Tell the consuming repository to gitignore them; ignoring `.pi/peer-*` covers the message and ledger files, and any further `peer-*.json` the package adds.
+
+---
+
 ## State Files
 
 Status is read from beads — there is no rendered status document to build or refresh:

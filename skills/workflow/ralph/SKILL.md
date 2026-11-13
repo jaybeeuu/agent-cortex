@@ -30,7 +30,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 ### 1. Initialize (run once at startup)
 
 1. Run `bd prime` and hold the output verbatim in memory.
-2. Publish your peer identity: run the session as `PI_PEER_ID=ralph pi`, then confirm the planner is reachable with `peer_list`, which reports `1 online - planner`. If it reports no planner, tell the human once that `.pi/peers.json` must list **both** roles and continue — messaging is a reporting channel, never a gate on dispatch (REFERENCE.md, _Peer messaging (planner ↔ ralph)_).
+2. Publish your peer identity (PI only — Claude Code has no peer channel, so skip this step and report through your own output): run the session as `PI_PEER_ID=ralph pi`, then confirm the planner is reachable with `peer_list`, which reports `1 online - planner`. If it reports no planner, tell the human once that `.pi/peers.json` must list **both** roles and continue — messaging is a reporting channel, never a gate on dispatch (REFERENCE.md, _Peer messaging (planner ↔ ralph)_).
 3. Ensure `.agent-cortex/` and `.agent-cortex/worktrees/` are in the project's `.gitignore` (append any that are missing).
 4. Create the workspace: `mkdir -p .agent-cortex/ralph`.
 5. Initialize state: write `.agent-cortex/ralph/state.json` with `{ "inflight": [] }`.
@@ -168,5 +168,5 @@ Do not invoke `classify-bead` from this loop — classification was applied at p
 - [ ] Ralph closed no leaf execution bead and created no fix bead; every closed chore carries its worker's close reason.
 - [ ] Any chore-less `execution:afk` task bead was expanded with `create-chores.mjs` (one parent bead), never with `create-task`; a failed expansion was recovered by re-running that same idempotent command.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.
-- [ ] Peer identity was published (`PI_PEER_ID=ralph`), every inbound `handoff`/`get`/`ask` was answered with `done`, `blocked` or `failed`, and `update`/`done`/`blocked`/`failed` reached the planner as the run progressed.
+- [ ] (PI only — in Claude Code the run reports through its own output instead) Peer identity was published (`PI_PEER_ID=ralph`), every inbound `handoff`/`get`/`ask` was answered with `done`, `blocked` or `failed`, and `update`/`done`/`blocked`/`failed` reached the planner as the run progressed.
 - [ ] Every `bd dolt push` before HITL Pause/Shutdown exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no completion or Pending Human Action summary printed; status was reported from `bd` commands rather than a generated file, and the chat received no empty poll updates.

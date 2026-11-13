@@ -393,11 +393,13 @@ When nothing is in flight AND nothing is dispatchable — `inflight` holds no en
 
 The planner session (`plan` skill) and ralph are separate sessions with no shared terminal. Delivery, discovery, idle wake and the message ledger all belong to the published **pi-peer** package. **Never build a registry, inbox, watcher or transport in its place** — this section defines only the message vocabulary and the reply rule that sit on top of it, and it is the single place both skills read.
 
+**This channel is PI-only.** It needs the `pi-peer` package in a pi session: the `pi install` step, the `PI_PEER_*` environment, the `peer_send` tool, the `peer_list` tool and the `/peer` commands below. Claude Code has none of them, so a Claude Code session skips every command in this section and uses the manual handoff instruction that `plan` prints — the "tell an agent: Use the ralph skill, start from bead #<id>" line — until a Claude fork of the package exists.
+
 ### Adoption in a consuming repository
 
 1. **Install once per repository:** `pi install npm:@cryptolibertus/pi-peer`.
 2. **List both roles** in `.pi/peers.json`: `planner` and `ralph`. The peer list is configuration, so both entries are required — see _Discovery is two-way only when both roles are listed_ below.
-3. **Start each session with its own identity:** `PI_PEER_ID=planner pi` for the planning session, `PI_PEER_ID=ralph pi` for ralph. The identity is per session, so it is set at start, not stored in the file. Confirm with `peer_list` — it reports `1 online - <peer id>` when discovery works.
+3. **Start each session with its own identity:** `PI_PEER_ID=planner pi` for the planning session, `PI_PEER_ID=ralph pi` for ralph. The file holds a default `localPeerId`, and `PI_PEER_ID` overrides it for the session. Confirm with `peer_list` — it reports `1 online - <peer id>` when discovery works.
 4. **Ignore the state files** the package writes — see _Files a consuming repository gains_ below.
 
 ### Discovery is two-way only when both roles are listed
@@ -440,11 +442,11 @@ Send through the `peer_send` tool (and the `/peer send <id> "<text>" --intent <i
 
 | File | Purpose | Tracked? |
 |------|---------|----------|
-| `.pi/peers.json` | the peer list plus this machine's identity | no |
+| `.pi/peers.json` | the peer list plus the default `localPeerId` that `PI_PEER_ID` overrides | no |
 | `.pi/peer-messages.json` | message records with source, target, status and conversation id | no |
 | `.pi/peer-control-ledger.jsonl` | the control ledger | no |
 
-All three are machine state, not tracked content. Tell the consuming repository to gitignore them; ignoring `.pi/peer-*` covers the message and ledger files, and any further `peer-*.json` the package adds.
+All three are machine state, not tracked content. Tell the consuming repository to gitignore them: ignore `.pi/peers.json` **and** `.pi/peer-*` together. The literal path covers the peer list, which the glob does not match, and the glob covers the message and ledger files plus any further `peer-*.json` the package adds.
 
 ---
 

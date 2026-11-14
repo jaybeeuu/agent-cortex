@@ -168,11 +168,20 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   directory outside the checkout, so a re-introduced runtime import fails the suite.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
-- The planner ↔ ralph peer channel is PI only and ships as skill text alone. A consuming repository
-  installs `@cryptolibertus/pi-peer` itself; it is never a `package.json` dependency of this package
-  and never part of the bundled `pi.packages` closure. The convention lives once in
-  `skills/workflow/ralph/REFERENCE.md` and is cross-referenced from `plan`. The Claude fork is
-  deferred, so the manual handoff instruction stays the Claude Code path.
+- The planner ↔ ralph peer channel ships as skill text alone, forked at install time through
+  token-map.json: `{{TOOL:peer_send}}` and `{{TOOL:peer_list}}` render as the `pi-peer` package's
+  tools on pi and as Claude Code's built-in `SendMessage` and `ListAgents` on claude. A consuming
+  repository installs `@cryptolibertus/pi-peer` itself; it is never a `package.json` dependency of
+  this package and never part of the bundled `pi.packages` closure. The convention lives once in
+  `skills/workflow/ralph/REFERENCE.md` and is cross-referenced from `plan`: only its `### Transport`
+  subsection differs per harness, while the message kinds and the acknowledgement rule stay
+  byte-identical, and `test/skill-transport-render.test.mjs` stages both installs to prove it.
+  A new message kind, or a change to the acknowledgement rule, therefore goes in the shared text
+  and never into a per-harness `### Transport` — a kind that exists on one harness only would
+  break the byte-identical render.
+  `pi-peer`'s `peer_get` and `peer_await` have no Claude Code counterpart, so they are named only
+  inside the harness-labelled `pi-peer` runbook — a null claude mapping would drop the token and
+  leave the sentence broken.
 
 ## PI Extension Conventions
 

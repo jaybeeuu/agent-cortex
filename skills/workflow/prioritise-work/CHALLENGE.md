@@ -54,11 +54,12 @@ node <skill-scripts>/challenge.mjs record --bead agnt-ctx-abc.1 \
 bd note agnt-ctx-abc.1 --file /tmp/challenge-entry.txt
 ```
 
-`--out` writes the entry to a file, so the tracker appends it as data. Never paste the entry into
-a shell string: it repeats the words the human used, and a quote in those words would end the
-quoting early. `bd note agnt-ctx-abc.1 "$(cat /tmp/challenge-entry.txt)"` is equally safe, because
-a command substitution is data and nothing in the entry runs or expands twice. `record` also prints
-the movement, which is what you show the owner:
+`--out` writes the entry to a file, so the tracker appends it as data. Never paste the entry's own
+words into a shell string: the entry repeats what the human said, so a `"` in those words would end
+the quoting early and a `$(…)` would run a command. Pasting a **path** is safe instead —
+`bd note <bead> "$(cat <path>)"` reads the file and never parses the entry — but every example
+here uses `--file`, which needs no shell at all, so that is the one form to copy. `record` also
+prints the movement, which is what you show the owner:
 
 ```
 [2026-12-01T09:30:00.000Z] [challenge] trail:2f9c4b1e7a3d5c60

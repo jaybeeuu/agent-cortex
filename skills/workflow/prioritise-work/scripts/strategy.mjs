@@ -57,6 +57,13 @@ export const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  */
 export const TEMPLATE_FILE = fileURLToPath(new URL('../templates/strategy.md', import.meta.url));
 
+/**
+ * The section that records why the rubric changed. Optional in a hand-written file —
+ * `bump` adds it when it is absent — so a strategy created before this section existed
+ * stays valid.
+ */
+export const CHANGE_LOG_SECTION = 'Change log';
+
 /** The shape of a date: four digits, two, two. Whether it exists is a separate question. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -68,6 +75,9 @@ const FIELD = /^[ \t]*[-*][ \t]*\*\*([A-Za-z]+):\*\*[ \t]*(\S.*?)[ \t]*$/;
 
 /** The markup in front of a field's value, so a new value replaces the old one whole. */
 const FIELD_PREFIX = /^([ \t]*[-*][ \t]*\*\*[A-Za-z]+:\*\*[ \t]*)\S.*?[ \t]*$/;
+
+/** One change-log line: the date it landed, the version it produced, and the reason. */
+const CHANGE_LOG_ENTRY = /^[ \t]*[-*][ \t]+(\d{4}-\d{2}-\d{2})[ \t]+v(\d+):[ \t]*(.+?)[ \t]*$/;
 
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */
 export class UsageError extends Error {}
@@ -92,6 +102,8 @@ export class StrategyError extends Error {}
  * @property {number} from
  * @property {number} to
  * @property {string} updated
+ * @property {string} reason
+ * @property {string} line  The change-log line the bump appended.
  * @property {string} text
  */
 
@@ -178,6 +190,11 @@ export function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Collapse a value onto one line, so a change-log entry stays one line. @param {string} value @returns {string} */
+function oneLine(value) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Whether `value` is a calendar date the file can commit to, not merely a date V8 can
  * parse. V8's ISO parser rolls an impossible date into the following month — `2026-02-31`
@@ -230,6 +247,19 @@ export function validateStrategy(text) {
     else if (!hasContent(body)) errors.push(`required section is empty: "## ${title}"`);
   }
 
+  // The change log and the version answer the same question, so they must agree: the
+  // newest entry names the version the file carries. A hand-raised version, or a bump
+  // whose log line was deleted, leaves the record of *why* the rubric moved missing.
+  const changeLog = sectionBody(lines, CHANGE_LOG_SECTION);
+  const entries = (changeLog ?? []).map((line) => CHANGE_LOG_ENTRY.exec(line)).filter((match) => match !== null);
+  const newest = entries[entries.length - 1];
+  if (newest !== null && newest !== undefined && version !== undefined && Number(newest[2]) !== version) {
+    errors.push(
+      `the newest "## ${CHANGE_LOG_SECTION}" entry names v${newest[2]} but the version is v${version} — ` +
+        'run "bump --reason" to move both together, never one alone',
+    );
+  }
+
   return {
     ok: errors.length === 0,
     errors,
@@ -239,25 +269,72 @@ export function validateStrategy(text) {
 }
 
 /**
- * Raise the version by one and record the date, refusing a file that is not valid
- * first: bumping a malformed rubric would only make the malformation look reviewed.
+ * Append one line to the change-log section, adding the section when the file has none.
+ * The line lands last, because the log reads oldest first, and the section's own guidance
+ * comment stays above it.
+ * @param {string} text @param {string} line @returns {string}
+ */
+function appendChangeLog(text, line) {
+  const lines = text.split('\n');
+  const start = lines.findIndex((each) => HEADING.exec(each)?.[1].toLowerCase() === CHANGE_LOG_SECTION.toLowerCase());
+  if (start === -1) {
+    const body = text.endsWith('\n') ? text : `${text}\n`;
+    return `${body}\n## ${CHANGE_LOG_SECTION}\n\n${line}\n`;
+  }
+
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (HEADING.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+
+  const body = lines.slice(start + 1, end);
+  while (body.length > 0 && body[body.length - 1].trim() === '') body.pop();
+  while (body.length > 0 && body[0].trim() === '') body.shift();
+  const tail = lines.slice(end);
+  // The log is one contiguous list, so the new line follows the previous one directly — but
+  // a guidance comment above it is not a list item, and markdown needs a blank line there.
+  const gap = body.length > 0 && body[body.length - 1].trim().endsWith('-->');
+  const rebuilt = [
+    ...lines.slice(0, start + 1),
+    '',
+    ...body,
+    ...(gap ? [''] : []),
+    line,
+    ...(tail.length > 0 ? [''] : []),
+    ...tail,
+  ];
+  const joined = rebuilt.join('\n');
+  return joined.endsWith('\n') ? joined : `${joined}\n`;
+}
+
+/**
+ * Raise the version by one, record the date and append the one-line reason, refusing a
+ * file that is not valid first: bumping a malformed rubric would only make the
+ * malformation look reviewed. A bump with no reason would leave the record of *why* the
+ * rubric moved missing, which is the same defect the change log exists to prevent.
  * @param {string} text
- * @param {{ today: string }} options
+ * @param {{ today: string, reason: string }} options
  * @returns {BumpReport}
  */
-export function bumpStrategy(text, { today }) {
+export function bumpStrategy(text, { today, reason }) {
   const report = validateStrategy(text);
   if (!report.ok) {
     throw new StrategyError(`refusing to bump an invalid strategy:\n${report.errors.map((e) => `  - ${e}`).join('\n')}`);
   }
+  const cleanReason = oneLine(reason ?? '');
+  if (cleanReason === '') {
+    throw new StrategyError(
+      'refusing to bump without a reason: pass --reason "<why the rubric changed>" so the change log says why',
+    );
+  }
   const from = /** @type {number} */ (report.version);
   const to = from + 1;
-  return {
-    from,
-    to,
-    updated: today,
-    text: setField(setField(text, 'Version', String(to)), 'Updated', today),
-  };
+  const line = `- ${today} v${to}: ${cleanReason}`;
+  const bumped = setField(setField(text, 'Version', String(to)), 'Updated', today);
+  return { from, to, updated: today, reason: cleanReason, line, text: appendChangeLog(bumped, line) };
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
@@ -269,11 +346,12 @@ const USAGE = `Usage: node strategy.mjs <${COMMANDS.join('|')}> [options]
 
   init       Write the shipped template to the strategy path. Refuses to overwrite.
   validate   Check the shape and print the file to stdout only when it passes.
-  bump       Raise the version by one and record today's date, then re-validate.
+  bump       Raise the version by one, record today's date and append the reason.
 
 Options:
   --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)
   --today <date>   Date to record on init/bump (default: today, UTC; YYYY-MM-DD)
+  --reason <text>  Why the rubric changed. Required by "bump": it becomes the change-log line.
   -h, --help       Show this text
 
 The strategy is a committed file in the working-docs root, never a bead. This script
@@ -283,7 +361,7 @@ never writes to the tracker.
 /**
  * Parse the CLI's argv.
  * @param {string[]} argv
- * @returns {{ command: string, file: string, today?: string }}
+ * @returns {{ command: string, file: string, today?: string, reason?: string }}
  */
 export function parseArgs(argv) {
   /** @type {string | undefined} */
@@ -292,12 +370,20 @@ export function parseArgs(argv) {
   let file;
   /** @type {string | undefined} */
   let today;
+  /** @type {string | undefined} */
+  let reason;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--file') {
       file = argv[++i];
       if (file === undefined) throw new UsageError('--file needs a value');
+      continue;
+    }
+    if (arg === '--reason') {
+      reason = argv[++i];
+      if (reason === undefined) throw new UsageError('--reason needs a value');
+      if (reason.trim() === '') throw new UsageError('--reason needs a non-empty value');
       continue;
     }
     if (arg === '--today') {
@@ -315,7 +401,11 @@ export function parseArgs(argv) {
   }
 
   if (command === undefined) throw new UsageError(`a command is required: ${COMMANDS.join(', ')}`);
-  return { command, file: file ?? DEFAULT_FILE, ...(today === undefined ? {} : { today }) };
+  if (reason !== undefined && command !== 'bump') throw new UsageError('--reason only applies to "bump"');
+  if (command === 'bump' && reason === undefined) {
+    throw new UsageError('"bump" needs --reason "<why the rubric changed>" — the change log records it');
+  }
+  return { command, file: file ?? DEFAULT_FILE, ...(today === undefined ? {} : { today }), ...(reason === undefined ? {} : { reason }) };
 }
 
 /**
@@ -339,6 +429,19 @@ async function findRepositoryRoot(start) {
     if (parent === directory) return from;
     directory = parent;
   }
+}
+
+/**
+ * The absolute path a subcommand reads or writes. The default path is documented as
+ * relative to the repository root, so a run from a subdirectory reaches the one strategy
+ * the root owns instead of writing a second one. Any other `--file` — and every absolute
+ * path — is taken as given, relative to `cwd`.
+ * @param {{ file?: string, cwd?: string }} options
+ * @returns {Promise<string>}
+ */
+export async function resolveStrategyFile({ file = DEFAULT_FILE, cwd = process.cwd() } = {}) {
+  const base = file === DEFAULT_FILE ? await findRepositoryRoot(cwd) : cwd;
+  return resolve(base, file);
 }
 
 /**
@@ -372,7 +475,7 @@ export async function runCli({
     return 0;
   }
 
-  /** @type {{ command: string, file: string, today?: string }} */
+  /** @type {{ command: string, file: string, today?: string, reason?: string }} */
   let options;
   try {
     options = parseArgs(argv);
@@ -381,11 +484,8 @@ export async function runCli({
     return 2;
   }
 
-  // The default path is documented as relative to the repository root, so `init` run from a
-  // subdirectory writes the one strategy the root owns instead of a second one. Any other
-  // `--file` — and every absolute path — is taken as given, relative to the cwd.
-  const base = options.file === DEFAULT_FILE ? await findRepositoryRoot(cwd) : cwd;
-  const file = resolve(base, options.file);
+  // The default path resolves against the repository root; an explicit --file does not.
+  const file = await resolveStrategyFile({ file: options.file, cwd });
   const date = today ?? options.today ?? todayIso();
 
   try {
@@ -422,11 +522,11 @@ export async function runCli({
     }
 
     if (options.command === 'bump') {
-      const bumped = bumpStrategy(text, { today: date });
+      const bumped = bumpStrategy(text, { today: date, reason: options.reason ?? '' });
       const check = validateStrategy(bumped.text);
       if (!check.ok) throw new StrategyError(`the bump produced an invalid file — ${check.errors.join('; ')}`);
       await writeFile(file, bumped.text, 'utf8');
-      writeError(`✓ ${file}: version ${bumped.from} → ${bumped.to}, updated ${bumped.updated}\n`);
+      writeError(`✓ ${file}: version ${bumped.from} → ${bumped.to}, updated ${bumped.updated}\n  change log: ${bumped.line}\n`);
       return 0;
     }
 

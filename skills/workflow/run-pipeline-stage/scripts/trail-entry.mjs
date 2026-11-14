@@ -178,7 +178,7 @@ const execFileAsync = promisify(execFile);
 
 // BD_PATH / GIT_PATH env overrides let machines where a binary is not on PATH pin a
 // location. Nothing here names a repository, a branch or a host.
-const BD_PATH = process.env.BD_PATH || 'bd';
+export const BD_PATH = process.env.BD_PATH || 'bd';
 const GIT_PATH = process.env.GIT_PATH || 'git';
 
 /**

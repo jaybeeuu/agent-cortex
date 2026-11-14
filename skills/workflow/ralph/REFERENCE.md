@@ -326,10 +326,15 @@ Ralph never tails a file. The worker writes its own bead trail at each transitio
 `skills/workflow/run-pipeline-stage/scripts/trail-entry.mjs`, so progress is read from the bead:
 
 ```bash
-bd show <chore-id>              # the worker's checkpoint entries: Outcome, Evidence, What is left
+node <run-pipeline-stage-scripts>/recover-brief.mjs --bead <chore-id>  # status, newest entries, refs, blockers, acceptance — bounded
+bd show <chore-id>              # every checkpoint entry: Outcome, Evidence, What is left
 bd provenance log <chore-id>    # the refs it recorded: git-sha, branch, pr, work-id
 bd children <parent-id>         # the whole chain's state, closed included
 ```
+
+The brief is the first read: `bd show` returns the whole note — 118 lines for a bead carrying 20
+entries — and Ralph reads the tail, not the history. Widen the brief's window (`--trail`) only when
+it left out the entry you need.
 
 There is nothing to flush and no bookmark to keep in `state.json`: the record the orchestrator used
 to poll is now the record the worker writes directly, so the per-parent log file and the line

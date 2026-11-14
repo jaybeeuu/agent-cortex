@@ -4,10 +4,14 @@
 ## Task
 <bd show <id> output — verbatim>
 
-## Progress log
-Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, the check command and its exit status, the escalation bead id if one was filed,
-and stage complete (see Progress Logging in run-pipeline-stage skill).
+## Trail entry
+Record one entry at stage start and one at stage close through the shared writer (see Trail Entries in the `run-pipeline-stage` skill):
+```bash
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <bead-id> --stage post-merge --outcome <done|blocked|partial> \
+  --evidence "<evidence>" --remaining "<what is left, or none>"
+```
+Evidence for a post-merge stage: the check exit status, the commit, and the escalation bead id when one was filed.
 
 ## Instructions
 This stage verifies the merge, so **do not work in the bead worktree**. Run the check from the

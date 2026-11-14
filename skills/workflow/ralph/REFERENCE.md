@@ -70,7 +70,7 @@ A ready `execution:afk` task bead with **no** `stage:*` chore children has nothi
    `<create-task-scripts>` is the absolute path to `skills/planning/create-task/scripts/`, resolved from wherever the skill was loaded — never hardcode one harness's install path. `<parent-priority>` is the parent's own priority from `bd show <parent-id>`, so chores match the task they belong to.
 3. **Record it in `inflight`** so its completion is attributable to the parent and it stays in the wait set — it has no chore, so `choreId` is `null`:
    ```json
-   { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
+   { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>" }
    ```
 4. **Report the mapping** the worker returns — `code`, `verify`, `review`, `document`, `post-merge`, `housekeeping`, `featurePrReview` — and close nothing. The worker owns no bead on this run; the expansion is bookkeeping, not a stage.
 5. **Dispatch normally.** The next `bd ready -l execution:afk` pass picks up the `stage:code` chore, and the pre-created chain carries the rest.
@@ -130,7 +130,7 @@ Decompose it:
    This is the shape `create-task` builds on its feature path (`SKILL.md` steps 5–6): an `execution:hitl` planning bead owned by the feature, whose impl children depend on it, so the dependency — not a label — is the readiness gate.
 3. **Record it in `inflight`** so its completion is attributable to the feature and it stays in the wait set — it holds no chore, so `choreId` is `null`:
    ```json
-   { "kind": "decompose", "choreId": null, "parentId": "<feature-id>", "title": "<feature title>", "agentId": "<agent-id>", "logLine": 1 }
+   { "kind": "decompose", "choreId": null, "parentId": "<feature-id>", "title": "<feature title>", "agentId": "<agent-id>" }
    ```
 4. **Confirm the children exist** rather than trusting the report — the worker's IDs are a claim, the bead graph is the evidence:
    ```bash
@@ -157,8 +157,8 @@ Chores already exist, so dispatch never creates one:
    - Parent task description from `bd show <parent-id>`
    - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
-   - Log file path `.agent-cortex/ralph/ralph-<parent-id>.log` — logs are keyed by **parent** bead ID, so every stage chore of a feature appends to the same file
-7. **Call the {{TOOL:task}} tool** with the filled prompt as `prompt` and the worktree path as `cwd`. Store the returned agentId — you need it for step 8 and for log polling.
+   - The trail pointer: the worker records its own entries with `<run-pipeline-stage-scripts>/trail-entry.mjs`, so the prompt names that script rather than a log file (see _Reading the Trail_ below)
+7. **Call the {{TOOL:task}} tool** with the filled prompt as `prompt` and the worktree path as `cwd`. Store the returned agentId — you need it for step 8 and for correlating the completion to its bead.
 
    If this session has no subagent tool, **stop and say so**. Do not substitute a backgrounded CLI run (`pi -p … &`): that launch has no completion signal, so a finished worker and a killed one look identical, which is how stages came to be reported complete over uncommitted trees. Record the bead for the shutdown summary and tell the human the session needs restarting with the subagent extension loaded.
 8. **Record the base commit** before the worker starts — you verify delivery against it (_Verified Completion_ below):
@@ -320,24 +320,26 @@ Ralph never builds remediation. The worker that fails a stage creates its own `s
 
 ---
 
-## Log Polling
+## Reading the Trail
 
-Run whenever completion handling is triggered (an agent completion):
+Ralph never tails a file. The worker writes its own bead trail at each transition through
+`skills/workflow/run-pipeline-stage/scripts/trail-entry.mjs`, so progress is read from the bead:
 
-1. **Read in-flight entries**: `inflight` in `.agent-cortex/ralph/state.json` — every dispatched worker: stage (`kind: "stage"`), decomposition (`kind: "decompose"`) or expansion (`kind: "expand"`). Each entry carries `parentId` and `logLine`.
-2. For each in-flight entry, read new lines from its **parent's** log file — logs are keyed by **parent** bead ID, so all stages of a feature share one file:
-   ```bash
-   tail -n +<logLine> .agent-cortex/ralph/ralph-<parentId>.log 2>/dev/null
-   ```
-3. For each entry that has new lines:
-   - **Post a chat summary** of new key events (stage transitions and notable events — not every line verbatim):
-     ```
-     📋 [parent-id] <title>
-        coding → verifying  (or whatever transition)
-        Tests: 12 passed, 0 failed
-     ```
-   - Update `logLine` in `state.json` for that entry.
-4. If no entry had new lines, post nothing — do not spam the chat with empty polls.
+```bash
+bd show <chore-id>              # the worker's checkpoint entries: Outcome, Evidence, What is left
+bd provenance log <chore-id>    # the refs it recorded: git-sha, branch, pr, work-id
+bd children <parent-id>         # the whole chain's state, closed included
+```
+
+There is nothing to flush and no bookmark to keep in `state.json`: the record the orchestrator used
+to poll is now the record the worker writes directly, so the per-parent log file and the line
+counter that fed its tail are gone. On each completion:
+
+1. **Read the completed worker's bead**: `bd show <chore-id>` for its entries, and
+   `bd provenance log <chore-id>` for the commit, branch and PR it recorded.
+2. **Post a chat summary** of what is new since the last report for that bead — the stage
+   transition, the test and lint results, and the close reason. Not the entries verbatim.
+3. **Post nothing when nothing new arrived** — do not spam the chat with empty polls.
 
 ---
 
@@ -491,8 +493,7 @@ bd show <id>                   # full detail, including the worker's notes
 
 | File | Purpose |
 |------|---------|
-| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the in-flight agent-ID→bead mapping. Shape: `{ "inflight": [ { "kind": "stage", "choreId": "...", "parentId": "...", "title": "...", "agentId": "...", "logLine": 1 } ] }`. A decomposition worker is recorded with `"kind": "decompose"` and an expansion worker with `"kind": "expand"`, both with `"choreId": null` — they hold no chore but still occupy the wait set and the in-flight check. Initialise at startup with `{ "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
-| `.agent-cortex/ralph/ralph-*.log` | Per-parent log files written by subagents — every stage chore of a feature appends to `.agent-cortex/ralph/ralph-<parent-id>.log` (e.g. `ralph-abc-123.log`). |
+| `.agent-cortex/ralph/state.json` | Runtime bookkeeping only: the in-flight agent-ID→bead mapping. Shape: `{ "inflight": [ { "kind": "stage", "choreId": "...", "parentId": "...", "title": "...", "agentId": "..." } ] }`. A decomposition worker is recorded with `"kind": "decompose"` and an expansion worker with `"kind": "expand"`, both with `"choreId": null` — they hold no chore but still occupy the wait set and the in-flight check. Initialise at startup with `{ "inflight": [] }`. Update after every dispatch and every agent completion. **Never hand-edit.** |
 
 All task state is derived from beads; `state.json` holds only runtime bookkeeping:
 

@@ -65,8 +65,8 @@
       "claude": "event-driven"
     },
     "notes": {
-      "pi": "Blocking wait: wait_for_agents returns as soon as one worker finishes, carrying its result inline. No timer to start, nothing to kill — there is no poll loop.",
-      "claude": "Event-driven: the harness re-invokes ralph when a worker completes and delivers the result inline. No poll timer, no sleep, no log flush."
+      "pi": "Blocking wait: wait_for_agents returns as soon as one worker finishes, carrying its result inline. No timer to start, nothing to kill — there is no poll loop. Progress is read from the bead trail the worker writes (`bd show`, `bd provenance log`).",
+      "claude": "Event-driven: the harness re-invokes ralph when a worker completes and delivers the result inline. No poll timer and no sleep. Progress is read from the bead trail the worker writes (`bd show`, `bd provenance log`), never from a file ralph tails."
     }
   },
   "notes": {

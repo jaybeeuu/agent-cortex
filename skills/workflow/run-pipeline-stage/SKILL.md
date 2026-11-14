@@ -24,7 +24,7 @@ Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `st
 
 | Actor | Owns |
 |---|---|
-| Stage runner (worker) | Milestone notes, progress-log lines, closing its leaf bead on both outcomes (`housekeeping` and `post-merge` excepted: each may leave its bead open), remediation children, the REPORT |
+| Stage runner (worker) | Trail entries through `scripts/trail-entry.mjs`, closing its leaf bead on both outcomes (`housekeeping` and `post-merge` excepted: each may leave its bead open), remediation children, the REPORT |
 | Orchestrator (ralph or you) | Claim, dispatch, forward routing, the read-only cap backstop, the PR gate |
 
 A leaf bead is the worker's record of what happened. The orchestrator reads it; it does not write it.
@@ -33,7 +33,7 @@ A leaf bead is the worker's record of what happened. The orchestrator reads it; 
 
 1. Run `bd prime` and hold the output; subagents can run it themselves if they need context.
 2. If no bead was specified, run `bd ready` and ask the user which to work on.
-3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth. Append a stage-start note immediately (see _Milestone Notes_).
+3. Claim the bead with `bd update <id> --claim` — the bead, not the prompt, is the source of truth. Record a stage-start trail entry immediately (see _Trail Entries_).
 4. Read the bead's `stage:*` label — it names the stage to execute.
 5. Load the universal stage-runner prompt (`skills/workflow/run-pipeline-stage/prompts/stage-runner.md`) — it carries the lifecycle, remediation, and REPORT contract — populate `<stage>`, and read the matching playbook (`playbooks/<stage>.md`) for stage-specific rules.
 6. Tag the stage — beads are the only status view:
@@ -87,29 +87,29 @@ On `OUTCOME: BLOCKED` the worker creates its own chain — a `stage:fix` chore c
 
 Webbing, at cap, and the exact commands live in `prompts/stage-runner.md` and each playbook's _Remediation and close_ section. In short: both beads are children of the parent task (`--parent <parent-id>`), the fresh stage is `bd dep add <fresh> <fix> --type blocks`, and any not-yet-run later stage is re-blocked behind the fresh bead. Chores carry no required sections, so the feedback description points at the parent/requirements bead (`<parent-id>`) rather than restating its acceptance criteria.
 
-## Progress Logging
+## Trail Entries
 
-Inside the ralph orchestrator, write one structured line per transition or key event to `.agent-cortex/ralph/ralph-{bead-id}.log`:
-
-```
-[ISO-timestamp] [bead-id] [stage] message
-```
-
-Log stage starts and completes, test/lint/build/security results, blockers, and decisions — not file reads or minor actions.
+One script writes the bead trail: `scripts/trail-entry.mjs`, run by the worker at each transition. It appends one checkpoint to the bead's notes with `bd note`, and records any refs the caller names as provenance events.
 
 ```bash
-mkdir -p .agent-cortex/ralph && echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [bead-id] [stage] message" >> .agent-cortex/ralph/ralph-bead-id.log
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <id> --stage <stage> --outcome <done|blocked|partial> \
+  --evidence "<test or lint result, commit, command output>" \
+  --remaining "<what is left, or none>" \
+  [--commit <ref>] [--branch <branch>] [--pr <url>] [--work-id <worktree-id>]
 ```
 
-## Milestone Notes
+Three fields are mandatory, and the script refuses an entry without them:
 
-The bead's notes are the recovery contract: if a session dies mid-stage, a fresh agent must resume from `bd show <id>` alone. Append a short checkpoint at stage start and at each milestone — never on every tool call.
+- **Outcome** — `done`, `blocked` or `partial`, a fixed vocabulary rather than prose.
+- **Evidence** — the result that proves it: a test or lint outcome, the commit SHA, command output.
+- **What is left** — the next concrete action, or `none`.
 
-```bash
-bd update <id> --append-notes "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [<stage>] <what changed / what's next>"
-```
+`--commit` accepts any ref and is resolved through `git rev-parse` to the full 40-character lowercase SHA, because `bd provenance record --ref-kind git-sha` refuses an abbreviated one. A ref that does not resolve to 40 lowercase hex characters records nothing at all.
 
-`--append-notes` preserves the trail; plain `--notes` overwrites it. Record the start (stage, worktree, first action), milestones (completed chunks, tests green, files changed), decisions and rejected options, blocks, and discoveries. One or two lines per entry — a scan-friendly checkpoint trail, not a transcript. No new scratch files; beads stay the single source of truth.
+Recording is safe to repeat. The entry carries a fingerprint of its own content, so a repeated fire — a second run after the first finished — finds it present and appends nothing; provenance recording is idempotent in `bd` itself. That holds for one writer at a time: `bd note` has no conditional append, so two writers that read the bead before either appends both write, and the duplicate entries carry the same fingerprint and are deduplicable — fire each transition from one worker. A transient database failure — `failed to open database ... context canceled`, the shape two concurrent writers produce — is retried with bounded backoff, and each retry re-reads the bead first, so a write that landed before its call reported failure is never duplicated. A permanent failure reports on stderr with a non-zero exit and appends nothing twice.
+
+Read the trail with `bd show <id>` (entries) and `bd provenance log <id>` (refs). There is no progress file: beads stay the single source of truth, and no stage writes a log.
 
 ## Report Format
 
@@ -157,7 +157,7 @@ stage: the commit is the evidence, the report is the claim.
 
 - [create-task](../../planning/create-task/SKILL.md) — owns `pipeline.json`: stages, `maxFixRounds`, and the stage templates.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — bead mechanics beyond the commands used here.
-- [ralph](../ralph/SKILL.md) — runs many stage beads concurrently and consumes this skill's log and REPORT contracts.
+- [ralph](../ralph/SKILL.md) — runs many stage beads concurrently and consumes this skill's trail and REPORT contracts.
 
 Each playbook delegates to a stage skill: `tdd`/`style-code`/`style-tests` (code, fix), `review-security` (review), `style-documentation` (document). `housekeeping` and `post-merge` delegate to no stage skill — each runs one deterministic script and reports what it printed.
 
@@ -178,6 +178,5 @@ Each playbook delegates to a stage skill: `tdd`/`style-code`/`style-tests` (code
 - [ ] `bd tag <id> stage:<stage>` run before dispatch.
 - [ ] Correct playbook read and followed for the stage; stage skills invoked where the playbook says.
 - [ ] Composed prompt carries the lifecycle, remediation, and REPORT contract from `prompts/stage-runner.md`.
-- [ ] Progress log lines written for every stage transition and key result.
-- [ ] Milestone notes appended at stage start and each milestone with `--append-notes` (not `--notes`).
+- [ ] A trail entry written at every stage transition, through `trail-entry.mjs`, with Outcome, Evidence and What is left.
 - [ ] The orchestrator closed no leaf bead and created no fix bead; the cap backstop ran before any dispatch.

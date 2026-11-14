@@ -46,7 +46,7 @@ closed beads and changes no files.
 
 - **This stage is the exception to close-on-both-outcomes.** Nothing downstream waits on its close,
   so the bead's own state is the report.
-- `OUTCOME: SUCCESS` — append the notes and the progress log, then
+- `OUTCOME: SUCCESS` — record the trail entry, then
   `bd close <id> --reason="SUCCESS: <removed/kept summary>"`. Create nothing: this is the last stage
   and its closed chore ends the pipeline.
 - `OUTCOME: BLOCKED` — **do not close the bead.** Leave it open: return it to `open` status

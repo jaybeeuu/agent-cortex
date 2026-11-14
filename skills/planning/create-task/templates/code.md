@@ -10,9 +10,14 @@
 ## Relevant files
 <list source files you read during context gathering>
 
-## Progress log
-Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, test results, build errors, and stage complete (see Progress Logging in run-pipeline-stage skill).
+## Trail entry
+Record one entry at stage start and one at stage close through the shared writer (see Trail Entries in the `run-pipeline-stage` skill):
+```bash
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <bead-id> --stage code --outcome <done|blocked|partial> \
+  --evidence "<evidence>" --remaining "<what is left, or none>"
+```
+Evidence for a code stage: the test and lint result, the stage commit, and any build error.
 
 ## Instructions
 Invoke the `style-code` skill before making any code changes.

@@ -13,20 +13,39 @@ Run `bd prime` if you need project-level context (conventions, tech stack, goals
 ## Prior stage context (if any)
 <prior REPORT fields, dependency context, and relevant files>
 
-## Progress log
-Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-
-## Milestone notes
+## Trail entries
 The bead's notes are the recovery contract — a fresh session must be able to resume from
-`bd show <id>` alone. Append a short checkpoint before starting and at each milestone:
+`bd show <id>` alone. One script writes that trail: run it at stage start, at each milestone, and
+at stage close.
 
 ```bash
-bd update <id> --append-notes "[<ISO-timestamp>] [<stage>] <what changed / what's next>"
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <id> --stage <stage> --outcome <done|blocked|partial> \
+  --evidence "<test or lint result, commit, command output>" \
+  --remaining "<what is left, or none>" \
+  [--commit <ref>] [--branch <branch>] [--pr <url>] [--work-id <worktree-id>]
 ```
 
-Use `--append-notes` — plain `--notes` overwrites the trail. Record start, milestones, decisions
-(with rejected options), blocks, and discoveries. One or two lines per entry: a checkpoint trail,
-not a transcript.
+`<run-pipeline-stage-scripts>` is the absolute path to
+`skills/workflow/run-pipeline-stage/scripts/`, resolved from wherever that skill was loaded — never
+hardcode one harness's install path.
+
+Every entry carries three mandatory fields:
+
+- **Outcome** — `done`, `blocked` or `partial`. A fixed vocabulary, never prose.
+- **Evidence** — what proves it: a test or lint result, the commit SHA, or command output.
+- **What is left** — the next concrete action, or `none`.
+
+`--commit` takes any ref — `HEAD`, a short SHA, a branch — and the script resolves it to the full
+40-character lowercase SHA before recording, because `bd provenance record --ref-kind git-sha`
+refuses anything else. Refs you pass are also recorded as provenance events, visible with
+`bd provenance log <id>`.
+
+Run it at each transition instead of writing notes by hand: one entry per transition, decisions and
+blocks included. Recording is idempotent for one worker, so a repeated fire appends nothing
+twice, and a transient database failure is retried. It is not safe under concurrent writers —
+`bd note` has no conditional append — so one worker fires each transition. There is no progress
+file: the bead is the only trail.
 
 ## Leaf bead lifecycle (yours to close)
 

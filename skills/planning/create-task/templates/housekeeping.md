@@ -4,10 +4,14 @@
 ## Task
 <bd show <id> output — verbatim>
 
-## Progress log
-Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, each pruner run with its exit status, and stage complete (see Progress Logging in
-run-pipeline-stage skill).
+## Trail entry
+Record one entry at stage start and one at stage close through the shared writer (see Trail Entries in the `run-pipeline-stage` skill):
+```bash
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <bead-id> --stage housekeeping --outcome <done|blocked|partial> \
+  --evidence "<evidence>" --remaining "<what is left, or none>"
+```
+Evidence for a housekeeping stage: each pruner run, with its exit status.
 
 ## Instructions
 This stage removes worktrees, so **do not work in the bead worktree**. Run every command from the

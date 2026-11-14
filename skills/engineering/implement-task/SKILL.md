@@ -80,7 +80,7 @@ task:
 
 ## Mutation check
 
-`style-tests` owns the rule, as its Workflow step 6. This skill applies it at Finish:
+`style-tests` owns the mutation-check rule; this skill applies it at Finish:
 
 - Apply it to every test the task added or changed that claims a behaviour.
 - Record the outcome in the evidence row of the criterion that test proves — which behaviour you

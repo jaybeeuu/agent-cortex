@@ -13,6 +13,7 @@ description: Test-driven development with red-green-refactor loop. Use when buil
 
 ## When NOT to use
 
+- Owning the task itself — criteria, scope, and proof of each criterion — is [implement-task](../implement-task/SKILL.md); load it first and return here for the loop inside a criterion.
 - Prototyping, throwaway code, or exploratory spikes where speed of discovery matters more than correctness.
 - Changes so trivial that tests would duplicate type or lint coverage (rename, pure data shuffle).
 - When the test-to-implementation ratio would be absurdly high — a one-line change requiring extensive test setup.
@@ -93,6 +94,7 @@ After all tests pass, run `style-code` to guide the refactoring shape:
 
 ## See Also
 
+- [implement-task](../implement-task/SKILL.md) — it owns the acceptance criteria, the scope and boy-scout rules, and the per-criterion evidence table that this loop fills one row at a time.
 - [style-tests](../../style/style-tests/SKILL.md) — load before writing the first test; it owns assertion strategy, mock discipline, and test-data construction.
 - [style-code](../../style/style-code/SKILL.md) — load at the refactor step for naming and module boundaries.
 - [grill-with-docs](../grill-with-docs/SKILL.md) — load when domain vocabulary is unsettled, so test names and seams use the project's own language.

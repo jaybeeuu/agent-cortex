@@ -2,12 +2,18 @@
 
 ## Stage Instructions
 
-1. Invoke `style-tests` before writing tests.
-2. Invoke `tdd` for the red-green-refactor implementation loop.
-3. Invoke `style-code` before making code changes.
-4. Do not add speculative code — only what is required by current tests/requirements.
-5. Make only task-scoped changes; avoid unrelated refactors.
-6. Use context7 for third-party libraries when API/version details matter.
+1. Invoke `implement-task` first. It reads the parent's `## Acceptance Criteria`, writes the
+   criteria → evidence table before any code is touched, and holds the scope, boy-scout and
+   mutation-check rules for the rest of the stage. A criterion with no check is a blocker: report
+   `OUTCOME: BLOCKED` rather than guessing a proof.
+2. It routes to `style-tests` before writing tests.
+3. It routes to `tdd` for the red-green-refactor loop, one criterion at a time.
+4. It routes to `style-code` before making code changes.
+5. Do not add speculative code — only what is required by current tests/requirements.
+6. Make only task-scoped changes; record out-of-scope findings as beads instead of editing them.
+7. Use context7 for third-party libraries when API/version details matter.
+8. Report the filled criteria → evidence table; the stage's requirements are the rows, not the
+   diff.
 
 ## Stage Outcome
 

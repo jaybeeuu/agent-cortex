@@ -47,6 +47,23 @@ twice, and a transient database failure is retried. It is not safe under concurr
 `bd note` has no conditional append — so one worker fires each transition. There is no progress
 file: the bead is the only trail.
 
+### Reading the trail
+
+To pick up a bead you did not write — a resumed session, a handoff, a fix round — run the recovery
+brief before anything else:
+
+```bash
+node <run-pipeline-stage-scripts>/recover-brief.mjs --bead <id>
+```
+
+It prints status and state labels, the newest trail entries with their Evidence and What is left,
+the provenance refs, the blocking dependencies, and the acceptance criteria, bounded to about 40
+lines. `bd show` prints the whole note — 89 lines and about 6.5 KB for a bare bead carrying 20
+entries, about 120 lines and about 8 KB for a realistic one with acceptance criteria, a blocker,
+provenance refs and a description — so reach for it only when you need an entry the brief's window
+left out. The brief only reads: every `bd` call is a read subcommand carrying `--readonly`, so it
+never writes to the tracker.
+
 ## Leaf bead lifecycle (yours to close)
 
 1. **Chain before close.** Build remediation children (below) *before* you close the bead, so

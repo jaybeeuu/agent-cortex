@@ -109,7 +109,20 @@ Three fields are mandatory, and the script refuses an entry without them:
 
 Recording is safe to repeat. The entry carries a fingerprint of its own content, so a repeated fire — a second run after the first finished — finds it present and appends nothing; provenance recording is idempotent in `bd` itself. That holds for one writer at a time: `bd note` has no conditional append, so two writers that read the bead before either appends both write, and the duplicate entries carry the same fingerprint and are deduplicable — fire each transition from one worker. A transient database failure — `failed to open database ... context canceled`, the shape two concurrent writers produce — is retried with bounded backoff, and each retry re-reads the bead first, so a write that landed before its call reported failure is never duplicated. A permanent failure reports on stderr with a non-zero exit and appends nothing twice.
 
-Read the trail with `bd show <id>` (entries) and `bd provenance log <id>` (refs). There is no progress file: beads stay the single source of truth, and no stage writes a log.
+Resume with the recovery brief below; reach for `bd show <id>` (entries) or `bd provenance log <id>` (refs) only to widen what it printed. A note appended by hand with `bd note` prints in the brief wherever it lands, so the trail count includes it. There is no progress file: beads stay the single source of truth, and no stage writes a log.
+
+### Reading the trail
+
+Run `scripts/recover-brief.mjs` first. One call prints what a session needs to continue: status and state labels, the newest trail entries with their Evidence and What is left, provenance refs, blocking dependencies, and the acceptance criteria. `bd show` on a bare bead carrying 20 entries prints 89 lines and about 6.5 KB, and on a realistic one — 21 entries with acceptance criteria, a blocker, provenance refs and a description — about 120 lines and about 8 KB, most of it history the reader does not need; the brief stays inside a line budget (default 40) that the script enforces on its own output.
+
+```bash
+node <run-pipeline-stage-scripts>/recover-brief.mjs --bead <id> \
+  [--trail 3] [--provenance 4] [--max-lines 40]
+```
+
+`bd` returns the whole note — there is no way to ask it for the last few entries — so the brief prints the newest `--trail` entries and summarises the rest by count. It reads only: every `bd` call is a read subcommand carrying `--readonly`, so it cannot write to the tracker, and it never records a note or a provenance event. Its sections state plainly when a bead has no trail, no refs, no acceptance criteria or no blockers, rather than printing an empty heading.
+
+Read the whole note with `bd show <id>` only when you need an entry the window left out, and the full event history with `bd provenance log <id>` only when the brief's four events are not enough.
 
 ## Report Format
 

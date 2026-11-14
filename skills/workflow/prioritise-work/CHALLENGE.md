@@ -49,11 +49,16 @@ node <skill-scripts>/challenge.mjs record --bead agnt-ctx-abc.1 \
   --reason "review turnaround is the theme now" \
   --from-version 3 \
   --before agnt-ctx-abc.1,agnt-ctx-abc.2,agnt-ctx-def.1 \
-  --after agnt-ctx-def.1,agnt-ctx-abc.1,agnt-ctx-abc.2
+  --after agnt-ctx-def.1,agnt-ctx-abc.1,agnt-ctx-abc.2 \
+  --out /tmp/challenge-entry.txt
+bd note agnt-ctx-abc.1 --file /tmp/challenge-entry.txt
 ```
 
-`record` prints one bead-trail entry on stdout; status goes to stderr. Append it with
-`bd note <bead> "<entry>"`. It also prints the movement, which is what you show the owner:
+`--out` writes the entry to a file, so the tracker appends it as data. Never paste the entry into
+a shell string: it repeats the words the human used, and a quote in those words would end the
+quoting early. `bd note agnt-ctx-abc.1 "$(cat /tmp/challenge-entry.txt)"` is equally safe, because
+a command substitution is data and nothing in the entry runs or expands twice. `record` also prints
+the movement, which is what you show the owner:
 
 ```
 [2026-12-01T09:30:00.000Z] [challenge] trail:2f9c4b1e7a3d5c60
@@ -77,7 +82,9 @@ node <skill-scripts>/challenge.mjs record --bead agnt-ctx-abc.1 \
   --challenge "the review queue should be above the installer fix" \
   --resolution no-change \
   --reason "the value rule already requires a human gate, and the installer fix unblocks one" \
-  --from-version 3
+  --from-version 3 \
+  --out /tmp/challenge-entry.txt
+bd note agnt-ctx-abc.1 --file /tmp/challenge-entry.txt
 ```
 
 The entry carries the words that raised the challenge and the reasoning that answered it, under
@@ -95,8 +102,11 @@ refusing:
 | "no-change" after a bump | the version moved (v3 → v4), so the resolution is "changed" |
 | Challenged against a broken rubric | the strategy is not valid, so no score can be judged against it |
 
-`validate` adds a fifth, after the fact: the newest change-log line must name the version the file
-carries, so a hand-raised version or a deleted log line fails the next validation.
+`validate` adds a fifth, after the fact, and it needs one surviving entry: the newest change-log
+line must name the version the file carries, so a hand-raised version, or a bump whose log line was
+deleted, fails the next validation. The section is optional, so a log emptied of every entry passes
+— and `record` is what catches a silent reorder then, because it refuses an order that moved while
+the version stayed put.
 
 ## How the order is computed
 

@@ -8,8 +8,12 @@
 //
 // It reads the strategy file, checks the version actually moved, diffs the order before
 // against the order after, and prints one bead-trail entry recording the challenge and its
-// resolution. It writes nothing: the strategy file stays the only document, and the trail
+// resolution. It never writes to the tracker and never edits the strategy file: the trail
 // entry is appended by the caller with `bd note`.
+//
+// The entry embeds the words the human used, so it must reach `bd` as data and never as a
+// shell string. `--out <path>` writes the entry to a file, and `bd note <bead> --file
+// <path>` reads it back verbatim — no quoting, no expansion, nothing to escape.
 //
 // The trail entry's shape is `run-pipeline-stage/scripts/trail-entry.mjs`'s — the header
 // with a content fingerprint, then Outcome, Evidence and What is left. That script is the
@@ -22,12 +26,14 @@
 //
 //   node challenge.mjs record --bead <id> --challenge "<words the human used>" \
 //     --resolution <changed|no-change> --reason "<one line>" --from-version <n> \
-//     [--before <ids>] [--after <ids>] [--file <path>] [--at <rfc3339>] [--json]
+//     [--before <ids>] [--after <ids>] [--file <path>] [--at <rfc3339>] [--out <path>] \
+//     [--json]
 //
 // Exit codes: 0 recorded, 1 refused, 2 the caller asked for something malformed.
 
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { DEFAULT_FILE, UsageError, resolveStrategyFile, validateStrategy } from './strategy.mjs';
@@ -119,6 +125,9 @@ export function parseOrder(value) {
  * Diff two ranked id lists by position. Deterministic: items are reported by their new
  * position, then the arrivals, then the departures by their old position, so two runs over
  * the same input print the same words in the same order.
+ *
+ * The maps are filled from the lists, so iterating them already yields ascending positions;
+ * the sorts keep that order true whatever order the maps were filled in.
  * @param {string[]} before @param {string[]} after @returns {OrderDiff}
  */
 export function diffOrder(before, after) {
@@ -319,11 +328,20 @@ Options:
   --after <ids>         The order after the review, highest first, comma-separated.
   --file <path>         Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)
   --at <rfc3339>        Timestamp for the entry header (default: now, UTC)
+  --out <path>          Write the entry to a path, so the tracker reads it as data. Use this.
   --json                Print a machine report instead of the entry text
   -h, --help            Show this text
 
-stdout is the trail entry alone, ready for \`bd note <bead> "<entry>"\`; status goes to
-stderr. This script never writes to the tracker and never edits the strategy file.
+stdout is the trail entry alone; status goes to stderr. Append it from a file, never as a
+shell string: the entry carries the words the human used, and a quote in those words must
+not end the quoting.
+
+  node challenge.mjs record … --out /tmp/entry.txt
+  bd note <bead> --file /tmp/entry.txt
+
+\`bd note <bead> "$(cat /tmp/entry.txt)"\` is the same thing: a command substitution is data,
+not shell code, so nothing in the entry is expanded twice. This script never writes to the
+tracker and never edits the strategy file.
 `;
 
 /**
@@ -331,7 +349,7 @@ stderr. This script never writes to the tracker and never edits the strategy fil
  * @param {string[]} argv
  * @returns {{ command: string, bead: string, challenge: string, resolution: Resolution,
  *   reason: string, fromVersion: number, before?: string[], after?: string[],
- *   file: string, at?: string, json: boolean }}
+ *   file: string, at?: string, out?: string, json: boolean }}
  */
 export function parseArgs(argv) {
   /** @type {Record<string, string>} */
@@ -341,7 +359,7 @@ export function parseArgs(argv) {
   let json = false;
 
   /** @type {readonly string[]} */
-  const flags = ['--bead', '--challenge', '--resolution', '--reason', '--from-version', '--before', '--after', '--file', '--at'];
+  const flags = ['--bead', '--challenge', '--resolution', '--reason', '--from-version', '--before', '--after', '--file', '--at', '--out'];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -385,6 +403,7 @@ export function parseArgs(argv) {
     ...(values['--after'] === undefined ? {} : { after: parseOrder(values['--after']) }),
     file: values['--file'] ?? DEFAULT_FILE,
     ...(values['--at'] === undefined ? {} : { at: values['--at'] }),
+    ...(values['--out'] === undefined ? {} : { out: values['--out'] }),
     json,
   };
 }
@@ -442,16 +461,28 @@ export async function runCli({
       at: options.at ?? now ?? new Date().toISOString(),
     });
 
+    if (options.out !== undefined) {
+      await writeFile(resolve(cwd, options.out), `${report.entry}\n`, 'utf8');
+      writeError(`  entry: ${resolve(cwd, options.out)}\n`);
+    }
+
     if (options.json) {
       write(`${JSON.stringify({ file, ...report }, null, 2)}\n`);
     } else {
       write(`${report.entry}\n`);
     }
 
+    // The entry must reach the tracker as data, so the hint names a file and never a quoted
+    // string. A caller that passed no --out is told how to get one.
+    const next =
+      options.out === undefined
+        ? `  next: bd note ${report.bead} --file <path> — pass --out <path> to write the entry there`
+        : `  next: bd note ${report.bead} --file ${resolve(cwd, options.out)}`;
+
     writeError(
       `✓ ${report.bead}: resolution=${report.resolution}, strategy v${report.fromVersion} → v${report.version}` +
         (report.order === undefined ? '\n' : `\n  moved: ${describeMoves(report.order)}\n`) +
-        `  next: bd note ${report.bead} "<the entry printed above>"\n`,
+        `${next}\n`,
     );
     return 0;
   } catch (error) {

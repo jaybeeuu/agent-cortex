@@ -311,6 +311,26 @@ describe('the change log', () => {
     assert.match(await readFile(file, 'utf8'), /## Change log\n\n- 2026-12-01 v3: first recorded change\n$/);
   });
 
+  it('passes validation with a change log emptied of every entry at v2', async () => {
+    const file = await writeStrategy(
+      createStrategy({ version: '2', changeLog: '<!-- oldest first, one line per bump -->' }),
+    );
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 0);
+    assert.match(check.stderr, /version 2/);
+  });
+
+  it('passes validation with no change-log section at v2', async () => {
+    const file = await writeStrategy(createStrategy({ version: '2' }));
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 0);
+    assert.match(check.stderr, /version 2/);
+  });
+
   it('fails validation when the newest line names a version the header does not', async () => {
     const file = await writeStrategy(createStrategy({ version: '3', changeLog: '- 2026-11-14 v2: not bumped.' }));
 

@@ -134,12 +134,22 @@ describe('the order diff', () => {
     assert.equal(diffOrder(['a', 'b'], ['a', 'b']).identical, true);
   });
 
-  it('renders the same clause for the same input, whatever order the maps were filled in', () => {
+  it('renders the same clause for the same two lists', () => {
     const first = describeMoves(diffOrder(['a', 'b', 'c', 'd'], ['d', 'b', 'a', 'c']));
     const second = describeMoves(diffOrder(['a', 'b', 'c', 'd'], ['d', 'b', 'a', 'c']));
 
     assert.equal(first, 'd #4→#1, a #1→#3, c #3→#4');
     assert.equal(first, second);
+  });
+
+  // A repeated id is the only input whose map fill order differs from its position order: `a`
+  // is keyed first but sits at position 3, so iteration alone would name it first. parseOrder
+  // rejects a repeated id, so the CLI never sends one, and the sorts in diffOrder are what keep
+  // the guarantee independent of the fill order even so.
+  it('reports moves in new-position order when the maps fill out of position order', () => {
+    const diff = diffOrder(['b', 'a'], ['a', 'b', 'a']);
+
+    assert.equal(describeMoves(diff), 'b #1→#2, a #2→#3');
   });
 
   it('rejects an order that names one bead twice', () => {
@@ -156,6 +166,17 @@ describe('the silent reorder', () => {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /the order moved \(b #2→#1, a #1→#2\) but the strategy stayed at v3/);
     assert.equal(result.stdout, '');
+  });
+
+  it('still refuses a moved order when the change log is emptied', async () => {
+    const { file } = await writeStrategy(
+      createStrategy({ version: 3, changeLog: '<!-- oldest first, one line per bump -->' }),
+    );
+
+    const result = await run([...recordArgs(file), '--before', 'a,b,c', '--after', 'b,a,c']);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /the order moved \(b #2→#1, a #1→#2\) but the strategy stayed at v3/);
   });
 
   it('leaves the strategy file byte-identical when it refuses', async () => {
@@ -331,6 +352,33 @@ describe('the trail shape', () => {
     const json = await run([...argv, '--json']);
 
     assert.equal(JSON.parse(json.stdout).entry, text.stdout.trim());
+  });
+});
+
+describe('the entry file', () => {
+  it('writes the entry to --out and points the caller at it, not at a quoted string', async () => {
+    const { workspace, file } = await writeStrategy(createStrategy({ version: 3 }));
+    const out = join(workspace, 'entry.txt');
+
+    const result = await run(recordArgs(file).concat(['--out', out]));
+
+    assert.equal(result.code, 0);
+    assert.equal(await readFile(out, 'utf8'), result.stdout, 'the tracker must append the entry the caller saw');
+    assert.ok(
+      result.stderr.includes(`next: bd note agnt-ctx-demo.1 --file ${out}`),
+      'the hint names the file, so the entry reaches the tracker as data',
+    );
+  });
+
+  it('carries a challenge with a substitution and a quote into the file verbatim', async () => {
+    const { workspace, file } = await writeStrategy(createStrategy({ version: 3 }));
+    const out = join(workspace, 'entry.txt');
+    const words = 'raise it $(touch /tmp/pwned) and keep "quotes"';
+
+    const result = await run(recordArgs(file, { challenge: words }).concat(['--out', out]));
+
+    assert.equal(result.code, 0);
+    assert.ok((await readFile(out, 'utf8')).includes(`challenged "${words}"`), 'the words survive as data');
   });
 });
 

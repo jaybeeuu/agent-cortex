@@ -257,28 +257,29 @@ resolves the label, and `ralph` executes `bd ready -l execution:afk`.
 returns them. A bare `bd ready` does — pass `--exclude-label kind:idea` when you want the
 buildable view without ralph's filter.
 
-**Where operational state lives.** Operational state — progress, what a stage learned, and the
-branch, PR, commit or worktree refs — lives in bead fields, never in a scratch file: `bd note`
-for the trail, the bead's own status for never-started/in-flight/done, and `bd provenance record`
-for refs. A cold agent reads all of it from the bead. Durable, committable documents stay files —
-`AGENTS.md`, `docs/`, `SKILL.md`, `REFERENCE.md`, playbooks, prompts — and are never migrated into
-beads, because they are reviewed, diffed and versioned as text.
+**Where operational state lives.** Operational state — progress, what a stage learned, the
+decisions taken, and the branch, PR, commit or worktree refs — lives in bead fields, never in a
+scratch file: `bd note` for the trail, the bead's own status for never-started/in-flight/blocked/
+done, and `bd provenance record` for refs. A cold agent reads all of it from the bead. Durable,
+committable documents stay files — `AGENTS.md`, `docs/`, `SKILL.md`, `REFERENCE.md`, playbooks,
+prompts — and are never migrated into beads, because they are reviewed, diffed and versioned as
+text.
 
-**`progress:` is for exceptions, never `stage:`.** `bd set-state <id> progress=blocked --reason "…"`
-(or `progress=paused`) is the only state dimension to set, and only when the work stopped for a
-reason a reader must know. It records an event bead and a `progress:` label, so a cold agent can
-tell "stopped" from "never started" without reading prose. No `progress:` label means not an
-exception: the status says never started, running, finished or deferred, and the trail says what
-happened. Never set a `stage=` dimension: `bd set-state` removes the existing label for the
-dimension it sets, so `bd set-state <id> stage=verify` deletes `stage:code` and rewrites the
-chore's route. The reviewer handoff (`handoff.md`) and the working-docs artefact directory are
-unchanged — they are files.
+**Use the tracker's statuses; add no state labels.** `bd statuses` lists seven — `open`,
+`in_progress`, `blocked`, `deferred`, `closed`, `pinned`, `hooked` — and they answer "where is
+this work?" with no custom dimension. A label such as `progress:blocked` repeats a status, so
+never set one. A stop that needs a human decision becomes a bead: create it as an `execution:hitl`
+task carrying the question, and depend the waiting bead on it with `bd dep add <waiting>
+<decision>`. Keep `--status blocked` for a stop no bead can carry, such as a fix-round cap. What
+happened goes in the trail with `bd note <id> "…"`, which appends, so a cold agent reads the
+sequence. Never set a `stage=` dimension either: `bd set-state` removes the label it replaces, so
+`bd set-state <id> stage=verify` deletes `stage:code` and rewrites the chore's route. The reviewer
+handoff (`handoff.md`) and the working-docs artefact directory are unchanged — they are files.
 
 ```bash
-bd set-state agnt-ctx-abc.1 progress=blocked --reason "waiting on the upstream API key"
-bd state agnt-ctx-abc.1 progress            # blocked
-bd show agnt-ctx-abc.1.1                    # event bead: Reason: waiting on the upstream API key
-bd label remove agnt-ctx-abc.1 progress:blocked   # unblock; the event bead stays as history
+bd create "Decide: which upstream API do we call?" -t task -l execution:hitl --parent agnt-ctx-abc
+bd dep add agnt-ctx-abc.1 <decision-bead>   # the chore waits on the decision
+bd note agnt-ctx-abc.1 "[<ISO-timestamp>] stopped: API choice open; decision bead filed"
 ```
 
 Quick reference:
@@ -290,7 +291,8 @@ Quick reference:
   `--parent <id> --no-inherit-labels`, and `--validate`
 - `bd update <id> --claim` — claim a task
 - `bd note <id> "…"` — append a trail entry (append-only; `bd show <id>` reads it back)
-- `bd set-state <id> progress=blocked --reason "…"` — record an exception (never `stage=`)
+- `bd update <id> --status blocked|deferred` — record a stop no bead can carry; `bd note <id>
+  "…"` — record why
 - `bd provenance record --issue <id> --kind … --source …` — bind a branch, PR, commit or worktree
 - `bd close <id>` — complete a task
 - `bd dep add <A> <B>` — **"A depends on B"** (B blocks A). First arg waits, second arg

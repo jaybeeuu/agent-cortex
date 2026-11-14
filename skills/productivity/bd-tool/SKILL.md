@@ -40,14 +40,15 @@ We use labels to track state. Key patterns:
 
 ## Where operational state lives
 
-Operational state lives in bead fields, not in files: progress, what a stage learned, and the
-branch, PR, commit or worktree refs. A cold agent reads all of it from the bead.
+Operational state lives in bead fields, not in files: progress, what a stage learned, the
+decisions taken, and the branch, PR, commit or worktree refs. A cold agent reads all of it from
+the bead.
 
 | State | Home |
 |---|---|
 | What a stage did, and what it learned | `bd note <id> "…"` — an append-only trail |
-| Stage status | the bead's own status: `open`, `in_progress`, `closed`, `deferred`, `blocked`, `pinned`, `hooked` |
-| Blocked or paused | `bd set-state <id> progress=blocked --reason "…"` |
+| Status: never started, in flight, blocked, paused, done | the bead's own status — `bd statuses` |
+| A decision and its reason | `bd note <id> "…"` — the same trail |
 | Branch, PR, commit, worktree | `bd provenance record --issue <id> …` |
 | Reviewer handoff prose | `.agent-cortex/working-docs/hitl/<bead-id>/handoff.md` — unchanged |
 | Screenshots, logs, repro scripts | the bead's working-docs directory — unchanged |
@@ -57,36 +58,34 @@ Durable, committable documents stay files: `SKILL.md`, `REFERENCE.md`, playbooks
 text. A scratch file for progress is wrong twice: it duplicates the bead, and no other agent finds
 it.
 
-### State dimensions: `progress:` for exceptions, never `stage:`
+### Use the built-in statuses; add no state labels
 
-`bd set-state <id> <dimension>=<value> --reason "…"` writes an event bead and a
-`<dimension>:<value>` label. Use one dimension, for exceptions only, so a cold agent can tell
-"stopped" from "never started" without reading prose:
+`bd statuses` lists the seven statuses the tracker owns, and they already answer "where is this
+work?": `open` never started, `in_progress` being worked on, `blocked` stopped with no bead to
+wait on, `deferred` stopped on purpose, `closed` finished, and `pinned`/`hooked` parked by the
+tracker. A label such as `progress:blocked` repeats a status and splits the answer across two
+places, so do not add one.
 
-- `progress:blocked` — something outside the worker's control must change first.
-- `progress:paused` — work stopped deliberately and expected to resume.
-- no `progress:` label — not an exception; the status says never started, running, finished or
-  deferred, and the trail says what happened.
-
-Do not add a dimension per transition (`work:tests-green`): status and trail already say that.
-**Never set `stage=`**: `bd set-state` removes the existing label for the dimension it sets, so
-`bd set-state <id> stage=verify` deletes `stage:code` and rewrites the bead's route.
-
-Real round-trip, abridged, from a throwaway workspace on a bead labelled `stage:code`:
+A stop that needs a human decision becomes a bead, not a label: create the decision bead
+(`execution:hitl`, the question in its title) and depend the waiting bead on it. The waiting bead
+leaves `bd ready`, and the decision shows up as work a human can take. Use `--status blocked` only
+when no bead can carry the blocker — a fix-round cap, an outage. Record the stop and its reason
+with `bd note`, which appends, so the trail keeps every checkpoint in order.
 
 ```text
-$ bd set-state probe-kk4 progress=blocked --reason "waiting on upstream API key"
-✓ Set progress = blocked on probe-kk4
-  Event: probe-kk4.1
-$ bd state probe-kk4 progress          # the value the label carries
-blocked
-$ bd show probe-kk4.1                  # the reason, on the event bead
-  Reason: waiting on upstream API key
+$ bd create "Decide: which upstream API do we call?" -t task -l execution:hitl
+✓ Created issue: probe-3i4 — Decide: which upstream API do we call?
+$ bd dep add probe-ijd probe-3i4         # probe-ijd waits on the decision
+✓ Added dependency: probe-ijd (Rate-limit the export endpoint) depends on probe-3i4 (…) (blocks)
+$ bd ready                               # only the decision bead is ready now
+○ probe-3i4 P2 Decide: which upstream API do we call?
+$ bd note probe-ijd "[2026-11-14T08:26:38Z] stopped: API choice open; decision bead filed"
+✓ Note added to probe-ijd — Rate-limit the export endpoint
 ```
 
-Clear the exception with `bd label remove <id> progress:blocked`; the event bead stays as
-history. `progress=none` is not a clear — `bd set-state` always writes a `<dimension>:<value>`
-label, so it leaves a literal `progress:none` behind.
+**Never set a state dimension.** `bd set-state` writes a label for a dimension and removes the
+label it replaces, so `bd set-state <id> stage=verify` deletes `stage:code` and rewrites the
+bead's route. Statuses and notes cover every case above, so no dimension is needed.
 
 ## Creating work
 

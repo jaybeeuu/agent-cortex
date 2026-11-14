@@ -28,7 +28,7 @@ This file never restates a skill's rules.
 | `flesh-out-idea` | An idea bead needs deepening, or promotion to an epic with task children. | {{PATH:skills/planning/flesh-out-idea/SKILL.md}} |
 
 **The strategy skill is `prioritise-work`.** It owns the committed strategy file, and it is the only
-skill in this list that writes one.
+skill in this list that writes that file.
 
 ## Boundaries
 

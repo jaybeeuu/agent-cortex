@@ -448,21 +448,22 @@ it and it resumes from `bd ready`.
 
 #### guppi — the HITL counterpart to ralph
 
-**guppi** is the human-in-the-loop counterpart to ralph. Ralph executes the work an agent can do;
+**guppi** is the human-in-the-loop counterpart to ralph, and it sits above `plan`: `plan` shapes one
+feature into beads, guppi decides which feature that is. Ralph executes the work an agent can do;
 guppi helps with the work an agent cannot — design, ideation, prioritisation, human review and
-manual confirmations — and owns the question "what should we look at next?". It is resident and
-propose-only: it recommends the next item and names the reason, then loads `plan`, `grill-me`,
-`hitl-collab`, `flesh-out-idea` or `prioritise-work` for the chosen item. It never executes AFK
-work, never merges and never pushes, and a disagreement with a priority opens a strategy review
-rather than a silent reorder.
+manual confirmations. It is resident and propose-only: it recommends the next item and names the
+reason, then loads `plan`, `grill-me`, `hitl-collab`, `flesh-out-idea` or `prioritise-work` for the
+chosen item. It never executes AFK work, never merges and never pushes, and a disagreement with a
+priority opens a strategy review rather than a silent reorder. Between tasks it clears the context
+with `/clear`, so the bead trail, not the window, holds the state that matters.
 
 ```sh
 claude --agent agent-cortex:guppi
 ```
 
-Its authority is prioritisation, not action. The strategy it ranks against is the committed file
-`prioritise-work` owns, and personal work is a town-level bd scope — no rig, no polecats, no
-refinery, no merge queue.
+Its authority is prioritisation, not action. `prioritise-work` owns the committed strategy file and
+computes the rank; guppi reports that rank and never recomputes it. Personal work is a town-level bd
+scope — no rig, no polecats, no refinery, no merge queue.
 
 #### Hooks
 

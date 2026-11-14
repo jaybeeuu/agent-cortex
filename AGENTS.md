@@ -241,6 +241,30 @@ resolves the label, and `ralph` executes `bd ready -l execution:afk`.
 returns them. A bare `bd ready` does — pass `--exclude-label kind:idea` when you want the
 buildable view without ralph's filter.
 
+**Where operational state lives.** Operational state — progress, what a stage learned, and the
+branch, PR, commit or worktree refs — lives in bead fields, never in a scratch file: `bd note`
+for the trail, the bead's own status for never-started/in-flight/done, and `bd provenance record`
+for refs. A cold agent reads all of it from the bead. Durable, committable documents stay files —
+`AGENTS.md`, `docs/`, `SKILL.md`, `REFERENCE.md`, playbooks, prompts — and are never migrated into
+beads, because they are reviewed, diffed and versioned as text.
+
+**`progress:` is for exceptions, never `stage:`.** `bd set-state <id> progress=blocked --reason "…"`
+(or `progress=paused`) is the only state dimension to set, and only when the work stopped for a
+reason a reader must know. It records an event bead and a `progress:` label, so a cold agent can
+tell "stopped" from "never started" without reading prose. No `progress:` label means not an
+exception: the status says never started, running, finished or deferred, and the trail says what
+happened. Never set a `stage=` dimension: `bd set-state` removes the existing label for the
+dimension it sets, so `bd set-state <id> stage=verify` deletes `stage:code` and rewrites the
+chore's route. The reviewer handoff (`handoff.md`) and the working-docs artefact directory are
+unchanged — they are files.
+
+```bash
+bd set-state agnt-ctx-abc.1 progress=blocked --reason "waiting on the upstream API key"
+bd state agnt-ctx-abc.1 progress            # blocked
+bd show agnt-ctx-abc.1.1                    # event bead: Reason: waiting on the upstream API key
+bd label remove agnt-ctx-abc.1 progress:blocked   # unblock; the event bead stays as history
+```
+
 Quick reference:
 - `bd ready` — list unblocked work
 - `bd ready -l execution:afk` — work an agent can pick up (ralph's query)
@@ -249,6 +273,9 @@ Quick reference:
 - `bd create "Title" -p <0-3>` — create a task (P0 = critical); add `-l execution:<class>`,
   `--parent <id> --no-inherit-labels`, and `--validate`
 - `bd update <id> --claim` — claim a task
+- `bd note <id> "…"` — append a trail entry (append-only; `bd show <id>` reads it back)
+- `bd set-state <id> progress=blocked --reason "…"` — record an exception (never `stage=`)
+- `bd provenance record --issue <id> --kind … --source …` — bind a branch, PR, commit or worktree
 - `bd close <id>` — complete a task
 - `bd dep add <A> <B>` — **"A depends on B"** (B blocks A). First arg waits, second arg
   is waited-for. To express "X blocks Y", write `bd dep add Y X`.

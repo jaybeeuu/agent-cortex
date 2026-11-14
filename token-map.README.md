@@ -62,6 +62,11 @@ rather than inventing a dotted form:
   extension on pi, Claude Code's built-in `ScheduleWakeup` tool on claude — so the prose around
   it describes only what both do (the session resumes, the check runs again) and never a call
   shape.
+  Both values are a **self-paced re-prompt, not an event subscription**: the session asks to be
+  woken and looks again on waking. Claude Code also supplies an event-watching `Monitor` tool,
+  but that tool is gated behind a feature flag that defaults off, so a portable skill may not
+  depend on it. Naming the re-prompt is what holds on every session; the playbook's prose
+  fallback covers the session where even that is absent.
 - **`paths`** — `plugin_root`, `agents_dir`, `skills_dir`, and `skill_anatomy`. These are the
   install-time variables that differ per harness. `plugin_root` is the anchor; the others
   resolve relative to it (`{base, relative}` specs) so a harness only overrides the single

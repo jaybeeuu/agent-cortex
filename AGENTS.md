@@ -192,6 +192,12 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   session, the no-watcher fallback is plain prose in the same section, so it survives both renders
   and neither side is assumed to have the mechanism. `test/post-merge-transport-render.test.mjs`
   stages both installs to prove it.
+  The claude value is `ScheduleWakeup` and not `Monitor` because `ScheduleWakeup` is a self-paced
+  re-prompt while `Monitor` is an event watcher behind a feature flag that defaults off
+  (`isEnabled(){return T("tengu_amber_sentinel",!1)}` in 2.1.294). A skill installed on an
+  arbitrary machine cannot rely on a gated capability, so the row names the mechanism every
+  session has. Re-check that flag before changing the row; do not promote `Monitor` on the
+  strength of its presence in the binary.
 
 ## PI Extension Conventions
 

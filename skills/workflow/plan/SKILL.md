@@ -20,6 +20,8 @@ Covers everything needed to prepare work for autonomous execution: understand th
 
 ## When NOT to use
 
+- Choosing which feature to plan next, or re-ranking the backlog — that is the **guppi** agent, which
+  decides what gets planned and hands one feature to this skill.
 - User already has a PRD and just needs it broken into tasks — use `prd-to-tasks` directly.
 - Single well-understood task that just needs a bead — use `create-task`.
 - Raw idea not ready for implementation planning — use `record-idea`.
@@ -262,6 +264,7 @@ Deliver a handoff bead, message the running ralph session, and give the instruct
 - [spec-to-tickets](../../planning/spec-to-tickets/SKILL.md) — load instead when the PRD must become external tickets rather than beads.
 - [create-task](../../planning/create-task/SKILL.md) — Phase 3's per-task bead creation and pipeline expansion; it invokes `classify-bead` internally, so this skill never classifies directly.
 - [ralph](../ralph/SKILL.md) — the downstream consumer of the handoff bead — hand off by sending ralph a `handoff` message naming the bead, with "Use the ralph skill. Start from bead #<handoff-id>" as the manual fallback when no ralph session is online. Its [REFERENCE.md](../ralph/REFERENCE.md) owns the planner ↔ ralph message convention.
+- **guppi** (the `agent-cortex:guppi` agent) — the upstream entry point: it decides what gets planned and hands this skill one feature. Load this skill for that feature. The strategy guppi recommends from is the committed file that `prioritise-work` owns, and `prioritise-work` computes the rank.
 
 ## Examples
 

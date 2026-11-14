@@ -24,10 +24,13 @@
 // failure is retried with bounded backoff. A retried note append re-reads the bead
 // first, so a write that landed before its call reported failure is never duplicated.
 //
-// Idempotent. The entry text carries a fingerprint of its own content, so a double
-// fire finds it already present and appends nothing. Provenance recording is
-// idempotent in bd itself: the event id is computed from source:issue:kind:ref, so
-// re-recording the same event is a no-op.
+// Idempotent for one writer, not concurrency-safe. The entry text carries a fingerprint of
+// its own content, so a repeated fire — a second run after the first finished — finds it
+// already present and appends nothing. Two writers that both read the bead before either
+// appends both write, because `bd note` has no conditional append: fire one transition from
+// one worker. A duplicate from that race carries the same fingerprint, so a reader can
+// deduplicate it. Provenance recording is idempotent in bd itself: the event id is computed
+// from source:issue:kind:ref, so re-recording the same event is a no-op.
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -552,7 +555,8 @@ const USAGE = `Usage: node trail-entry.mjs --bead <id> --stage <stage> --outcome
 Appends one checkpoint to the bead's notes and records its refs as provenance events.
 The entry carries three mandatory fields — Outcome, Evidence, What is left.
 --commit is resolved to a full 40-character lowercase SHA before anything is written.
-A transient bd failure is retried; a double fire records nothing twice.
+A transient bd failure is retried; a repeated fire records nothing twice. Two concurrent
+fires of one entry can both append, so fire one transition from one worker.
 
 Environment:
   BD_PATH                  bd binary (default: bd)

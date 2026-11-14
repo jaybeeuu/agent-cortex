@@ -551,7 +551,7 @@ describe('real bd workspace', { skip: !BD_AVAILABLE }, () => {
     const recordedSha = provenance.find((/** @type {{ ref_kind: string }} */ event) => event.ref_kind === 'git-sha');
     assert.equal(recordedSha.ref, headSha, 'provenance records the resolved SHA, not the abbreviation');
 
-    // A double fire of the second transition must append nothing.
+    // A repeated fire (a second run after the first finished) must append nothing.
     await record(['--stage', 'code', '--outcome', 'partial', '--evidence', 'pnpm test — 3 failing', '--remaining', 'fix the parser']);
     const after = JSON.parse(await run('bd', ['show', beadId, '--json'], repo))[0];
     assert.equal(entriesIn(after.notes).length, 2, 'a repeat of an existing transition appends nothing');

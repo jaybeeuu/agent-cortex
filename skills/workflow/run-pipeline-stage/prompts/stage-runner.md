@@ -42,8 +42,10 @@ anything else. Refs you pass are also recorded as provenance events, visible wit
 `bd provenance log <id>`.
 
 Run it at each transition instead of writing notes by hand: one entry per transition, decisions and
-blocks included. Recording is idempotent, so a double fire appends nothing twice, and a transient
-database failure is retried. There is no progress file: the bead is the only trail.
+blocks included. Recording is idempotent for one worker, so a repeated fire appends nothing
+twice, and a transient database failure is retried. It is not safe under concurrent writers —
+`bd note` has no conditional append — so one worker fires each transition. There is no progress
+file: the bead is the only trail.
 
 ## Leaf bead lifecycle (yours to close)
 

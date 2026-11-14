@@ -16,7 +16,9 @@ does not resolve records nothing. Transient database failures — `failed to ope
 context canceled`, the shape two concurrent writers produce on embeddeddolt — are retried with
 bounded backoff, each retry re-reads the bead first so a write that landed before its call reported
 failure is never duplicated, and no call holds the database across a long operation. Recording is
-idempotent: the entry carries a fingerprint of its own content, so a double fire appends nothing.
+idempotent for one writer: the entry carries a fingerprint of its own content, so a repeated fire
+appends nothing. Two concurrent fires of one transition can each append — `bd note` has no
+conditional append — so the pipeline fires each transition from one worker.
 
 `run-pipeline-stage` and `ralph` now call that script at every stage transition, and no shipped
 skill, agent, or stage template writes a per-parent log file or a rendered progress view any more.

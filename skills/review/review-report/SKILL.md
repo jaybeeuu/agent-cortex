@@ -38,7 +38,9 @@ vocabulary drift and is never counted as a class of its own.
 
 A fix round is attributed by chore state, not by prose: a rejected stage always creates a `stage:fix`
 chore plus a fresh instance of that stage, and the fresh instance declares a `blocks` dependency on
-the fix. The stage label it carries is the stage the fix round repaired.
+the fix. The stage label it carries is the stage the fix round repaired. A fix chore that no fresh
+chore depends on is printed as `unattributed`, and the trend compares the per-stage counts only —
+so a movement inside `unattributed` shows in the snapshot and never in the trend.
 
 The class-to-skill mapping is `DEFECT_OWNERS` in `scripts/report.mjs` — one table, so a mapping edit
 is one edit. The suite fails when a mapped skill does not exist on disk, or when a class in the
@@ -46,7 +48,7 @@ vocabulary has no owner.
 
 ## Honest by construction
 
-The report never dresses an absent measurement as a number:
+The report never dresses an absent measurement as a number. The four degradation cases are:
 
 - **No defect label.** It says no label is set and prints no zeros, because zero labels is an absence,
   not a measurement of zero defects.
@@ -54,9 +56,10 @@ The report never dresses an absent measurement as a number:
   trend yet.
 - **No review chore.** It says no rate is reported, because absent is not zero.
 - **No baseline.** It prints the snapshot and says there is no previous report to compare against.
-- **Label removal.** A label is removed when the review that confirms its fix runs, so the counts
-  describe the unconfirmed defect set at that moment, never the whole history. The trend compares
-  snapshots and says so.
+
+One further rule governs what a count means rather than what it measures. A label is removed when the
+review that confirms its fix runs, so every count describes the unconfirmed defect set at that
+moment, never the whole history. The trend compares snapshots, and the report says so.
 
 ## Workflow
 
@@ -97,6 +100,9 @@ The report never dresses an absent measurement as a number:
    `--file` is the only networked step, and it runs `gh issue create` — no push, no pull request, no
    merge, and nothing written to the repository it files against.
 
+   `--file` with `--json` prints the model and then appends the `Filed: <url>` line, so that stdout is
+   no longer parseable JSON. File from a text run, or read the URL from the last line and drop it.
+
 ## Choosing the feedback repository
 
 The repository is configuration, resolved in this order:
@@ -105,8 +111,9 @@ The repository is configuration, resolved in this order:
 2. `AGENT_CORTEX_FEEDBACK_REPO` in the environment.
 3. The `repository` field of the manifest the running install ships — the `package.json` of the
    package `install pi` stages, or the `.claude-plugin/plugin.json` of the plugin `install claude`
-   stages. A manifest is read only when it names this package, so a consuming project's own
-   manifest is never used.
+   stages. A manifest is read only when its `name` is one of this package's three shipped identities
+   — `PACKAGE_NAME` and `STAGED_PACKAGE_NAME` for the pi manifest, `PLUGIN_NAME` for the claude one,
+   all in `scripts/report.mjs` — so a consuming project's own manifest is never filed against.
 
 No repository slug is hardcoded, so an install files feedback to the package it was installed from.
 Both installs declare that field, so `--file` needs no further configuration. A copy that carries
@@ -128,4 +135,4 @@ so the measurement is never lost.
 - [run-pipeline-stage](../../workflow/run-pipeline-stage/SKILL.md) — the stage that applies the labels and builds fix rounds.
 - [style-tests](../../style/style-tests/SKILL.md) — the rule behind the `test-*` classes this report points at.
 
-Reports for the three degradation cases are in `EXAMPLES.md`.
+Reports for the four degradation cases are in `EXAMPLES.md`.

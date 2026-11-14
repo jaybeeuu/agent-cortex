@@ -1,7 +1,8 @@
 # Review report — worked examples
 
-Four real runs, one per degradation case. Each prints the same five sections; what changes is
-what the tracker held. The project names and bead ids are fixtures, the output is verbatim.
+Five real runs. Each prints the same five sections; what changes is what the tracker held, and a
+section with nothing to measure says so instead of printing a zero. The project names and bead ids
+are fixtures, the output is verbatim.
 
 ## No label at all
 
@@ -54,6 +55,24 @@ Fix rounds
 The report names the owning skill for the class and the bead that carries the label. The trend
 section still reads "None — no previous report was named": one label is a snapshot, and a
 direction needs a second report to compare against.
+
+## No review stage chore yet
+
+A project that has fixed something once but never ran a review chore. Only the two affected sections
+are shown:
+
+```
+First-pass review rate
+  No review stage chore is recorded in this tracker, so no rate is reported — absent
+  is not zero.
+
+Fix rounds
+  1 in total across 1 change — code 1
+```
+
+The rate is absent because nothing measured it, not because it is zero. The fix round is still
+counted, because attribution reads the fresh chore's `blocks` dependency rather than the review
+chores.
 
 ## The whole vocabulary
 

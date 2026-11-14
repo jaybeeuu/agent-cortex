@@ -9,12 +9,14 @@ import { createTempRoot } from "../../test/helpers/temp-root.mjs";
 
 import {
   DEFAULT_RETENTION_DAYS,
+  MAX_PROJECT_PATH_CHARS,
   MAX_PROJECTS_PER_DAY,
   MAX_ROLLUP_FILE_BYTES,
   RETENTION_ENV,
   bucketKey,
   dayKey,
   loadRollups,
+  oldestDay,
   pruneRollups,
   recordDailyUsage,
   retentionCutoff,
@@ -113,6 +115,24 @@ describe("recordDailyUsage", () => {
     assert.equal(counts.read, MAX_PROJECTS_PER_DAY + 20);
   });
 
+  it("truncates a project path, so one record has a fixed maximum size", () => {
+    const store = freshRollups();
+    const long = `/home/user/${"nested/".repeat(40)}project`;
+    assert.ok(long.length > MAX_PROJECT_PATH_CHARS, "the fixture must be longer than the cap");
+
+    recordDailyUsage(store, "bd-tool", "read", long, at("2026-06-01"));
+
+    const projects = store.days["2026-06-01"]!["bd-tool"]!.projects;
+    assert.equal(projects.length, 1);
+    assert.equal(projects[0]!.length, MAX_PROJECT_PATH_CHARS);
+    assert.ok(long.startsWith(projects[0]!), "the head of the path is kept");
+
+    // A longer path that shares the truncated prefix is the same project, not a
+    // second one: that collision is the cost of the fixed-size record.
+    recordDailyUsage(store, "bd-tool", "read", `${long}-other`, at("2026-06-01"));
+    assert.equal(store.days["2026-06-01"]!["bd-tool"]!.projects.length, 1);
+  });
+
   it("records the first day as `since` and keeps the earliest", () => {
     const store = freshRollups();
     assert.equal(store.since, null);
@@ -179,9 +199,29 @@ describe("retention", () => {
       const loaded = loadRollups(file);
 
       assert.equal(Object.keys(loaded.days).length, 30, "only the window is written");
-      assert.equal(oldestDayOf(loaded), shiftDay(today, -29));
+      assert.equal(oldestDay(loaded), shiftDay(today, -29));
       assert.equal(loaded.since, shiftDay(today, -39), "the recorded start survives pruning");
     });
+  });
+
+  it("prunes against the injected moment, not the wall clock", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const anchored = join(workspace, "anchored.json");
+    const drifted = join(workspace, "drifted.json");
+
+    saveRollups(fixtureRollups(), anchored, at("2026-07-02"));
+    saveRollups(fixtureRollups(), drifted, at("2027-07-02"));
+
+    assert.equal(
+      Object.keys(loadRollups(anchored).days).length,
+      4,
+      "the fixture is current when the save is anchored to it",
+    );
+    assert.equal(
+      Object.keys(loadRollups(drifted).days).length,
+      0,
+      "a year later the same fixture is outside the window",
+    );
   });
 
   it("keeps the file bounded: a full window for 40 skills stays under the ceiling and stops growing", async () => {
@@ -222,12 +262,92 @@ describe("retention", () => {
       assert.equal(Object.keys(loadRollups(file).days).length, DEFAULT_RETENTION_DAYS);
     });
   });
-});
 
-function oldestDayOf(store: RollupStore): string | null {
-  const days = Object.keys(store.days).sort();
-  return days.length > 0 ? days[0]! : null;
-}
+  it("holds the ceiling when every skill-day carries the maximum project detail", async () => {
+    await withRetentionEnv(undefined, async () => {
+      const workspace = await tempRoot.createWorkspace();
+      const file = join(workspace, "skill-usage-daily.json");
+      const today = dayKey();
+      const skills = Array.from({ length: 40 }, (_, i) => `skill-${i}`);
+      // Realistic-length paths in every permitted project slot. This is the
+      // dimension the other bounded test leaves empty, and the one that
+      // dominates the file: it multiplies the raw size by `MAX_PROJECTS_PER_DAY`.
+      const projects = Array.from({ length: MAX_PROJECTS_PER_DAY }, (_, i) =>
+        `/home/user/projects/app-${String(i).padStart(2, "0")}`,
+      );
+      const store = freshRollups();
+
+      for (let offset = 0; offset < DEFAULT_RETENTION_DAYS; offset++) {
+        const day = shiftDay(today, -offset);
+        for (const skill of skills) {
+          for (const project of projects) {
+            recordDailyUsage(store, skill, "read", project, at(day));
+          }
+        }
+      }
+
+      const raw = Buffer.byteLength(JSON.stringify(store), "utf-8");
+      assert.ok(
+        raw > MAX_ROLLUP_FILE_BYTES,
+        `the fixture must exceed the ceiling to prove it binds: ${raw} bytes`,
+      );
+
+      const result = saveRollups(store, file, at(today));
+      const size = statSync(file).size;
+
+      assert.ok(
+        size <= MAX_ROLLUP_FILE_BYTES,
+        `raw ${raw} bytes was written as ${size}, over the ${MAX_ROLLUP_FILE_BYTES} ceiling`,
+      );
+      assert.equal(result.bytes, size);
+      assert.ok(result.shedProjectLists > 0, "project detail was shed to hold the ceiling");
+      assert.equal(result.droppedDays, 0, "the counts alone fit, so no day is dropped");
+
+      const loaded = loadRollups(file);
+      assert.equal(Object.keys(loaded.days).length, DEFAULT_RETENTION_DAYS, "every day survives");
+      assert.deepEqual(loaded.days[today]!["skill-0"]!.projects, [], "the shed removed the lists");
+      assert.equal(
+        loaded.days[today]!["skill-0"]!.read,
+        MAX_PROJECTS_PER_DAY,
+        "counts survive the shed",
+      );
+
+      // The timeline reads counts only, so shedding changes no rendered number.
+      const row = timeline(loaded, "day").find((r) => r.bucket === today);
+      assert.equal(row?.total, 40 * MAX_PROJECTS_PER_DAY);
+    });
+  });
+
+  it("drops the oldest days only when the counts alone exceed the ceiling", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const file = join(workspace, "skill-usage-daily.json");
+    const today = dayKey();
+    // No project paths at all, so shedding them frees nothing: 200 skills used
+    // every day of the window is several times the ceiling in counts alone.
+    const skills = Array.from({ length: 200 }, (_, i) => `skill-${i}`);
+    const oldest = shiftDay(today, -(DEFAULT_RETENTION_DAYS - 1));
+    const store = freshRollups();
+
+    for (let offset = 0; offset < DEFAULT_RETENTION_DAYS; offset++) {
+      const day = shiftDay(today, -offset);
+      for (const skill of skills) recordDailyUsage(store, skill, "read", "", at(day));
+    }
+
+    const result = saveRollups(store, file, at(today));
+
+    assert.ok(
+      statSync(file).size <= MAX_ROLLUP_FILE_BYTES,
+      `the counts alone must still fit the ${MAX_ROLLUP_FILE_BYTES}-byte ceiling`,
+    );
+    assert.equal(result.shedProjectLists, 0, "there was no project detail to shed");
+    assert.ok(result.droppedDays > 0, "the oldest days were dropped");
+
+    const loaded = loadRollups(file);
+    assert.equal(Object.keys(loaded.days).length, DEFAULT_RETENTION_DAYS - result.droppedDays);
+    assert.ok(loaded.days[today], "the newest day survives");
+    assert.ok(!loaded.days[oldest], "the oldest day went first");
+  });
+});
 
 // ─── Bucketing ───────────────────────────────────────────────────────────────
 
@@ -330,7 +450,7 @@ describe("formatTimeline", () => {
     assert.match(output, /History unavailable/);
     assert.match(output, /no backfill/);
     assert.match(output, /No rollup data to render/);
-    assert.ok(!output.includes("─"), "an empty store renders no table at all");
+    assert.ok(!output.includes("Bucket"), "an empty store renders no table at all");
   });
 
   it("renders no rows when the window has pruned everything", () => {
@@ -339,7 +459,7 @@ describe("formatTimeline", () => {
 
     const output = formatTimeline(store);
     assert.match(output, /No rollup data to render/);
-    assert.ok(!output.includes("─"));
+    assert.ok(!output.includes("Bucket"), "no table without rows");
   });
 
   it("is requested only by the `timeline` subcommand", () => {
@@ -393,7 +513,9 @@ describe("the timeline path", () => {
   it("renders from a rollup file alone", async () => {
     const workspace = await tempRoot.createWorkspace();
     const file = join(workspace, "skill-usage-daily.json");
-    saveRollups(fixtureRollups(), file);
+    // Anchored to the fixture's own window: the save prunes against this moment,
+    // so the 2026 fixture never falls out of the window as wall time advances.
+    saveRollups(fixtureRollups(), file, at("2026-07-02"));
 
     const output = formatTimeline(loadRollups(file));
 

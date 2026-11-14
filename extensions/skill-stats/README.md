@@ -35,13 +35,26 @@ daily rollups answer "how has my usage changed over months" without scanning ses
 - **Pruning happens on write, not on read.** Every save drops day records older than the window, so a
   long-lived install can never accumulate more than the window's worth of days. The `timeline` view
   only reads; it prunes nothing.
-- **Each record is fixed-size.** Counts are numbers, and the distinct-project list per skill-day is
-  capped at 50 entries, so one day's data cannot grow with the number of events that day.
-- **The file is written minified** — it is read by the extension, not by a human. Worst case measured
-  in the test suite (40 skills used every day of the window, two events each, one project path) is
-  994,668 bytes; a realistic year (12 skills a day) is 387,308 bytes. The suite asserts the file
-  stays under a 100-bytes-per-skill-day ceiling (1,460,000 bytes) and that a second year of data
-  leaves it byte-for-byte unchanged.
+- **Each record is fixed-size.** Counts are numbers, the distinct-project list per skill-day is capped
+  at 50 entries, and a stored project path is truncated to 120 characters, so one skill-day's record
+  cannot grow with the number of events that day or with working-directory depth. Two long paths that
+  share their first 120 characters count as one project.
+- **The file has a hard ceiling of 2,920,000 bytes, enforced on every write.** That is 365 days x 40
+  skills x 200 bytes per skill-day (the counts plus one realistic project path); the 40 sizes the
+  budget and is not a limit on how many skills an install may have. A realistic file is far smaller:
+  994,668 bytes for 40 skills used every day of the window, two events each and a short project path
+  (`/proj/a`), and 1,272,068 bytes for the same usage with a 27-character project path. A retention
+  window longer than 365 days does not raise the ceiling, so the detail it implies is shed by the
+  rule below.
+  When a write would exceed the ceiling, `saveRollups` drops the per-skill-day project lists first —
+  the loaded / invoked / read counts and every day survive, and the timeline, which reads counts
+  only, renders unchanged. Only if the counts alone exceed the ceiling does it drop the oldest days,
+  continuing the direction pruning already takes. `saveRollups` returns what the write gave up
+  (`shedProjectLists`, `droppedDays`) and the size it wrote.
+- **The file is written minified** — it is read by the extension, not by a human. The suite fills
+  every cap at once (40 skills x 365 days x 50 project paths), asserts the 22,033,268 raw bytes are
+  written as at most 2,920,000, and asserts a second year of data leaves the file byte-for-byte
+  unchanged.
 
 ### History before the rollups
 
@@ -91,7 +104,7 @@ The JSON file at `~/.pi/agent-cortex/skill-usage.json` contains the full record:
       "readCount": 18,
       "lastUsed": "2026-06-07T...",
       "byProject": {
-        "/home/jaybeeuu/src/agent-cortex": {
+        "/home/user/projects/app": {
           "loadedCount": 40,
           "invokedCount": 3,
           "readCount": 16,
@@ -113,7 +126,7 @@ The rollups in `~/.pi/agent-cortex/skill-usage-daily.json` are minified and keye
   "since": "2026-06-01",
   "days": {
     "2026-06-07": {
-      "bd-tool": { "loaded": 2, "invoked": 1, "read": 3, "projects": ["/home/jaybeeuu/src/agent-cortex"] }
+      "bd-tool": { "loaded": 2, "invoked": 1, "read": 3, "projects": ["/home/user/projects/app"] }
     }
   }
 }

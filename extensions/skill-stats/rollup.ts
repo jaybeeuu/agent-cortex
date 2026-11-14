@@ -49,12 +49,30 @@ export const RETENTION_ENV = "AGENT_CORTEX_SKILL_STATS_RETENTION_DAYS";
 export const MAX_PROJECTS_PER_DAY = 50;
 
 /**
- * The size ceiling the retention window implies: 40 skills used every day for
- * the whole window with two events each (40 x 365 x 2 events) is about 1 MB.
- * The test suite asserts the file stays under this, so growth past it means
- * pruning is broken rather than that history was legitimately longer.
+ * Upper bound on one stored project path, measured in `String.length` units. A
+ * longer path is truncated with `truncateProject`, so a skill-day's record has a
+ * fixed maximum size whatever the working-directory depth of the machine that
+ * reports it. Two paths that share the truncated prefix count as one project.
  */
-export const MAX_ROLLUP_FILE_BYTES = DEFAULT_RETENTION_DAYS * 40 * 100;
+export const MAX_PROJECT_PATH_CHARS = 120;
+
+/** Bytes a single skill-day is allowed when the budget is sized: the three
+ * counts plus one realistic project path. */
+const SIZE_MODEL_SKILL_DAY_BYTES = 200;
+
+/** Skills per day assumed when the budget is sized. A sizing input, not a limit. */
+const SIZE_MODEL_SKILLS = 40;
+
+/**
+ * The hard ceiling on the rollup file: 365 days x 40 skills x 200 bytes per
+ * skill-day = 2,920,000 bytes. The 40 is how the budget was sized, not a bound
+ * on an install: `saveRollups` enforces this byte budget on every write, so an
+ * install with more skills, or with the maximum project detail on every day,
+ * loses detail rather than growing past it. Growth past the ceiling is
+ * impossible, not merely unexpected.
+ */
+export const MAX_ROLLUP_FILE_BYTES =
+  DEFAULT_RETENTION_DAYS * SIZE_MODEL_SKILLS * SIZE_MODEL_SKILL_DAY_BYTES;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -86,9 +104,17 @@ export function retentionDays(): number {
 
 // ── Recording ────────────────────────────────────────────────────────────────
 
+/** Truncate a project path to `MAX_PROJECT_PATH_CHARS` so one record is fixed-size. */
+function truncateProject(project: string): string {
+  return project.length > MAX_PROJECT_PATH_CHARS
+    ? project.slice(0, MAX_PROJECT_PATH_CHARS)
+    : project;
+}
+
 /**
  * Add one usage event to the day's rollup for a skill. Counts stay fixed-size
- * per skill-day and the project list is capped, so a single day cannot grow.
+ * per skill-day, the project list is capped, and each stored path is truncated,
+ * so a single day cannot grow.
  */
 export function recordDailyUsage(
   store: RollupStore,
@@ -116,12 +142,13 @@ export function recordDailyUsage(
     case "read": counts.read++; break;
   }
 
+  const stored = truncateProject(project);
   if (
-    project !== "" &&
+    stored !== "" &&
     counts.projects.length < MAX_PROJECTS_PER_DAY &&
-    !counts.projects.includes(project)
+    !counts.projects.includes(stored)
   ) {
-    counts.projects.push(project);
+    counts.projects.push(stored);
   }
 
   if (store.since === null || day < store.since) store.since = day;
@@ -176,24 +203,99 @@ export function loadRollups(filePath?: string): RollupStore {
   return { version: 1, since: null, days: {} };
 }
 
+/** What a write had to give up to stay under `MAX_ROLLUP_FILE_BYTES`. */
+export interface SaveRollupsResult {
+  /** Size of the file written, in bytes. Never above `MAX_ROLLUP_FILE_BYTES`. */
+  bytes: number;
+  /** Skill-days whose project list was dropped to stay under the ceiling. */
+  shedProjectLists: number;
+  /** Whole days dropped to stay under the ceiling, beyond the retention window. */
+  droppedDays: number;
+}
+
+/**
+ * Serialise the store, shedding detail until it fits `MAX_ROLLUP_FILE_BYTES`.
+ *
+ * The order is chosen so the least useful detail goes first:
+ *   1. the per-skill-day project lists, which the timeline never reads — the
+ *      loaded / invoked / read counts and every day survive;
+ *   2. the oldest whole days, which continues the direction pruning already
+ *      takes, if the counts alone exceed the budget.
+ * Step 1 is the only one a realistic install can reach.
+ */
+function serialiseToBudget(store: RollupStore): {
+  json: string;
+  shedProjectLists: number;
+  droppedDays: number;
+} {
+  let json = JSON.stringify(store);
+  let bytes = Buffer.byteLength(json, "utf-8");
+  if (bytes <= MAX_ROLLUP_FILE_BYTES) {
+    return { json, shedProjectLists: 0, droppedDays: 0 };
+  }
+
+  let shedProjectLists = 0;
+  for (const bySkill of Object.values(store.days)) {
+    for (const counts of Object.values(bySkill)) {
+      if (counts.projects.length > 0) {
+        counts.projects = [];
+        shedProjectLists++;
+      }
+    }
+  }
+  json = JSON.stringify(store);
+  bytes = Buffer.byteLength(json, "utf-8");
+
+  let droppedDays = 0;
+  while (bytes > MAX_ROLLUP_FILE_BYTES) {
+    const dayKeys = Object.keys(store.days);
+    if (dayKeys.length === 0) break;
+    // Drop roughly the excess, by average day size, so a pathological store
+    // converges in a few passes instead of one pass per day.
+    const excess = bytes - MAX_ROLLUP_FILE_BYTES;
+    const drop = Math.max(1, Math.ceil((excess / bytes) * dayKeys.length));
+    for (const day of dayKeys.sort().slice(0, drop)) {
+      delete store.days[day];
+      droppedDays++;
+    }
+    json = JSON.stringify(store);
+    bytes = Buffer.byteLength(json, "utf-8");
+  }
+
+  return { json, shedProjectLists, droppedDays };
+}
+
 /**
  * Persist the rollups, pruning the retention window first. Pruning on write is
  * what keeps the file bounded: a long-lived install can never accumulate more
- * than the window's worth of days.
+ * than the window's worth of days. The byte ceiling is enforced on the same
+ * write, by shedding detail (see `serialiseToBudget`), so the file can never
+ * grow past `MAX_ROLLUP_FILE_BYTES` even when every cap is filled.
+ *
+ * `now` is injectable so a caller (a test) can pin which day counts as today for
+ * the prune, instead of racing the wall clock.
  */
-export function saveRollups(store: RollupStore, filePath?: string): void {
+export function saveRollups(
+  store: RollupStore,
+  filePath?: string,
+  now: Date = new Date(),
+): SaveRollupsResult {
   const target = filePath ?? rollupFilePath();
   const dir = path.dirname(target);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  pruneRollups(store);
+  pruneRollups(store, now);
   store.since = store.since ?? oldestDay(store);
+
+  const { json, shedProjectLists, droppedDays } = serialiseToBudget(store);
 
   // Minified: this file is read by the extension, not by a human. The README
   // documents the shape, and fewer bytes means a smaller write per event.
   const tmp = target + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(store), "utf-8");
+  fs.writeFileSync(tmp, json, "utf-8");
   fs.renameSync(tmp, target);
+
+  return { bytes: Buffer.byteLength(json, "utf-8"), shedProjectLists, droppedDays };
 }
 
 // ── Timeline ─────────────────────────────────────────────────────────────────

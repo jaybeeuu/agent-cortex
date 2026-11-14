@@ -7,7 +7,7 @@ description: Sets, updates and validates the committed prioritisation strategy t
 
 Owns one artefact: the **strategy file**, the rubric a scorer reads before it judges a bead's reach, impact, confidence and effort. The skill interviews the owner to write or update it, and validates it before any scorer reads it.
 
-The strategy is a **committed file**, never a bead and never a scratch note. A rubric is reviewed, diffed and versioned as text; a bead carries progress and decisions about *work*, not the durable document that judges work.
+The strategy is a **committed file**, never a bead and never a scratch note. A rubric is reviewed, diffed and versioned as text; a bead carries progress and decisions about *work*, not the durable document that judges work. The tracker convention draws the same line: operational state — progress, decisions, refs — goes in the bead trail, and a document a reviewer diffs stays a file. Keep the strategy a file even when a bead could hold the same words, because then nobody can review a change to the rubric.
 
 ## When to use
 
@@ -33,6 +33,8 @@ The strategy is a **committed file**, never a bead and never a scratch note. A r
 | Lifetime | committed; edited by interview, then versioned with `bump` |
 
 The working-docs root is the scratch directory the HITL handoff also uses: `.agent-cortex/working-docs/hitl/<bead-id>/handoff.md`. The strategy sits beside it and is the one file in that directory the repository commits.
+
+The default path resolves against the **repository root**, found by walking up for a `.git` entry, not against the directory the shell is in. Run `init` from any subdirectory and you still get the one strategy the repository owns. An override behaves differently: a relative `--file` resolves against the current directory, and an absolute one is taken as given.
 
 That directory's contents are usually ignored (`working-docs/*`), so track the strategy explicitly. Add the un-ignore line to the consuming repository's `.gitignore` once:
 
@@ -112,7 +114,9 @@ One script, three subcommands, zero dependencies, no tracker access. It reads an
 | `validate` | Checks the version integer, the date, and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
 | `bump` | Refuses an invalid file, raises the version by one, records today | 0 bumped, 1 refused |
 
-`validate` splits its output: status and errors go to stderr, the rubric goes to stdout. `validate > rubric.md` captures the rubric alone, which is how a scorer loads it.
+`validate` splits its output: status and errors go to stderr, the rubric goes to stdout. `validate > rubric.md` captures the rubric alone, which is how a scorer loads it. A failing run names the file and lists one line per defect, so one fix round clears the whole file.
+
+The date is checked as a **calendar** date, not as a shape. `2026-02-31` and `2026-04-31` fail in both `validate` and `--today`, because V8's ISO parser rolls them into the next month and accepts them; `2024-02-29` passes and `2026-02-29` does not. A rolled date records a change on a day it did not happen.
 
 Exit code 2 means a malformed call — an unknown subcommand or a bad `--today`. `--today YYYY-MM-DD` exists so a test pins the recorded date; a person accepts the default.
 

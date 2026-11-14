@@ -7,7 +7,7 @@ confidence and effort. Keep it short enough that you actually maintain it.
 It lives in the repository as a committed file, never in the tracker, so a reviewer can
 diff how the judgement changed. Every `##` section below is required: leave one empty and
 the validator names it. Set the version and the date with
-`node <skill-scripts>/strategy.mjs bump <path>` after you edit the content.
+`node <skill-scripts>/strategy.mjs bump` after you edit the content.
 -->
 
 - **Version:** 1

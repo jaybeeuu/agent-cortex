@@ -12,10 +12,12 @@ agent-cortex self-update
 
 One command updates the global CLI through the manager that installed it and then runs
 `agent-cortex update -a` with the new binary, so the CLI and both harness installs move together.
-It passes the refresh's exit code back, so a failed refresh shows up as a failed command. The
-refresh runs only when the CLI actually changed: `--check`, a failed update, and an install already
-at the published version all stop before it. `agent-cortex self-update --check` reports the
-installed and published versions and the command it would run, writing nothing.
+The version boundary it prints is read from that newly installed binary, never from this process:
+the running command is the old code and reads the old manifest beside its own entry point. It
+passes the refresh's exit code back, so a failed refresh shows up as a failed command. The refresh
+runs only when the CLI actually changed: `--check`, a failed update, and an install already at the
+published version all stop before it. `agent-cortex self-update --check` reports the installed and
+published versions and the command it would run, writing nothing.
 
 The step it replaces is not optional. A global CLI whose shim points at a deleted pnpm store path
 fails every call with `MODULE_NOT_FOUND`, and re-installing is the fix: the published tarball

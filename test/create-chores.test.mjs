@@ -195,6 +195,27 @@ describe("create-chores", () => {
     assert.deepEqual(housekeepingDeps, [[ids.featurePrReview, "blocks"]]);
   });
 
+  it("stores the post-merge description without running the command it names", async () => {
+    const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
+
+    const postMerge = beads.find((candidate) => candidate.id === ids["post-merge"]);
+    assert.ok(postMerge, `the run created no bead with id ${ids["post-merge"]}`);
+    assert.match(postMerge.description, /post-merge-check\.mjs/);
+    // A shell parsing the description substitutes the backticks: the script name
+    // vanishes, `gh run list` runs for real, and its output lands in the description.
+    assert.doesNotMatch(postMerge.description, /cannot open ralph-scripts/);
+    assert.doesNotMatch(postMerge.description, /\t/);
+  });
+
+  it("stores the housekeeping description without running the command it names", async () => {
+    const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
+
+    const housekeeping = beads.find((candidate) => candidate.id === ids.housekeeping);
+    assert.ok(housekeeping, `the run created no bead with id ${ids.housekeeping}`);
+    assert.match(housekeeping.description, /prune-worktrees\.mjs/);
+    assert.doesNotMatch(housekeeping.description, /cannot open ralph-scripts/);
+  });
+
   it("validates the PR gate task but not the stage chores", async () => {
     const { ids, beads } = await createChoresAgainstFakeBd(["execution:afk"]);
 

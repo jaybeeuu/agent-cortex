@@ -13,10 +13,11 @@
 //
 // Zero dependencies: run with `node create-chores.mjs --parent <bead-id>`.
 
-import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,13 +67,20 @@ function parseArgs(args) {
 // Defaults to `bd`, resolved via PATH.
 const BD_PATH = process.env.BD_PATH || 'bd';
 
+const execFileAsync = promisify(execFile);
+
 /**
+ * Run a command with its argv handed straight to the child process. The arguments are
+ * never joined into a command line for a shell: a stage description wraps a real command
+ * in backticks (`node <ralph-scripts>/post-merge-check.mjs`), and a shell would execute it
+ * and splice its output into the description instead of storing the text.
  * @param {string[]} args
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function run(args) {
-  const cmd = args[0] === 'bd' ? [BD_PATH, ...args.slice(1)] : args;
-  return execSync(cmd.join(' '), { encoding: 'utf-8' }).trim();
+async function run(args) {
+  const [command, ...rest] = args[0] === 'bd' ? [BD_PATH, ...args.slice(1)] : args;
+  const { stdout } = await execFileAsync(command, rest, { encoding: 'utf-8' });
+  return stdout.trim();
 }
 
 // ─── Existing children ────────────────────────────────────────────────────────
@@ -96,10 +104,10 @@ function run(args) {
  * is never adopted. When a role label appears more than once the first-listed child
  * wins, so a converged re-run is deterministic.
  * @param {string} parentId
- * @returns {Map<string, Adoptable>} Keyed by `stage:<id>` or `lifecycle:feature-pr`
+ * @returns {Promise<Map<string, Adoptable>>} Keyed by `stage:<id>` or `lifecycle:feature-pr`
  */
-function readAdoptable(parentId) {
-  const raw = run(['bd', 'children', parentId, '--json']);
+async function readAdoptable(parentId) {
+  const raw = await run(['bd', 'children', parentId, '--json']);
   /** @type {Array<{ id: string, labels?: string[], dependencies?: Dependency[] }>} */
   const children = raw === '' ? [] : JSON.parse(raw);
 
@@ -128,10 +136,11 @@ function readAdoptable(parentId) {
  * @param {string} beadId
  * @param {string} dependsOnId
  * @param {Set<string>} blocks  Dependencies the bead already has; extended in place
+ * @returns {Promise<void>}
  */
-function wireBlocks(beadId, dependsOnId, blocks) {
+async function wireBlocks(beadId, dependsOnId, blocks) {
   if (blocks.has(dependsOnId)) { return; }
-  run(['bd', 'dep', 'add', beadId, dependsOnId, '--type', 'blocks']);
+  await run(['bd', 'dep', 'add', beadId, dependsOnId, '--type', 'blocks']);
   blocks.add(dependsOnId);
 }
 
@@ -148,9 +157,9 @@ const { parentId, priority } = parseArgs(process.argv.slice(2));
 
 const pipelinePath = resolve(__dirname, '..', 'pipeline.json');
 /** @type {Pipeline} */
-const pipeline = JSON.parse(readFileSync(pipelinePath, 'utf-8'));
+const pipeline = JSON.parse(await readFile(pipelinePath, 'utf-8'));
 
-const adoptable = readAdoptable(parentId);
+const adoptable = await readAdoptable(parentId);
 
 /** @type {Map<string, string>} */
 const stageToBeadId = new Map();
@@ -164,7 +173,7 @@ for (const stage of pipeline.stages) {
 
   const beadId = adopted
     ? adopted.id
-    : run([
+    : await run([
         'bd', 'create', JSON.stringify(`[${parentId}] ${stage.title}`),
         '--type', 'chore',
         '--description', JSON.stringify(stage.description),
@@ -186,7 +195,7 @@ for (const stage of pipeline.stages) {
       console.error(`Stage '${stage.id}' depends on '${depStageId}', but it has not been created yet. Check dependsOn ordering in pipeline.json.`);
       process.exit(1);
     }
-    wireBlocks(beadId, depBeadId, blocks);
+    await wireBlocks(beadId, depBeadId, blocks);
   }
 
   if (stage.dependsOn.includes(GATE_ROLE)) { gateDependents.push({ beadId, blocks }); }
@@ -208,7 +217,7 @@ const adoptedGate = adoptable.get('lifecycle:feature-pr');
 
 const prGateBeadId = adoptedGate
   ? adoptedGate.id
-  : run([
+  : await run([
       'bd', 'create', JSON.stringify(`[${parentId}] PR Review and Merge`),
       '--type', 'task',
       '--description', JSON.stringify(
@@ -230,12 +239,12 @@ const prGateBeadId = adoptedGate
 
 /** @type {Set<string>} */
 const gateBlocks = adoptedGate ? adoptedGate.blocks : new Set();
-wireBlocks(prGateBeadId, documentStageBeadId, gateBlocks);
+await wireBlocks(prGateBeadId, documentStageBeadId, gateBlocks);
 
 // Second pass: the stages that wait on the gate finally get their dep, now that the
 // gate bead exists.
 for (const { beadId, blocks } of gateDependents) {
-  wireBlocks(beadId, prGateBeadId, blocks);
+  await wireBlocks(beadId, prGateBeadId, blocks);
 }
 
 /** @type {Record<string, string>} */

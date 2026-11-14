@@ -434,6 +434,36 @@ for (const item of cart.items) {
 expect(cart.items.map((item) => item.price)).toStrictEqual([10, 20, 30]);
 ```
 
+### A test name is a claim
+
+The name says what the test proves. Read it as a list of assertions and check that each one
+appears in the body. A clause with no assertion is a requirement the suite never enforces, so the
+test stays green while the behaviour breaks.
+
+```ts
+// ❌ Instead — the name claims one notice; the body only claims that something exists.
+// Remove the notice and this test still passes, because a list is always defined.
+it("sends one notice", async () => {
+  await publishAll(recipients);
+
+  expect(await notices.list()).toBeDefined();
+});
+
+// ✅ Write — the count in the name is asserted, so two notices and no notices both fail
+it("sends one notice", async () => {
+  await publishAll(recipients);
+
+  expect(await notices.list()).toHaveLength(1);
+});
+```
+
+A state in the name works the same way — "returns the cached user" needs an assertion that the
+returned user came from the cache, not that a user came back — and a "not" needs an assertion of
+the absence, such as a call count of zero.
+
+The *Workflow* mutation check catches this at run time: disable the behaviour and the bad form
+above stays green, while the good form goes red.
+
 ## Determinism and async
 
 ```ts

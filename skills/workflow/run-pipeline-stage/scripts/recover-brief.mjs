@@ -3,11 +3,12 @@
 // cold session resumes from one screen instead of a transcript.
 //
 // `trail-entry.mjs` appends one checkpoint per transition. `bd show <id>` returns the whole
-// note, and a bead carrying 20 entries prints 118 lines and about 8 KB, most of it history
-// nobody needs to continue. This script prints what a session does need — status and state
-// labels, the newest trail entries, provenance refs, blocking dependencies, and the
-// acceptance criteria — and enforces a line budget on its own output, so the read stays
-// small however long the trail grows.
+// note, and it prints 89 lines and about 6.5 KB for a bare bead carrying 20 entries, or about
+// 120 lines and about 8 KB for a realistic one — 21 entries with acceptance criteria, a
+// blocker, provenance refs and a description — most of it history nobody needs to continue.
+// This script prints what a session does need — status and state labels, the newest trail
+// entries, provenance refs, blocking dependencies, and the acceptance criteria — and enforces
+// a line budget on its own output, so the read stays small however long the trail grows.
 //
 // Read-only. Every bd call is one of READ_ONLY_CALLS and carries `--readonly`, so the
 // tracker refuses a write even if a later edit mistypes a flag. This script never runs

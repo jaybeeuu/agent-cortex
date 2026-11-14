@@ -10,8 +10,10 @@ state labels, the newest trail entries with their Evidence and What is left, the
 the blocking dependencies, and the acceptance criteria.
 
 The bound is enforced, not promised. `bd show` returns the whole note — no option asks it for the
-last few entries — and a bead carrying 20 entries prints 118 lines and about 8 KB. The brief prints
-the newest `--trail` entries (default 3), summarises the rest by count, clips any single field, and
+last few entries — and it prints 89 lines and about 6.5 KB for a bare bead carrying 20 entries,
+about 120 lines and about 8 KB for a realistic one with acceptance criteria, a blocker, provenance
+refs and a description. The brief prints the newest `--trail` entries (default 3), summarises the
+rest by count, clips any single field, and
 holds its whole output to a line budget (default 40) even when the requested window is wider than
 that: it shrinks the window, names what it left out, and never prints more lines than `--max-lines`.
 

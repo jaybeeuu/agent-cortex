@@ -332,9 +332,10 @@ bd provenance log <chore-id>    # the refs it recorded: git-sha, branch, pr, wor
 bd children <parent-id>         # the whole chain's state, closed included
 ```
 
-The brief is the first read: `bd show` returns the whole note — 118 lines for a bead carrying 20
-entries — and Ralph reads the tail, not the history. Widen the brief's window (`--trail`) only when
-it left out the entry you need.
+The brief is the first read: `bd show` returns the whole note — 89 lines and about 6.5 KB for a
+bare bead carrying 20 entries, about 120 lines and about 8 KB for a realistic one with acceptance
+criteria, a blocker, provenance refs and a description — and Ralph reads the tail, not the
+history. Widen the brief's window (`--trail`) only when it left out the entry you need.
 
 There is nothing to flush and no bookmark to keep in `state.json`: the record the orchestrator used
 to poll is now the record the worker writes directly, so the per-parent log file and the line

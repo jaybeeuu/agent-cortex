@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
+import { buildEntry } from '../skills/workflow/run-pipeline-stage/scripts/trail-entry.mjs';
 import {
   DEFAULT_MAX_LINES,
   MAX_FIELD_CHARS,
@@ -41,15 +42,17 @@ const WRITER = join(REPO_ROOT, 'skills', 'workflow', 'run-pipeline-stage', 'scri
 
 /** One trail entry in the writer's shape: header, three fields, optional refs.
  * @param {number} index
- * @param {{ stage?: string, outcome?: string, evidence?: string, remaining?: string }} [overrides]
+ * @param {{ stage?: string, outcome?: string, evidence?: string, remaining?: string, refs?: string }} [overrides]
  * @returns {string} */
-function entryText(index, { stage = 'code', outcome = 'partial', evidence, remaining } = {}) {
-  return [
+function entryText(index, { stage = 'code', outcome = 'partial', evidence, remaining, refs } = {}) {
+  const lines = [
     `[2026-05-01T10:00:${String(index % 60).padStart(2, '0')}Z] [${stage}] trail:${String(index).padStart(4, '0')}aaaaaaaaaaaa`,
     `Outcome: ${outcome}`,
     `Evidence: ${evidence ?? `pnpm test — ${index} passing, checkpoint ${index} of the stage recorded`}`,
     `What is left: ${remaining ?? `finish checkpoint ${index}`}`,
-  ].join('\n');
+  ];
+  if (refs !== undefined) lines.push(`Refs: ${refs}`);
+  return lines.join('\n');
 }
 
 /** A note carrying `count` entries, the way `bd note` accumulates them: newline-joined.
@@ -419,6 +422,34 @@ describe('recover-brief: parsing the note', () => {
     assert.equal(entries[2].remaining, 'open the PR');
   });
 
+  it('counts a Refs line as part of its entry and prints no note for it', async () => {
+    const notes = entryText(1, { refs: `git-sha:${'a'.repeat(40)}, branch:feature/brief` });
+    const { output } = await runFake({ bead: beadJson({ notes }) });
+
+    assert.match(output, /^trail \(newest 1 of 1\):$/m);
+    assert.doesNotMatch(output, /\(note\) Refs:/);
+  });
+
+  it('parses every field buildEntry emits as part of its entry, not as a note of its own', () => {
+    const entry = buildEntry({
+      at: '2026-05-01T10:00:01Z',
+      stage: 'code',
+      outcome: 'partial',
+      evidence: 'pnpm test — 412 passing',
+      remaining: 'open the PR',
+      refs: { commit: 'a'.repeat(40), branch: 'feature/brief', pr: 'https://example.test/pr/11' },
+      fingerprint: '0001aaaaaaaaaaaa',
+    });
+
+    // The case only proves the field set if the writer actually stamps a Refs line.
+    assert.match(entry, /^Refs: git-sha:/m);
+    const entries = splitTrail(entry);
+    assert.equal(entries.length, 1, `the writer's fields were read as notes: ${JSON.stringify(entries.map((e) => e.text))}`);
+    assert.equal(entries[0].outcome, 'partial');
+    assert.equal(entries[0].evidence, 'pnpm test — 412 passing');
+    assert.equal(entries[0].remaining, 'open the PR');
+  });
+
   it('says the entries record no next step rather than that there is no trail', async () => {
     const notes = entryText(1, { outcome: 'done' }).split('\n')
       .filter((line) => !line.startsWith('What is left:'))
@@ -574,7 +605,7 @@ describe('recover-brief against a real bd workspace', { skip: !BD_AVAILABLE }, (
 // ─── Documentation ────────────────────────────────────────────────────────────
 
 describe('the pipeline documents the read sequence beside the writer', () => {
-  it('names the brief wherever it names the writer', async () => {
+  it('names the recovery brief in the stage SKILL, the stage runner prompt and the ralph reference', async () => {
     for (const file of [
       join(REPO_ROOT, 'skills', 'workflow', 'run-pipeline-stage', 'SKILL.md'),
       join(REPO_ROOT, 'skills', 'workflow', 'run-pipeline-stage', 'prompts', 'stage-runner.md'),

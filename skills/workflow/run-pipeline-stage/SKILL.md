@@ -113,7 +113,7 @@ Read the trail with `bd show <id>` (entries) and `bd provenance log <id>` (refs)
 
 ### Reading the trail
 
-Resume from `scripts/recover-brief.mjs`, not from `bd show`. One call prints what a session needs to continue: status and state labels, the newest trail entries with their Evidence and What is left, provenance refs, blocking dependencies, and the acceptance criteria. `bd show` on a bead carrying 20 entries prints 118 lines and about 8 KB, most of it history the reader does not need; the brief stays inside a line budget (default 40) that the script enforces on its own output.
+Resume from `scripts/recover-brief.mjs`, not from `bd show`. One call prints what a session needs to continue: status and state labels, the newest trail entries with their Evidence and What is left, provenance refs, blocking dependencies, and the acceptance criteria. `bd show` on a bare bead carrying 20 entries prints 89 lines and about 6.5 KB, and on a realistic one — 21 entries with acceptance criteria, a blocker, provenance refs and a description — about 120 lines and about 8 KB, most of it history the reader does not need; the brief stays inside a line budget (default 40) that the script enforces on its own output.
 
 ```bash
 node <run-pipeline-stage-scripts>/recover-brief.mjs --bead <id> \

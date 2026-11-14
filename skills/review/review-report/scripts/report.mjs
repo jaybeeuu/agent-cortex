@@ -88,8 +88,29 @@ export const MAX_CLASSES = 3;
 /** Example bead ids printed per class. */
 export const MAX_EXAMPLES = 2;
 
-/** The package whose manifest declares the default feedback target. */
+/** The package whose manifest declares the default feedback target, as published. */
 export const PACKAGE_NAME = '@jaybeeuu/agent-cortex';
+
+/** The package name `install pi` stages: a private build, never published. */
+export const STAGED_PACKAGE_NAME = '@jaybeeuu/agent-cortex-pi';
+
+/** The plugin name `install claude` writes into the Claude plugin manifest. */
+export const PLUGIN_NAME = 'agent-cortex';
+
+/** The Claude plugin manifest, relative to the plugin root an install stages. */
+export const PLUGIN_MANIFEST = '.claude-plugin/plugin.json';
+
+/**
+ * The manifests an install carries, and the identity each must declare to be this package's.
+ * Both name the same thing — where this package came from — in the shape its harness reads.
+ * `test/review-report.test.mjs` stages both installs, so an installer that renames its generated
+ * manifest fails there rather than silently losing the default at install time.
+ * @type {readonly { file: string, identities: readonly string[] }[]}
+ */
+const MANIFEST_FILES = [
+  { file: 'package.json', identities: [PACKAGE_NAME, STAGED_PACKAGE_NAME] },
+  { file: PLUGIN_MANIFEST, identities: [PLUGIN_NAME] },
+];
 
 /** Environment override for the feedback repository. */
 export const REPO_ENV = 'AGENT_CORTEX_FEEDBACK_REPO';
@@ -195,6 +216,9 @@ export class ReportError extends Error {
  * @property {string} [cwd]
  * @property {string} [scriptPath]
  * @property {string} [envRepo]
+ * @property {((chunk: string) => void)} [write]  Sink that receives the report as soon as it is
+ *   rendered — before the filing target is resolved — so a run that cannot file still prints what
+ *   it measured.
  */
 
 // ─── Vocabulary ──────────────────────────────────────────────────────────────
@@ -729,27 +753,45 @@ export async function identifyProject(git, cwd) {
 }
 
 /**
- * Read the feedback repository out of the package manifest this skill ships inside, so no
- * repository is written into shipped code: the default is whatever the manifest declares.
+ * Read the feedback repository out of the manifest of the install this skill ships inside, so no
+ * repository is written into shipped code: the default is whatever the installed artefact declares.
+ *
+ * Two installs, two manifests. `install pi` stages a package whose `package.json` declares the
+ * repository; `install claude` stages a Claude plugin whose `.claude-plugin/plugin.json` declares
+ * it. Each manifest is read only when it names this package: a manifest carrying any other name is
+ * the consuming project's own, and must never become the repository a report is filed against.
  * @param {string} scriptPath @returns {Promise<string | null>}
  */
 export async function manifestRepo(scriptPath) {
   let dir = dirname(scriptPath);
   for (;;) {
-    try {
-      const manifest = JSON.parse(await readFile(join(dir, 'package.json'), 'utf-8'));
-      if (manifest?.name === PACKAGE_NAME) {
-        const repository = manifest.repository;
-        const value = typeof repository === 'string' ? repository : repository?.url;
-        return typeof value === 'string' ? parseSlug(value) : null;
-      }
-    } catch {
-      // No manifest here, or one that does not parse: keep walking up.
+    for (const { file, identities } of MANIFEST_FILES) {
+      const slug = await readManifestRepo(join(dir, file), identities);
+      if (slug !== null) return slug;
     }
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
+}
+
+/**
+ * The repository one manifest declares, or null when the file is absent, unparseable, or the
+ * manifest of something else.
+ * @param {string} file @param {readonly string[]} identities @returns {Promise<string | null>}
+ */
+async function readManifestRepo(file, identities) {
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(file, 'utf-8'));
+  } catch {
+    // No manifest here, or one that does not parse: keep walking up.
+    return null;
+  }
+  if (!identities.includes(manifest?.name)) return null;
+  const repository = manifest.repository;
+  const value = typeof repository === 'string' ? repository : repository?.url;
+  return typeof value === 'string' ? parseSlug(value) : null;
 }
 
 /**
@@ -863,7 +905,8 @@ export function parseArgs(argv) {
 
 /**
  * Run one report end to end. The report is printed before anything is filed, so a run without
- * `--file` cannot reach the network at all.
+ * `--file` cannot reach the network at all, and a run that cannot resolve or reach its filing
+ * target still prints the report it measured.
  * @param {string[]} argv @param {ReportDeps} deps
  * @returns {Promise<{ stdout: string, model: Model, filed: string | null }>}
  */
@@ -909,11 +952,17 @@ export async function runCli(argv, deps = {}) {
   const report = renderReport(model, context);
 
   let stdout = options.json ? `${JSON.stringify(model, null, 2)}\n` : report;
+  const write = deps.write ?? (() => {});
 
   if (context.baselineRecorded && baselinePath !== null) {
     await mkdir(dirname(baselinePath), { recursive: true });
     await writeFile(baselinePath, `${JSON.stringify(model, null, 2)}\n`);
   }
+
+  // Emit the report here, before the filing target is resolved: what was measured is not
+  // conditional on where it is filed, so a failure to resolve or reach the repository must not
+  // discard it.
+  write(stdout);
 
   let filed = null;
   if (options.file) {
@@ -925,7 +974,9 @@ export async function runCli(argv, deps = {}) {
     const gh = deps.gh ?? makeRunner(options.gh ?? process.env.GH_PATH ?? 'gh', cwd);
     const title = `Defect report — ${model.project} — ${model.generatedAt}`;
     filed = (await gh(filingArgs({ repo, title, body: report }))).trim().split('\n').pop() ?? null;
-    stdout += `Filed: ${filed}\n`;
+    const filedLine = `Filed: ${filed}\n`;
+    stdout += filedLine;
+    write(filedLine);
   }
 
   return { stdout, model, filed };
@@ -936,7 +987,7 @@ const USAGE = `Usage: node report.mjs [options]
   --baseline <path>  Compare against the report kept at this path
   --record           Keep this report at the --baseline path
   --file             File the report with \`gh issue create\` (the only networked step)
-  --repo <owner/name>  Feedback repository (default: the package manifest's repository)
+  --repo <owner/name>  Feedback repository (default: the repository this install declares)
   --json             Print the machine-readable model instead of the report
   --cwd <dir>        Directory the tracker and git commands run in
   --bd --gh --git <path>  Binaries to use (defaults: $BD_PATH, $GH_PATH, $GIT_PATH)
@@ -946,7 +997,9 @@ ${REPO_ENV}  Feedback repository, when --repo is absent
 `;
 
 /**
- * The process entry point: print the report, or print the failure and exit non-zero.
+ * The process entry point: print the report, then either file it or print the failure and exit
+ * non-zero. The report goes out through a sink that writes it as soon as it is rendered, so a
+ * filing failure leaves the measurement on stdout and the reason on stderr.
  * @param {string[]} argv @returns {Promise<number>}
  */
 export async function main(argv) {
@@ -955,8 +1008,7 @@ export async function main(argv) {
     return 0;
   }
   try {
-    const { stdout } = await runCli(argv);
-    process.stdout.write(stdout);
+    await runCli(argv, { write: (chunk) => process.stdout.write(chunk) });
     return 0;
   } catch (error) {
     if (error instanceof UsageError) {

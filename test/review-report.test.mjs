@@ -8,12 +8,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
+import { installClaude } from '../bin/installers/claude.mjs';
+import { installPi } from '../bin/installers/pi.mjs';
 import {
   DEFECT_OWNERS,
   DEFECT_QUERY,
@@ -29,6 +31,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(testDir, '..');
 const SKILLS = join(REPO_ROOT, 'skills');
 const SCRIPT = join(SKILLS, 'review', 'review-report', 'scripts', 'report.mjs');
+const VOCABULARY_SKILL_FILE = join(SKILLS, 'review', 'review-defects', 'SKILL.md');
 
 const NOW = new Date('2026-05-01T10:00:00Z');
 
@@ -402,6 +405,173 @@ describe('filing', () => {
     const { model } = await report({ defects: [], git: gitWithoutRemote, cwd: dir });
 
     assert.match(model.project ?? '', /^workspace-\S+ \(no git remote\)$/);
+  });
+});
+
+// ─── Staged installs ─────────────────────────────────────────────────────────
+
+/**
+ * Stub binaries for the three commands a filing run shells out to, so a subprocess reaches no
+ * tracker, no git remote and no network. Written async throughout: `check-no-sync` scans test/.
+ * @param {string} dir @returns {Promise<{ env: Record<string, string>, ghLog: string }>}
+ */
+async function makeStubs(dir) {
+  const bin = join(dir, 'bin');
+  await mkdir(bin, { recursive: true });
+  const ghLog = join(dir, 'gh.log');
+  await writeFile(join(bin, 'bd'), ["#!/usr/bin/env node", "process.stdout.write('[]');"].join('\n'));
+  await writeFile(
+    join(bin, 'gh'),
+    [
+      '#!/usr/bin/env node',
+      "const fs = require('node:fs/promises');",
+      '(async () => {',
+      "  await fs.appendFile(process.env.GH_LOG, JSON.stringify(process.argv.slice(2)) + '\\n');",
+      "  process.stdout.write('https://example.test/issues/1\\n');",
+      '})();',
+    ].join('\n'),
+  );
+  await writeFile(
+    join(bin, 'git'),
+    [
+      '#!/usr/bin/env node',
+      "if (process.argv[2] === 'remote') { process.stdout.write('git@github.com:acme/widgets.git\\n'); }",
+      'else { process.stdout.write(process.cwd() + \'\\n\'); }',
+    ].join('\n'),
+  );
+  await execFileAsync('chmod', ['755', join(bin, 'bd'), join(bin, 'gh'), join(bin, 'git')]);
+  return {
+    env: {
+      ...process.env,
+      BD_PATH: join(bin, 'bd'),
+      GH_PATH: join(bin, 'gh'),
+      GIT_PATH: join(bin, 'git'),
+      GH_LOG: ghLog,
+      AGENT_CORTEX_FEEDBACK_REPO: '',
+    },
+    ghLog,
+  };
+}
+
+/**
+ * Run a report script as its own process, from a directory outside this checkout.
+ * @param {{ script: string, cwd: string, env: Record<string, string>, argv?: string[] }} input
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>}
+ */
+async function runScript({ script, cwd, env, argv = ['--file'] }) {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [script, ...argv], { cwd, env });
+    return { exitCode: 0, stdout, stderr };
+  } catch (error) {
+    const failure = /** @type {{ code?: number, stdout?: string, stderr?: string }} */ (error);
+    return { exitCode: failure.code ?? 1, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
+  }
+}
+
+/** The argv of every `gh` call a stub recorded.
+ * @param {string} log @returns {Promise<string[][]>} */
+async function ghCalls(log) {
+  try {
+    return (await readFile(log, 'utf-8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
+/** The repository this package declares, as the report must resolve it from an install.
+ * @returns {Promise<string>} */
+async function declaredRepo() {
+  const pkg = JSON.parse(await readFile(join(REPO_ROOT, 'package.json'), 'utf-8'));
+  const slug = parseSlug(typeof pkg.repository === 'string' ? pkg.repository : pkg.repository.url);
+  assert.ok(slug !== null, 'the repository this checkout declares is not an owner/name slug');
+  return slug;
+}
+
+/**
+ * Copy the report skill and the vocabulary it reads into `root`, so they can be run as a
+ * vendored copy that carries no install manifest of its own.
+ * @param {string} root @returns {Promise<string>}
+ */
+async function vendorSkill(root) {
+  const reportDir = join(root, 'skills', 'review-report', 'scripts');
+  await mkdir(reportDir, { recursive: true });
+  await mkdir(join(root, 'skills', 'review-defects'), { recursive: true });
+  await copyFile(SCRIPT, join(reportDir, 'report.mjs'));
+  await copyFile(VOCABULARY_SKILL_FILE, join(root, 'skills', 'review-defects', 'SKILL.md'));
+  return join(reportDir, 'report.mjs');
+}
+
+describe('staged install', () => {
+  it('files against the repository a staged pi install declares', async () => {
+    const root = await tempRoot.createWorkspace();
+    const output = join(root, 'pi');
+    await installPi({ root: REPO_ROOT, output, warn: () => {} });
+    const { env, ghLog } = await makeStubs(root);
+
+    const run = await runScript({
+      script: join(output, 'skills', 'review', 'review-report', 'scripts', 'report.mjs'),
+      cwd: root,
+      env,
+    });
+
+    const calls = await ghCalls(ghLog);
+    assert.equal(run.exitCode, 0, run.stderr);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].slice(0, 4), ['issue', 'create', '--repo', await declaredRepo()]);
+    assert.match(run.stdout, /Filed: https:\/\/example\.test\/issues\/1/);
+  });
+
+  it('files against the repository a staged claude install declares', async () => {
+    const root = await tempRoot.createWorkspace();
+    const output = join(root, 'claude');
+    await installClaude({ root: REPO_ROOT, output, warn: () => {} });
+    const { env, ghLog } = await makeStubs(root);
+
+    const run = await runScript({
+      script: join(output, 'skills', 'review-report', 'scripts', 'report.mjs'),
+      cwd: root,
+      env,
+    });
+
+    const calls = await ghCalls(ghLog);
+    assert.equal(run.exitCode, 0, run.stderr);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].slice(0, 4), ['issue', 'create', '--repo', await declaredRepo()]);
+    assert.match(run.stdout, /Filed: https:\/\/example\.test\/issues\/1/);
+  });
+
+  it('never files against the manifest of the project the copy sits in', async () => {
+    const root = await tempRoot.createWorkspace();
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'consumer-app', repository: 'https://github.com/acme/consumer' }),
+    );
+    const script = await vendorSkill(root);
+    const { env, ghLog } = await makeStubs(root);
+
+    const run = await runScript({ script, cwd: root, env });
+
+    assert.equal(run.exitCode, 1);
+    assert.equal((await ghCalls(ghLog)).length, 0);
+    assert.match(run.stderr, /cannot resolve the feedback repository/);
+  });
+
+  it('prints the report before it resolves the filing target', async () => {
+    const root = await tempRoot.createWorkspace();
+    const script = await vendorSkill(root);
+    const { env, ghLog } = await makeStubs(root);
+
+    const run = await runScript({ script, cwd: root, env });
+
+    assert.equal(run.exitCode, 1);
+    assert.equal((await ghCalls(ghLog)).length, 0);
+    assert.match(run.stdout, /Defect report — acme\/widgets/);
+    assert.match(run.stdout, /No defect label is set on any bead/);
+    assert.match(run.stderr, /cannot resolve the feedback repository/);
   });
 });
 

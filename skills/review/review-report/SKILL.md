@@ -103,11 +103,16 @@ The repository is configuration, resolved in this order:
 
 1. `--repo <owner/name>`.
 2. `AGENT_CORTEX_FEEDBACK_REPO` in the environment.
-3. The `repository` field of the package manifest that contains this skill.
+3. The `repository` field of the manifest the running install ships — the `package.json` of the
+   package `install pi` stages, or the `.claude-plugin/plugin.json` of the plugin `install claude`
+   stages. A manifest is read only when it names this package, so a consuming project's own
+   manifest is never used.
 
-Nothing is hardcoded, so any install files feedback to the package it is installed from. When none
-resolves — a vendored copy with no manifest, for example — `--file` fails with the message telling you
-to pass `--repo`, and the report itself is still printed.
+No repository slug is hardcoded, so an install files feedback to the package it was installed from.
+Both installs declare that field, so `--file` needs no further configuration. A copy that carries
+no such manifest — vendored into a project by hand, for example — cannot resolve one: `--file` then
+fails with a message naming `--repo` and the environment variable, and the report is printed first,
+so the measurement is never lost.
 
 ## Verification checklist
 

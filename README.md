@@ -207,7 +207,7 @@ The staged package contains:
 
 | Path | Contents |
 | --- | --- |
-| `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`; the version tracks the package |
+| `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`, and `repository` (this package's origin, so a shipped skill can resolve it without a checkout); the version tracks the package |
 | `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
 | `skills/` | token-substituted skill copies (real files, never symlinks) |
 | `docs/` | the repository documents those skills read (currently `docs/skills/skill-anatomy.md`), copied verbatim once per install so the reference resolves on a machine without the checkout |

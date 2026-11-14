@@ -4,13 +4,53 @@ import path from "node:path";
 // Re-export public API for tests and consumers
 export { type ProjectCounts, type SkillStats, type UsageStore, type RawEvent, loadStore, saveStore, ageOutStore } from "./store.js";
 export { recordUsage } from "./record.js";
+export {
+  type DaySkillCounts,
+  type Granularity,
+  type RollupStore,
+  type TimelineBucket,
+  DEFAULT_RETENTION_DAYS,
+  MAX_PROJECTS_PER_DAY,
+  MAX_ROLLUP_FILE_BYTES,
+  RETENTION_ENV,
+  bucketKey,
+  dayKey,
+  loadRollups,
+  oldestDay,
+  pruneRollups,
+  recordDailyUsage,
+  retentionCutoff,
+  retentionDays,
+  rollupFilePath,
+  saveRollups,
+  shiftDay,
+  timeline,
+} from "./rollup.js";
+export { formatTimeline, isTimelineRequest } from "./timeline.js";
 export { type SkillRecord, globalSkillDirs, scanSkills, extractSkillName, discoverProjectSkills, resolveSkillFromPath } from "./discover.js";
 export { formatTable } from "./format.js";
 
-import { loadStore, saveStore } from "./store.js";
+import { loadStore, saveStore, type RawEvent } from "./store.js";
 import { recordUsage } from "./record.js";
 import { resolveSkillFromPath, globalSkillDirs, scanSkills, discoverProjectSkills } from "./discover.js";
 import { formatTable } from "./format.js";
+import { loadRollups, recordDailyUsage, saveRollups } from "./rollup.js";
+import { formatTimeline, isTimelineRequest } from "./timeline.js";
+
+/**
+ * Record one usage event into the long-range rollups. The counters and the
+ * recent-event ring in the store are written by `recordUsage`/`saveStore` as
+ * before; this adds the per-day record beside them.
+ */
+function recordRollup(
+  skillName: string,
+  source: RawEvent["source"],
+  project: string,
+): void {
+  const rollups = loadRollups();
+  recordDailyUsage(rollups, skillName, source, project);
+  saveRollups(rollups);
+}
 
 // ── Extension entry point ─────────────────────────────────────────────────────
 
@@ -32,12 +72,16 @@ export default function (pi: ExtensionAPI) {
     if (!skills?.length) return;
 
     const store = loadStore();
+    const rollups = loadRollups();
     const project = ctx.cwd;
     for (const skill of skills) {
       const name = typeof skill === "string" ? skill : skill.name;
-      if (name) recordUsage(store, name, "loaded", project);
+      if (!name) continue;
+      recordUsage(store, name, "loaded", project);
+      recordDailyUsage(rollups, name, "loaded", project);
     }
     saveStore(store);
+    saveRollups(rollups);
   });
 
   // ── 2. Track /skill:name invocations ──────────────────────────────────
@@ -48,6 +92,7 @@ export default function (pi: ExtensionAPI) {
     const store = loadStore();
     recordUsage(store, m[1], "invoked", ctx.cwd);
     saveStore(store);
+    recordRollup(m[1], "invoked", ctx.cwd);
   });
 
   // ── 3. Track SKILL.md reads by the LLM ────────────────────────────────
@@ -64,6 +109,7 @@ export default function (pi: ExtensionAPI) {
     const store = loadStore();
     recordUsage(store, skillName, "read", ctx.cwd);
     saveStore(store);
+    recordRollup(skillName, "read", ctx.cwd);
   });
 
   // ── 4. Track turns ────────────────────────────────────────────────────
@@ -88,8 +134,17 @@ export default function (pi: ExtensionAPI) {
   // ── 5. /skill-stats command ───────────────────────────────────────────
   pi.registerCommand("skill-stats", {
     description:
-      "Show skill usage stats. Filter by project: /skill-stats --project <path>",
+      "Show skill usage stats. Filter by project: /skill-stats --project <path>. Long-range history: /skill-stats timeline",
     handler: async (args, ctx) => {
+      // The timeline view reads the daily rollups and nothing else — not the
+      // counters, and never a session transcript.
+      if (isTimelineRequest(args)) {
+        const output = formatTimeline(loadRollups());
+        ctx.ui.notify("Skill usage timeline from daily rollups.", "info");
+        console.log(output);
+        return;
+      }
+
       const store = loadStore();
 
       let projectFilter: string | null = null;
@@ -216,6 +271,7 @@ export default function (pi: ExtensionAPI) {
         lastUpdated: new Date().toISOString(),
         recentEvents: [],
       });
+      saveRollups({ version: 1, since: null, days: {} });
       ctx.ui.notify("Skill usage statistics reset.", "info");
     },
   });

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test --import tsx/esm index.test.ts",
+    "test": "node --test --import tsx/esm index.test.ts rollup.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

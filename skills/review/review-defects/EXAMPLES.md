@@ -1,8 +1,9 @@
 # Review defects — worked examples
 
-One case per class. Each shows what was observed, the label, and the rejection text to write. The
-first four were observed in real review rounds; the last four are described as situations so you
-can match them without guessing at history.
+One case per class. Each shows what was observed, the label, and the rejection text to write. Six
+were observed in real review rounds and one in a code stage's check of its own change; `scope-creep`
+is described as a situation, because no recorded case exists, so you can match its shape without
+guessing at history.
 
 ## `test-unproven` — the name claims a settle-time cleanup
 
@@ -63,15 +64,17 @@ both; update the prose to what ships."
 **Why this class.** The shipped artefact and the text describing it disagree. A reviewer reading the
 text would predict behaviour the install does not have.
 
-## `criteria-unmet` — a criterion is partly delivered
+## `criteria-unmet` — the change breaks the criterion it must satisfy
 
-**Situation.** A bead's criteria ask for a command that reports both a count and the failing paths.
-The command reports the count and stops.
+**Observed.** A criterion said an install leaves one directory free of the tool's own files. The
+change wrote its state record into that very directory, so the reviewer could not affirm the
+criterion at all.
 
 **Label.** `defect:criteria-unmet`
 
-**Rejection text.** "Criterion 2 asks for the failing paths as well as the count; the output stops
-at the count. Ship both, or say in the bead why the criterion changed."
+**Rejection text.** "The criterion says that directory holds no file of ours; the new record is
+written into it, so the criterion fails. Move the record under the tool's own state directory,
+keyed by the directory it describes, or amend the criterion in the bead and say why."
 
 **Why this class.** The work is real and the scope is honest — part of what was asked is absent.
 
@@ -88,29 +91,32 @@ change so this one can be reviewed and reverted on its own."
 **Why this class.** Every line is defensible in isolation. The defect is that the change is wider
 than its reason, which hides the real diff.
 
-## `style-violation` — a stated rule is broken
+## `style-violation` — a written rule is broken
 
-**Situation.** A new CLI command calls a synchronous file read, while the project's rules forbid
-blocking calls in tooling.
+**Observed.** A change added a new skill and declared a `patch` bump in its changeset. The
+versioning rule says a new skill is a `minor` bump and lists "wrong bump type" as a red flag. The
+reviewer rejected the change citing that rule.
 
 **Label.** `defect:style-violation`
 
-**Rejection text.** "`readFileSync` breaks the no-blocking-calls rule. Use the async form and await
-it."
+**Rejection text.** "The changeset declares `patch`, but this change adds a skill. The versioning
+rule makes an addition `minor` and calls a wrong bump type a red flag. Bump it to `minor`."
 
 **Why this class.** Cite the rule, not a preference. A reviewer who cannot quote a written rule has
 a preference, and preferences are not rejections.
 
 ## `regression` — an existing behaviour breaks
 
-**Situation.** The change adds an early return for empty input. A caller that relied on the
-notification for empty input now silently does nothing, and its existing test fails.
+**Observed.** A code stage added a manifest write that assumed its target directory existed. An
+install from a source holding no agents and no skills had worked before; after the change it threw
+`ENOENT` on that write. The stage found it in its own check of the change, reproduced it, added a
+test that failed, then fixed it.
 
 **Label.** `defect:regression`
 
-**Rejection text.** "`notify` on empty input used to fire; the new early return drops it, and
-`notify-hook` fails. Preserve the old behaviour, or change the caller in the same change with a
-test."
+**Rejection text.** "The manifest write assumes its directory exists, so an install from a source
+with no agents and no skills now throws `ENOENT` where it used to succeed. Create the directory
+before writing, and cover the empty-source case with a test."
 
 **Why this class.** The change may satisfy its own criteria fully. It also breaks behaviour nobody
 asked to change, which is a separate fact from `criteria-unmet`.

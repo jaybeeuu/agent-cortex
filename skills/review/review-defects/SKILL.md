@@ -41,13 +41,16 @@ label.
    bd update <id> --add-label defect:test-unproven
    ```
 
+   That bead is normally already closed — a pipeline closes the chore whose work is rejected before
+   the review runs — and the label attaches to it anyway. So the queries below pass `--all`.
+
 3. Write the specific reason — the file, the line, the missing assertion — in the rejection text.
    The label is queryable; it is never the whole message.
 
 ## Remove it when the fix closes
 
-The review that confirms the fix removes the label, so the vocabulary always describes open
-defects:
+The review that confirms the fix removes the label, so the vocabulary describes only defects whose
+fix is unconfirmed:
 
 ```bash
 bd update <id> --remove-label defect:test-unproven
@@ -66,9 +69,13 @@ nothing.
 ## Query it
 
 ```bash
-bd list -l defect:test-unproven        # one class, across open work
-bd list --label-pattern 'defect:*'     # every open defect, any class
+bd list -l defect:test-unproven --all        # one class, any status
+bd list --label-pattern 'defect:*' --all     # every defect, any class
 ```
+
+`--all` is not optional. `bd list` hides closed beads by default, defects are historical data, and
+the bead carrying one is usually closed: drop the flag and the query reports "No issues found" on
+a label that is set.
 
 Count the pattern output per class to see what recurs, and fix the process that produces it — a
 class that keeps appearing is a gap in the stage before this one.

@@ -35,8 +35,11 @@ A rejection carries exactly one `defect:<class>` label, from the closed list in 
 bd update <id> --add-label defect:test-unproven
 ```
 
-- Apply it to the bead whose work you reject. Two findings of different kinds are two
-  `BLOCKING_ISSUES` entries and one label: the class of the finding that must be fixed first.
+- Apply it to the bead whose work you reject. That bead is normally the code chore, which the
+  code stage already closed; the label attaches to it all the same, so the queries in
+  `review-defects` pass `--all` and a query without the flag finds nothing. Two findings of
+  different kinds are two `BLOCKING_ISSUES` entries and one label: the class of the finding that
+  must be fixed first.
 - A class that is not on the closed list is a review defect in itself. Say so under
   `BLOCKING_ISSUES` and use the nearest real class — never invent a `defect:` label.
 - The review that confirms the fix removes the label

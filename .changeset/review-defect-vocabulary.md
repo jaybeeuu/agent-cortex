@@ -11,6 +11,7 @@ The new `review-defects` skill defines the vocabulary, with one worked example p
 `EXAMPLES.md`. The review playbook instructs one label per rejection, states that a class outside
 the list is a review defect in itself, and says the review that confirms a fix removes the label and
 records the removal in its trail entry. The label classifies the defect; the bead's status still
-says where the work is, so no state label is added. `bd-tool` documents the vocabulary and the two
-queries that read it: one class with `bd list -l defect:<class>`, and every open defect with
-`bd list --label-pattern 'defect:*'`.
+says where the work is, so no state label is added. Because the rejected chore is normally already
+closed, the two queries that read the vocabulary pass `--all`: one class with
+`bd list -l defect:<class> --all`, and every defect with `bd list --label-pattern 'defect:*' --all`.
+`bd-tool` indexes the label and points at `review-defects` for the vocabulary and the queries.

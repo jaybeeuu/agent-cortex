@@ -38,6 +38,53 @@ We use labels to track state. Key patterns:
 | `epic:<id>` | Parent epic link | `epic:abc-123` |
 | `priority:<level>` | Priority (0-3) | `priority:1` |
 
+## Where operational state lives
+
+Operational state lives in bead fields, not in files: progress, what a stage learned, and the
+branch, PR, commit or worktree refs. A cold agent reads all of it from the bead.
+
+| State | Home |
+|---|---|
+| What a stage did, and what it learned | `bd note <id> "…"` — an append-only trail |
+| Stage status | the bead's own status: `open`, claimed `in_progress`, `closed` |
+| Blocked or paused | `bd set-state <id> progress=blocked --reason "…"` |
+| Branch, PR, commit, worktree | `bd provenance record --issue <id> …` |
+| Reviewer handoff prose | `.agent-cortex/working-docs/hitl/<bead-id>/handoff.md` — unchanged |
+| Screenshots, logs, repro scripts | the bead's working-docs directory — unchanged |
+
+Durable, committable documents stay files: `SKILL.md`, `REFERENCE.md`, playbooks, prompts,
+`docs/`, `AGENTS.md`. Never migrate those into beads — they are reviewed, diffed and versioned as
+text. A scratch file for progress is wrong twice: it duplicates the bead, and no other agent finds
+it.
+
+### State dimensions: `progress:` for exceptions, never `stage:`
+
+`bd set-state <id> <dimension>=<value> --reason "…"` writes an event bead and a
+`<dimension>:<value>` label. Use one dimension, for exceptions only, so a cold agent can tell
+"stopped" from "never started" without reading prose:
+
+- `progress:blocked` — something outside the worker's control must change first.
+- `progress:paused` — work stopped deliberately and expected to resume.
+- no `progress:` label — never started, running, or finished; the status and the trail say which.
+
+Do not add a dimension per transition (`work:tests-green`): status and trail already say that.
+**Never set `stage=`**: `bd set-state` removes the existing label for the dimension it sets, so
+`bd set-state <id> stage=verify` deletes `stage:code` and rewrites the bead's route.
+
+Real round-trip, abridged, from a throwaway workspace on a bead labelled `stage:code`:
+
+```text
+$ bd set-state probe-kk4 progress=blocked --reason "waiting on upstream API key"
+✓ Set progress = blocked on probe-kk4
+  Event: probe-kk4.1
+$ bd state probe-kk4 progress          # the value the label carries
+blocked
+$ bd show probe-kk4.1                  # the reason, on the event bead
+  Reason: waiting on upstream API key
+```
+
+Clear the exception with `bd label remove <id> progress:blocked`; the event bead stays as history.
+
 ## Creating work
 
 For new tasks with pipeline expansion:

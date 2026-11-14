@@ -530,13 +530,19 @@ The report gives the installed version (read from the manifest beside the entry 
 stale process reports what is on disk), the published version (from the confirmed manager's `view`),
 the owner, and the command it would run. A registry error is its own failure: it prints the
 manager's error, offers no update, and exits non-zero. A failed install reports the manager's stderr
-and runs nothing after it. Once the install succeeds, the refresh is the new binary's `update -a`,
-so one command brings the CLI and the harness installs to the same version.
+and runs nothing after it. Once the install succeeds, the command reports the CLI version before and
+after (`cli        1.2.3 → 1.4.0`, read from the binary the update just installed, because the
+running process is still the old code), then hands the terminal to the new binary's `update -a`. One
+command brings the CLI and the harness installs to the same version, and the exit code is the
+refresh's.
 
-The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix, so it is POSIX-only;
-native Windows pnpm and npm write `.cmd` shims that this path does not match. A spawn that fails
-exits 1 with no reason printed. The install has already succeeded by then, so finish the refresh
-with `agent-cortex update -a`.
+The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix with an argv array and
+inherits the terminal, so the refresh's own output is what the user reads. It is skipped in three
+cases: `--check`, a failed update, and an install already at the published version (where
+`agent-cortex update -a` is the refresh that is left). A refresh that cannot start — the path is
+POSIX-shaped, while native Windows pnpm and npm write `.cmd` shims it does not match, and Node cannot
+start a `.cmd` without a shell — prints the reason and the exact command to run by hand, and exits
+non-zero. The CLI update has already succeeded by then, so `agent-cortex update -a` finishes the job.
 
 ```sh
 # what it reports, for a copy installed by a pnpm that is not the one on PATH
@@ -546,6 +552,13 @@ agent-cortex self-update --check
 #   owner      pnpm (/opt/pnpm-home/bin/pnpm)
 #   status     update available: 1.2.3 → 1.4.0
 #   command    /opt/pnpm-home/bin/pnpm add -g @jaybeeuu/agent-cortex@latest
+
+# what a bare run adds after that report
+agent-cortex self-update
+#   ✓ /opt/pnpm-home/bin/pnpm add -g @jaybeeuu/agent-cortex@latest
+#   cli        1.2.3 → 1.4.0
+#   → refreshing installed harnesses with /opt/pnpm-home/bin/agent-cortex update -a
+#   …the new binary's own update report…
 ```
 
 ## Refreshing installed harnesses (`agent-cortex update`)

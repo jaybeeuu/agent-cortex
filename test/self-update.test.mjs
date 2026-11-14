@@ -61,12 +61,20 @@ const FAKE_MANAGER = `#!/usr/bin/env node
 })();
 `;
 
-// The binary the update re-runs once the install succeeded.
+// The binary the update re-runs once the install succeeded. It reports its own
+// version, which is the only source for the version now on disk.
 const FAKE_REEXEC = `#!/usr/bin/env node
 (async () => {
   const fs = require("node:fs/promises");
   const path = require("node:path");
-  await fs.appendFile(process.env.FAKE_CALLS, path.basename(process.argv[1]) + " " + process.argv.slice(2).join(" ") + "\\n");
+  const argv = process.argv.slice(2);
+  await fs.appendFile(process.env.FAKE_CALLS, path.basename(process.argv[1]) + " " + argv.join(" ") + "\\n");
+  if (argv[0] === "--version") {
+    const version = process.env.FAKE_REEXEC_VERSION ?? "";
+    if (version !== "") process.stdout.write(version + "\\n");
+    return;
+  }
+  if (process.env.FAKE_REFRESH_CODE) process.exitCode = Number(process.env.FAKE_REFRESH_CODE);
 })();
 `;
 
@@ -226,8 +234,8 @@ function npmListing(version) {
 
 /**
  * A stubbed `run` that records every argv array it is given and answers by the
- * command word.
- * @param {{ list?: { code?: number, stdout?: string, stderr?: string }, view?: { code?: number, stdout?: string, stderr?: string }, install?: { code?: number, stdout?: string, stderr?: string } }} answers
+ * command word. `version` answers the probe of the newly installed binary.
+ * @param {{ list?: { code?: number, stdout?: string, stderr?: string }, view?: { code?: number, stdout?: string, stderr?: string }, install?: { code?: number, stdout?: string, stderr?: string }, version?: { code?: number, stdout?: string, stderr?: string } }} answers
  * @returns {{ run: (command: string, args: string[]) => Promise<{ code: number, stdout: string, stderr: string }>, calls: string[][] }}
  */
 function stubRun(answers) {
@@ -238,7 +246,8 @@ function stubRun(answers) {
     run: async (command, args) => {
       calls.push([command, ...args]);
       const word = args[0];
-      const answer = word === "ls" ? answers.list : word === "view" ? answers.view : answers.install;
+      const answer =
+        word === "ls" ? answers.list : word === "view" ? answers.view : word === "--version" ? answers.version : answers.install;
       return { code: answer?.code ?? 0, stdout: answer?.stdout ?? "", stderr: answer?.stderr ?? "" };
     },
   };
@@ -398,7 +407,7 @@ describe("runSelfUpdate", () => {
       run,
       spawn: async (command, args) => {
         spawned.push([command, ...args]);
-        return 0;
+        return { code: 0 };
       },
       write: output.write,
       writeError: output.writeError,
@@ -430,7 +439,7 @@ describe("runSelfUpdate", () => {
       run,
       spawn: async (command, args) => {
         spawned.push([command, ...args]);
-        return 7;
+        return { code: 7 };
       },
       write: output.write,
       writeError: output.writeError,
@@ -442,6 +451,100 @@ describe("runSelfUpdate", () => {
     assert.match(output.out.join("\n"), new RegExp(`^ {2}✓ ${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@latest$`, "m"));
   });
 
+  it("installs nothing and spawns nothing when the install is already at the published version", async () => {
+    // Skip condition 3: the manager reports the same version on both sides.
+    const { run, calls } = stubRun({ list: { stdout: pnpmListing("1.4.0") }, view: { stdout: "1.4.0" } });
+    const output = sink();
+    /** @type {string[][]} */
+    const spawned = [];
+    const code = await runSelfUpdate({
+      entryPoint,
+      programName: "ctx",
+      run,
+      spawn: async (command, args) => {
+        spawned.push([command, ...args]);
+        return { code: 0 };
+      },
+      write: output.write,
+      writeError: output.writeError,
+    });
+    assert.equal(code, 0);
+    assert.deepEqual(calls, [
+      [`${pnpmPrefix}/bin/pnpm`, "ls", "-g", "--depth", "0", "--json"],
+      [`${pnpmPrefix}/bin/pnpm`, "view", PACKAGE_NAME, "version"],
+    ]);
+    assert.deepEqual(spawned, []);
+    const report = output.out.join("\n");
+    assert.match(report, /^ {2}status {5}current$/m);
+    assert.match(report, /is already at 1\.4\.0; nothing was installed/);
+    assert.match(report, /refresh the harness installs with "ctx update -a"/);
+    assert.deepEqual(output.err, []);
+  });
+
+  it("reports the version the new binary prints before it hands the terminal over", async () => {
+    const { run, calls } = stubRun({
+      list: { stdout: pnpmListing("1.4.0") },
+      view: { stdout: "2.0.0" },
+      install: {},
+      version: { stdout: "2.0.0\n" },
+    });
+    const output = sink();
+    const code = await runSelfUpdate({
+      entryPoint,
+      programName: "agent-cortex",
+      run,
+      spawn: async () => ({ code: 0 }),
+      write: output.write,
+      writeError: output.writeError,
+    });
+    assert.equal(code, 0);
+    // The boundary is read from the installed binary, not from this process.
+    assert.deepEqual(calls[3], [`${pnpmPrefix}/bin/agent-cortex`, "--version"]);
+    const report = output.out.join("\n");
+    assert.match(report, /^ {2}cli {8}1\.4\.0 → 2\.0\.0$/m);
+    assert.ok(report.indexOf("1.4.0 → 2.0.0") < report.indexOf("refreshing installed harnesses"));
+    assert.deepEqual(output.err, []);
+  });
+
+  it("still refreshes when the new binary cannot report its version", async () => {
+    const { run } = stubRun({ list: { stdout: pnpmListing("1.4.0") }, view: { stdout: "2.0.0" }, install: {}, version: { code: 1 } });
+    const output = sink();
+    /** @type {string[][]} */
+    const spawned = [];
+    const code = await runSelfUpdate({
+      entryPoint,
+      programName: "ctx",
+      run,
+      spawn: async (command, args) => {
+        spawned.push([command, ...args]);
+        return { code: 0 };
+      },
+      write: output.write,
+      writeError: output.writeError,
+    });
+    assert.equal(code, 0);
+    assert.deepEqual(spawned, [[`${pnpmPrefix}/bin/agent-cortex`, "update", "-a"]]);
+    assert.match(output.err.join("\n"), /Cannot read the version the newly installed binary reports/);
+  });
+
+  it("names a refresh that could not start, and returns its code", async () => {
+    const { run } = stubRun({ list: { stdout: pnpmListing("1.4.0") }, view: { stdout: "2.0.0" }, install: {}, version: { stdout: "2.0.0" } });
+    const output = sink();
+    const code = await runSelfUpdate({
+      entryPoint,
+      programName: "ctx",
+      run,
+      spawn: async () => ({ code: 1, error: "spawn ENOENT" }),
+      write: output.write,
+      writeError: output.writeError,
+    });
+    assert.equal(code, 1);
+    const message = output.err.join("\n");
+    assert.match(message, new RegExp(`Cannot run ${pnpmPrefix}/bin/agent-cortex update -a: spawn ENOENT`));
+    assert.match(message, /The CLI was updated; the harness installs were not refreshed/);
+    assert.match(message, /Run it yourself:/);
+  });
+
   it("updates through npm with npm's own install invocation", async () => {
     const { run, calls } = stubRun({ list: { stdout: npmListing("1.4.0") }, view: { stdout: "9.9.9" }, install: {} });
     const output = sink();
@@ -449,7 +552,7 @@ describe("runSelfUpdate", () => {
       entryPoint: UNIT_NPM.entryPoint,
       programName: "ctx",
       run,
-      spawn: async () => 0,
+      spawn: async () => ({ code: 0 }),
       write: output.write,
       writeError: output.writeError,
     });
@@ -464,7 +567,7 @@ describe("runSelfUpdate", () => {
       entryPoint: join(REPO_ROOT, "bin", "agent-cortex.mjs"),
       programName: "ctx",
       run,
-      spawn: async () => 0,
+      spawn: async () => ({ code: 0 }),
       write: output.write,
       writeError: output.writeError,
     });
@@ -483,7 +586,7 @@ describe("runSelfUpdate", () => {
       entryPoint,
       programName: "ctx",
       run,
-      spawn: async () => 0,
+      spawn: async () => ({ code: 0 }),
       write: output.write,
       writeError: output.writeError,
     });
@@ -501,7 +604,7 @@ describe("runSelfUpdate", () => {
       entryPoint,
       programName: "ctx",
       run,
-      spawn: async () => 0,
+      spawn: async () => ({ code: 0 }),
       write: output.write,
       writeError: output.writeError,
     });
@@ -529,7 +632,7 @@ describe("runSelfUpdate", () => {
       run,
       spawn: async (command, args) => {
         spawned.push([command, ...args]);
-        return 0;
+        return { code: 0 };
       },
       write: output.write,
       writeError: output.writeError,
@@ -549,7 +652,7 @@ describe("runSelfUpdate", () => {
       entryPoint: "/opt/pnpm-home/store/v11/links/@jaybeeuu/agent-cortex/9.9.9/abc/node_modules/@jaybeeuu/agent-cortex/bin/agent-cortex.mjs",
       programName: "ctx",
       run,
-      spawn: async () => 0,
+      spawn: async () => ({ code: 0 }),
       write: output.write,
       writeError: output.writeError,
     });
@@ -589,6 +692,7 @@ describe("self-update through the CLI", () => {
       FAKE_CALLS: install.calls,
       FAKE_LIST: npmListing("1.4.0"),
       FAKE_VIEW: "9.9.9",
+      FAKE_REEXEC_VERSION: "9.9.9",
       PATH: `${decoys.pathDir}:${process.env.PATH ?? ""}`,
     });
     assert.equal(result.exitCode, 0, result.stderr);
@@ -596,8 +700,46 @@ describe("self-update through the CLI", () => {
       "npm ls -g --depth 0 --json",
       "npm view @jaybeeuu/agent-cortex version",
       "npm install -g @jaybeeuu/agent-cortex@latest",
+      "agent-cortex --version",
       "agent-cortex update -a",
     ]);
+    // The version boundary, then the refresh: the chain a user reads.
+    assert.match(result.stdout, /^ {2}cli {8}1\.4\.0 → 9\.9\.9$/m);
+    assert.ok(result.stdout.indexOf("1.4.0 → 9.9.9") < result.stdout.indexOf("agent-cortex update -a"));
+    await assertPathUnused(decoys.used);
+  });
+
+  it("installs nothing and refreshes nothing when the CLI is already current", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const install = await stageInstall({ manager: "pnpm", version: "1.4.0", workspace });
+    const decoys = await stageDecoys(workspace);
+    const result = await runCli(install.entryPoint, ["self-update"], {
+      FAKE_CALLS: install.calls,
+      FAKE_LIST: pnpmListing("1.4.0"),
+      FAKE_VIEW: "1.4.0",
+      PATH: `${decoys.pathDir}:${process.env.PATH ?? ""}`,
+    });
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.deepEqual(await readCalls(install.calls), ["pnpm ls -g --depth 0 --json", "pnpm view @jaybeeuu/agent-cortex version"]);
+    assert.match(result.stdout, /is already at 1\.4\.0/);
+    await assertPathUnused(decoys.used);
+  });
+
+  it("exits with the refresh's own exit code", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const install = await stageInstall({ manager: "pnpm", version: "1.4.0", workspace });
+    const decoys = await stageDecoys(workspace);
+    const result = await runCli(install.entryPoint, ["self-update"], {
+      FAKE_CALLS: install.calls,
+      FAKE_LIST: pnpmListing("1.4.0"),
+      FAKE_VIEW: "9.9.9",
+      FAKE_REEXEC_VERSION: "9.9.9",
+      FAKE_REFRESH_CODE: "3",
+      PATH: `${decoys.pathDir}:${process.env.PATH ?? ""}`,
+    });
+    // A non-zero refresh reaches the caller: the shell's exit status is the truth.
+    assert.equal(result.exitCode, 3, result.stderr);
+    assert.deepEqual((await readCalls(install.calls)).at(-1), "agent-cortex update -a");
     await assertPathUnused(decoys.used);
   });
 

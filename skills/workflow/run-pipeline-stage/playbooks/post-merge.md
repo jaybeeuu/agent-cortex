@@ -19,6 +19,24 @@
 5. The check reads `gh run list` for the base branch: GitHub-only in v1. A repository `gh` cannot
    resolve to GitHub, or a commit with no run, is `inconclusive` — reported, never escalated.
 
+## Watch transport
+
+The check waits `--wait` seconds (default 300) for the run to settle. A run still in flight at that
+window is exit `2` with a still-running reason: a report, not a verdict, and never something to page
+a human for.
+
+The wait past that window belongs to the harness, so never write a poll loop of your own — no
+`sleep` and re-run. Poll with {{TOOL:post_merge_watch}} and end the turn. The session resumes when a
+verdict may exist; run the check again then, and apply step 3 unchanged.
+
+Running the check again on a resume is the watch continuing, not the retry step 4 forbids: you read
+the same run's verdict, never ask for a different one. A failure still reaches a human through the
+escalation bead the script files, and this stage still repairs nothing.
+
+No harness is assumed to have a watcher. A session with no such mechanism runs the check once with
+a longer window instead — `node <ralph-scripts>/post-merge-check.mjs --wait 1800` — and reports what
+it printed. The verdicts, the escalation rule and the close rule do not change.
+
 ## Stage Outcome
 
 - `OUTCOME: SUCCESS` only on exit `0`.

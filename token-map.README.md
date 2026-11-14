@@ -57,6 +57,16 @@ rather than inventing a dotted form:
   a **name, never a protocol**: the message kinds and the acknowledgement rule layered above
   the transport are harness-invariant text, so only the transport forks and the protocol stays
   in one authored copy.
+  One row names who waits for a CI run that outlives a check's own wait window:
+  `post_merge_watch`. Its two values differ in kind — this package's own `post-merge-watch`
+  extension on pi, Claude Code's built-in `ScheduleWakeup` tool on claude — so the prose around
+  it describes only what both do (the session resumes, the check runs again) and never a call
+  shape.
+  Both values are a **self-paced re-prompt, not an event subscription**: the session asks to be
+  woken and looks again on waking. Claude Code also supplies an event-watching `Monitor` tool,
+  but that tool is gated behind a feature flag that defaults off, so a portable skill may not
+  depend on it. Naming the re-prompt is what holds on every session; the playbook's prose
+  fallback covers the session where even that is absent.
 - **`paths`** — `plugin_root`, `agents_dir`, `skills_dir`, and `skill_anatomy`. These are the
   install-time variables that differ per harness. `plugin_root` is the anchor; the others
   resolve relative to it (`{base, relative}` specs) so a harness only overrides the single
@@ -113,6 +123,11 @@ Claude Code has no equivalent, so they get no row and a shared sentence never na
 substituting one would drop the token and leave the sentence that named it short of a name.
 Their documentation stays inside a section labelled for one harness, where nothing is
 substituted — see the `pi-peer` runbook in `skills/workflow/ralph/REFERENCE.md`.
+
+`post_merge_watch` is deliberately **not** null on either side: a null would drop the token in the
+pi render or the claude render and leave the sentence that named the mechanism short of one. The
+fallback for a session that has no watcher is therefore written as prose in the same section, so
+it survives both renders unchanged — see `skills/workflow/run-pipeline-stage/playbooks/post-merge.md`.
 
 The pi install-time installer (`bin/installers/pi.mjs`) follows the strict contract above.
 One consumer deviates deliberately: the pi `agent-modes` extension reads the map at

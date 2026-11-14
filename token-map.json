@@ -27,7 +27,8 @@
     "read_agent": { "claude": null, "pi": "read_agent" },
     "wait_for_agents": { "claude": null, "pi": "wait_for_agents" },
     "peer_send": { "claude": "SendMessage", "pi": "peer_send" },
-    "peer_list": { "claude": "ListAgents", "pi": "peer_list" }
+    "peer_list": { "claude": "ListAgents", "pi": "peer_list" },
+    "post_merge_watch": { "claude": "ScheduleWakeup", "pi": "post-merge-watch" }
   },
   "paths": {
     "plugin_root": {
@@ -79,7 +80,8 @@
       "task": "Claude provides a subagent tool natively. On pi it is supplied by this repo's own extensions/subagent extension (which also registers read_agent and wait_for_agents), not by pi itself — a pi session started before that extension was installed has no dispatch tool at all. Skills must therefore stop and report a missing subagent tool rather than improvising a backgrounded CLI run, which has no completion signal.",
       "wait_for_agents": "PI-only blocking wait over background subagent runs (the task tool): returns the results of completed agents and STILL RUNNING for the rest. Claude's Task delivers results inline with no wait step — null on claude.",
       "peer_send": "Session-to-session message send. pi takes it from the published pi-peer package (an ordinary package the consuming repository installs itself, never a dependency of this one). Claude Code has it built in and its docs name it there. Both address a peer by the name or address their own list reports, and neither send is proof of receipt. Only sends and discovery are tokenised: pi-peer's peer_get and peer_await have no Claude Code equivalent, and a null claude mapping drops the token and leaves the sentence that named it broken, so harness-varying prose must never name them — such passages stay inside a harness-labelled runbook.",
-      "peer_list": "Peer discovery: the peers that can receive a message, and the address each is reached by. pi's is the pi-peer package's tool. Claude Code's built-in equivalent is ListAgents (an earlier binary named it ListPeers), which also reports reachability and so doubles as the peer-state read."
+      "peer_list": "Peer discovery: the peers that can receive a message, and the address each is reached by. pi's is the pi-peer package's tool. Claude Code's built-in equivalent is ListAgents (an earlier binary named it ListPeers), which also reports reachability and so doubles as the peer-state read.",
+      "post_merge_watch": "Who waits for a CI run that outlives the check's own wait window. The row maps a name, not a protocol: the verdicts and the escalation rule layered above it are harness-invariant text, so only the mechanism is tokenised. pi's name is this package's own post-merge-watch extension, which re-runs the check on a timer and wakes an idle session with the verdict. Claude Code's is its built-in ScheduleWakeup tool, which schedules the session's own resumption so it can re-run the check. The values differ in kind — an extension on pi, a tool on claude — because that is what each harness supplies; the surrounding prose therefore describes only what both do (the session resumes, the check runs again, the verdict table is unchanged) and never a call shape."
     },
     "paths": {
       "pi": "plugin_root is the staged package `agent-cortex install pi` materialises at ~/.agent-cortex/pi; pi loads that directory by path and the shipped extensions resolve their own resources relative to it (agent-modes computes plugin_root from its actual install location). A checkout or symlinked install differs — installers compute plugin_root from the actual resolution and can override it (--plugin-root).",

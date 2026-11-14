@@ -76,6 +76,21 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  extensions/post-merge-watch:
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: ^1.5.2
+        version: 1.5.2(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(supports-color@7.2.0)(ws@8.21.0)(zod@4.4.3)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      tsx:
+        specifier: ^4.0.0
+        version: 4.23.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   extensions/session-clear:
     devDependencies:
       '@earendil-works/pi-coding-agent':

@@ -457,7 +457,8 @@ extension→hook audit.
 #### Not ported / follow-ups
 
 - Only `session-start` and `notify` had Claude equivalents (both ported to hooks); the other
-  pi `extensions/` (auto-name, agent-guardrails, skill-stats, subagent, agent-modes) have none — `output-style`
+  pi `extensions/` (auto-name, agent-guardrails, skill-stats, subagent, agent-modes,
+  post-merge-watch) have none — `output-style`
   reaches Claude through the managed `CLAUDE.md` section instead; the audit and
   rejection rationale live in `docs/claude-hooks.md`.
 - Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume

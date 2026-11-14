@@ -23,6 +23,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `subagent/` | — | **Reject** — native |
 | `agent-modes/` | — | **Reject** — no equivalent |
 | `session-clear/` | — | **Reject** — built-in `/clear` |
+| `post-merge-watch/` | — | **Reject** — no hook surface; Claude watches with its own tools |
 
 ## `session-start/` → SessionStart (port)
 
@@ -150,3 +151,14 @@ pi has no "same session identity, empty context" command, so the extension adds
 `/clear` on top of `ctx.newSession()`. Claude Code ships `/clear` itself, and it
 keeps the model and the permission mode, so there is nothing to port: no hook, no
 command, no settings entry. Rejected as duplicate.
+
+## `post-merge-watch/` → Reject (no hook surface)
+
+pi has no way to observe a CI run that concludes outside the session, so the
+extension polls the post-merge check on a timer and delivers the verdict as a
+follow-up message that starts a turn. Claude Code's hook model has no equivalent:
+a hook fires on a session event, not on a timer, and no hook can start a turn on
+an idle session. Claude watches the same check through its own tools instead, so
+there is nothing to port and no setting to add. The check script
+(`skills/workflow/ralph/scripts/post-merge-check.mjs`) is shared by both
+harnesses; only the wake mechanism is pi's.

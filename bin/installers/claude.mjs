@@ -75,6 +75,7 @@ import { homedir } from "node:os";
 import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
 import { installDocs } from "../../scripts/lib/docs.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
+import { normaliseRepository } from "../../scripts/lib/manifest.mjs";
 import { flattenSkillLinks } from "../../scripts/lib/skill-links.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -266,26 +267,6 @@ async function copyTree(src, dest, transform, dryRun) {
     }
   }
   return { md, files };
-}
-
-/**
- * Normalise package.json's `repository` field into the string Claude Code's
- * plugin manifest requires. npm permits a string or an object
- * (`{ type, url, directory }`); Claude rejects anything but a string, and one
- * invalid manifest makes the whole plugin fail to load, so the object form must
- * never be copied through. Prefer `url`, fall back to `directory`, and omit the
- * field when neither is usable rather than emitting junk.
- * @param {unknown} repository  parsed package.json `repository` value
- * @returns {string | undefined}
- */
-function normaliseRepository(repository) {
-  if (typeof repository === "string") return repository.trim() === "" ? undefined : repository;
-  if (repository === null || typeof repository !== "object") return undefined;
-  const { url, directory } = /** @type {{ url?: unknown, directory?: unknown }} */ (repository);
-  for (const candidate of [url, directory]) {
-    if (typeof candidate === "string" && candidate.trim() !== "") return candidate;
-  }
-  return undefined;
 }
 
 /**

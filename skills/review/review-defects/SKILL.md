@@ -87,5 +87,6 @@ class that keeps appearing is a gap in the stage before this one.
 ## See Also
 
 - [review-security](../review-security/SKILL.md) — the security verdict that precedes any rejection.
+- [review-report](../review-report/SKILL.md) — counts these classes across a project and files the recurring ones upstream.
 - [run-pipeline-stage](../../workflow/run-pipeline-stage/SKILL.md) — the stage that applies these labels.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — labels, notes and statuses.

@@ -10,9 +10,14 @@
 ## Files changed
 <FILES_CHANGED from the coder/fixer's REPORT block>
 
-## Progress log
-Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, security scan result, review outcome, and stage complete (see Progress Logging in run-pipeline-stage skill).
+## Trail entry
+Record one entry at stage start and one at stage close through the shared writer (see Trail Entries in the `run-pipeline-stage` skill):
+```bash
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <bead-id> --stage review --outcome <done|blocked|partial> \
+  --evidence "<evidence>" --remaining "<what is left, or none>"
+```
+Evidence for a review stage: the security scan result and the review outcome.
 
 ## Instructions
 **First**, invoke the `review-security` skill and run the scan against the changes. If the

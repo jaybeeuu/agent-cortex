@@ -15,8 +15,8 @@
 
 ## Remediation and close
 
-- You own this leaf bead: append notes, write the progress log, and `bd close <id> --reason=...`
-  on both outcomes (see `prompts/stage-runner.md`). This is the stage that most often fails —
+- You own this leaf bead: record the trail entry through `scripts/trail-entry.mjs`, then
+  `bd close <id> --reason=...` on both outcomes (see `prompts/stage-runner.md`, _Trail entries_). This is the stage that most often fails —
   closing it is not a failure of the pipeline.
 - `OUTCOME: SUCCESS` — create nothing; the orchestrator routes to `review`.
 - `OUTCOME: BLOCKED` — count the parent's existing `stage:fix` children against

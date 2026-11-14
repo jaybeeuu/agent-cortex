@@ -1,6 +1,6 @@
 ## Wake mechanism (Claude Code — event-driven)
 
-**Mechanism: event-driven — the harness re-invokes you automatically when a background worker completes and delivers that worker's result inline, so there is no poll timer, no sleep, and no log flush.**
+**Mechanism: event-driven — the harness re-invokes you automatically when a background worker completes and delivers that worker's result inline, so there is no poll timer and no sleep.**
 
 ### Spawn
 
@@ -29,11 +29,11 @@ A completion is **delivered, not observed**: Claude Code re-invokes you automati
 Initialize `.agent-cortex/ralph/state.json` as `{ "inflight": [] }` — there is no timer handle to track.
 
 - **inflight[].agentId** — the task ID `Task` returned for that worker; it is the key the delivered completion is correlated to its bead, and the equivalent of `TaskGet`'s identifier when you need to inspect one worker.
-- **inflight[].logLine** — not used on Claude; leave it at `1`. Progress lines (`.agent-cortex/ralph/ralph-<parentId>.log`) are written by the workers themselves and surfaced by the harness with the completion.
+- **No trail bookmark** — nothing to track. Progress is read from the bead itself (`bd show <chore-id>`, `bd provenance log <chore-id>`): the worker writes it, so the harness delivers the completion with the result already in hand.
 
-### Log flush
+### Trail reading
 
-None. There is **no log tailing on Claude**: the completion is delivered with the result already in hand, so there is nothing to flush and nothing to poll. Produce the shared chat summaries from the delivered result instead.
+None beyond the completion itself. There is **nothing to tail and nothing to flush** on Claude: read the completed worker's bead once for its entries and refs, and produce the shared chat summary from the delivered result.
 
 ### Stop
 

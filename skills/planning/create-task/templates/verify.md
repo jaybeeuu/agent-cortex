@@ -10,9 +10,14 @@
 ## Files changed
 <FILES_CHANGED from the coder/fixer's REPORT block>
 
-## Progress log
-Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start, each command run, test/lint result, and stage complete (see Progress Logging in run-pipeline-stage skill).
+## Trail entry
+Record one entry at stage start and one at stage close through the shared writer (see Trail Entries in the `run-pipeline-stage` skill):
+```bash
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <bead-id> --stage verify --outcome <done|blocked|partial> \
+  --evidence "<evidence>" --remaining "<what is left, or none>"
+```
+Evidence for a verify stage: each command run, with its test and lint result.
 
 ## Instructions
 Discover and run the project's test and lint commands, then report the outcome.

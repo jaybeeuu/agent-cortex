@@ -10,9 +10,14 @@
 ## Files changed
 <FILES_CHANGED from the final coder/fixer REPORT>
 
-## Progress log
-Write progress to: `.agent-cortex/ralph/ralph-<bead-id>.log`
-Log stage start and stage complete (see Progress Logging in run-pipeline-stage skill).
+## Trail entry
+Record one entry at stage start and one at stage close through the shared writer (see Trail Entries in the `run-pipeline-stage` skill):
+```bash
+node <run-pipeline-stage-scripts>/trail-entry.mjs \
+  --bead <bead-id> --stage document --outcome <done|blocked|partial> \
+  --evidence "<evidence>" --remaining "<what is left, or none>"
+```
+Evidence for a document stage: the files updated and the stage commit.
 
 ## Instructions
 Invoke the `style-documentation` skill before making any documentation changes.

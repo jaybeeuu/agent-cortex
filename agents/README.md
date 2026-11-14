@@ -44,13 +44,13 @@ agents/ralph/
 `{{SECTION:wake}}` is the one seam where harness differences belong: the shared `agent.md`
 names no harness and no harness-specific tool, and every one of those facts lives in a
 `wake.md` that states its mechanism in one sentence, then covers **spawn** (tool and argument
-shape), **completion arrival**, **id tracking**, **log flush**, and **stop** behaviour.
+shape), **completion arrival**, **id tracking**, **trail reading**, and **stop** behaviour.
 `token-map.json`'s `wake.mechanism` table records the same fact machine-readably.
 
 | Harness | `wake.mechanism` | Completion arrives via | Id tracking | Stop means |
 |---------|------------------|------------------------|-------------|------------|
 | `pi` | `blocking-wait` | `wait_for_agents` returns as soon as a worker finishes, result inline | `agentId` only | stop calling `wait_for_agents` — nothing to kill |
-| `claude` | `event-driven` | harness re-invokes ralph with the result inline | task ID only, no `logLine` | simply stop — nothing to kill |
+| `claude` | `event-driven` | harness re-invokes ralph with the result inline | task ID only | simply stop — nothing to kill |
 
 ### Example: plan agent (no per-harness sections)
 

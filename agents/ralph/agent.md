@@ -14,7 +14,7 @@ Harness-agnostic rules (tool names and completion detection differ per harness �
 - ALWAYS set the subagent's working directory to the feature worktree path when running stage chores.
 - ALWAYS keep the returned agent/task id in memory so you can read the result later.
 
-Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.mjs` from the `create-task` skill's `pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready -l execution:afk` returns". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json` (worker-ID-to-bead mapping plus whatever wake-loop handle the wake section tracks) and per-parent log files.
+Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.mjs` from the `create-task` skill's `pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready -l execution:afk` returns". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json`, holding the worker-ID-to-bead mapping plus whatever wake-loop handle the wake section tracks. Progress lives in the bead trail the workers write, never in a file Ralph tails.
 
 ## Branching model
 
@@ -63,7 +63,7 @@ A ready `execution:afk` bead of type `feature` with **no** children is not dispa
 2. Dispatch a **decomposition worker** in the feature worktree (`.agent-cortex/worktrees/<feature-id>`) whose whole job is to run the `create-task` hierarchy flow (`prd-to-tasks` → `create-task`) for that one **existing** feature — its planning bead and impl children only, never a second feature bead — and report the IDs it created. The worker builds one `execution:hitl` planning bead (`--parent <feature-id>`) plus `execution:afk` implementation task children (`--parent <feature-id>`, `--no-inherit-labels`), each wired with `bd dep add <impl-child> <planning-bead>` so the dependency — not an extra label — is the readiness gate. `create-task`'s feature path (its `SKILL.md` steps 5–6) is the authority for this shape.
 3. Record the worker in `inflight` as a **decomposition** entry — it holds no chore, so `choreId` is `null`:
    ```json
-   { "kind": "decompose", "choreId": null, "parentId": "<feature-id>", "title": "<feature title>", "agentId": "<agent-id>", "logLine": 1 }
+   { "kind": "decompose", "choreId": null, "parentId": "<feature-id>", "title": "<feature title>", "agentId": "<agent-id>" }
    ```
 4. On completion, confirm the children exist (`bd children <feature-id> --json`) rather than trusting the report, and surface the created IDs in chat. An empty list means the decomposition failed: record the feature for the shutdown summary and continue — do **not** re-dispatch.
 5. **Never re-dispatch a decomposition.** The bead creation it runs is not idempotent, so a second run duplicates the planning bead and every implementation child beside the first.
@@ -90,7 +90,7 @@ A ready `execution:afk` task bead with no `stage:*` chore children has nothing t
    The command is idempotent: it adopts an existing child by its `stage:<id>` or `lifecycle:feature-pr` label, creates only what is missing, skips deps that are already wired, and prints the resolved mapping either way. Re-running it is the recovery path for a failed expansion.
 3. Record the worker in `inflight` as an **expansion** entry — it has no chore to key on, so `choreId` is `null`:
    ```json
-   { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
+   { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>" }
    ```
    That entry is what keeps it in the wait set and makes its completion attributable to the parent.
 4. The worker reports the returned mapping — `code`, `verify`, `review`, `document`, `post-merge`, `housekeeping`, `featurePrReview` — and closes nothing. It emits **no** `---REPORT---` block and owns no bead, so there is nothing to parse and no close to confirm.
@@ -110,11 +110,11 @@ A ready `execution:afk` task bead with no `stage:*` chore children has nothing t
 
 Chores already exist and their deps already encode the order, so dispatch is claim-and-spawn — claim the ready chore (`bd update <chore-id> --claim`) and skip to the prompt.
 
-Load the universal stage runner prompt from the `run-pipeline-stage` skill's `prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, log path `.agent-cortex/ralph/ralph-<parent-id>.log`), and spawn a subagent in **background** mode using the spawning mechanism described in the wake section, running from the feature worktree. Stage-specific policy comes from that skill's `playbooks/<stage>.md`. The prompt's lifecycle, remediation, and REPORT sections are the worker's contract — pass them through verbatim, never restate or trim them.
+Load the universal stage runner prompt from the `run-pipeline-stage` skill's `prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, and the trail writer's path `<run-pipeline-stage-scripts>/trail-entry.mjs`), and spawn a subagent in **background** mode using the spawning mechanism described in the wake section, running from the feature worktree. Stage-specific policy comes from that skill's `playbooks/<stage>.md`. The prompt's lifecycle, remediation, and REPORT sections are the worker's contract — pass them through verbatim, never restate or trim them.
 
 Add the entry to `inflight` in `state.json`:
 ```json
-{ "kind": "stage", "choreId": "<chore-id>", "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
+{ "kind": "stage", "choreId": "<chore-id>", "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>" }
 ```
 
 ---
@@ -132,16 +132,16 @@ bd show <id>                   # full detail, including the worker's notes
 Report status in chat from those commands. The only files Ralph owns are:
 
 - **`.agent-cortex/ralph/state.json`** — runtime bookkeeping only (worker-ID→bead mapping plus the wake loop's own handle).
-- **`.agent-cortex/ralph/ralph-*.log`** — per-parent log files written by subagents (e.g. `.agent-cortex/ralph/ralph-abc-123.log`). Keyed by **parent** bead ID so all chore stages for a feature share one log.
+- **The bead trail** — not a file Ralph writes: each worker appends its own entries with `trail-entry.mjs`, and Ralph reads them from `bd show` and `bd provenance log`.
 
 All orchestration state is derived from beads:
 
 ```json
 {
   "inflight": [
-    { "kind": "stage", "choreId": "xyz-456", "parentId": "abc-123", "title": "Add auth", "agentId": "agent-xyz-456", "logLine": 4 },
-    { "kind": "stage", "choreId": "def-789", "parentId": "ghi-101", "title": "Fix cache", "agentId": "agent-def-789", "logLine": 7 },
-    { "kind": "expand", "choreId": null, "parentId": "jkl-202", "title": "Expand billing", "agentId": "agent-jkl-202", "logLine": 1 }
+    { "kind": "stage", "choreId": "xyz-456", "parentId": "abc-123", "title": "Add auth", "agentId": "agent-xyz-456" },
+    { "kind": "stage", "choreId": "def-789", "parentId": "ghi-101", "title": "Fix cache", "agentId": "agent-def-789" },
+    { "kind": "expand", "choreId": null, "parentId": "jkl-202", "title": "Expand billing", "agentId": "agent-jkl-202" }
   ]
 }
 ```
@@ -149,8 +149,7 @@ All orchestration state is derived from beads:
 - **inflight[].kind**: `"stage"` for a dispatched stage chore (the only shape that carries a `choreId`), `"decompose"` for a feature-decomposition worker and `"expand"` for an expansion worker (both no chore — `choreId` is `null`). Every dispatched agent has an entry; anything missing from `inflight` is invisible to the wait set and to the HITL-pause check.
 - **inflight[].agentId**: the worker id the spawn call returned — the key every completion is correlated to its bead against, and the identifier the wake section's read/wait path takes (see that section).
 - **inflight[].choreId**: the chore bead currently being worked by the subagent.
-- **inflight[].parentId**: the parent feature task bead. Log file is `.agent-cortex/ralph/ralph-<parentId>.log`.
-- **inflight[].logLine**: the next line number to read from the parent's log file (1-based; start at 1). Updated after every poll.
+- **inflight[].parentId**: the parent feature task bead — the id every trail entry is read under (`bd show <parentId>`, `bd children <parentId>`).
 - **Loop counts are not stored here** — derive them from beads:
   - Fix round count = number of `stage:fix` chore children of `<parentId>` (closed ones count)
 
@@ -168,7 +167,7 @@ After initialization, Ralph waits for background agents to complete. Completions
 
 ### If a background agent completed
 
-1. **Flush** that bead's log using the procedure in the wake section to pick up any final lines for the chat summary (a mechanism that delivers the log with the completion needs no flush).
+1. **Read the worker's bead trail** — `bd show <chore-id>` for its entries and `bd provenance log <chore-id>` for the refs — and use it for the chat summary. There is no log file to flush.
 2. **Read** the completed agent's full output the way the wake section describes.
 3. **Re-read** `.agent-cortex/ralph/state.json` to identify the entry for that agent ID, then branch on its `kind`:
    - **`kind: "expand"` — expansion completion branch.** The worker claimed no chore, emits no `---REPORT---`, and owns no bead to confirm, so steps 4-6 **do not apply**: remove the entry from `inflight`, confirm the parent now has `stage:*` chore children (`bd children <parent-id> --json | grep -c '"stage:'`) and surface the reported mapping in chat, then go straight to step 7 — the new `stage:code` chore is ready to dispatch. If the count is `0` — or below the stage total, which is a partial chain whose later stages never arrive — the expansion failed: surface the worker's output, record the parent for the shutdown summary, remove the entry, and re-dispatch the expansion — re-running `create-chores.mjs` is idempotent and is the recovery path, so it repairs the tree instead of duplicating it. Never create or close a bead for an expansion.
@@ -177,7 +176,7 @@ After initialization, Ralph waits for background agents to complete. Completions
 4. **Parse** the agent's `---REPORT---` block (see report format in the `run-pipeline-stage` skill).
 5. **Confirm** the worker closed its own leaf execution bead: `bd show <chore-id>` should read `closed`. If it is still open the worker died mid-stage — read its notes and re-dispatch. Never close it yourself.
 6. **Advance** the parent using the routing guidance in the `run-pipeline-stage` skill:
-   - **Success paths** (code → verify, verify SUCCESS → review, review SUCCESS → document): create nothing — closing the chore already unblocked the next stage of the pre-created chain. Point the parent's inflight entry at that newly ready `stage:*` chore and dispatch it (see _Dispatching a stage chore_ above), resetting logLine to 1.
+   - **Success paths** (code → verify, verify SUCCESS → review, review SUCCESS → document): create nothing — closing the chore already unblocked the next stage of the pre-created chain. Point the parent's inflight entry at that newly ready `stage:*` chore and dispatch it (see _Dispatching a stage chore_ above).
    - **Documenting → done**: close the parent feature bead (`bd close <parent-id>`), remove it from inflight, open/update the feature PR immediately (agent-branch → feature branch), report the PR URL in chat, then update the HITL PR gate bead with the PR URL.
    - **Failure paths** (`OUTCOME: BLOCKED` from any stage): create nothing. The worker already closed its failed chore and built its own remediation — a `stage:fix` chore plus a fresh instance of the failed stage blocked on it. Run the cap backstop (see below); if the parent is at `maxFixRounds`, block the parent instead and record it for shutdown. Remove the inflight entry for this chore; the worker's beads appear in `bd ready` and are picked up in step 7. `post-merge` and `housekeeping` are the exceptions: neither builds a chain, and each leaves its chore **open**, so remove the inflight entry and hand the chore to a human — never re-dispatch it, and for `post-merge` report the escalation bead the check filed.
 7. **Check for newly ready beads**: run `bd ready -l execution:afk`. For each bead not yet tracked:

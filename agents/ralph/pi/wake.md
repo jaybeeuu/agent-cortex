@@ -46,30 +46,25 @@ Initialize `.agent-cortex/ralph/state.json` as `{ "timerShellId": null, "infligh
 - **inflight[].agentId** — the ID `task` returned for that worker; it is the argument `wait_for_agents` takes, the identifier for a `read_agent` fallback, and the key the completion is correlated to its bead.
 - **timerShellId** — stays `null` on PI forever: the blocking wait replaces a poll timer, so nothing is ever recorded there.
 
-### Log flush
+### Reading the trail
 
-Flush new log lines as part of handling each wait result — that is when the loop wakes, and a worker's final lines arrive with the completion. Run this procedure each time `wait_for_agents` returns (or whenever a new agent is dispatched):
+There is no log file and nothing to flush. A worker appends its own checkpoints to its bead with
+`trail-entry.mjs`, so progress is read from the bead itself when a wait returns:
 
-1. **Query in-flight beads**: read `inflight` from `state.json`. Each entry has a `parentId` and `logLine`.
-2. For each in-flight entry, read new lines from its log file:
-   ```bash
-   tail -n +<logLine> .agent-cortex/ralph/ralph-<parentId>.log 2>/dev/null
-   ```
-3. For each entry that has new lines:
-   - **Post a chat summary** of new key events (stage transitions and notable events — not every line verbatim). Format:
-     ```
-     📋 [parent-id] <title>
-        coding → verifying  (or whatever transition)
-        Tests: 12 passed, 0 failed
-     ```
-   - Update `logLine` in `state.json` for that entry.
-4. If no entry had new lines, post nothing — do not spam the chat with empty polls.
+```bash
+bd show <chore-id>              # entries: Outcome, Evidence, What is left
+bd provenance log <chore-id>    # refs: git-sha, branch, pr, work-id
+```
+
+Read each completed worker's bead once, post a chat summary of what is new — the stage transition,
+the test and lint results, the close reason — and post nothing when nothing new arrived. Nothing in
+`state.json` needs a bookmark, because the trail is not a stream to follow.
 
 ### Wait loop lifecycle
 
 - **Dispatch-and-wait** — during initialization, dispatch up to 5 AFK chore subagents with `task` (or an expansion worker for a chore-less AFK bead) and hold their agent IDs (recorded in `state.json`'s `inflight` list; expansion entries carry `kind: "expand"` and `choreId: null`).
 - **Wait** — call `wait_for_agents` with the agent IDs of every in-flight agent, stage worker or expansion worker (`timeout` defaults to 120s). The tool blocks until at least one finishes. For each completed agent:
-  1. Flush its log tail if it has new lines (see _Log flush_ above) to surface progress to chat.
+  1. Read its bead trail (see _Reading the trail_ above) to surface progress to chat.
   2. Apply the shared completion handling described under _Completion arrival_ above.
   3. Drop the completed agent ID from the wait set.
 - **Repeat** — dispatch replacements for completed work (up to 5 in flight), add their new IDs to the wait set, and call `wait_for_agents` again with the remaining + new IDs. A completed expansion leaves a slot to fill with its parent's newly ready `stage:code` chore.
@@ -86,4 +81,4 @@ Nothing to kill: stopping means simply **stop calling `wait_for_agents`**. There
 - **Always** keep a `wait_for_agents` call outstanding while agents are in-flight — stage workers and expansion workers alike. Never let running agent work stall without a wait active.
 - **Never** re-dispatch an agent that is merely STILL RUNNING — wait again on the same ID.
 - **Never** start `sleep` / background timer loops for completion detection on PI — `wait_for_agents` replaces them, and there is nothing to kill on HITL Pause.
-- **Never** post empty poll updates to chat — only surface new log content.
+- **Never** post empty poll updates to chat — only surface what a bead actually reports.

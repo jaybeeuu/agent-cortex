@@ -37,8 +37,8 @@ Every entry carries three mandatory fields:
 - **What is left** — the next concrete action, or `none`.
 
 `--commit` takes any ref — `HEAD`, a short SHA, a branch — and the script resolves it to the full
-40-character SHA before recording, because `bd provenance record --ref-kind git-sha` refuses
-anything else. Refs you pass are also recorded as provenance events, visible with
+40-character lowercase SHA before recording, because `bd provenance record --ref-kind git-sha`
+refuses anything else. Refs you pass are also recorded as provenance events, visible with
 `bd provenance log <id>`.
 
 Run it at each transition instead of writing notes by hand: one entry per transition, decisions and

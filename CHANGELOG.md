@@ -1,5 +1,117 @@
 # Changelog
 
+## 2.9.0
+
+### Minor Changes
+
+- 754e0eb: Add the **guppi** agent — the human-in-the-loop counterpart to ralph. It is a resident,
+  propose-only collaborator that decides what gets planned, loads `prioritise-work`, `plan`,
+  `hitl-collab`, `grill-me` and `flesh-out-idea` on demand, and never executes AFK work, merges or
+  pushes. `using-agent-skills` now routes "what should I work on" and HITL collaboration to guppi,
+  and `plan` cross-references it as the entry point that decides what gets planned.
+- 40598b9: Add the `interrupt-bookmark` extension: two tools around pi's own tree navigation, so an interruption
+  stops dragging its turns into the context the original task then has to carry. `interrupt_checkpoint`
+  returns the current leaf id as a resume point. `interrupt_resume { checkpointId, summary }` rewinds
+  there, keeps the abandoned branch under a branch summary labelled `interrupt`, and reports the summary
+  entry. The summary comes from pi's own navigation summariser — the extension makes no model call and
+  deletes nothing. Navigation is command-only in pi (`waitForIdle()` and `navigateTree()` live on
+  `ExtensionCommandContext`; a tool call is always inside a streaming turn), so the resume tool
+  validates the request, ends the turn, and an `agent_settled` handler dispatches the command that
+  rewinds — the pattern pi documents for a tool that must reach a command-only API. An unknown
+  checkpoint id fails naming the id and writes nothing; navigation is retried exactly once after a
+  fresh wait for idle, and a second failure reports the reason and leaves the conversation unchanged.
+  `token-map.json` gains the `interrupt_rewind` row — `interrupt_resume` on pi, Claude Code's `/rewind`
+  command on claude — with a note recording why the two values differ in kind and why the checkpoint
+  half is never tokenised.
+- 05573b2: Add the `prioritise-work` skill, the `strategy.md` template it copies, and the `strategy.mjs` script
+  that validates and versions it. The strategy is a committed file in the consuming repository's
+  working-docs root (`.agent-cortex/working-docs/strategy.md`, overridable with `--file`), never a bead
+  and never a scratch note — the skill performs no tracker writes at all. `init` writes the template
+  stamped with the creation date and refuses to overwrite; `validate` checks a positive-integer version,
+  a `YYYY-MM-DD` calendar date, and five required sections — themes, value, confidence, out-of-scope and effort
+  calibration — naming each missing, empty or malformed one, and prints the rubric to stdout only when
+  the file passes, so a scorer can never read a stale or malformed rubric; `bump` refuses an invalid
+  file, raises the version by one and records today's date. The five interview questions map one-to-one
+  onto the five sections, and `using-agent-skills` routes ranking questions to the new skill.
+- c77cb17: Treat a challenged priority as a strategy review, never a silent reorder. `prioritise-work` gains
+  `CHALLENGE.md` — the sequence from "this should be higher" to a changed rubric — and a second
+  script, `challenge.mjs record`, which refuses the tempting shortcut: an order that moved while the
+  strategy version stayed put exits 1 and writes nothing. It reads the strategy through the same
+  validator, diffs the ranked ids by position so the movement is deterministic, and prints one
+  bead-trail entry in `run-pipeline-stage`'s trail shape, carrying the words that raised the
+  challenge and the reasoning that answered it — including when the answer is "no change to the
+  rubric", which is a valid outcome that must still leave a trace. `--out <path>` writes that entry
+  to a file, so the documented append is `bd note <bead> --file <path>`: the entry repeats the human's
+  own words, and a shell string would parse them. `strategy.mjs bump` now requires
+  `--reason` and appends `- <date> v<n>: <reason>` to the strategy file's new `## Change log`
+  section, and `validate` fails when the newest entry names a version the header does not, so a
+  version cannot move without a recorded reason.
+- c644523: Add the `review-report` skill: one report from the `defect:<class>` labels a project's reviews
+  applied. `scripts/report.mjs` reads the tracker twice, both read-only and both with `--all` — the
+  defect query `bd list --label-pattern 'defect:*' --all` and the chore tree — and prints the top three
+  classes with counts, two example bead ids and the shipped skill that owns each failing rule, the
+  first-pass review rate derived from `stage:review` chore counts per parent, fix rounds grouped by the
+  stage the fresh chore re-runs, and the change against a report kept at `--baseline`. The class
+  vocabulary is not duplicated: the script parses the closed list out of `review-defects/SKILL.md`, so a
+  class that appears as a label without being in that table is reported as vocabulary drift and never
+  counted. Filing is a separate `--file` step that runs `gh issue create` with an argv array; without
+  the flag the script makes no network call, and it never pushes, opens a pull request or merges. The
+  feedback repository is configuration — `--repo`, then `AGENT_CORTEX_FEEDBACK_REPO`, then the
+  `repository` field of the manifest the running install ships (the staged pi package's
+  `package.json`, whose manifest now carries that field, or the staged Claude plugin's
+  `plugin.json`) — so no repository is hardcoded, a consuming project's own manifest is never used,
+  and a copy with no resolvable manifest fails with a message instead of filing somewhere wrong.
+  The report is printed before the filing target is resolved, so that failure leaves the measurement
+  on stdout and the reason on stderr. Absent data
+  is never dressed as a measurement: no label, a single label, no review chore and no baseline each get
+  a sentence saying so rather than a zero or a trend. `review-defects` gains a link to it.
+- ba52582: Add the `score-bead` skill and its `rice.mjs` script: RICE scoring for one bead, stored in
+  tracker metadata, with priority banding kept as a separate reviewable step.
+
+  `score <id> --reach --impact --confidence --effort --rationale` computes
+  `reach × impact × confidence ÷ effort` to one decimal and writes
+  `{"rice":{"reach","impact","confidence","effort","score","strategyVersion","assessedAt","rationale"}}`
+  with `bd update <id> --metadata`, so `bd show` renders components and total side by side and a
+  reader can redo the arithmetic. The strategy is read through `prioritise-work`'s validator and
+  path resolver — one definition of a valid rubric, one location, `--file` still honoured — and the
+  recorded `strategyVersion` is the file's own version, read after it validated. A missing or
+  invalid strategy refuses the score before the first `bd` call, so a refusal writes nothing at
+  all; a component outside its range (`confidence` outside `0..1`, `effort` at zero) is refused the
+  same way.
+
+  Re-scoring keeps history: the rationale carries the current argument followed by one `[prior]`
+  line per replaced score — old total, components, strategy version and date — so a version bump
+  records the new version without discarding the old arithmetic.
+
+  `band <id>` is read-only. It prints the priority the score implies plus the `bd update` command
+  that would apply it, and the skill applies that command only after a reviewer accepts it. P0 is
+  never produced by a band, and a bead already at P0 is refused before a proposal exists.
+
+  `using-agent-skills` routes scoring and banding questions to the new skill.
+
+- e1f5768: Add long-range retention to the `skill-stats` extension: keep low-fidelity data for a long time and
+  high-fidelity data for a short time. Usage is now also recorded into a per-day, per-skill rollup
+  (loaded / invoked / read counts plus the distinct projects seen that day) in
+  `~/.pi/agent-cortex/skill-usage-daily.json`, pruned to a 365-day window on every write and overridable
+  with `AGENT_CORTEX_SKILL_STATS_RETENTION_DAYS`. `/skill-stats timeline` renders per-day, per-week and
+  per-month counts and distinct skills from the rollups alone — no session-transcript scan. History that
+  predates the rollups is reported as unavailable rather than zero-filled, and a transcript backfill is
+  deliberately left out. The existing counters, the 200-event ring, the `/skill-stats` report output and
+  `/skill-usage-reset`'s confirmation flow are unchanged; the reset now also clears the rollups. Each
+  record is fixed-size — counts, at most 50 project paths per skill-day, each path truncated to 120
+  characters — and `saveRollups` enforces a hard 2,920,000-byte ceiling on every write (365 days x 40
+  skills x 200 bytes per skill-day). A write that would exceed it drops the per-skill-day project lists
+  first, keeping every count and every day, and drops the oldest days only if the counts alone exceed
+  the ceiling; `saveRollups` returns what it gave up. Every shed is also recorded in the file (a
+  `"shed"` key holding the running totals and the day of the most recent shedding write) and
+  `/skill-stats timeline` renders it, so
+  the user is told which project lists and how many days went instead of losing them silently. When a
+  shed drops whole days `since` moves to the oldest day the file still holds, so the header never claims
+  a day that was deleted; days that merely age out of the retention window keep the first-ever `since`.
+  A rollup file written before the `"shed"` key existed still loads and renders unchanged. The suite
+  fills every cap at once, asserts 22,033,268 raw bytes are written as at most 2,920,000, and asserts a
+  second year of data leaves the file unchanged.
+
 ## 2.8.0
 
 ### Minor Changes

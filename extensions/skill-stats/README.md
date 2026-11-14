@@ -26,6 +26,8 @@ breakdowns so you can slice by project. There are two files, with different fide
 
 The counters answer "what is my all-time shape, and what happened in the last few minutes". The
 daily rollups answer "how has my usage changed over months" without scanning session transcripts.
+The rollups are a second file beside the counters, not a replacement: the counters and their
+200-event ring are unchanged by this feature.
 
 ### Retention and size policy
 
@@ -49,11 +51,11 @@ daily rollups answer "how has my usage changed over months" without scanning ses
   When a write would exceed the ceiling, `saveRollups` drops the per-skill-day project lists first —
   the loaded / invoked / read counts and every day survive, and every number the timeline renders is
   unchanged. Only if the counts alone exceed the ceiling does it drop the oldest days, continuing the
-  direction pruning already takes. `saveRollups` returns what the write gave up (`shedProjectLists`,
-  `droppedDays`) and the size it wrote, and records the same figures in the file under `shed`, so
-  `/skill-stats timeline` reports the loss after a reload instead of the user finding out never. The
-  rendered line names the day of the write, how many project lists and how many days went, and the
-  ceiling that forced it.
+  direction pruning already takes. `saveRollups` returns what this write gave up
+  (`shedProjectLists`, `droppedDays`) and the size it wrote, and it keeps running totals in the file
+  under `shed`, so `/skill-stats timeline` reports the loss after a reload rather than leaving the
+  user to find out only by looking. The rendered line names the day of the most recent shedding
+  write, how many project lists and how many days went in total, and the ceiling that forced it.
 - **A ceiling shed moves the reported start; ordinary pruning does not.** When shedding drops whole
   days, those days were inside the retention window, so `since` moves to the oldest day the file
   still holds and the header can never claim a day that was deleted. Days that age out of the window

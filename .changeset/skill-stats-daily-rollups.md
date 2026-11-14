@@ -16,7 +16,8 @@ characters — and `saveRollups` enforces a hard 2,920,000-byte ceiling on every
 skills x 200 bytes per skill-day). A write that would exceed it drops the per-skill-day project lists
 first, keeping every count and every day, and drops the oldest days only if the counts alone exceed
 the ceiling; `saveRollups` returns what it gave up. Every shed is also recorded in the file (a
-`"shed"` key holding the totals and the day of the write) and `/skill-stats timeline` renders it, so
+`"shed"` key holding the running totals and the day of the most recent shedding write) and
+`/skill-stats timeline` renders it, so
 the user is told which project lists and how many days went instead of losing them silently. When a
 shed drops whole days `since` moves to the oldest day the file still holds, so the header never claims
 a day that was deleted; days that merely age out of the retention window keep the first-ever `since`.

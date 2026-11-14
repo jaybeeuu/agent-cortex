@@ -11,6 +11,7 @@ agent-cortex/
 │   ├── ralph/                #   composable form (shared agent.md + per-harness pi/, claude/)
 │   ├── plan/                 #   "
 │   ├── ralph-plan/           #   "
+│   ├── guppi/                #   "
 │   └── strategy/             #   "
 ├── skills/                   # Skills (grouped by domain) — shared by all harnesses
 │   ├── engineering/          #  tdd, improve-codebase-architecture, …
@@ -208,7 +209,7 @@ The staged package contains:
 | Path | Contents |
 | --- | --- |
 | `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`, and `repository` (this package's origin, so a shipped skill can resolve it without a checkout); the version tracks the package |
-| `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
+| `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy, guppi) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
 | `skills/` | token-substituted skill copies (real files, never symlinks) |
 | `docs/` | the repository documents those skills read (currently `docs/skills/skill-anatomy.md`), copied verbatim once per install so the reference resolves on a machine without the checkout |
 | `extensions/` | copy of the repo `extensions/` tree — imports nothing from pi's runtime except the host-aliased `typebox`, so pi loads it from any directory |
@@ -288,7 +289,7 @@ instructions file, leaving the rest of that file — and a `.bak` copy — intac
 ### Claude Code plugin (separate)
 
 A plain `agent-cortex install claude` **materialises** the plugin into the home install
-root `~/.agent-cortex/claude` — **4 agents** (`strategy`, `plan`, `ralph-plan`, `ralph`),
+root `~/.agent-cortex/claude` — **5 agents** (`strategy`, `plan`, `ralph-plan`, `ralph`, `guppi`),
 **34 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
 symlinks), `SessionStart` + `Notification` hooks, and 2 MCP servers — writes a marketplace
 manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude`, and
@@ -428,6 +429,7 @@ claude plugin marketplace remove jaybeeuu
 | `strategy` | delegate: "use the **strategy** agent…" | Vision brief / PRD / technical-direction docs |
 | `ralph-plan` | delegate: "use the **ralph-plan** agent…" | Explore, grill, and file beads for a change |
 | `plan` | delegate: "use the **plan** agent…" | End-to-end planning (PRD → classified beads) |
+| `guppi` | **run as the main agent**: `claude --agent agent-cortex:guppi` | HITL counterpart to ralph (below) |
 | `ralph` | **run as the main agent**: `claude --agent agent-cortex:ralph` | Parallel backlog orchestrator (below) |
 
 Skills auto-trigger from their descriptions, or invoke one explicitly as
@@ -443,6 +445,24 @@ claude --agent agent-cortex:ralph        # (omitted once installed via agent-cor
 It finds ready beads, spawns parallel background workers (implement → independent review →
 fix), opens a PR per feature, and pauses at each human merge gate. After you merge, re-invoke
 it and it resumes from `bd ready`.
+
+#### guppi — the HITL counterpart to ralph
+
+**guppi** is the human-in-the-loop counterpart to ralph. Ralph executes the work an agent can do;
+guppi helps with the work an agent cannot — design, ideation, prioritisation, human review and
+manual confirmations — and owns the question "what should we look at next?". It is resident and
+propose-only: it recommends the next item and names the reason, then loads `plan`, `grill-me`,
+`hitl-collab`, `flesh-out-idea` or `prioritise-work` for the chosen item. It never executes AFK
+work, never merges and never pushes, and a disagreement with a priority opens a strategy review
+rather than a silent reorder.
+
+```sh
+claude --agent agent-cortex:guppi
+```
+
+Its authority is prioritisation, not action. The strategy it ranks against is the committed file
+`prioritise-work` owns, and personal work is a town-level bd scope — no rig, no polecats, no
+refinery, no merge queue.
 
 #### Hooks
 

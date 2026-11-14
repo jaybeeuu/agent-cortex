@@ -199,7 +199,7 @@ The composer:
 
 ### Agents with No Per-Harness Differences
 
-Agents like `plan`, `ralph-plan`, and `strategy` that have identical behavior across harnesses still need per-harness directories for their frontmatter.json (since tool names differ between harnesses).
+Agents like `plan`, `ralph-plan`, `guppi`, and `strategy` that have identical behavior across harnesses still need per-harness directories for their frontmatter.json (since tool names differ between harnesses).
 
 ```
 agents/plan/
@@ -217,7 +217,7 @@ agents/plan/
 5. Remove old `*.agent.md` files — DONE (the composable directories are the only committed
    form; every harness composes or renders its own agent files at install time)
 
-All four agents (`ralph`, `plan`, `ralph-plan`, `strategy`) use the composable layout, and no
+All five agents (`ralph`, `plan`, `ralph-plan`, `guppi`, `strategy`) use the composable layout, and no
 flat agent file is committed:
 
 - `bin/installers/claude.mjs` (plain `agent-cortex install claude` materialises the plugin

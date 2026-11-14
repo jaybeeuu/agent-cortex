@@ -1,0 +1,6 @@
+{
+  "name": "agent-cortex:guppi",
+  "description": "Resident prioritising collaborator for human-in-the-loop work. Recommends what to look at next from the committed strategy, then helps plan, grill, flesh out or hand off the chosen item. Use when asking 'what should I work on', choosing the next HITL item, or disagreeing with a priority.",
+  "tools": ["bash", "view", "edit", "create", "grep", "glob", "ask_user", "task", "read_agent", "skill"],
+  "argumentHint": "Guppi — what should I look at next?"
+}

@@ -41,6 +41,7 @@ agent-cortex/
 │   ├── ralph/             #   composable format (shared agent.md + pi/, claude/) — see agents/README.md
 │   ├── plan/              #   "
 │   ├── ralph-plan/        #   "
+│   ├── guppi/             #   "
 │   └── strategy/          #   "
 ├── skills/               # Grouped by domain, discovered recursively
 │   ├── planning/         # Scope, spec, decompose
@@ -135,7 +136,7 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 - Agents live in composable `<name>/` directories under `agents/`: a shared `agent.md` body plus
   per-harness subdirectories `pi/` and `claude/` (frontmatter.json and optional section files) per
-  the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, and `strategy` all use the
+  the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, `guppi`, and `strategy` all use the
   composable layout, and no flat agent file is committed — each harness renders its own at install
   time. The Claude plugin is materialised by the install-time generator
   `bin/installers/claude.mjs`: a plain `agent-cortex install claude` copies it into

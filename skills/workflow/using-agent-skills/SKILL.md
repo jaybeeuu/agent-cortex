@@ -26,7 +26,9 @@ Task arrives
     ├── Spec approved, need tickets? ───────→ spec-to-tickets
     ├── Need a single task tracked? ────────→ create-task
     ├── Need to plan a feature end-to-end? ─→ plan
-    ├── Deciding what to work on next? ─────→ prioritise-work
+    ├── Deciding what to work on next? ─────→ guppi
+    │   └── Strategy stale or missing? ────→ prioritise-work
+    ├── Collaborating on HITL work? ────────→ guppi
     ├── Running beads / task execution? ────→ ralph
     │   └── Single stage? ─────────────────→ run-pipeline-stage
     ├── Implementing a task? ──────────────→ implement-task
@@ -44,7 +46,7 @@ Task arrives
     ├── Evaluating architecture? ──────────→ technical-direction
     ├── Finding refactor opportunities? ───→ improve-codebase-architecture
     ├── Need task tracking? ───────────────→ bd-tool
-    ├── Need human review / HITL? ─────────→ hitl-collab
+    ├── Need a human handoff document? ────→ hitl-collab
     ├── Need a handoff doc? ───────────────→ handoff
     ├── Writing a ticket for Jira? ────────→ write-a-ticket
     ├── Creating a new skill? ─────────────→ write-a-skill

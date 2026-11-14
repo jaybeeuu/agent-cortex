@@ -753,7 +753,7 @@ describe("installPi — real repo integration", () => {
       const result = await installPi({ root: REPO_ROOT, output: fx.output });
 
       const names = result.agents.map((a) => a.name).sort();
-      assert.deepEqual(names, ["plan", "ralph", "ralph-plan", "strategy"]);
+      assert.deepEqual(names, ["guppi", "plan", "ralph", "ralph-plan", "strategy"]);
 
       // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents"]
       const ralph = await readFile(join(fx.output, "agents", "ralph.agent.md"), "utf-8");

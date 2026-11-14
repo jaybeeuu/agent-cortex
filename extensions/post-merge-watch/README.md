@@ -68,15 +68,24 @@ the project, and the number of checks made. It carries the same fields as messag
 | Directory | `~/.pi/agent-cortex/post-merge-watch/` |
 | File name | `<project dir name>-<bead>-<digest of full project path and bead>.json` |
 | Written | At watch start, then after each poll |
-| Removed | When the watch settles, and when the session shuts down |
+| Removed | When the watch settles, when the session shuts down, and again if a write was still in flight |
 
 The digest covers the whole project path, so two checkouts whose directory names
 match — or two projects watching the same bead — never share a file. A watch that
 is still polling is the only thing the directory should hold.
 
+The write and the removal can race: a stop removes the file, and a write that is
+still in flight then recreates it. The write therefore re-checks whether the
+watch stopped once it completes, and removes the file again, so a stop cannot
+leave a state file behind. One narrow case survives: a write that **fails** while
+a stop is in progress returns before that re-check, so it can leave a partial
+file. No code reads the directory, so a partial file is cosmetic; do not read it
+as a live watch.
+
 The in-flight record is diagnostic: it names the bead, the project, the script,
-the pid, the attempt count, and the last exit code. Nothing reads it back, so a
-watch never resumes from it; a new session with the same flag starts a new watch.
+the pid, the attempt count, and the last exit code and reason. Nothing reads it
+back, so a watch never resumes from it; a new session with the same flag starts a
+new watch.
 
 ## Bounds and shutdown
 
@@ -90,6 +99,16 @@ The pending timer is unref'd, so a watch never holds the host process open. On
 `session_shutdown` the timer is cancelled, a check already in flight is ignored,
 and the state file is removed: an abandoned watch wakes nobody and leaves nothing
 behind.
+
+## What has been proven
+
+The wake path has been run once end to end against a stub check script: the RPC
+wake itself was reproduced (`agent_settled` → `agent_start`, the custom message
+arriving with no client prompt), and a real model turn ran on it. That run did not
+read a real CI run, because the shipped `post-merge-check.mjs` was replaced by a
+stub: the poll-and-wake path is proven, and the check's own judgement is covered
+by `test/post-merge-check.test.mjs`, not by any test here. Treat the pair as one
+path only after a watch has read a genuine merge-commit run.
 
 ## Claude Code parity
 

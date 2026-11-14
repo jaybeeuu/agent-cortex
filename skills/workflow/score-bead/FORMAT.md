@@ -21,18 +21,20 @@ METADATA
 | `effort` | number > 0 | Cost, on the rubric's effort calibration |
 | `score` | number, one decimal | `reach × impact × confidence ÷ effort` |
 | `strategyVersion` | integer | The strategy file's own version, read after it validated |
-| `assessedAt` | RFC 3339 string | When the judgement was made, UTC |
+| `assessedAt` | string | When the judgement was made — now in UTC, or `--at` copied verbatim |
 | `rationale` | string | Why these numbers, then the `[prior]` trail |
 
 The total is rounded once, at the end: `Math.round(value * 10) / 10`. Rounding a component instead would make the stored components disagree with the stored total.
 
+`--at` is a convention, not a guarantee. The flag documents an RFC 3339 UTC timestamp, but `score` writes the value exactly as given and never validates it, so a mistyped timestamp reaches the record unchanged. Omit the flag and the record carries the real time.
+
 `score` refuses, writing nothing, when:
 
-- the strategy file is missing, or `validate` rejects it (the reason is printed);
-- a component is not a number, `confidence` falls outside `0..1`, or `effort` is zero or less;
-- the rationale is empty.
+- the strategy file is missing, or `validate` rejects it — exit 1, with the reason;
+- a component is not a number, `confidence` falls outside `0..1`, or `effort` is zero or less — exit 2;
+- the rationale is empty — exit 2.
 
-A refusal exits 1 with the reason, and exits 2 for a malformed call. Neither reaches the tracker: the strategy is read and validated before the first `bd` call, so a refused score leaves no metadata, no note and no tag behind.
+Exit 1 means the run reached a judgement and refused it; exit 2 means the call was malformed and never got that far. Neither reaches the tracker: the components, the rationale and the strategy are all checked before the first `bd` call, so a refused score leaves no metadata, no note and no tag behind.
 
 ## The band table
 
@@ -52,7 +54,7 @@ Bands are highest-first and evaluated in order. P0 is absent and `bandFor` throw
   proposal only — review the components and the rationale, then apply: bd update tst-6 -p 2
 ```
 
-It reads the bead with `bd show` and calls nothing else. A bead already at P0 is refused before a proposal exists, because an incident is not re-prioritised by a rubric.
+It reads the bead with `bd show` and calls nothing else. A bead already at P0 is refused before a proposal exists, because an incident is not re-prioritised by a rubric. A bead with no numeric `score` is refused too — score it first, then band it.
 
 ## The rationale trail
 
@@ -67,3 +69,5 @@ re-scored against the December rubric
 Each line carries the superseded total, its components, the strategy version it was judged against and its date, so the old arithmetic stays checkable after the components are overwritten.
 
 Why the rationale and not a separate `history` array: the bead carries one record, `bd show` renders it in one place, and a re-score cannot drop the history by forgetting a second store. A reader greps `[prior]` to separate the trail from the prose. A record with no numeric `score` contributes no new line, but its existing trail is carried forward unchanged.
+
+Nothing caps the trail. Every re-score appends one line and drops none, so the field grows by a line per re-score for the whole life of the bead. In practice a bead is re-scored a handful of times, once per strategy version; treat a long trail as history, not as a defect.

@@ -21,7 +21,9 @@ commit it reads landed on the base branch, not on the feature branch.
    `<ralph-scripts>` is the absolute path to `skills/workflow/ralph/scripts/`, resolved from wherever
    that skill was loaded. It prints a JSON report and exits `0`, `1`, or `2`. Pass `--base <branch>`
    only when the base branch is not the repository's default branch, and `--commit <sha>` only when
-   the merge commit is not the base branch's tip.
+   the merge commit is not the base branch's tip. A run still in flight when the wait window closes
+   is a report, not a verdict: the playbook's _Watch transport_ section says how to wait for it, and
+   which mechanism your harness supplies.
 
 2. **Act on the exit status alone.** The status *is* the verdict; do not re-run the check to get a
    different answer, do not retry the workflow, and never re-run the GitHub workflow yourself.

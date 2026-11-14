@@ -182,6 +182,16 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `pi-peer`'s `peer_get` and `peer_await` have no Claude Code counterpart, so they are named only
   inside the harness-labelled `pi-peer` runbook — a null claude mapping would drop the token and
   leave the sentence broken.
+- The post-merge watch forks the same way, through the single row `{{TOOL:post_merge_watch}}`:
+  `post-merge-watch` (this package's own extension, on pi) and Claude Code's built-in
+  `ScheduleWakeup` (on claude). The values differ in kind — an extension on one side, a tool on the
+  other — so the surrounding prose describes only what both do (the session resumes, the check runs
+  again, the verdict table is unchanged) and never a call shape. `skills/workflow/run-pipeline-stage/playbooks/post-merge.md`
+  is its one authored home; the stage instructions, the three verdicts and the escalation rule stay
+  outside that section and byte-identical across renders. Because a watcher is a property of the
+  session, the no-watcher fallback is plain prose in the same section, so it survives both renders
+  and neither side is assumed to have the mechanism. `test/post-merge-transport-render.test.mjs`
+  stages both installs to prove it.
 
 ## PI Extension Conventions
 

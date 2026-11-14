@@ -43,14 +43,22 @@ daily rollups answer "how has my usage changed over months" without scanning ses
   skills x 200 bytes per skill-day (the counts plus one realistic project path); the 40 sizes the
   budget and is not a limit on how many skills an install may have. A realistic file is far smaller:
   994,668 bytes for 40 skills used every day of the window, two events each and a short project path
-  (`/proj/a`), and 1,272,068 bytes for the same usage with a 27-character project path. A retention
+  (`/proj/a`), and 1,272,068 bytes for the same usage with a 26-character project path. A retention
   window longer than 365 days does not raise the ceiling, so the detail it implies is shed by the
   rule below.
   When a write would exceed the ceiling, `saveRollups` drops the per-skill-day project lists first —
-  the loaded / invoked / read counts and every day survive, and the timeline, which reads counts
-  only, renders unchanged. Only if the counts alone exceed the ceiling does it drop the oldest days,
-  continuing the direction pruning already takes. `saveRollups` returns what the write gave up
-  (`shedProjectLists`, `droppedDays`) and the size it wrote.
+  the loaded / invoked / read counts and every day survive, and every number the timeline renders is
+  unchanged. Only if the counts alone exceed the ceiling does it drop the oldest days, continuing the
+  direction pruning already takes. `saveRollups` returns what the write gave up (`shedProjectLists`,
+  `droppedDays`) and the size it wrote, and records the same figures in the file under `shed`, so
+  `/skill-stats timeline` reports the loss after a reload instead of the user finding out never. The
+  rendered line names the day of the write, how many project lists and how many days went, and the
+  ceiling that forced it.
+- **A ceiling shed moves the reported start; ordinary pruning does not.** When shedding drops whole
+  days, those days were inside the retention window, so `since` moves to the oldest day the file
+  still holds and the header can never claim a day that was deleted. Days that age out of the window
+  are different: they were real history and the rendered retention line explains them, so `since`
+  keeps the first-ever day.
 - **The file is written minified** — it is read by the extension, not by a human. The suite fills
   every cap at once (40 skills x 365 days x 50 project paths), asserts the 22,033,268 raw bytes are
   written as at most 2,920,000, and asserts a second year of data leaves the file byte-for-byte
@@ -59,8 +67,10 @@ daily rollups answer "how has my usage changed over months" without scanning ses
 ### History before the rollups
 
 Rollups start with the first skill event recorded after this version was installed. Anything earlier
-is reported as **unavailable**, not as zero usage, and no data point is invented for it. Backfilling
-from old session transcripts is a possible follow-up, and deliberately not part of this feature.
+is reported as **unavailable**, not as zero usage, and no data point is invented for it. A ceiling
+shed that deletes days reports on the same screen, so a moved start is explained rather than silent.
+Backfilling from old session transcripts is a possible follow-up, and deliberately not part of this
+feature.
 
 ## Installation
 
@@ -128,9 +138,16 @@ The rollups in `~/.pi/agent-cortex/skill-usage-daily.json` are minified and keye
     "2026-06-07": {
       "bd-tool": { "loaded": 2, "invoked": 1, "read": 3, "projects": ["/home/user/projects/app"] }
     }
-  }
+  },
+  "shed": { "on": "2026-06-08", "projectLists": 14600, "days": 0 }
 }
 ```
 
-`since` is the first day a rollup was recorded. It survives pruning, so the timeline can say where
-the recorded history starts.
+`since` is the first day a rollup is held for. It survives pruning, so the timeline can say where
+the recorded history starts; it moves forward only when a ceiling shed deletes days, which nothing
+else explains.
+
+`shed` appears only after a write had to give up detail for the size ceiling, and holds the totals
+dropped by shedding (`projectLists`, `days`) plus the day of the most recent such write. A file
+written before this field existed has no `shed` key, and such a file loads and renders unchanged:
+an absent record means nothing was shed.

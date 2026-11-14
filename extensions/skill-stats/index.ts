@@ -9,6 +9,7 @@ export {
   type Granularity,
   type RollupStore,
   type SaveRollupsResult,
+  type ShedRecord,
   type TimelineBucket,
   DEFAULT_RETENTION_DAYS,
   MAX_PROJECT_PATH_CHARS,

@@ -25,15 +25,43 @@ export interface DaySkillCounts {
   projects: string[];
 }
 
+/**
+ * The last write that had to give up detail to stay under
+ * `MAX_ROLLUP_FILE_BYTES`, accumulated across writes.
+ *
+ * Shedding is permanent: the dropped project lists and days are gone from the
+ * file, so this record is kept for the life of the store and rendered by the
+ * timeline. Without it the user loses detail and is never told.
+ */
+export interface ShedRecord {
+  /** The most recent day a write had to shed (`YYYY-MM-DD`, UTC). */
+  on: string;
+  /** Total skill-day project lists dropped by shedding, across writes. */
+  projectLists: number;
+  /** Total whole days dropped by shedding, across writes. */
+  days: number;
+}
+
 export interface RollupStore {
   version: 1;
   /**
-   * The first day a rollup was recorded (`YYYY-MM-DD`, UTC), or null before the
+   * The first day a rollup is held for (`YYYY-MM-DD`, UTC), or null before the
    * first one. Everything before it is *unavailable* history, never zero usage.
+   *
+   * It survives ordinary retention pruning on purpose: the day that aged out of
+   * the window was real history, and the rendered retention line explains the
+   * window. It does NOT survive a ceiling shed that drops days, because those
+   * days were inside the window and nothing explains their absence.
    */
   since: string | null;
   /** Day key -> skill name -> counts. */
   days: Record<string, Record<string, DaySkillCounts>>;
+  /**
+   * Present only after a write had to shed detail for the size ceiling. Absent
+   * from every file written before this field existed, which readers must
+   * tolerate: an absent record means "nothing was shed".
+   */
+  shed?: ShedRecord;
 }
 
 /** How long daily records are kept: one year. A documented default, not a rule. */
@@ -222,19 +250,37 @@ export interface SaveRollupsResult {
  *   2. the oldest whole days, which continues the direction pruning already
  *      takes, if the counts alone exceed the budget.
  * Step 1 is the only one a realistic install can reach.
+ *
+ * Every shed is recorded in `store.shed` and, when whole days go, `since` moves
+ * to the oldest day still held. Both are part of the bytes counted here, so the
+ * record cannot push the file past the ceiling.
  */
-function serialiseToBudget(store: RollupStore): {
+function serialiseToBudget(
+  store: RollupStore,
+  on: string,
+): {
   json: string;
   shedProjectLists: number;
   droppedDays: number;
 } {
   let json = JSON.stringify(store);
-  let bytes = Buffer.byteLength(json, "utf-8");
-  if (bytes <= MAX_ROLLUP_FILE_BYTES) {
+  if (Buffer.byteLength(json, "utf-8") <= MAX_ROLLUP_FILE_BYTES) {
     return { json, shedProjectLists: 0, droppedDays: 0 };
   }
 
+  // Written from a snapshot of the counters below, so re-applying it after each
+  // pass replaces this write's contribution instead of counting it twice.
+  const previousShed = store.shed;
   let shedProjectLists = 0;
+  let droppedDays = 0;
+  const recordShed = (): void => {
+    store.shed = {
+      on,
+      projectLists: (previousShed?.projectLists ?? 0) + shedProjectLists,
+      days: (previousShed?.days ?? 0) + droppedDays,
+    };
+  };
+
   for (const bySkill of Object.values(store.days)) {
     for (const counts of Object.values(bySkill)) {
       if (counts.projects.length > 0) {
@@ -243,23 +289,26 @@ function serialiseToBudget(store: RollupStore): {
       }
     }
   }
+  if (shedProjectLists > 0) recordShed();
   json = JSON.stringify(store);
-  bytes = Buffer.byteLength(json, "utf-8");
 
-  let droppedDays = 0;
-  while (bytes > MAX_ROLLUP_FILE_BYTES) {
-    const dayKeys = Object.keys(store.days);
+  while (Buffer.byteLength(json, "utf-8") > MAX_ROLLUP_FILE_BYTES) {
+    const dayKeys = Object.keys(store.days).sort();
     if (dayKeys.length === 0) break;
+    const bytes = Buffer.byteLength(json, "utf-8");
     // Drop roughly the excess, by average day size, so a pathological store
     // converges in a few passes instead of one pass per day.
     const excess = bytes - MAX_ROLLUP_FILE_BYTES;
     const drop = Math.max(1, Math.ceil((excess / bytes) * dayKeys.length));
-    for (const day of dayKeys.sort().slice(0, drop)) {
+    for (const day of dayKeys.slice(0, drop)) {
       delete store.days[day];
       droppedDays++;
     }
+    // These days were inside the retention window, so `since` must not keep
+    // claiming them: move the retained start to the oldest day still held.
+    store.since = oldestDay(store);
+    recordShed();
     json = JSON.stringify(store);
-    bytes = Buffer.byteLength(json, "utf-8");
   }
 
   return { json, shedProjectLists, droppedDays };
@@ -287,7 +336,7 @@ export function saveRollups(
   pruneRollups(store, now);
   store.since = store.since ?? oldestDay(store);
 
-  const { json, shedProjectLists, droppedDays } = serialiseToBudget(store);
+  const { json, shedProjectLists, droppedDays } = serialiseToBudget(store, dayKey(now));
 
   // Minified: this file is read by the extension, not by a human. The README
   // documents the shape, and fewer bytes means a smaller write per event.

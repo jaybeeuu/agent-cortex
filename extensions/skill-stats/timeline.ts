@@ -1,5 +1,6 @@
 import { formatTable } from "./format.js";
 import {
+  MAX_ROLLUP_FILE_BYTES,
   retentionDays,
   timeline,
   type RollupStore,
@@ -35,6 +36,21 @@ function section(title: string, buckets: TimelineBucket[]): string[] {
 }
 
 /**
+ * The line that tells the user a write gave up detail to stay under the size
+ * ceiling. Rendered from the persisted record, so it survives reloads and is
+ * shown where history is read, not only where it is written.
+ */
+function shedNotice(store: RollupStore): string | null {
+  const shed = store.shed;
+  if (!shed) return null;
+  return (
+    `Detail shed on ${shed.on}: ${shed.projectLists} project lists and ${shed.days} days ` +
+    `dropped to stay under the ${MAX_ROLLUP_FILE_BYTES}-byte ceiling. ` +
+    `The counts for the days that remain are complete.`
+  );
+}
+
+/**
  * Render the timeline from the rollups alone. History that predates the first
  * recorded rollup is reported as unavailable: it is never zero-filled, and no
  * bucket appears for a period with no data.
@@ -57,6 +73,9 @@ export function formatTimeline(store: RollupStore): string {
       "",
     );
   }
+
+  const notice = shedNotice(store);
+  if (notice !== null) lines.push(notice, "");
 
   const days = timeline(store, "day", DAY_BUCKETS);
   const weeks = timeline(store, "week", WEEK_BUCKETS);

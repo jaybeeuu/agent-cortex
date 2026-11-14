@@ -183,7 +183,7 @@ describe("retention", () => {
     assert.deepEqual(Object.keys(store.days).sort(), ["2026-06-03", "2026-06-04"]);
   });
 
-  it("enforces the window on write, so the file cannot grow past it", async () => {
+  it("enforces the window on write, so the file cannot grow past it, and the header keeps the first-ever start", async () => {
     await withRetentionEnv("30", async () => {
       const workspace = await tempRoot.createWorkspace();
       const file = join(workspace, "skill-usage-daily.json");
@@ -201,6 +201,15 @@ describe("retention", () => {
       assert.equal(Object.keys(loaded.days).length, 30, "only the window is written");
       assert.equal(oldestDay(loaded), shiftDay(today, -29));
       assert.equal(loaded.since, shiftDay(today, -39), "the recorded start survives pruning");
+
+      // The days that aged out of the window were real history, so the header
+      // still reports the first-ever day rather than the retained one.
+      const output = formatTimeline(loaded);
+      assert.match(output, new RegExp(`Rollups since ${shiftDay(today, -39)}\\.`));
+      assert.ok(
+        !output.includes("Detail shed"),
+        "ordinary pruning sheds nothing, so no shed notice is rendered",
+      );
     });
   });
 
@@ -469,6 +478,115 @@ describe("formatTimeline", () => {
     assert.equal(isTimelineRequest(""), false);
     assert.equal(isTimelineRequest(undefined), false);
     assert.equal(isTimelineRequest("--project timeline"), false);
+  });
+
+  it("renders the shed detail a ceiling write persisted, naming the counts and the day", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const file = join(workspace, "skill-usage-daily.json");
+    const today = dayKey();
+    // Long paths in every permitted project slot, so the project detail alone
+    // pushes the file past the ceiling while the counts keep it well inside.
+    const skills = 10;
+    const days = 60;
+    const projects = Array.from({ length: MAX_PROJECTS_PER_DAY }, (_, i) =>
+      `/${String(i).padStart(2, "0")}/${"x".repeat(MAX_PROJECT_PATH_CHARS - 4)}`,
+    );
+    const store = freshRollups();
+
+    for (let offset = 0; offset < days; offset++) {
+      const day = shiftDay(today, -offset);
+      for (let s = 0; s < skills; s++) {
+        for (const project of projects) {
+          recordDailyUsage(store, `skill-${s}`, "read", project, at(day));
+        }
+      }
+    }
+    assert.equal(
+      projects[0]!.length,
+      MAX_PROJECT_PATH_CHARS,
+      "the fixture fills the path cap, so the file is at its largest",
+    );
+
+    const result = saveRollups(store, file, at(today));
+    assert.equal(result.shedProjectLists, skills * days, "one list per skill-day was shed");
+    assert.equal(result.droppedDays, 0, "the counts alone fit, so no day was dropped");
+
+    const output = formatTimeline(loadRollups(file));
+
+    assert.match(output, new RegExp(`Detail shed on ${today}`), "the notice names the write's day");
+    assert.ok(
+      output.includes(`${result.shedProjectLists} project lists`),
+      `the notice names the ${result.shedProjectLists} dropped lists:\n${output}`,
+    );
+    assert.ok(
+      output.includes(`${MAX_ROLLUP_FILE_BYTES}-byte ceiling`),
+      "the notice names the ceiling that forced the shed",
+    );
+  });
+
+  it("moves the retained start when a ceiling shed drops days, so the header cannot claim them", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const file = join(workspace, "skill-usage-daily.json");
+    const today = dayKey();
+    const firstEver = shiftDay(today, -(DEFAULT_RETENTION_DAYS - 1));
+    // No project paths at all, so only whole days can free the bytes: enough
+    // skills per day that the counts alone exceed the ceiling.
+    const skills = Array.from({ length: 140 }, (_, i) => `skill-${i}`);
+    const store = freshRollups();
+
+    for (let offset = 0; offset < DEFAULT_RETENTION_DAYS; offset++) {
+      const day = shiftDay(today, -offset);
+      for (const skill of skills) recordDailyUsage(store, skill, "read", "", at(day));
+    }
+    assert.equal(store.since, firstEver, "the fixture starts at the oldest day of the window");
+
+    const result = saveRollups(store, file, at(today));
+    assert.ok(result.droppedDays > 0, "the counts alone exceeded the ceiling, so days were dropped");
+
+    const loaded = loadRollups(file);
+    const retained = oldestDay(loaded);
+    assert.ok(retained !== null && retained > firstEver, "the fixture lost its oldest days");
+    assert.equal(loaded.since, retained, "the retained start moved to the oldest day held");
+
+    const output = formatTimeline(loaded);
+    assert.ok(
+      output.includes(`Rollups since ${retained}.`),
+      `the header names the oldest retained day ${retained}:\n${output}`,
+    );
+    assert.ok(
+      !output.includes(`Rollups since ${firstEver}.`),
+      `the header must not claim ${firstEver}, which the file no longer holds`,
+    );
+    assert.ok(
+      output.includes(`${result.droppedDays} days`),
+      "the notice names the days the header no longer accounts for",
+    );
+  });
+
+  it("loads and renders a rollup file written before the shed record existed", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const file = join(workspace, "skill-usage-daily.json");
+    // Exactly the shape this version wrote before `shed` existed: no such key.
+    await fs.promises.writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        since: "2026-06-01",
+        days: {
+          "2026-06-02": { "bd-tool": { loaded: 1, invoked: 0, read: 2, projects: ["/proj/a"] } },
+        },
+      }),
+      "utf-8",
+    );
+
+    const loaded = loadRollups(file);
+    assert.equal(loaded.shed, undefined, "an older file has no shed record");
+    assert.equal(loaded.days["2026-06-02"]!["bd-tool"]!.read, 2, "the days load unchanged");
+
+    const output = formatTimeline(loaded);
+    assert.match(output, /Rollups since 2026-06-01/);
+    assert.match(output, /2026-06-02/);
+    assert.ok(!output.includes("Detail shed"), "no shed notice is invented for an older file");
   });
 });
 

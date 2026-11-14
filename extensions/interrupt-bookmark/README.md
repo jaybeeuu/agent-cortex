@@ -40,8 +40,8 @@ through `sendUserMessage(..., { expandPromptTemplates: true })`, which runs the 
 prompting the model. That is the pattern pi documents for a tool that must reach a command-only API
 (`docs/extensions.md`, "ctx.reload()").
 
-The declared navigation signature, quoted from
-`extensions/agent-modes/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts`:
+The declared navigation signature, quoted from the installed package's own
+`dist/core/extensions/types.d.ts`:
 
 ```ts
 navigateTree(targetId: string, options?: {

@@ -10,4 +10,5 @@ mutation check — disable the claimed behaviour and confirm each named test fai
 names the case that motivated it, a test named "one notice" proven only by `toBeDefined()`. The
 worked pair lives in `EXAMPLES.md` under _A test name is a claim_. The review playbook now requires
 the reviewer to map each clause of a changed test's name to the assertion that proves it, to reject a
-test whose name outruns its assertions, and to say whether the mutation check ran.
+test whose name outruns its assertions, and to block a test change that carries no evidence the
+mutation check ran.

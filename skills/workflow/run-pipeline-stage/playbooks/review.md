@@ -13,9 +13,9 @@
    count in the name needs a count assertion, a state needs that state, and a "not" needs the
    absence. Reject the test when any clause has no assertion, and name the missing clause under
    `BLOCKING_ISSUES`.
-6. Say in the `SUMMARY` whether the mutation check from `style-tests` was run. When the bead asked
-   for one and the branch shows no evidence of it, treat the check as an unmet requirement and
-   block.
+6. Say in the `SUMMARY` whether the mutation check from `style-tests` was run. A branch that adds
+   or changes a test owes that check whether or not the bead asked for it. Block when the branch
+   shows no evidence that it ran.
 7. Do not request changes for stylistic preferences alone.
 
 ## Stage Outcome

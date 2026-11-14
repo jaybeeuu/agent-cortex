@@ -1,5 +1,244 @@
 # Changelog
 
+## 2.8.0
+
+### Minor Changes
+
+- 683808c: State the bead-state rule in `bd-tool` and `AGENTS.md`: operational state (progress, what a stage
+  learned, the decisions taken, branch/PR/commit/worktree refs) lives in bead fields, while durable
+  committable documents stay files, and `handoff.md` plus the working-docs artefact directory are
+  unchanged. The built-in statuses carry the working state — `bd statuses` lists all seven, so no
+  state label is added. What happened goes in the trail with `bd note`, which appends. The text names
+  `stage=` as forbidden for state, with the reason: `bd set-state` removes the existing label for the
+  dimension it sets, so it would rewrite a chore's route. Ship this in the same release as the
+  removal of the `ralph-*.log` and `progress.md` writer sites (`agnt-ctx-ul91.1`): a published
+  version that states the rule while a skill still writes progress files would contradict itself.
+- 87ebb46: Give the pipeline one shared writer for the bead trail, and stop the file-based progress logs.
+
+  `skills/workflow/run-pipeline-stage/scripts/trail-entry.mjs` appends one checkpoint to a bead's
+  notes with `bd note` and records the refs the caller names as provenance events. Every entry
+  carries the three mandatory fields — Outcome (`done`/`blocked`/`partial`), Evidence (a test or lint
+  result, the commit, command output), and What is left — so a fresh session resumes from
+  `bd show <id>` alone.
+
+  A `--commit` ref is resolved through `git rev-parse` to the full 40-character lowercase SHA before
+  recording, because `bd provenance record --ref-kind git-sha` refuses an abbreviated one; a ref that
+  does not resolve records nothing. Transient database failures — `failed to open database ...
+context canceled`, the shape two concurrent writers produce on embeddeddolt — are retried with
+  bounded backoff, each retry re-reads the bead first so a write that landed before its call reported
+  failure is never duplicated, and no call holds the database across a long operation. Recording is
+  idempotent for one writer: the entry carries a fingerprint of its own content, so a repeated fire
+  appends nothing. Two concurrent fires of one transition can each append — `bd note` has no
+  conditional append — so the pipeline fires each transition from one worker.
+
+  `run-pipeline-stage` and `ralph` now call that script at every stage transition, and no shipped
+  skill, agent, or stage template writes a per-parent log file or a rendered progress view any more.
+  Ralph's log polling, its `state.json` `logLine` bookmark, and both wake sections' log-flush
+  procedure go with them: progress is read from the bead (`bd show`, `bd provenance log`), which is
+  the record the worker writes directly.
+
+- 4e1bcc5: Add `implement-task`, the skill that owns the task around the loop: criteria, scope, and proof.
+
+  `tdd` owns the red-green loop and the `style-*` skills own the standards, but nothing owned the task
+  — reading the acceptance criteria, proving each one, staying in scope, and taking only pragmatic
+  boy-scout fixes. `implement-task` fills that gap with four load-bearing sections: the criteria →
+  evidence table, written before code and filled with observable evidence at Finish; the scope rule,
+  where an out-of-scope finding becomes a bead instead of an edit; the boy-scout rule, which allows a
+  fix only inside a file the task already touches and only where it serves the task; and the mutation
+  check, inherited from `style-tests` and applied to every test that claims a behaviour. A criterion
+  with no named check is a blocker, not a guess.
+
+  The `code` stage playbook now invokes `implement-task` as its first step and routes through it to
+  `tdd` and the style skills, `tdd` links to it for criteria and scope rather than carrying those
+  rules itself, and `using-agent-skills` routes a task-implementation request to it while leaving a
+  bare "write a test for X" on `tdd`.
+
+- 27b513b: Fork the planner ↔ ralph peer channel per harness instead of describing it as PI-only. The channel
+  now renders through `token-map.json`: `{{TOOL:peer_send}}` and `{{TOOL:peer_list}}` become
+  `peer_send` and `peer_list` in a pi install, and Claude Code's built-in `SendMessage` and
+  `ListAgents` in a claude install. Both harnesses carry the same seven message kinds and the same
+  acknowledgement rule — the kinds table and the reply rule are byte-identical between the two
+  renders, and only the `### Transport` subsection differs.
+
+  Claude Code's cross-session messaging is built in from v2.1.224 (v2.1.234 on native Windows):
+  `ListAgents` returns the peers a session can reach with the address of each, and `SendMessage`
+  delivers to that address, so a named peer session is addressable and no manual-handoff-only fork is
+  needed. `pi-peer`'s `peer_get` and `peer_await` have no Claude Code counterpart, so they are named
+  only inside the harness-labelled `pi-peer` runbook: a null mapping would drop the token and leave
+  the sentence that named it broken.
+
+  `test/skill-transport-render.test.mjs` stages both installs and asserts the per-harness rendered
+  text, so a harness that loses its mechanism fails the suite rather than silently degrading.
+
+- 49b34d7: Document the planner ↔ ralph message convention on top of `@cryptolibertus/pi-peer`. The `ralph`
+  skill now publishes its peer identity at start (`PI_PEER_ID=ralph`), answers inbound `handoff`,
+  `get` and `ask` messages, and reports `update`/`done`/`blocked`/`failed` to the planner as work
+  dispatches, finishes, parks on a human gate or fails. The `plan` skill sends a `handoff` message
+  naming the handoff bead once it exists, treats ralph's `blocked` messages as its pending-human
+  surface, and keeps the manual instruction as the handoff path for a session with no reachable
+  receiver.
+
+  The shared convention — the kind-to-intent table, the acknowledgement rule, the two-entry
+  `.pi/peers.json` requirement and the one-way discovery failure a single entry causes, the
+  `.pi/peers.json` and `.pi/peer-*` paths to gitignore, and the rule to send through `peer_send` rather than typing into a
+  busy session — lives once in `skills/workflow/ralph/REFERENCE.md` and is cross-referenced from
+  `plan`. pi-peer keeps ownership of discovery, delivery, idle wake and the ledger; no registry,
+  inbox, watcher or transport is implemented here. The tools are named through `{{TOOL:...}}` tokens so
+  one skill text serves both harnesses; the per-harness fork is its own changeset.
+
+- 2610b78: Add the `post-merge` pipeline stage and the deterministic check it runs.
+  `skills/workflow/ralph/scripts/post-merge-check.mjs` reads `gh run list` for the base branch's merge
+  commit and exits `0` passed, `1` failed, `2` inconclusive — no model, no tokens, zero runtime
+  dependencies, async only. A failing run files exactly one P1 escalation bead carrying the run URL
+  and the failing job name; the `post-merge-run:<id>` marker in its description makes a second run
+  file nothing. It never retries, never re-runs the workflow, never reopens the parent, and is
+  GitHub-only in v1 (a repository `gh` cannot resolve to a GitHub host, or a commit with no run, is
+  inconclusive and files nothing). `create-chores.mjs` pre-creates the chore labelled
+  `lifecycle:post-merge`, blocked behind the `lifecycle:feature-pr` gate rather than behind a stage,
+  so it becomes ready only once a human merges and closes the gate; a re-run still creates nothing.
+  The script reads the repository slug and base branch from `gh repo view`, so no slug or branch is
+  baked in. `housekeeping` and `post-merge` are siblings on the gate and neither waits on the other,
+  because an inconclusive check must not strand the worktree reclamation.
+- 241ab8f: Add the `post-merge-watch` pi extension: poll the post-merge check and wake an idle session with
+  the verdict.
+
+  `pi --post-merge-watch <bead>` polls
+  `skills/workflow/ralph/scripts/post-merge-check.mjs` every 15 s (up to 40 checks) and, when the
+  script reports a verdict, sends one message with
+  `pi.sendMessage(..., { deliverAs: "followUp", triggerTurn: true })`, so a session that is idle
+  starts a turn with the result. The message names the bead, the verdict, the exit code, the reason,
+  the run URL, the project, and the number of checks; the same fields ride along as message
+  `details`.
+
+  The extension owns no verdict logic: the check's exit code is the verdict (`0` passed, `1` failed,
+  anything else inconclusive, including a timeout kill), and the run URL is forwarded from the
+  script's JSON report. It makes no model call, imports pi as types only, registers its CLI flag in
+  the extension factory, and spawns no process or writes no state when the flag is absent. Each
+  invocation passes `--wait 0`, so the poll interval and the bound live in the extension and a
+  stopped watch never blocks on a child process.
+
+  State lives under `~/.pi/agent-cortex/post-merge-watch/`, one file per project path and bead (the
+  name carries a digest of both, so two projects watching one bead never collide), and is removed
+  when the watch settles or the session shuts down. The pending timer is unref'd and cancelled on
+  shutdown, so an abandoned watch leaves no orphan timer and no state file. The default check script
+  is resolved relative to the extension file, so the staged pi package (`extensions/` beside
+  `skills/`) needs no hardcoded absolute path; `AGENT_CORTEX_POST_MERGE_CHECK` overrides it. PI only:
+  Claude Code uses its own watch tools.
+
+- ee5d09f: Fork the post-merge stage's watch per harness instead of leaving a long run unwatched. The stage
+  playbook now carries a `## Watch transport` section whose single mechanism name renders through
+  `token-map.json`: `{{TOOL:post_merge_watch}}` becomes `post-merge-watch` — this package's own
+  extension, which re-runs the check on a timer and wakes an idle session with the verdict — in a pi
+  install, and Claude Code's built-in `ScheduleWakeup` tool in a claude install. The stage
+  instructions, the three verdicts, the never-retry rule, the escalation rule and the close rule stay
+  one authored copy: the two renders differ on exactly one line.
+
+  The Claude capability is established from the installed binary (2.1.294), not assumed.
+  `ScheduleWakeup` is a registered tool whose own description names the case in point — "when actively
+  polling external state the harness can't notify you about (a CI run, a deploy, a remote queue), pick
+  the delay from how fast that state actually changes" — it takes `delaySeconds` clamped to
+  60–3600, `prompt`, `reason`, `noop` and `stop`, and a built-in system reminder says "If polling in a
+  loop, use ScheduleWakeup instead of retrying". A live probe was impossible: `claude -p` in this
+  environment reports "Not logged in · Please run /login". Because availability is a property of the
+  session rather than of the tool's existence, the section also states the fallback in prose — one run
+  with `--wait 1800` — so no harness is assumed to have a watcher and neither render loses a name.
+
+  `test/post-merge-transport-render.test.mjs` stages both installs and asserts the per-harness rendered
+  playbook, the byte-identical remainder, and the no-watcher fallback, so a harness that loses its
+  mechanism fails the suite rather than silently degrading.
+
+- b698f2d: Read a half-finished bead in one bounded command, without opening the transcript.
+
+  `skills/workflow/run-pipeline-stage/scripts/recover-brief.mjs` is the read side of the bead trail
+  that `trail-entry.mjs` writes. One invocation prints what a session needs to continue: status and
+  state labels, the newest trail entries with their Evidence and What is left, the provenance refs,
+  the blocking dependencies, and the acceptance criteria.
+
+  The bound is enforced, not promised. `bd show` returns the whole note — no option asks it for the
+  last few entries — and it prints 89 lines and about 6.5 KB for a bare bead carrying 20 entries,
+  about 120 lines and about 8 KB for a realistic one with acceptance criteria, a blocker, provenance
+  refs and a description. The brief prints the newest `--trail` entries (default 3), summarises the
+  rest by count, clips any single field, and
+  holds its whole output to a line budget (default 40) even when the requested window is wider than
+  that: it shrinks the window, names what it left out, and never prints more lines than `--max-lines`.
+
+  It reads only. Every `bd` call is one of the read subcommands and carries `--readonly`, and a call
+  that is not on the allow-list is refused before it reaches the binary, so the brief cannot write a
+  note, a status or a provenance event. Each section states plainly when a bead has no trail, no
+  refs, no acceptance criteria or no blockers, instead of printing an empty heading.
+
+  The note is one text blob, so the brief splits it itself: a writer header starts a stamped entry
+  whose body runs only over the writer's `Field: value` lines, and any other text is an entry of its
+  own. A note appended by hand therefore prints wherever it lands — before a stamped entry, between
+  two of them, or after the last one — and the trail count includes it. `next:` claims "no trail
+  entry" only when the bead carries no trail, and says the entries record no next step when they
+  exist without a `What is left` field.
+
+  `run-pipeline-stage`, `ralph` and the stage-runner prompt now document the brief as the first read of
+  a bead's trail, with `bd show` and `bd provenance log` reserved for the history the window left out.
+
+- 1e97223: Rejections now carry data. A review that rejects a bead applies exactly one `defect:<class>` label
+  from a closed list of eight classes — `test-unproven`, `test-cannot-fail`, `criteria-unmet`,
+  `scope-creep`, `style-violation`, `missing-proof`, `regression`, `docs-drift` — plus the specific
+  reason in the rejection text.
+
+  The new `review-defects` skill defines the vocabulary, with one worked example per class in
+  `EXAMPLES.md`. The review playbook instructs one label per rejection, states that a class outside
+  the list is a review defect in itself, and says the review that confirms a fix removes the label and
+  records the removal in its trail entry. The label classifies the defect; the bead's status still
+  says where the work is, so no state label is added. Because the rejected chore is normally already
+  closed, the two queries that read the vocabulary pass `--all`: one class with
+  `bd list -l defect:<class> --all`, and every defect with `bd list --label-pattern 'defect:*' --all`.
+  `bd-tool` indexes the label and points at `review-defects` for the vocabulary and the queries.
+
+- 7ce04e0: Add `agent-cortex self-update` (and its `ctx` / `cortex` aliases): update the globally installed CLI
+  through the manager that owns the install, then refresh the harness installs with the newly
+  installed binary. The owner is inferred from the running entry point's real path — pnpm's
+  `global/<v>` and `store/<v>/links` layouts, or npm's `lib/node_modules` — then confirmed by asking
+  that manager for its own global listing and matching this package's name and version, so a manager
+  on `PATH` is never used in place of the real owner: an unidentified or unconfirmed owner prints the
+  exact command and exits non-zero. It reports the installed version (read from the manifest beside
+  the entry point), the published version (from the confirmed manager's `view`), the owner, and the
+  command, and `--check` stops after the report writing nothing. A registry error is a distinct
+  failure that offers no update, and a failed install reports the manager's stderr and runs nothing
+  after it. Every process is spawned with an argv array (`execFile` / `spawn`), never a shell string.
+- 2624dce: `self-update` now reports the version boundary and only refreshes when the CLI changed. After a
+  successful install it reads the version the newly installed binary reports and prints
+  `cli        <before> → <after>`, then hands the terminal to that binary's `update -a` and exits with
+  the refresh's own exit code, so a failed refresh is visible to the caller. The refresh is skipped in
+  three cases: `--check`, a failed update, and an install already at the published version (which now
+  also installs nothing and points at `agent-cortex update -a` instead). A refresh that cannot start
+  prints the reason and the exact command to run by hand instead of exiting 1 silently. The README,
+  `docs/dev-loop.md` and `--help` document the act-by-default behaviour, `--check`, the owner
+  detection rule, and the re-exec chain with its failure output.
+- 8925019: Add the `session-clear` extension, which registers `/clear` in pi: keep the session display name,
+  model, thinking level, and active agent, and drop the transcript context. It captures the identity
+  as plain data, replaces the session with `ctx.newSession({ parentSession })` so the cleared session
+  stays the parent in `/tree` and `/resume`, then the replacement instance re-applies the name and
+  restores the model and thinking level only when they differ from the replacement's own values. It
+  appends a `session-clear` provenance entry, reports the clear in one line, never prompts, never
+  summarises, and never deletes the cleared session file. PI-only: Claude Code already ships `/clear`,
+  so the audit in `docs/claude-hooks.md` records no hook port.
+- 0936de5: Make a test's name an assertion contract, and require a mutation check before a test is done.
+
+  `style-tests` now states that every clause of a test name must be an assertion: a count in the name
+  asserts a count, a state asserts that state, and a "not" asserts the absence. The Workflow gains the
+  mutation check — disable the claimed behaviour and confirm each named test fails — and Red Flags
+  names the case that motivated it, a test named "one notice" proven only by `toBeDefined()`. The
+  worked pair lives in `EXAMPLES.md` under _A test name is a claim_. The review playbook now requires
+  the reviewer to map each clause of a changed test's name to the assertion that proves it, to reject a
+  test whose name outruns its assertions, and to block a test change that carries no evidence the
+  mutation check ran.
+
+### Patch Changes
+
+- 82dbed0: A stop that needs a human decision becomes a bead, not a label: `bd-tool` and `AGENTS.md` now say
+  to create an `execution:hitl` task carrying the question, then make the waiting bead depend on it
+  with `bd dep add <waiting> <decision>`. The waiting bead leaves `bd ready` while the decision
+  becomes work a human can take, so one answer releases work that is already scoped. `--status
+blocked` is kept for a stop no bead can carry, such as a fix-round cap, and `bd note` records the
+  stop and its reason.
+
 ## 2.7.0
 
 ### Minor Changes

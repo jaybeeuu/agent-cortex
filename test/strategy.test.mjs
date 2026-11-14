@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -135,13 +135,24 @@ describe('validate', () => {
     assert.match(result.stderr, /version must be an integer, got "two"/);
   });
 
-  it('rejects a date that is not a calendar date', async () => {
+  it('rejects a date that is not YYYY-MM-DD', async () => {
     const file = await writeStrategy(createStrategy({ updated: '14/11/2026' }));
 
     const result = await run(['validate', '--file', file]);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /updated must be a YYYY-MM-DD date, got "14\/11\/2026"/);
+    assert.match(result.stderr, /updated must be a calendar date \(YYYY-MM-DD\), got "14\/11\/2026"/);
+  });
+
+  // `2026-02-31` is well formed, so a shape check passes it; V8's parser rolls it into
+  // 3 March, so a `Date.parse` check passes it too.
+  it('rejects a well-formed date that no calendar has', async () => {
+    const file = await writeStrategy(createStrategy({ updated: '2026-02-31' }));
+
+    const result = await run(['validate', '--file', file]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /updated must be a calendar date \(YYYY-MM-DD\), got "2026-02-31"/);
   });
 
   it('reports every defect in one run', async () => {
@@ -179,6 +190,8 @@ describe('init', () => {
 
     await run(['init'], { cwd: workspace, today: '2026-12-01' });
     const file = join(workspace, DEFAULT_FILE);
+    assert.match(await readFile(file, 'utf8'), /- \*\*Updated:\*\* 2026-12-01/);
+
     await writeFile(file, createStrategy({ version: '7' }), 'utf8');
 
     const second = await run(['init'], { cwd: workspace, today: '2026-12-02' });
@@ -186,6 +199,51 @@ describe('init', () => {
     assert.equal(second.code, 1);
     assert.match(second.stderr, /already exists/);
     assert.equal(await readFile(file, 'utf8'), createStrategy({ version: '7' }));
+  });
+
+  it('refuses a --today that no calendar has, and writes nothing', async () => {
+    const workspace = await tempRoot.createWorkspace();
+
+    const init = await run(['init', '--today', '2026-02-31'], { cwd: workspace });
+
+    assert.equal(init.code, 2);
+    assert.match(init.stderr, /--today must be a calendar date \(YYYY-MM-DD\), got "2026-02-31"/);
+    assert.deepEqual(await readdir(workspace), []);
+  });
+
+  it('accepts a leap day and a month end as --today', async () => {
+    const leapWorkspace = await tempRoot.createWorkspace();
+    const monthEndWorkspace = await tempRoot.createWorkspace();
+
+    const leap = await run(['init', '--today', '2024-02-29'], { cwd: leapWorkspace });
+    const monthEnd = await run(['init', '--today', '2026-04-30'], { cwd: monthEndWorkspace });
+
+    assert.equal(leap.code, 0);
+    assert.match(await readFile(join(leapWorkspace, DEFAULT_FILE), 'utf8'), /- \*\*Updated:\*\* 2024-02-29/);
+    assert.equal(monthEnd.code, 0);
+    assert.match(await readFile(join(monthEndWorkspace, DEFAULT_FILE), 'utf8'), /- \*\*Updated:\*\* 2026-04-30/);
+  });
+
+  it('writes the default path at the repository root when run from a subdirectory', async () => {
+    const repository = await tempRoot.createWorkspace();
+    await mkdir(join(repository, '.git'), { recursive: true });
+    const subdirectory = join(repository, 'packages', 'app');
+    await mkdir(subdirectory, { recursive: true });
+
+    const init = await run(['init'], { cwd: subdirectory, today: '2026-11-14' });
+
+    assert.equal(init.code, 0);
+    assert.match(await readFile(join(repository, DEFAULT_FILE), 'utf8'), /- \*\*Updated:\*\* 2026-11-14/);
+    assert.deepEqual(await readdir(subdirectory), [], 'a second strategy must not appear beside the caller');
+  });
+
+  it('falls back to the cwd when no ancestor is a repository', async () => {
+    const workspace = await tempRoot.createWorkspace();
+
+    const init = await run(['init'], { cwd: workspace, today: '2026-11-14' });
+
+    assert.equal(init.code, 0);
+    assert.match(await readFile(join(workspace, DEFAULT_FILE), 'utf8'), /- \*\*Updated:\*\* 2026-11-14/);
   });
 });
 

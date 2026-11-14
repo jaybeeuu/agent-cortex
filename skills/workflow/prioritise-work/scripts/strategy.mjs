@@ -25,8 +25,8 @@
 // Exit codes: 0 the file is valid, 1 the file is invalid or the operation refused,
 // 2 the caller asked for something malformed.
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ export const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  */
 export const TEMPLATE_FILE = fileURLToPath(new URL('../templates/strategy.md', import.meta.url));
 
-/** `--today` must be a calendar date the file can commit to. */
+/** The shape of a date: four digits, two, two. Whether it exists is a separate question. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A markdown heading, with its title captured. */
@@ -179,6 +179,20 @@ export function todayIso() {
 }
 
 /**
+ * Whether `value` is a calendar date the file can commit to, not merely a date V8 can
+ * parse. V8's ISO parser rolls an impossible date into the following month — `2026-02-31`
+ * becomes 3 March — so `Date.parse` proves nothing here. Rebuild the date from its parts
+ * and compare the round trip instead: a rolled date no longer matches what was written.
+ * @param {string} value @returns {boolean}
+ */
+function isCalendarDate(value) {
+  if (!DATE.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+/**
  * Validate a strategy's shape: a positive-integer version, an ISO date, and every
  * required section present and carrying content. Every defect is reported, so one run
  * fixes the whole file.
@@ -205,8 +219,8 @@ export function validateStrategy(text) {
   const updated = found.get('updated');
   if (updated === undefined) {
     errors.push('missing field: "**Updated:**" — the date this rubric last changed');
-  } else if (!DATE.test(updated) || Number.isNaN(Date.parse(updated))) {
-    errors.push(`updated must be a YYYY-MM-DD date, got "${updated}"`);
+  } else if (!isCalendarDate(updated)) {
+    errors.push(`updated must be a calendar date (YYYY-MM-DD), got "${updated}"`);
   }
 
   const lines = text.split('\n');
@@ -258,7 +272,7 @@ const USAGE = `Usage: node strategy.mjs <${COMMANDS.join('|')}> [options]
   bump       Raise the version by one and record today's date, then re-validate.
 
 Options:
-  --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the cwd)
+  --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)
   --today <date>   Date to record on init/bump (default: today, UTC; YYYY-MM-DD)
   -h, --help       Show this text
 
@@ -289,7 +303,9 @@ export function parseArgs(argv) {
     if (arg === '--today') {
       today = argv[++i];
       if (today === undefined) throw new UsageError('--today needs a value');
-      if (!DATE.test(today)) throw new UsageError(`--today must be YYYY-MM-DD, got "${today}"`);
+      if (!isCalendarDate(today)) {
+        throw new UsageError(`--today must be a calendar date (YYYY-MM-DD), got "${today}"`);
+      }
       continue;
     }
     if (arg.startsWith('-')) throw new UsageError(`unexpected argument: ${arg}`);
@@ -300,6 +316,29 @@ export function parseArgs(argv) {
 
   if (command === undefined) throw new UsageError(`a command is required: ${COMMANDS.join(', ')}`);
   return { command, file: file ?? DEFAULT_FILE, ...(today === undefined ? {} : { today }) };
+}
+
+/**
+ * The deepest ancestor of `start`, itself included, that carries a `.git` entry — the
+ * repository root the default strategy path is documented against. A worktree or submodule
+ * carries `.git` as a file, so existence is the whole test. Walks with `node:fs/promises`
+ * and never shells out, because this script spawns nothing. Falls back to `start` when no
+ * ancestor is a repository, so a run outside one writes where the caller stands.
+ * @param {string} start @returns {Promise<string>}
+ */
+async function findRepositoryRoot(start) {
+  const from = resolve(start);
+  let directory = from;
+  for (;;) {
+    const found = await access(join(directory, '.git')).then(
+      () => true,
+      () => false,
+    );
+    if (found) return directory;
+    const parent = dirname(directory);
+    if (parent === directory) return from;
+    directory = parent;
+  }
 }
 
 /**
@@ -315,7 +354,9 @@ function formatErrors(file, errors) {
  * @param {string[]} options.argv                     CLI arguments (without node/script).
  * @param {(chunk: string) => void} [options.write]    stdout sink; injectable for tests.
  * @param {(chunk: string) => void} [options.writeError] stderr sink; injectable for tests.
- * @param {string} [options.cwd]                       Base directory for a relative --file.
+ * @param {string} [options.cwd]                       Directory to resolve from: the default
+ *                                                     path's search start, and the base for
+ *                                                     a relative --file.
  * @param {string} [options.today]                     Date to record; injectable for tests.
  * @returns {Promise<number>} process exit code.
  */
@@ -340,7 +381,11 @@ export async function runCli({
     return 2;
   }
 
-  const file = resolve(cwd, options.file);
+  // The default path is documented as relative to the repository root, so `init` run from a
+  // subdirectory writes the one strategy the root owns instead of a second one. Any other
+  // `--file` — and every absolute path — is taken as given, relative to the cwd.
+  const base = options.file === DEFAULT_FILE ? await findRepositoryRoot(cwd) : cwd;
+  const file = resolve(base, options.file);
   const date = today ?? options.today ?? todayIso();
 
   try {

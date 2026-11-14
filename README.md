@@ -521,7 +521,8 @@ into), an npm install under `<prefix>/lib/node_modules/…`, and the manager bin
 of them owns this copy: running the manager on `PATH` would update the wrong store or fail. The
 confirmation asks the inferred manager for its own global listing and matches this package's name
 and version. An owner that cannot be inferred or confirmed prints the exact command and exits
-non-zero; the CLI never falls back to a manager found on `PATH`.
+non-zero — both managers' commands when it cannot even infer the layout, because that choice is
+the user's. The CLI never falls back to a manager found on `PATH`.
 
 The report gives the installed version (read from the manifest beside the entry point, so even a
 stale process reports what is on disk), the published version (from the confirmed manager's `view`),
@@ -529,6 +530,11 @@ the owner, and the command it would run. A registry error is its own failure: it
 manager's error, offers no update, and exits non-zero. A failed install reports the manager's stderr
 and runs nothing after it. Once the install succeeds, the refresh is the new binary's `update -a`,
 so one command brings the CLI and the harness installs to the same version.
+
+The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix, so it is POSIX-only;
+native Windows pnpm and npm write `.cmd` shims that this path does not match. A spawn that fails
+exits 1 with no reason printed. The install has already succeeded by then, so finish the refresh
+with `agent-cortex update -a`.
 
 ```sh
 # what it reports, for a copy installed by a pnpm that is not the one on PATH

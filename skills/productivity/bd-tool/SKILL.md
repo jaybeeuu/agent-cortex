@@ -37,6 +37,7 @@ We use labels to track state. Key patterns:
 | `lifecycle:<phase>` | Lifecycle gate | `feature-pr` |
 | `epic:<id>` | Parent epic link | `epic:abc-123` |
 | `priority:<level>` | Priority (0-3) | `priority:1` |
+| `defect:<class>` | The kind of defect a review rejection names — one per rejection, closed list | `defect:test-unproven` |
 
 ## Where operational state lives
 
@@ -86,6 +87,18 @@ $ bd note probe-ijd "[2026-11-14T08:26:38Z] stopped: API choice open; decision b
 **Never set a state dimension.** `bd set-state` writes a label for a dimension and removes the
 label it replaces, so `bd set-state <id> stage=verify` deletes `stage:code` and rewrites the
 bead's route. Statuses and notes cover every case above, so no dimension is needed.
+
+### `defect:<class>` classifies a defect; it is not a state
+
+A review that rejects a bead applies exactly one `defect:<class>` label from the closed list in the
+`review-defects` skill, with the specific reason in the rejection text. The label says which kind
+of defect it was; the bead's status still says where the work is. A class outside that list is not
+a label — an unknown class is a review defect in itself.
+
+```bash
+bd list -l defect:test-unproven       # one class
+bd list --label-pattern 'defect:*'    # every open defect
+```
 
 ## Creating work
 
@@ -166,4 +179,5 @@ Optional — beads work locally. Sync at session end when it's convenient.
 - [create-task](../../planning/create-task/SKILL.md) — creating a task that needs pipeline expansion.
 - [classify-bead](../../planning/classify-bead/SKILL.md) — resolving a bead's execution class.
 - [run-pipeline-stage](../../workflow/run-pipeline-stage/SKILL.md) — executing a single pipeline stage for a claimed bead.
+- [review-defects](../../review/review-defects/SKILL.md) — the closed `defect:<class>` vocabulary, with an example per class.
 - [ralph](../../workflow/ralph/SKILL.md) — running the whole ready backlog end to end.

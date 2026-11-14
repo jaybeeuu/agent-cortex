@@ -25,6 +25,27 @@
 - If blocked, enumerate required changes under `BLOCKING_ISSUES`.
 - `FILES_CHANGED` should be `none`.
 
+## One defect class per rejection
+
+A rejection carries exactly one `defect:<class>` label, from the closed list in the
+`review-defects` skill, plus the specific reason in the rejection text. The label names the kind;
+`BLOCKING_ISSUES` names this instance.
+
+```bash
+bd update <id> --add-label defect:test-unproven
+```
+
+- Apply it to the bead whose work you reject. Two findings of different kinds are two
+  `BLOCKING_ISSUES` entries and one label: the class of the finding that must be fixed first.
+- A class that is not on the closed list is a review defect in itself. Say so under
+  `BLOCKING_ISSUES` and use the nearest real class — never invent a `defect:` label.
+- The review that confirms the fix removes the label
+  (`bd update <id> --remove-label defect:test-unproven`) and records the removal in its trail
+  entry. A closed defect is a trail fact, never a second class.
+
+A test whose name outruns its assertions is `defect:test-unproven`; a test that would pass against
+a broken implementation is `defect:test-cannot-fail`.
+
 ## Remediation and close
 
 - You own this leaf bead: record the trail entry through `scripts/trail-entry.mjs`, then

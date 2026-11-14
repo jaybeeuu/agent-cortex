@@ -432,14 +432,17 @@ async function findRepositoryRoot(start) {
 }
 
 /**
- * The absolute path a subcommand reads or writes. The default path is documented as
- * relative to the repository root, so a run from a subdirectory reaches the one strategy
- * the root owns instead of writing a second one. Any other `--file` — and every absolute
- * path — is taken as given, relative to `cwd`.
- * @param {{ file?: string, cwd?: string }} options
+ * The absolute path of the strategy file for one run. The default path resolves against
+ * the repository root, so a caller run from any subdirectory reads the one strategy the
+ * repository owns; an explicit `--file` is taken as given, relative to the cwd or
+ * absolute. Exported so another skill's script reads the strategy through the same rule
+ * rather than re-deriving it — one strategy, one location, one resolver.
+ * @param {object} [options]
+ * @param {string} [options.file]  Path as the caller supplied it.
+ * @param {string} [options.cwd]   Directory a relative path resolves against.
  * @returns {Promise<string>}
  */
-export async function resolveStrategyFile({ file = DEFAULT_FILE, cwd = process.cwd() } = {}) {
+export async function resolveStrategyPath({ file = DEFAULT_FILE, cwd = process.cwd() } = {}) {
   const base = file === DEFAULT_FILE ? await findRepositoryRoot(cwd) : cwd;
   return resolve(base, file);
 }
@@ -484,8 +487,10 @@ export async function runCli({
     return 2;
   }
 
-  // The default path resolves against the repository root; an explicit --file does not.
-  const file = await resolveStrategyFile({ file: options.file, cwd });
+  // The default path is documented as relative to the repository root, so `init` run from a
+  // subdirectory writes the one strategy the root owns instead of a second one. Any other
+  // `--file` — and every absolute path — is taken as given, relative to the cwd.
+  const file = await resolveStrategyPath({ file: options.file, cwd });
   const date = today ?? options.today ?? todayIso();
 
   try {

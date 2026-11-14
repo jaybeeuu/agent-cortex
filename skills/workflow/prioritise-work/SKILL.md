@@ -87,8 +87,7 @@ node <skill-scripts>/strategy.mjs validate
 node <skill-scripts>/strategy.mjs bump --reason "<why the rubric changed>"
 ```
 
-The bump refuses a file that is not already valid and refuses an empty reason, raises the version by exactly one, writes today's date in UTC, and appends `- <date> v<n>: <reason>` to the change log.
-Report the old and new version to the owner.
+The bump refuses a file that is not already valid and refuses an empty reason, raises the version by exactly one, writes today's date in UTC, and appends `- <date> v<n>: <reason>` to the change log. Report the old and new version to the owner.
 
 9. Commit the file. The version is what a score's `strategyVersion` points at, so a bump with no commit leaves scores pointing at a rubric nobody else has.
 
@@ -147,4 +146,5 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 - [CHALLENGE.md](CHALLENGE.md) — the sequence, the refusals and the no-change path when the order is challenged.
 - [plan](../../workflow/plan/SKILL.md) — shapes one feature into beads; this skill orders the beads that exist.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where operational state lives, and why a durable document does not belong there.
+- [score-bead](../../workflow/score-bead/SKILL.md) — turns this rubric into a RICE record on a bead.
 - [hitl-collab](../../workflow/hitl-collab/SKILL.md) — the handoff document that shares the working-docs root with the strategy.

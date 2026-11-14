@@ -36,7 +36,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { DEFAULT_FILE, UsageError, resolveStrategyFile, validateStrategy } from './strategy.mjs';
+import { DEFAULT_FILE, UsageError, resolveStrategyPath, validateStrategy } from './strategy.mjs';
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
@@ -438,7 +438,7 @@ export async function runCli({
     return 2;
   }
 
-  const file = await resolveStrategyFile({ file: options.file, cwd });
+  const file = await resolveStrategyPath({ file: options.file, cwd });
 
   try {
     /** @type {string} */

@@ -41,7 +41,8 @@ not a transcript.
 
    **Exception — `housekeeping`.** It closes its bead only when the pruner removed every
    `closed-bead` worktree. On `BLOCKED` it leaves the bead **open** and builds nothing (see
-   _Remediation_ below).
+   _Remediation_ below). **Exception — `post-merge`.** It closes its bead on exit `0` and leaves it
+   **open** on exit `1` or `2`, where the check reported a failed or inconclusive run.
 3. **Do not create the next stage on success.** Routing forward is the orchestrator's job.
 
 ## Remediation (only when your outcome is BLOCKED)
@@ -50,6 +51,11 @@ not a transcript.
 `stage:fix` chore and a fresh instance have nothing to repair and nothing to re-block. It leaves its
 bead open, reports `OUTCOME: BLOCKED` with the surviving worktrees, and hands the chore to a human.
 Every step below applies to every other stage.
+
+**Exception — `post-merge` builds nothing.** It verified a commit that already merged, so a fix
+round has nothing to repair and no later stage to re-block. It leaves its chore open, reports
+`OUTCOME: BLOCKED` with the check's reason, and names the P1 escalation bead the check filed when
+the run failed. Every step below applies to every other stage.
 
 A fresh instance of this stage is required: the bead you are closing cannot re-run itself.
 
@@ -100,6 +106,8 @@ dirty worktree counts as a failed stage whatever the outcome line claims.
 
 **Exception — `housekeeping`.** It changes no files, so it commits and pushes nothing. Report
 `COMMIT: none` and `PUSHED: no` with `OUTCOME: SUCCESS`; never create an empty commit.
+**Exception — `post-merge`.** It changes no files either: always report `COMMIT: none` and
+`PUSHED: no`, whatever the check's exit status.
 
 ## Instructions
 1. Read and follow the playbook file listed above.
@@ -113,7 +121,7 @@ End your response with a `---REPORT---` block in exactly this format:
 ```
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: <code|verify|review|document|housekeeping|fix>
+STAGE_COMPLETED: <code|verify|review|document|post-merge|housekeeping|fix>
 SUMMARY: <2-3 sentence summary of what was done>
 FILES_CHANGED: <comma-separated list, or "none">
 COMMIT: <sha of the stage commit, or "none">

@@ -47,7 +47,7 @@ are fine.
 
 ## Expansion Guard
 
-Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate, plus the `housekeeping` chore blocked behind that gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. It is idempotent: a re-run adopts the chores that already exist under the parent, creates only the missing ones, and skips deps that are already wired. Ralph's dispatch is therefore always "claim what `bd ready -l execution:afk` returns".
+Stage chores are pre-created, never created on demand. `create-chores.mjs` (in `skills/planning/create-task/`) reads `pipeline.json` and creates the whole chain in one shot — `code` → `verify` → `review` → `document`, plus the `featurePrReview` HITL gate, plus the `post-merge` and `housekeeping` chores blocked behind that gate — with `blocks` deps that encode the order, and with the parent's priority and inherited labels. It is idempotent: a re-run adopts the chores that already exist under the parent, creates only the missing ones, and skips deps that are already wired. Ralph's dispatch is therefore always "claim what `bd ready -l execution:afk` returns".
 
 A ready `execution:afk` task bead with **no** `stage:*` chore children has nothing to dispatch. Expand it, then dispatch the resulting `stage:code` chore:
 
@@ -72,7 +72,7 @@ A ready `execution:afk` task bead with **no** `stage:*` chore children has nothi
    ```json
    { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>", "logLine": 1 }
    ```
-4. **Report the mapping** the worker returns — `code`, `verify`, `review`, `document`, `housekeeping`, `featurePrReview` — and close nothing. The worker owns no bead on this run; the expansion is bookkeeping, not a stage.
+4. **Report the mapping** the worker returns — `code`, `verify`, `review`, `document`, `post-merge`, `housekeeping`, `featurePrReview` — and close nothing. The worker owns no bead on this run; the expansion is bookkeeping, not a stage.
 5. **Dispatch normally.** The next `bd ready -l execution:afk` pass picks up the `stage:code` chore, and the pre-created chain carries the rest.
 6. **Handle the completion as an expansion completion**, not a stage completion — see below.
 
@@ -97,7 +97,7 @@ On completion, remove the entry from `inflight` and confirm the chore tree exist
 bd children <parent-id> --json | grep -c '"stage:'
 ```
 
-Expect one match per `stage:*` label in the chain — five for the shipped `pipeline.json`; the
+Expect one match per `stage:*` label in the chain — six for the shipped `pipeline.json`; the
 `featurePrReview` gate carries `lifecycle:feature-pr` instead, so it is not counted. A lower count
 means the expansion did not finish: `0` created nothing, and a partial chain leaves stages that
 will never become ready. Either way, surface the worker's output in chat, record the parent for the
@@ -175,7 +175,7 @@ A worker's `---REPORT---` is a claim about the worktree, not evidence of it. Ver
 node scripts/lib/verify-worker-tree.mjs --worktree .agent-cortex/worktrees/<parent-id> --base <base>
 ```
 
-Exit code 0 means a clean tree with at least one commit ahead of the recorded base. A non-zero exit reports `worktree is dirty` or `no commit ahead of base`, and the stage did **not** deliver whatever its `OUTCOME` line says. Re-dispatch the same chore, or record the failure for the fix chain — never advance the parent, close the chore, or open a feature PR over uncommitted work.
+Exit code 0 means a clean tree with at least one commit ahead of the recorded base. A non-zero exit reports `worktree is dirty` or `no commit ahead of base`, and the stage did **not** deliver whatever its `OUTCOME` line says. Re-dispatch the same chore, or record the failure for the fix chain — never advance the parent, close the chore, or open a feature PR over uncommitted work. `post-merge` and `housekeeping` deliver no commit, so this check does not apply to them.
 
 ---
 
@@ -201,6 +201,25 @@ For each parent task bead (`<parent-id>`):
    silently stacks the branches and turns the dependency into a squash-merge conflict later.
    If `.agent-cortex/worktrees/<parent-id>` already exists, reuse it.
 5. All chores for this parent run in `.agent-cortex/worktrees/<parent-id>`. The `feature/<parent-id>` branch is the agent branch for HITL PRs.
+
+---
+
+## Post-merge Check
+
+A merge is not verified by merging. The `stage:post-merge` chore reads the CI run that GitHub started for the merge commit on the base branch and reports whether it passed. `create-chores.mjs` pre-creates that chore, labelled `lifecycle:post-merge` and blocked behind the same `lifecycle:feature-pr` gate as `stage:housekeeping`, so it stays out of `bd ready` until a human closes the gate.
+
+```bash
+node skills/workflow/ralph/scripts/post-merge-check.mjs
+```
+
+The script is deterministic: no model, no tokens, zero dependencies, async only. It prints a JSON report and exits `0` when every run for the commit passed, `1` when a run failed, and `2` when the result is inconclusive.
+
+- **Executor.** A dispatched worker runs it from the **main checkout**, like the housekeeping stage: the commit it reads landed on the base branch, not on the feature branch. It resolves the repository slug and base branch through `gh repo view`, so nothing about this repo's slug or `main` is baked in. `--base <branch>` and `--commit <sha>` override each; the wait window is `--wait <seconds>`, default 300. Any revision either flag supplies is expanded through `git rev-parse` first, because `gh run list --commit` matches the full 40-character SHA only — a caller that reaches `gh` with a short SHA gets an empty run list, which reads as `inconclusive` rather than as an error.
+- **Exit `1` files one P1 escalation per open bead.** The bead carries the run URL and the failing job name, is labelled `lifecycle:post-merge-escalation` + `execution:hitl`, and carries a `post-merge-run:<id>` marker in its description. A second run finds the open bead carrying that marker and files nothing. The escalation has no parent, so the feature bead is never reopened and never gains a child.
+- **The marker bounds open beads, not runs — a known limitation.** The marker is searched with `bd list`, which omits closed beads. A run id is immutable, so one bead per run forever is the intent, but the code delivers one **open** bead per run: once a human closes the escalation, a later check of the same run files a fresh bead for it. That repeats a page nobody wants; it never drops a signal. Fixing it means searching closed beads too, which is its own change.
+- **Nothing is retried.** The stage never re-runs the workflow, never retries the check for a different answer, never reverts the merge, and builds no `stage:fix` chain — a commit that already merged is not repaired by a fix round. The chore stays **open** on exit `1` and `2`.
+- **GitHub-only in v1.** A repository `gh` cannot resolve to a GitHub host, or a commit with no run on the base branch, is `inconclusive`: reported, never escalated.
+- **Ordering against housekeeping.** The two stages are siblings on the gate and neither waits on the other. Chaining `housekeeping` behind `post-merge` was rejected: an inconclusive check that nobody resolves would strand the worktree reclamation housekeeping exists to do. Putting `post-merge` after `housekeeping` was rejected too — it would make the pruner a dependency of a check that reads GitHub state, which no worktree removal can affect.
 
 ---
 
@@ -250,7 +269,7 @@ When the `document` chore for a parent task completes:
 4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` and `execution:hitl` (created by `create-task`).
 5. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
 6. Do not schedule new parent features while this gate is **unblocked** — an unblocked gate is a feature genuinely awaiting a human merge (see _Gate predicate_ below).
-7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake **and** the pre-created `stage:housekeeping` chore. After that, close the parent feature bead:
+7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake **and** the pre-created `stage:post-merge` and `stage:housekeeping` chores. After that, close the parent feature bead:
    ```bash
    bd close <parent-id>
    ```

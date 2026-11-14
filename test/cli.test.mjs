@@ -196,6 +196,20 @@ describe("parseArgs", () => {
     assert.deepStrictEqual(parseArgs(["install", "pi"]), { command: "install", harness: "pi" });
   });
 
+  it("defaults self-update to acting", async () => {
+    assert.deepStrictEqual(parseArgs(["self-update"]), { command: "self-update", check: false });
+  });
+
+  it("parses --check for self-update", async () => {
+    assert.deepStrictEqual(parseArgs(["self-update", "--check"]), { command: "self-update", check: true });
+  });
+
+  it("reports an unknown option for self-update", async () => {
+    const result = parseArgs(["self-update", "--bogus"]);
+    assert.equal(result.command, "self-update");
+    assert.ok(result.optionError?.includes("--bogus"));
+  });
+
   it("defaults migrate to a dry run", async () => {
     assert.deepStrictEqual(parseArgs(["migrate"]), { command: "migrate", apply: false });
   });

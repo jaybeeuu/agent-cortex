@@ -63,6 +63,27 @@ function createStepScheduler() {
   };
 }
 
+/**
+ * A stepped scheduler that runs `onClockRead` before it returns the time.
+ *
+ * Both `start()` and `#writeState` read the clock before the file write reaches
+ * the filesystem, so a watch stopped from `onClockRead` stops with its write
+ * still to run: the remove lands inside the write window on every run, with no
+ * sleep and no dependence on I/O timing.
+ */
+function createWriteWindowScheduler(onClockRead: () => void) {
+  const step = createStepScheduler();
+  const scheduler: Scheduler = {
+    now: () => {
+      onClockRead();
+      return step.scheduler.now();
+    },
+    schedule: (callback, delayMs) => step.scheduler.schedule(callback, delayMs),
+  };
+
+  return { scheduler, step };
+}
+
 /** A watch over one project and bead, with only the values a test cares about set. */
 function createWatch(overrides: {
   runs: CheckRun[];
@@ -214,6 +235,7 @@ describe("PostMergeWatch", () => {
     });
     assert.equal(step.pending(), 0);
     assert.equal(watch.active, false);
+    await assert.rejects(stat(watch.stateFile), "a watch that settled on a verdict leaves no state file");
   });
 
   it("gives up at the attempt cap and reports an inconclusive verdict", async () => {
@@ -240,6 +262,10 @@ describe("PostMergeWatch", () => {
       { verdict: "inconclusive", reason: "still-running", runUrl: null, attempts: 3 },
     );
     assert.equal(step.pending(), 0);
+    await assert.rejects(
+      stat(watch.stateFile),
+      "a watch that settled on the attempt cap leaves no state file",
+    );
   });
 
   it("keeps polling when the check script cannot run, then reports inconclusive", async () => {
@@ -271,7 +297,7 @@ describe("PostMergeWatch", () => {
     assert.match(warnings.join("\n"), /spawn ENOENT/);
   });
 
-  it("records one state file per project and bead, and removes it when the watch settles", async () => {
+  it("records one state file per project and bead, and removes only the stopped watch's", async () => {
     const stateDir = join(await tempRoot.createWorkspace(), "state");
     const inProgress = () => [run(2, report({ reason: "still-running" }))];
     const sameBeadOtherProject = createWatch({ stateDir, project: "/projects/two", runs: inProgress() });
@@ -321,6 +347,77 @@ describe("PostMergeWatch", () => {
     await assert.rejects(stat(stateFile));
     assert.equal(step.pending(), 0);
     assert.equal(watch.active, false);
+    assert.deepEqual(deliveries, []);
+  });
+
+  it("removes the state file when the session stops before the first write lands", async () => {
+    const stateDir = join(await tempRoot.createWorkspace(), "state");
+    const deliveries: WakeMessage[] = [];
+    let armed = true;
+    let stopping: Promise<void> = Promise.resolve();
+    let watch: PostMergeWatch;
+
+    const { scheduler, step } = createWriteWindowScheduler(() => {
+      if (!armed) return;
+      armed = false;
+      stopping = watch.stop();
+    });
+
+    watch = new PostMergeWatch({
+      bead: "agnt-ctx-86u4.2",
+      project: "/projects/one",
+      script: "/agent-cortex/skills/workflow/ralph/scripts/post-merge-check.mjs",
+      stateDir,
+      scheduler,
+      runCheck: async () => run(2, report({ reason: "still-running" })),
+      deliver: (message) => deliveries.push(message),
+    });
+
+    const starting = watch.start();
+    await stopping; // the remove lands before the write it is racing with
+    await starting;
+
+    await assert.rejects(
+      stat(watch.stateFile),
+      "a watch stopped before its first state write lands leaves no state file",
+    );
+    assert.equal(step.pending(), 0);
+    assert.deepEqual(deliveries, []);
+  });
+
+  it("removes the state file and schedules nothing when the session stops during a poll's write", async () => {
+    const stateDir = join(await tempRoot.createWorkspace(), "state");
+    const deliveries: WakeMessage[] = [];
+    let armed = false;
+    let stopping: Promise<void> = Promise.resolve();
+    let watch: PostMergeWatch;
+
+    const { scheduler, step } = createWriteWindowScheduler(() => {
+      if (!armed) return;
+      armed = false;
+      stopping = watch.stop();
+    });
+
+    watch = new PostMergeWatch({
+      bead: "agnt-ctx-86u4.2",
+      project: "/projects/one",
+      script: "/agent-cortex/skills/workflow/ralph/scripts/post-merge-check.mjs",
+      stateDir,
+      scheduler,
+      runCheck: async () => run(2, report({ reason: "still-running" })),
+      deliver: (message) => deliveries.push(message),
+    });
+
+    await watch.start();
+    armed = true;
+    await step.fire(); // the poll's state write reads the clock, so stop() lands inside it
+    await stopping;
+
+    await assert.rejects(
+      stat(watch.stateFile),
+      "a watch stopped during a poll's state write leaves no state file",
+    );
+    assert.equal(step.pending(), 0, "a stopped watch schedules no further check");
     assert.deepEqual(deliveries, []);
   });
 

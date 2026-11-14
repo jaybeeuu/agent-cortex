@@ -345,6 +345,9 @@ export class PostMergeWatch {
     }
 
     await this.#writeState();
+    // `stop()` may have landed while the state was written: the session is gone,
+    // so schedule nothing more.
+    if (this.#stopped) return;
     this.#cancel = this.#scheduler.schedule(() => {
       this.#cancel = undefined;
       return this.#check();
@@ -407,7 +410,14 @@ export class PostMergeWatch {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.#warn(`post-merge-watch: the watch state could not be written: ${detail}`);
+      return;
     }
+
+    // `stop()` and `#settle()` remove the state file, and either can land while
+    // this write is in flight: the remove then runs first and this write
+    // recreates the file. Nothing sweeps the directory, so remove it again — a
+    // watch that is no longer active leaves no state file behind.
+    if (this.#stopped) await this.#removeState();
   }
 
   async #removeState(): Promise<void> {

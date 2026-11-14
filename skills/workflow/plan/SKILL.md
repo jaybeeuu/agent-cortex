@@ -264,7 +264,7 @@ Deliver a handoff bead, message the running ralph session, and give the instruct
 - [spec-to-tickets](../../planning/spec-to-tickets/SKILL.md) — load instead when the PRD must become external tickets rather than beads.
 - [create-task](../../planning/create-task/SKILL.md) — Phase 3's per-task bead creation and pipeline expansion; it invokes `classify-bead` internally, so this skill never classifies directly.
 - [ralph](../ralph/SKILL.md) — the downstream consumer of the handoff bead — hand off by sending ralph a `handoff` message naming the bead, with "Use the ralph skill. Start from bead #<handoff-id>" as the manual fallback when no ralph session is online. Its [REFERENCE.md](../ralph/REFERENCE.md) owns the planner ↔ ralph message convention.
-- **guppi** (the `agent-cortex:guppi` agent) — the upstream entry point: it decides what gets planned and hands this skill one feature. Load this skill for that feature; guppi keeps the queue and the strategy.
+- **guppi** (the `agent-cortex:guppi` agent) — the upstream entry point: it decides what gets planned and hands this skill one feature. Load this skill for that feature. The strategy guppi ranks against is the committed file that `prioritise-work` owns.
 
 ## Examples
 

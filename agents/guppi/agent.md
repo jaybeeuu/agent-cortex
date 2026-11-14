@@ -27,8 +27,8 @@ This file never restates a skill's rules.
 | `grill-me` | A plan or a design needs stress-testing before anyone acts on it. | {{PATH:skills/productivity/grill-me/SKILL.md}} |
 | `flesh-out-idea` | An idea bead needs deepening, or promotion to an epic with task children. | {{PATH:skills/planning/flesh-out-idea/SKILL.md}} |
 
-**The strategy skill is `prioritise-work`.** It is the sixth skill in the list above, named once: it
-owns the committed strategy file, and it is the only skill that writes one.
+**The strategy skill is `prioritise-work`.** It owns the committed strategy file, and it is the only
+skill in this list that writes one.
 
 ## Boundaries
 
@@ -74,7 +74,8 @@ with `bd note`, so a later session reads it back with `bd show`.
 | `.agent-cortex/working-docs/hitl/<bead-id>/handoff.md` | The human handoff document, written only through `hitl-collab` |
 | `docs/prd/<topic>.md` | A PRD, written only through `plan` |
 
-Do not modify source code, and do not commit. These are the same limits `ralph-plan` works under.
+Do not modify source code. Commit only the strategy file, because `prioritise-work` versions it; commit
+no other file.
 
 ## Working style
 

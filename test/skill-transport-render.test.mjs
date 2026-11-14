@@ -43,12 +43,14 @@ const LAYOUT = {
 };
 
 /** Stage both installs once and read their rendered peer-messaging skills.
- * @returns {Promise<{ pi: Record<string, string>, claude: Record<string, string>, stdout: string, stderr: string }>} */
+ * @returns {Promise<{ pi: Record<string, string>, claude: Record<string, string>, roots: Record<string, string>, stdout: string, stderr: string }>} */
 let staged = null;
 function stageBoth() {
   staged ??= (async () => {
     /** @type {Record<string, Record<string, string>>} */
     const rendered = {};
+    /** @type {Record<string, string>} */
+    const roots = {};
     /** @type {string[]} */
     const output = [];
     for (const harness of /** @type {const} */ (["pi", "claude"])) {
@@ -62,8 +64,9 @@ function stageBoth() {
         files[key] = await readFile(join(out, ...segments), "utf-8");
       }
       rendered[harness] = files;
+      roots[harness] = out;
     }
-    return { ...rendered, stdout: output.join("\n"), stderr: "" };
+    return { ...rendered, roots, stdout: output.join("\n"), stderr: "" };
   })();
   return staged;
 }
@@ -79,6 +82,18 @@ function section(doc, heading) {
   const depth = /** @type {number} */ (heading.match(/^#+/)?.[0].length);
   const rest = doc.slice(start + heading.length);
   const next = rest.search(new RegExp(`\\n#{1,${depth}} `));
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+/** One list bullet: from its bold heading up to the next bullet.
+ * @param {string} doc
+ * @param {string} heading  literal bullet heading, e.g. "- **HITL Pause**"
+ * @returns {string} */
+function bullet(doc, heading) {
+  const start = doc.indexOf(heading);
+  assert.notEqual(start, -1, `bullet "${heading}" is missing`);
+  const rest = doc.slice(start + heading.length);
+  const next = rest.indexOf("\n- **");
   return next === -1 ? rest : rest.slice(0, next);
 }
 
@@ -124,6 +139,38 @@ describe("peer-messaging transport renders per harness", () => {
     // sentence. Their absence from the token map is what this asserts.
     assert.doesNotMatch(outside, /peer_get|peer_await/, "pi-peer-only tools stay in the runbook");
     assert.doesNotMatch(outside, /peer_send|peer_list/, "pi-peer tool names stay in the runbook");
+  });
+
+  it("reports a human gate on the harness's own channel in both renders, never PI only", async () => {
+    const { pi, claude } = await stageBoth();
+
+    for (const [harness, doc] of [["pi", pi.ralphSkill], ["claude", claude.ralphSkill]]) {
+      const report = section(doc, "### 7. HITL pause and shutdown");
+      const sends = [bullet(report, "- **HITL Pause**"), bullet(report, "- **Shutdown**")].join("\n");
+
+      // Both sends tokenise to this harness's own mechanism, so a claim that the
+      // channel belongs to pi alone is pre-fork text that survived materialisation.
+      // The leading \b keeps an unrelated "API only" out of the match.
+      assert.doesNotMatch(sends, /\bPI[-\s]only\b/i, `the ${harness} render states no PI-only peer channel`);
+    }
+  });
+
+  it("ships no harness version in the token map's descriptions", async () => {
+    const { roots } = await stageBoth();
+    const tokenMap = JSON.parse(await readFile(join(roots.pi, "token-map.json"), "utf-8"));
+
+    // token-map.json is in the published files whitelist, so a pinned harness
+    // version ships to every consumer and goes stale there, misleadingly. The
+    // harness-agnostic facts belong in prose that dates itself instead.
+    for (const [group, notes] of Object.entries(tokenMap.notes)) {
+      for (const [key, text] of Object.entries(notes)) {
+        assert.equal(typeof text, "string", `notes.${group}.${key} is a description string`);
+        assert.doesNotMatch(text, /\b\d+\.\d+\.\d+\b/, `notes.${group}.${key} pins no harness version`);
+      }
+    }
+
+    // The rename the peer_list description exists to record survives the reword.
+    assert.match(tokenMap.notes.tools.peer_list, /\bListPeers\b/, "peer_list still records the ListPeers rename");
   });
 
   it("renders the message kinds and the acknowledgement rule byte-identically", async () => {

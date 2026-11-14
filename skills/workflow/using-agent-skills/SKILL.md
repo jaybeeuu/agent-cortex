@@ -26,6 +26,7 @@ Task arrives
     ├── Spec approved, need tickets? ───────→ spec-to-tickets
     ├── Need a single task tracked? ────────→ create-task
     ├── Need to plan a feature end-to-end? ─→ plan
+    ├── Deciding what to work on next? ─────→ prioritise-work
     ├── Running beads / task execution? ────→ ralph
     │   └── Single stage? ─────────────────→ run-pipeline-stage
     ├── Implementing a task? ──────────────→ implement-task

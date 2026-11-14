@@ -239,13 +239,14 @@ describe("create-chores on an already expanded parent", () => {
         "stage:verify": 1,
         "stage:review": 1,
         "stage:document": 1,
+        "stage:post-merge": 1,
         "stage:housekeeping": 1,
         "lifecycle:feature-pr": 1,
       });
     });
   });
 
-  it("adds the housekeeping chore to a chain expanded before the stage existed", async () => {
+  it("adds the post-merge and housekeeping chores to a chain expanded before either stage existed", async () => {
     const seeded = [
       parentBead(),
       stageChore("bd-1", "code"),
@@ -271,16 +272,22 @@ describe("create-chores on an already expanded parent", () => {
       const created = (await readState()).beads.slice(seeded.length);
       assert.deepEqual(
         created.map((bead) => [...bead.labels].sort()),
-        [["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"]],
+        [
+          ["execution:afk", "lifecycle:post-merge", "stage:post-merge"],
+          ["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"],
+        ],
       );
 
       const state = await readState();
-      assert.deepEqual(
-        state.deps
-          .filter((dep) => dep.issue_id === created[0].id)
-          .map((dep) => dep.depends_on_id),
-        ["bd-5"],
-      );
+      for (const bead of created) {
+        assert.deepEqual(
+          state.deps
+            .filter((dep) => dep.issue_id === bead.id)
+            .map((dep) => dep.depends_on_id),
+          ["bd-5"],
+          `${bead.id} does not wait on the PR gate`,
+        );
+      }
     });
   });
 
@@ -326,6 +333,7 @@ describe("create-chores after a mid-chain failure", () => {
         [
           ["execution:afk", "stage:review"],
           ["execution:afk", "stage:document"],
+          ["execution:afk", "lifecycle:post-merge", "stage:post-merge"],
           ["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"],
           ["execution:hitl", "lifecycle:feature-pr"],
         ],
@@ -346,6 +354,7 @@ describe("create-chores after a mid-chain failure", () => {
         { issue_id: mapping.review, depends_on_id: "bd-2" },
         { issue_id: mapping.document, depends_on_id: mapping.review },
         { issue_id: mapping.featurePrReview, depends_on_id: mapping.document },
+        { issue_id: mapping["post-merge"], depends_on_id: mapping.featurePrReview },
         { issue_id: mapping.housekeeping, depends_on_id: mapping.featurePrReview },
       ]);
     });

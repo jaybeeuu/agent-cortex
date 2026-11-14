@@ -16,19 +16,19 @@ node <skill-scripts>/create-chores.mjs --parent <bead-id> [--priority <0-4>]
 
 ## Stage chore beads
 
-One per stage in `pipeline.json` (currently `code`, `verify`, `review`, `document`, `housekeeping`):
+One per stage in `pipeline.json` (currently `code`, `verify`, `review`, `document`, `post-merge`, `housekeeping`):
 
 - **Type**: `chore`
 - **Title**: `[<parent-id>] <stage title>` (e.g. `[abc-123] Code`)
-- **Labels**: `stage:<id>` (e.g. `stage:code`, `stage:verify`), plus any `labels` the stage declares — `housekeeping` adds `lifecycle:housekeeping`
+- **Labels**: `stage:<id>` (e.g. `stage:code`, `stage:verify`), plus any `labels` the stage declares — `post-merge` adds `lifecycle:post-merge`, `housekeeping` adds `lifecycle:housekeeping`
 - **Dependencies**: `parent-child` to the parent bead; `blocks` between stages per each stage's `dependsOn` (the script requires `dependsOn` targets to appear earlier in `pipeline.json`)
 
 **A stage may wait on the gate instead of a stage.** The reserved `dependsOn` target
 `featurePrReview` means "blocked behind the PR gate bead". The gate is not a stage — it is created
-after them — so the script wires those stages to it in a second pass, once the gate exists. The
-`housekeeping` stage uses it: its chore must not become ready until a human has merged the PR and
-closed the gate, and the `blocks` edge keeps it out of `bd ready` while the feature is in flight.
-The gate itself still waits on the last stage that does not wait on the gate (`document`).
+after them — so the script wires those stages to it in a second pass, once the gate exists. Both
+`post-merge` and `housekeeping` use it: each chore must not become ready until a human has merged
+the PR and closed the gate, and the `blocks` edge keeps it out of `bd ready` while the feature is in
+flight. The gate itself still waits on the last stage that does not wait on the gate (`document`).
 
 ## PR gate bead (`featurePrReview`)
 
@@ -94,9 +94,15 @@ The deliverable this feature produces and the problem it solves.
 | verify | Verify | code |
 | review | Review | verify |
 | document | Document | review |
+| post-merge | Post-merge check | `featurePrReview` — the PR gate bead, not a stage |
 | housekeeping | Housekeeping | `featurePrReview` — the PR gate bead, not a stage |
 
 `maxFixRounds: 4` — the maximum fix-retry rounds allowed for a stage's verify loop before the PR gate. Adjust stages only in `pipeline.json`; the script and templates follow it.
+
+`post-merge` and `housekeeping` both wait on the gate and on nothing else: they become ready
+together when a human closes it. Neither waits on the other. Chaining housekeeping behind
+`post-merge` was rejected because a post-merge check that stays open — an inconclusive run nobody
+resolves — would then strand the worktree reclamation housekeeping exists to do.
 
 ## Stage templates
 

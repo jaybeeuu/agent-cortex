@@ -30,6 +30,14 @@
       "dependsOn": ["review"]
     },
     {
+      "id": "post-merge",
+      "title": "Post-merge check",
+      "description": "Run `node <ralph-scripts>/post-merge-check.mjs` from the main checkout. It reads `gh run list` for the base branch's merge commit and exits 0 when every run passed, 1 when a run failed, and 2 when the result is inconclusive. Exit 0: report the run URLs and close. Exit 1: the script has already filed one P1 escalation bead carrying the run URL and the failing job — report its id, leave this chore open, and close nothing else. Exit 2: report the reason it printed and leave this chore open. Never retry, never re-run the workflow, never reopen the parent.",
+      "template": "templates/post-merge.md",
+      "labels": ["lifecycle:post-merge"],
+      "dependsOn": ["featurePrReview"]
+    },
+    {
       "id": "housekeeping",
       "title": "Housekeeping",
       "description": "Remove the worktrees of closed beads. Run `node <ralph-scripts>/prune-worktrees.mjs` from the main checkout and retry once if it exits non-zero. The exit status is 1 whenever any worktree survives — an open bead counts as survival — so fail this chore only when a closed-bead worktree is still refused after the retry, and leave it open. Never close it over a worktree the script did not remove.",

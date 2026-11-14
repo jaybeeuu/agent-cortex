@@ -1,11 +1,11 @@
 ---
 name: run-pipeline-stage
-description: Execute a single pipeline stage for a bead (code, verify, review, document, housekeeping) via its playbook and read-only routing, reporting the outcome in a fixed REPORT shape. Use when you want to "work through beads inline", "pick up a specific stage bead", or run one stage "without the full ralph orchestrator".
+description: Execute a single pipeline stage for a bead (code, verify, review, document, post-merge, housekeeping) via its playbook and read-only routing, reporting the outcome in a fixed REPORT shape. Use when you want to "work through beads inline", "pick up a specific stage bead", or run one stage "without the full ralph orchestrator".
 ---
 
 # Run Pipeline Stage
 
-Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `stage:housekeeping`, `stage:fix`) come from the pipeline definition in `skills/planning/create-task/pipeline.json`. This skill executes one stage and owns that bead's lifecycle: the runner that does the work appends its own notes, closes its own leaf execution bead on **both** outcomes, and builds its own remediation children when the stage fails. `housekeeping` is the single exception: it never closes its bead over a worktree the pruner did not remove, and it builds no remediation children. The orchestrator dispatches and routes — it never edits or closes a leaf bead.
+Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `stage:post-merge`, `stage:housekeeping`, `stage:fix`) come from the pipeline definition in `skills/planning/create-task/pipeline.json`. This skill executes one stage and owns that bead's lifecycle: the runner that does the work appends its own notes, closes its own leaf execution bead on **both** outcomes, and builds its own remediation children when the stage fails. `housekeeping` and `post-merge` are the exceptions: `housekeeping` never closes its bead over a worktree the pruner did not remove, `post-merge` leaves its bead open when the merge's CI run failed or the check was inconclusive, and neither builds remediation children. The orchestrator dispatches and routes — it never edits or closes a leaf bead.
 
 ## When to use
 
@@ -24,7 +24,7 @@ Stage beads (`stage:code`, `stage:verify`, `stage:review`, `stage:document`, `st
 
 | Actor | Owns |
 |---|---|
-| Stage runner (worker) | Milestone notes, progress-log lines, closing its leaf bead on both outcomes (`housekeeping` excepted: it leaves its bead open), remediation children, the REPORT |
+| Stage runner (worker) | Milestone notes, progress-log lines, closing its leaf bead on both outcomes (`housekeeping` and `post-merge` excepted: each may leave its bead open), remediation children, the REPORT |
 | Orchestrator (ralph or you) | Claim, dispatch, forward routing, the read-only cap backstop, the PR gate |
 
 A leaf bead is the worker's record of what happened. The orchestrator reads it; it does not write it.
@@ -43,7 +43,7 @@ bd tag <id> stage:<stage>
 ```
 
 7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}}. The prompt already ends with the REPORT contract; never compose one without it. A session with no subagent tool cannot dispatch: stop and say so rather than substituting a backgrounded CLI run, which has no completion signal.
-8. Verify the delivery against the worktree — `node scripts/lib/verify-worker-tree.mjs --worktree <abs-worktree> --base <base>` exits 0 only for a clean tree with a commit ahead of base. A worker whose REPORT claims `OUTCOME: SUCCESS` over a dirty tree has not delivered; re-dispatch it instead of advancing.
+8. Verify the delivery against the worktree — `node scripts/lib/verify-worker-tree.mjs --worktree <abs-worktree> --base <base>` exits 0 only for a clean tree with a commit ahead of base. A worker whose REPORT claims `OUTCOME: SUCCESS` over a dirty tree has not delivered; re-dispatch it instead of advancing. `post-merge` and `housekeeping` change no files and deliver no commit, so skip this check for those two stages.
 9. On the REPORT: route forward per _Routing_ below. Do **not** close the leaf bead — the worker closed it before reporting.
 
 Each step leaves observable state — a claimed bead, a `stage:` tag, worker notes and a closed bead, a verified commit, and a REPORT that drives the next action.
@@ -58,8 +58,10 @@ The worker built anything this stage needed; routing picks up whatever `bd ready
 | `review` | `OUTCOME: SUCCESS` | Dispatch the ready `stage:document` chore |
 | `fix` | `OUTCOME: SUCCESS` | Dispatch the ready re-run chore that was blocked on the fix |
 | `document` | `OUTCOME: SUCCESS` | Open/update the feature PR and the HITL gate bead |
+| `post-merge` | `OUTCOME: SUCCESS` | Create nothing — the merge commit's CI run is green; the closed chore is the record |
 | `housekeeping` | `OUTCOME: SUCCESS` | Create nothing — this is the last stage; its closed chore ends the pipeline |
 | `code` / `verify` / `review` / `fix` / `document` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh instance of its own stage; dispatch the ready fix chore |
+| `post-merge` | `OUTCOME: BLOCKED` | Create nothing — the worker left its chore **open** and the check filed one P1 escalation bead; report the escalation id and the run URL, and do not re-dispatch |
 | `housekeeping` | `OUTCOME: BLOCKED` | Create nothing — the worker left its chore **open**; hand the surviving worktrees to a human. Do not re-dispatch it automatically |
 | any | parent status `blocked` | Nothing — the worker or the cap backstop blocked it; record it for shutdown |
 
@@ -81,6 +83,7 @@ On `OUTCOME: BLOCKED` the worker creates its own chain — a `stage:fix` chore c
 | `document` | `stage:fix` → fresh `stage:document` |
 | `fix` | `stage:fix` → fresh `stage:fix` |
 | `housekeeping` | none — the worker leaves its chore open, reports `BLOCKED`, and hands the surviving worktrees to a human. No `stage:fix` and no fresh `stage:housekeeping`, because the stage repairs no files and sits last in the chain |
+| `post-merge` | none — the worker leaves its chore open, reports `BLOCKED`, and names the escalation bead the check filed. No `stage:fix` and no fresh `stage:post-merge`, because no fix round repairs a commit that already merged |
 
 Webbing, at cap, and the exact commands live in `prompts/stage-runner.md` and each playbook's _Remediation and close_ section. In short: both beads are children of the parent task (`--parent <parent-id>`), the fresh stage is `bd dep add <fresh> <fix> --type blocks`, and any not-yet-run later stage is re-blocked behind the fresh bead. Chores carry no required sections, so the feedback description points at the parent/requirements bead (`<parent-id>`) rather than restating its acceptance criteria.
 
@@ -115,7 +118,7 @@ Every stage-runner prompt ends with the literal REPORT instruction (see `prompts
 ```
 ---REPORT---
 BEAD_ID: <id>
-STAGE_COMPLETED: <code|verify|review|document|housekeeping|fix>
+STAGE_COMPLETED: <code|verify|review|document|post-merge|housekeeping|fix>
 SUMMARY: <2-3 sentence summary of what was done>
 FILES_CHANGED: <comma-separated list, or "none">
 COMMIT: <sha of the stage commit, or "none">
@@ -156,7 +159,7 @@ stage: the commit is the evidence, the report is the claim.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — bead mechanics beyond the commands used here.
 - [ralph](../ralph/SKILL.md) — runs many stage beads concurrently and consumes this skill's log and REPORT contracts.
 
-Each playbook delegates to a stage skill: `tdd`/`style-code`/`style-tests` (code, fix), `review-security` (review), `style-documentation` (document).
+Each playbook delegates to a stage skill: `tdd`/`style-code`/`style-tests` (code, fix), `review-security` (review), `style-documentation` (document). `housekeeping` and `post-merge` delegate to no stage skill — each runs one deterministic script and reports what it printed.
 
 ## Examples
 

@@ -9,7 +9,7 @@ Ralph is a parallel orchestration loop. It advances `execution:afk` beads throug
 
 One query decides what ralph works on: **`bd ready -l execution:afk`**. Features, tasks and chores all arrive through it, and each bead's *shape* — not a second `bd` filter — decides which procedure carries it: a childless feature is decomposed, a bead with no stage chores is expanded, a stage chore is dispatched. An `execution:afk` bead is therefore never invisible to ralph for lacking a `stage:*` label, and ralph never invents a narrower "only stage chores" predicate that would hide one.
 
-Each leaf execution bead belongs to the worker that ran it: the worker appends its milestone notes, closes the bead on both outcomes, and builds its own `stage:fix` + fresh-stage remediation chain when it fails. The `housekeeping` worker is the exception — it never closes its chore over a worktree the pruner did not remove, and it builds no chain. Ralph reads beads and routes — it never closes a leaf bead and never creates a fix bead. Its only retry control is a read-only cap backstop.
+Each leaf execution bead belongs to the worker that ran it: the worker appends its milestone notes, closes the bead on both outcomes, and builds its own `stage:fix` + fresh-stage remediation chain when it fails. Two stages are exceptions, because neither repairs a file: the `housekeeping` worker never closes its chore over a worktree the pruner did not remove, and the `post-merge` worker leaves its chore open on a failed or inconclusive check. Both build no chain. Ralph reads beads and routes — it never closes a leaf bead and never creates a fix bead. Its only retry control is a read-only cap backstop.
 
 State model: task state lives in beads (ready/in_progress via `bd`); the only local file is `.agent-cortex/ralph/state.json`, holding the agent-ID→bead mapping. Pipeline configuration comes from `skills/planning/create-task/pipeline.json`, and stage execution belongs to the `run-pipeline-stage` skill. Stage chores are pre-created from that pipeline when a task is expanded — with `blocks` deps encoding the order — so ralph's dispatch is always "claim what `bd ready -l execution:afk` returns"; it never creates a stage chore.
 
@@ -46,7 +46,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
 
 ### 2. Expansion guard (stage chores are pre-created)
 
-A ready `execution:afk` task bead with no `stage:*` chore children has nothing to dispatch, so it is not dispatched as work. Expand it first: dispatch a worker in the feature worktree that runs `create-chores.mjs --parent <id> --priority <parent-priority>` against the existing bead and reports the returned `code`/`verify`/`review`/`document`/`housekeeping`/`featurePrReview` mapping — the next `bd ready -l execution:afk` pass then picks up `stage:code` (see REFERENCE.md, _Expansion Guard_).
+A ready `execution:afk` task bead with no `stage:*` chore children has nothing to dispatch, so it is not dispatched as work. Expand it first: dispatch a worker in the feature worktree that runs `create-chores.mjs --parent <id> --priority <parent-priority>` against the existing bead and reports the returned `code`/`verify`/`review`/`document`/`post-merge`/`housekeeping`/`featurePrReview` mapping — the next `bd ready -l execution:afk` pass then picks up `stage:code` (see REFERENCE.md, _Expansion Guard_).
 
 The expansion is idempotent and re-running it is the recovery path: the script adopts the chores that already exist under the parent, creates only the missing ones, and reports the whole mapping. The auto-recovery fires only when a re-check finds no `stage:*` chore at all; a **partial** chain (a count below the stage total) needs a manual re-run of that same command.
 
@@ -77,7 +77,9 @@ On each completion notification (a background agent finished):
    | `verify` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh `stage:verify`; dispatch the ready fix chore |
    | `review` | `OUTCOME: SUCCESS` | Closing the review chore unblocks the document chore |
    | `review` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh `stage:review`; dispatch the ready fix chore |
-   | `document` | `OUTCOME: SUCCESS` | Open/update the feature PR now (`feature/<parent-id>` → its base branch), report the URL, and update the child HITL gate bead (`lifecycle:feature-pr`). Wait for a human to close that bead after merge, then `bd close <parent-id>` — closing the gate unblocks the pre-created `stage:housekeeping` chore, which removes the worktrees of closed beads |
+   | `document` | `OUTCOME: SUCCESS` | Open/update the feature PR now (`feature/<parent-id>` → its base branch), report the URL, and update the child HITL gate bead (`lifecycle:feature-pr`). Wait for a human to close that bead after merge, then `bd close <parent-id>` — closing the gate unblocks the pre-created `stage:post-merge` and `stage:housekeeping` chores |
+   | `post-merge` | `OUTCOME: SUCCESS` | Nothing further — the merge commit's CI run is green; the chore's close is the record |
+   | `post-merge` | `OUTCOME: BLOCKED` | Create nothing — the worker left its chore **open** and the check already filed one P1 escalation bead; report the escalation id and the run URL, and do not re-dispatch |
    | `housekeeping` | `OUTCOME: SUCCESS` | Nothing further — it is the last stage; its closed chore ends the pipeline |
    | any | parent status `blocked` | Nothing — the worker hit `maxFixRounds`; record the parent for the shutdown summary |
 

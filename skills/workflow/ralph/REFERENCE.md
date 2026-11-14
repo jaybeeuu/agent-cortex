@@ -391,26 +391,49 @@ When nothing is in flight AND nothing is dispatchable — `inflight` holds no en
 
 ## Peer messaging (planner ↔ ralph)
 
-The planner session (`plan` skill) and ralph are separate sessions with no shared terminal. Delivery, discovery, idle wake and the message ledger all belong to the published **pi-peer** package. **Never build a registry, inbox, watcher or transport in its place** — this section defines only the message vocabulary and the reply rule that sit on top of it, and it is the single place both skills read.
+The planner session (`plan` skill) and ralph are separate sessions with no shared terminal. Delivery, discovery, idle wake and the message ledger all belong to the harness's own messaging mechanism — the published **pi-peer** package on PI, a built-in facility on Claude Code. **Never build a registry, inbox, watcher or transport in its place** — this section defines only the message vocabulary and the reply rule that sit on top of it, and it is the single place both skills read.
 
-**This channel is PI-only.** It needs the `pi-peer` package in a pi session: the `pi install` step, the `PI_PEER_*` environment, the `peer_send` tool, the `peer_list` tool and the `/peer` commands below. Claude Code has none of them, so a Claude Code session skips every command in this section and uses the manual handoff instruction that `plan` prints — the "tell an agent: Use the ralph skill, start from bead #<id>" line — until a Claude fork of the package exists.
+### Transport
 
-### Adoption in a consuming repository
+Send with {{TOOL:peer_send}}; list the peers you can reach with {{TOOL:peer_list}}, and address a peer only by the name or address that list reports. Where the mechanism provides a per-message intent, an idle subscription or a reply wait, use it — but never make a send depend on one.
+
+Send from a scripted call, **never** by typing text into a busy terminal session: during the `pi-peer` package's adoption spike, stray keystrokes aimed at a running session were queued as user prompts twice, so the receiving agent read them as new instructions.
+
+A send does not prove receipt. An inbound message may be held for approval before the receiving agent sees it, and delivery stays unconfirmed until the receiver answers.
+
+The mechanism is supplied by the harness, and neither harness is forced into the other's: a PI session takes it from the `pi-peer` package runbook below, and a Claude Code session has it built in. **Only this subsection differs between the two installs** — the message kinds and the acknowledgement rule that follow are the same bytes on both, so a message means the same thing whichever mechanism carries it.
+
+### The `pi-peer` package (PI)
+
+A PI session gets its transport from this package, which a consuming repository installs itself — it is never a dependency of this package. Its `peer_get` and `peer_await` tools have no Claude Code counterpart, so they are named here and nowhere else in this convention.
+
+#### Adoption in a consuming repository
 
 1. **Install once per repository:** `pi install npm:@cryptolibertus/pi-peer`.
 2. **List both roles** in `.pi/peers.json`: `planner` and `ralph`. The peer list is configuration, so both entries are required — see _Discovery is two-way only when both roles are listed_ below.
 3. **Start each session with its own identity:** `PI_PEER_ID=planner pi` for the planning session, `PI_PEER_ID=ralph pi` for ralph. The file holds a default `localPeerId`, and `PI_PEER_ID` overrides it for the session. Confirm with `peer_list` — it reports `1 online - <peer id>` when discovery works.
-4. **Ignore the state files** the package writes — see _Files a consuming repository gains_ below.
+4. **Send and read with the package's own tools:** `peer_send` (or `/peer send <id> "<text>" --intent <intent> --no-await`), `peer_list`, `peer_get` for a peer's current state and `peer_await` for a reply.
+5. **Ignore the state files** the package writes — see _Files a consuming repository gains_ below.
 
-### Discovery is two-way only when both roles are listed
+#### Discovery is two-way only when both roles are listed
 
 `.pi/peers.json` is a **static peer list, not a live registry**: the runtime merges `.pi/settings.json`, `.pi/peers.json` and the `PI_PEER_*` environment, then polls only the peers the file names. `/peer setup` never overwrites an existing `.pi/peers.json`, so a setup run in the second session leaves the file alone.
 
 A single-entry file therefore makes discovery one-way: the listed peer sees the other as online, while the unlisted peer reports `no peers` and its sends write no message record. That is configuration, not a fault. The missing step is `/peer setup --peer <peer-id>`, which adds a trusted peer to the existing file. Two entries plus `PI_PEER_ID` per session is the whole setup — and because a send is not proof of receipt, a message stays unverified until the receiver answers.
 
+#### Files a consuming repository gains
+
+| File | Purpose | Tracked? |
+|------|---------|----------|
+| `.pi/peers.json` | the peer list plus the default `localPeerId` that `PI_PEER_ID` overrides | no |
+| `.pi/peer-messages.json` | message records with source, target, status and conversation id | no |
+| `.pi/peer-control-ledger.jsonl` | the control ledger | no |
+
+All three are machine state, not tracked content. Tell the consuming repository to gitignore them: ignore `.pi/peers.json` **and** `.pi/peer-*` together. The literal path covers the peer list, which the glob does not match, and the glob covers the message and ledger files plus any further `peer-*.json` the package adds.
+
 ### Message kinds
 
-The kinds map **onto** pi-peer's existing intents (`ask`, `review`, `notify`, `coordinate`, `task`); they never replace or re-implement the package protocol.
+The kinds map **onto** the transport's own intents where it has them (PI's `pi-peer`: `ask`, `review`, `notify`, `coordinate`, `task`); they never replace or re-implement the transport protocol.
 
 | Kind | Carries | Maps to intent | Direction |
 |------|---------|----------------|-----------|
@@ -433,20 +456,6 @@ Statuses stay `running` or `queued` until the receiver answers, so **a sender ca
 - `failed` — could not be carried out; name the bead and the reason.
 
 `update`, `done`, `blocked` and `failed` are reports, so they need no reply. Never leave a `handoff`, `get` or `ask` unanswered — reply that it is queued rather than staying silent.
-
-### Sending
-
-Send through the `peer_send` tool (and the `/peer send <id> "<text>" --intent <intent> --no-await` command) from a scripted call, **never** by typing text into a busy TUI: during the package's adoption spike, stray keystrokes aimed at a running session were queued as user prompts twice, so the receiving agent read them as new instructions.
-
-### Files a consuming repository gains
-
-| File | Purpose | Tracked? |
-|------|---------|----------|
-| `.pi/peers.json` | the peer list plus the default `localPeerId` that `PI_PEER_ID` overrides | no |
-| `.pi/peer-messages.json` | message records with source, target, status and conversation id | no |
-| `.pi/peer-control-ledger.jsonl` | the control ledger | no |
-
-All three are machine state, not tracked content. Tell the consuming repository to gitignore them: ignore `.pi/peers.json` **and** `.pi/peer-*` together. The literal path covers the peer list, which the glob does not match, and the glob covers the message and ledger files plus any further `peer-*.json` the package adds.
 
 ---
 

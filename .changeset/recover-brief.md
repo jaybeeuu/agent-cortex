@@ -20,5 +20,12 @@ that is not on the allow-list is refused before it reaches the binary, so the br
 note, a status or a provenance event. Each section states plainly when a bead has no trail, no
 refs, no acceptance criteria or no blockers, instead of printing an empty heading.
 
+The note is one text blob, so the brief splits it itself: a writer header starts a stamped entry
+whose body runs only over the writer's `Field: value` lines, and any other text is an entry of its
+own. A note appended by hand therefore prints wherever it lands — before a stamped entry, between
+two of them, or after the last one — and the trail count includes it. `next:` claims "no trail
+entry" only when the bead carries no trail, and says the entries record no next step when they
+exist without a `What is left` field.
+
 `run-pipeline-stage`, `ralph` and the stage-runner prompt now document the brief as the first read of
 a bead's trail, with `bd show` and `bd provenance log` reserved for the history the window left out.

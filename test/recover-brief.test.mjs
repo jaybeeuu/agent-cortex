@@ -324,17 +324,27 @@ describe('recover-brief: never writes', () => {
 describe('recover-brief: parsing the note', () => {
   it('splits on the writer header, not on blank lines inside a body', () => {
     const notes = [
-      entryText(1, { evidence: 'first line\nsecond line', remaining: 'next' }),
+      entryText(1, { remaining: 'next' }),
+      '',
       entryText(2),
     ].join('\n');
 
     const entries = splitTrail(notes);
     assert.equal(entries.length, 2);
     assert.equal(entries[0].stage, 'code');
-    // A field is one line: the writer collapses its values, so a continuation is not a value.
-    assert.equal(entries[0].evidence, 'first line');
     assert.equal(entries[0].remaining, 'next');
     assert.equal(entries[1].fingerprint, '0002aaaaaaaaaaaa');
+  });
+
+  it('ends a stamped entry at the first line that is not one of its fields', () => {
+    const notes = entryText(1, { evidence: 'pnpm test — 412 passing\nsecond line', remaining: 'next' });
+
+    const entries = splitTrail(notes);
+    assert.equal(entries.length, 2);
+    // A field is one line: the writer collapses its values, so a stray line is its own note.
+    assert.equal(entries[0].evidence, 'pnpm test — 412 passing');
+    assert.equal(entries[1].at, null);
+    assert.equal(entries[1].text, 'second line');
   });
 
   it('keeps a free-form note as an entry rather than dropping it', () => {
@@ -366,6 +376,58 @@ describe('recover-brief: parsing the note', () => {
     const { output } = await runFake({ bead: beadJson({ notes: note }) });
 
     assert.match(output, /^ {2}\(note\) \[2026-05-01T10:00:00Z\] stopped: API choice open/m);
+  });
+
+  it('counts a hand-written note that follows a stamped entry, and prints it', async () => {
+    const notes = [
+      entryText(1, { remaining: 'wire the CLI' }),
+      '[2026-05-01T11:00:00Z] stopped: API choice open; decision bead filed',
+    ].join('\n');
+    const { output } = await runFake({ bead: beadJson({ notes, status: 'blocked' }) });
+
+    assert.match(output, /^trail \(newest 2 of 2\):$/m);
+    assert.match(output, /^ {2}\(note\) \[2026-05-01T11:00:00Z\] stopped: API choice open; decision bead filed$/m);
+    assert.match(output, /^ {2}\[2026-05-01T10:00:01Z\] \[code\] partial$/m);
+  });
+
+  it('keeps two hand-written notes apart instead of collapsing them into one', () => {
+    const notes = [
+      entryText(1),
+      '[2026-05-01T11:00:00Z] stopped: API choice open; decision bead filed',
+      '[2026-05-01T12:00:00Z] resumed: upstream API chosen',
+    ].join('\n');
+    const entries = splitTrail(notes);
+
+    assert.equal(entries.length, 3);
+    assert.deepEqual(entries.map((entry) => entry.text), [
+      'Outcome: partial',
+      '[2026-05-01T11:00:00Z] stopped: API choice open; decision bead filed',
+      '[2026-05-01T12:00:00Z] resumed: upstream API chosen',
+    ]);
+  });
+
+  it('keeps a hand-written note that sits between two stamped entries', () => {
+    const notes = [
+      entryText(1),
+      '[2026-05-01T11:00:00Z] stopped: API choice open',
+      entryText(2, { remaining: 'open the PR' }),
+    ].join('\n');
+    const entries = splitTrail(notes);
+
+    assert.equal(entries.length, 3);
+    assert.deepEqual(entries.map((entry) => entry.stage), ['code', null, 'code']);
+    assert.equal(entries[2].remaining, 'open the PR');
+  });
+
+  it('says the entries record no next step rather than that there is no trail', async () => {
+    const notes = entryText(1, { outcome: 'done' }).split('\n')
+      .filter((line) => !line.startsWith('What is left:'))
+      .join('\n');
+    const { output } = await runFake({ bead: beadJson({ notes }) });
+
+    assert.equal(splitTrail(notes).length, 1);
+    assert.doesNotMatch(output, /^next: no trail entry/m);
+    assert.match(output, /^next: no entry records what is left — read the trail below$/m);
   });
 });
 
@@ -409,7 +471,7 @@ const BD_AVAILABLE = process.env.RECOVER_BRIEF_REAL_BD !== '0'
     .catch(() => false);
 
 describe('recover-brief against a real bd workspace', { skip: !BD_AVAILABLE }, () => {
-  it('prints a bead mid-pipeline in under 40 lines, and writes nothing', async () => {
+  it('prints a bead mid-pipeline in at most 40 lines, and writes nothing', async () => {
     // A whole throwaway repository: its own .beads, its own HOME, never the real one.
     const workspace = await tempRoot.createWorkspace();
     const home = join(workspace, 'home');
@@ -462,6 +524,10 @@ describe('recover-brief against a real bd workspace', { skip: !BD_AVAILABLE }, (
       ], repo);
     }
 
+    // The stop AGENTS.md documents: a hand-written note appended after a stamped entry.
+    await run('bd', ['update', beadId, '--status', 'blocked'], repo);
+    await run('bd', ['note', beadId, '[2026-05-01T11:00:00Z] stopped: API choice open; decision bead filed'], repo);
+
     const before = JSON.parse(await run('bd', ['show', beadId, '--json'], repo))[0];
     const dumpLines = (await run('bd', ['show', beadId], repo)).trimEnd().split('\n').length;
 
@@ -475,8 +541,9 @@ describe('recover-brief against a real bd workspace', { skip: !BD_AVAILABLE }, (
     assert.ok(dumpLines > lines.length * 2, `bd show printed ${dumpLines} lines: the bound is the point`);
 
     // Everything needed to continue: what was done, what is blocked, what is left.
-    assert.match(stdout, new RegExp(`^${beadId} {2}open {2}chore`));
-    assert.match(stdout, /trail \(newest 3 of 20; 17 earlier not shown\):/);
+    assert.match(stdout, new RegExp(`^${beadId} {2}blocked {2}chore`));
+    assert.match(stdout, /trail \(newest 3 of 21; 18 earlier not shown\):/);
+    assert.match(stdout, /^ {2}\(note\) \[2026-05-01T11:00:00Z\] stopped: API choice open; decision bead filed$/m);
     assert.match(stdout, /left: open the PR/);
     assert.match(stdout, /git-sha {2}[0-9a-f]{40}/);
     assert.match(stdout, /feature\/brief/);

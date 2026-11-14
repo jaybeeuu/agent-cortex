@@ -171,6 +171,20 @@ export function nextStep(trail) {
   return null;
 }
 
+/**
+ * What the `next:` line says. `no trail entry` is a claim about the trail itself, so it
+ * prints only when the bead carries none; a bead whose entries carry no `What is left`
+ * field gets a line that says exactly that instead of denying the trail exists.
+ * @param {string | null} next  What is left on the newest entry that recorded it.
+ * @param {number} trailLength  Entries parsed from the note.
+ * @returns {string}
+ */
+export function nextStepLine(next, trailLength) {
+  if (next !== null) return clip(next);
+  if (trailLength === 0) return 'no trail entry — record a stage-start entry before working';
+  return 'no entry records what is left — read the trail below';
+}
+
 // ─── Trail ────────────────────────────────────────────────────────────────────
 
 /**
@@ -178,6 +192,28 @@ export function nextStep(trail) {
  * hand may carry the first two parts only, so the fingerprint is optional.
  */
 const TRAIL_HEADER = /^\[([^\]]{4,64})\]\s\[([a-z][a-z0-9-]*)\](?:\s+trail:([0-9a-f]{6,64}))?$/;
+
+/**
+ * A line that starts a bracketed field, the shape of both the writer's header and the
+ * hand-written note AGENTS.md documents for a stop: `[<ISO timestamp>] stopped: …`.
+ */
+const ENTRY_START = /^\[[^\]]{4,64}\]/;
+
+/**
+ * The fields the writer stamps into an entry body. A stamped entry's body is exactly these
+ * lines, so any other text after a header is a note someone appended by hand. Authored in
+ * `buildEntry` of `trail-entry.mjs`: a field added there and not here still prints, as a
+ * note of its own, rather than disappearing.
+ */
+const TRAIL_FIELDS = ['Outcome', 'Evidence', 'What is left', 'Refs'];
+
+/**
+ * Is this line one of the writer's `Field: value` lines?
+ * @param {string} line @returns {boolean}
+ */
+function isFieldLine(line) {
+  return TRAIL_FIELDS.some((name) => line.trim().startsWith(`${name}:`));
+}
 
 /** The first line of a note that carries no header, clipped for the brief.
  * @param {string[]} lines @returns {string} */
@@ -200,10 +236,29 @@ function fieldValue(body, name) {
   return null;
 }
 
+/** A free-form entry: a note someone appended by hand, carrying no writer fields.
+ * @param {string} text @returns {TrailEntry} */
+function noteEntry(text) {
+  return { at: null, stage: null, fingerprint: null, outcome: null, evidence: null, remaining: null, text };
+}
+
 /**
- * Split a bead's `notes` string into trail entries. Entries are separated by their header
- * line, never by a blank line: a body carries its own newlines. Text that precedes the
- * first header is one free-form entry, so a hand-written note is shown rather than dropped.
+ * Split a bead's `notes` string into trail entries. The note is one text blob: `bd` joins
+ * every appended note with a single newline and marks no boundary, so the split is textual.
+ *
+ * - A writer header starts a stamped entry. Its body runs only over blank lines and the
+ *   writer's `Field: value` lines; the first other line ends it.
+ * - Any other text is a free-form entry of its own. A bracketed timestamp starts a new one,
+ *   which is the shape of the hand-written stop note AGENTS.md documents.
+ *
+ * So a hand-appended `bd note` is an entry wherever it lands — before a stamped entry,
+ * between two of them, or after the last one — rather than a line buried in the previous
+ * entry's body, where the renderer would never print it.
+ *
+ * The one shape text cannot separate: notes that carry no bracketed start and are appended
+ * back to back. `bd` joins every note with a bare newline, so such a run reads as one note.
+ * The documented stop note starts with `[<ISO timestamp>]`, and so does the writer's header,
+ * so the shape a session records is always separable.
  * @param {string} notes @returns {TrailEntry[]}
  */
 export function splitTrail(notes) {
@@ -214,47 +269,51 @@ export function splitTrail(notes) {
   /** @type {string[]} */
   let body = [];
   /** @type {string[]} */
-  let loose = [];
+  let note = [];
 
-  /** Turn the accumulated block into an entry. */
-  const flush = () => {
-    if (header !== null) {
-      entries.push({
-        at: header.at,
-        stage: header.stage,
-        fingerprint: header.fingerprint,
-        outcome: fieldValue(body, 'Outcome'),
-        evidence: fieldValue(body, 'Evidence'),
-        remaining: fieldValue(body, 'What is left'),
-        text: firstLine(body),
-      });
-    } else if (firstLine(loose) !== '') {
-      entries.push({
-        at: null,
-        stage: null,
-        fingerprint: null,
-        outcome: null,
-        evidence: null,
-        remaining: null,
-        text: firstLine(loose),
-      });
-    }
+  /** Close the open stamped entry, if there is one. */
+  const flushStamped = () => {
+    if (header === null) return;
+    entries.push({
+      at: header.at,
+      stage: header.stage,
+      fingerprint: header.fingerprint,
+      outcome: fieldValue(body, 'Outcome'),
+      evidence: fieldValue(body, 'Evidence'),
+      remaining: fieldValue(body, 'What is left'),
+      text: firstLine(body),
+    });
     header = null;
     body = [];
-    loose = [];
+  };
+
+  /** Close the open free-form entry, if it carries text. */
+  const flushNote = () => {
+    const text = firstLine(note);
+    if (text !== '') entries.push(noteEntry(text));
+    note = [];
   };
 
   for (const line of notes.split('\n')) {
     const match = TRAIL_HEADER.exec(line.trim());
     if (match !== null) {
-      flush();
+      flushStamped();
+      flushNote();
       header = { at: match[1], stage: match[2], fingerprint: match[3] ?? null };
       continue;
     }
-    if (header === null) loose.push(line);
-    else body.push(line);
+    if (header !== null) {
+      if (line.trim() === '' || isFieldLine(line)) {
+        body.push(line);
+        continue;
+      }
+      flushStamped();
+    }
+    if (ENTRY_START.test(line.trim())) flushNote();
+    note.push(line);
   }
-  flush();
+  flushStamped();
+  flushNote();
 
   return entries;
 }
@@ -511,7 +570,7 @@ export function composeBrief(model, selection) {
   lines.push(`labels: ${bead.labels.length === 0 ? 'none' : bead.labels.join(', ')}`);
   lines.push(`parent: ${bead.parent ?? 'none'}`);
   const next = nextStep(trail);
-  lines.push(`next: ${next === null ? 'no trail entry — record a stage-start entry before working' : clip(next)}`);
+  lines.push(`next: ${nextStepLine(next, trail.length)}`);
 
   lines.push('');
   if (bead.blockedBy.length === 0) {

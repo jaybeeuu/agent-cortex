@@ -81,14 +81,25 @@ context rather than silently carrying the interruption.
 The mechanism differs in kind between harnesses, so it is named once through `token-map.json`: the
 `interrupt_rewind` row renders as `interrupt_resume` on pi and as Claude Code's own `/rewind` on
 claude. Claude Code checkpoints and rewinds with a user command rather than a model-callable tool,
-so prose that names the row describes only what both do — the session returns to an earlier point
-and the abandoned turns leave the live context — never a call shape.
+so prose that names the row must describe only what both do — the session returns to an earlier
+point and the abandoned turns leave the live context — never a call shape. No shipped skill names
+the row yet: it is a forward reference for the interrupt protocol, as the row's own note in
+`token-map.json` records.
 
 ## Proven against pi
 
 Behaviour is tested against a complete `ExtensionAPI` double, with a fake session that rejects
-navigation while a response is active, exactly as pi does. Both installs are staged and loaded by
-`test/pi-extensions-load.test.mjs`.
+navigation while a response is active, exactly as pi does. Only the **pi** install is staged and
+loaded by `test/pi-extensions-load.test.mjs`: `bin/installers/pi.mjs` copies `extensions/` into the
+staged package, so that test loads this extension from a temp directory outside the checkout. It
+covers no claude install, because there is no claude extension to load — `bin/installers/claude.mjs`
+generates agents, skills, hooks and docs, and copies no `extensions/` tree at all.
+
+The claude side was therefore checked by hand, not by a test of this extension: `/rewind` is one of
+the commands the installed Claude Code CLI defines itself (verified in 2.1.294), and the
+`interrupt_rewind` row renders as `interrupt_resume` on pi and `/rewind` on claude when the token is
+substituted directly. The row has no shipped consumer yet, so that substitution was the only render
+to check.
 
 The session shape a rewind produces was checked against pi's own `SessionManager` separately:
 `branchWithSummary()` plus the label change leaves a `branch_summary` entry parented at the

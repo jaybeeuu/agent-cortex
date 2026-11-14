@@ -62,6 +62,8 @@ interface Calls {
   /** Anything sent to the model, and how. */
   userMessages: Array<{ content: unknown; options: unknown }>;
   messages: unknown[];
+  /** Every session-manager member the extension named, in order, repeats kept. */
+  sessionManagerMembers: string[];
 }
 
 interface FakeInstance {
@@ -127,6 +129,7 @@ function createFakeInstance(session: FakeSession): FakeInstance {
     entries: [],
     userMessages: [],
     messages: [],
+    sessionManagerMembers: [],
   };
   const ui: FakeUi = {
     notifications: [],
@@ -142,12 +145,27 @@ function createFakeInstance(session: FakeSession): FakeInstance {
   let waitedSinceLastAttempt = false;
   let summaryCount = 0;
 
-  /** The session reads the extension makes. No delete or truncate surface exists. */
-  const sessionManager = {
+  /** The session surface the double provides. Reads only: no delete or truncate member. */
+  const sessionReads = {
     getLeafId: () => state.leafId,
     getEntry: (id: string) => state.entries.find((candidate) => candidate.id === id),
     getEntries: () => state.entries,
   };
+
+  /**
+   * The same surface, recording every member the extension names. A member the
+   * double does not implement is recorded and then treated as a no-op, so a call
+   * the extension starts making is reported by name from the assertion rather
+   * than crashing inside a tool call.
+   */
+  const sessionManager = new Proxy(sessionReads, {
+    get(target, property, receiver) {
+      const member: unknown = Reflect.get(target, property, receiver);
+      if (typeof property !== "string") return member;
+      calls.sessionManagerMembers.push(property);
+      return member ?? (() => undefined);
+    },
+  });
 
   /** The command context pi builds for command handlers, and for nothing else. */
   const commandContext = {
@@ -617,6 +635,11 @@ describe(`${REWIND_COMMAND}`, () => {
     assert.match(notification?.message ?? "", /cancelled/);
     assert.match(notification?.message ?? "", /unchanged/);
     assert.doesNotMatch(notification?.message ?? "", /kept/);
+    assert.deepEqual(
+      instance.session.entries.filter((held) => held.type === "branch_summary"),
+      [],
+      "a cancelled rewind summarises nothing, so no branch_summary entry is written",
+    );
 
     const recorded = instance.calls.entries.at(-1)?.data as { cancelled: boolean; ok: boolean };
     assert.deepEqual({ ok: recorded.ok, cancelled: recorded.cancelled }, { ok: true, cancelled: true });
@@ -632,17 +655,42 @@ describe(`${REWIND_COMMAND}`, () => {
     assert.match(instance.ui.notifications.at(-1)?.message ?? "", /no interrupt rewind is pending/i);
   });
 
-  it("does not rewind a checkpoint another request already replaced", async () => {
+  it("drops a replaced request, so only the newest checkpoint navigates", async () => {
     const instance = createFakeInstance(interruptedSession());
+
+    // The first request settles, but its dispatched command never runs.
     await instance.runTool(RESUME_TOOL, { checkpointId: "m2", summary: "Meeting note" });
     await instance.fireSettled();
-    await instance.runCommand("m2");
 
-    // A second dispatch of the same command must find no handoff left.
-    await instance.runCommand("m2");
+    // A second request replaces it before either command has run.
+    await instance.runTool(RESUME_TOOL, { checkpointId: "m1", summary: "Slack todo" });
+    await instance.fireSettled();
 
-    assert.equal(instance.calls.attempts.length, 1, "only the first dispatch navigated");
-    assert.match(instance.ui.notifications.at(-1)?.message ?? "", /nothing was rewound/i);
+    // The replaced request is gone: its command finds no handoff and navigates nothing.
+    await instance.runCommand("m2");
+    assert.deepEqual(
+      instance.calls.attempts.map((attempt) => attempt.targetId),
+      [],
+      "the replaced checkpoint navigates nothing",
+    );
+    assert.match(
+      instance.ui.notifications.at(-1)?.message ?? "",
+      /no interrupt rewind is pending for m2/i,
+    );
+    assert.deepEqual(
+      instance.session.entries.filter((held) => held.type === "branch_summary"),
+      [],
+      "the replaced request wrote no summary",
+    );
+
+    // The newest request still rewinds, exactly once.
+    await instance.runCommand("m1");
+    assert.deepEqual(
+      instance.calls.attempts.map((attempt) => attempt.targetId),
+      ["m1"],
+      "the newest checkpoint navigates once",
+    );
+    assert.equal(instance.ui.notifications.at(-1)?.level, "info");
   });
 });
 
@@ -654,13 +702,14 @@ describe("the session surface the extension uses", () => {
 
     await rewindThrough(instance);
 
-    // The extension reaches the session through three reads; the only write is
-    // pi's own navigation. No delete or truncate member exists to call.
-    assert.deepEqual(Object.keys(instance.sessionManager).sort(), [
-      "getEntries",
-      "getEntry",
-      "getLeafId",
-    ]);
+    // The members the extension actually named, deduplicated. A member it starts
+    // calling — a write, a delete, anything that is not navigation — lands here
+    // and fails this assertion by name.
+    assert.deepEqual(
+      [...new Set(instance.calls.sessionManagerMembers)].sort(),
+      ["getEntries", "getEntry", "getLeafId"],
+      "the extension reads the session manager and never writes to it",
+    );
 
     const removed = ["m1", "m2", "m3", "m4"].filter((id) => !ids(instance.session).includes(id));
     assert.deepEqual(removed, [], "every original entry is still in the session");

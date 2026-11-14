@@ -176,6 +176,9 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `skills/workflow/ralph/REFERENCE.md` and is cross-referenced from `plan`: only its `### Transport`
   subsection differs per harness, while the message kinds and the acknowledgement rule stay
   byte-identical, and `test/skill-transport-render.test.mjs` stages both installs to prove it.
+  A new message kind, or a change to the acknowledgement rule, therefore goes in the shared text
+  and never into a per-harness `### Transport` — a kind that exists on one harness only would
+  break the byte-identical render.
   `pi-peer`'s `peer_get` and `peer_await` have no Claude Code counterpart, so they are named only
   inside the harness-labelled `pi-peer` runbook — a null claude mapping would drop the token and
   leave the sentence broken.

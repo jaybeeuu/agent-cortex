@@ -51,6 +51,12 @@ rather than inventing a dotted form:
   `ask_user`) — and `task` / `read_agent` / `wait_for_agents` subagent tools, the last three
   supplied by this repo's own `extensions/subagent` rather than by pi; `skill` maps
   to `read` (skills load by reading the listed SKILL.md path).
+  Two rows carry session-to-session messaging rather than a built-in tool: `peer_send` and
+  `peer_list`. On claude they are Claude Code's own `SendMessage` and `ListAgents`; on pi they
+  are the `pi-peer` package's tools, which the consuming repository installs itself. A row maps
+  a **name, never a protocol**: the message kinds and the acknowledgement rule layered above
+  the transport are harness-invariant text, so only the transport forks and the protocol stays
+  in one authored copy.
 - **`paths`** — `plugin_root`, `agents_dir`, `skills_dir`, and `skill_anatomy`. These are the
   install-time variables that differ per harness. `plugin_root` is the anchor; the others
   resolve relative to it (`{base, relative}` specs) so a harness only overrides the single
@@ -101,6 +107,12 @@ the token as-is". The contract defines the two contexts:
 Unknown (unmapped) tokens are a **hard error**, not a null — a silently-passed-through
 token is exactly the bug the map exists to prevent, and mirrors the build script's
 `unknown tool "x"` throw.
+
+The peer channel is the worked example. `peer_get` and `peer_await` are `pi-peer` tools and
+Claude Code has no equivalent, so they get no row and a shared sentence never names them:
+substituting one would drop the token and leave the sentence that named it short of a name.
+Their documentation stays inside a section labelled for one harness, where nothing is
+substituted — see the `pi-peer` runbook in `skills/workflow/ralph/REFERENCE.md`.
 
 The pi install-time installer (`bin/installers/pi.mjs`) follows the strict contract above.
 One consumer deviates deliberately: the pi `agent-modes` extension reads the map at

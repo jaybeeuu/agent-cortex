@@ -28,7 +28,8 @@ Task arrives
     ├── Need to plan a feature end-to-end? ─→ plan
     ├── Running beads / task execution? ────→ ralph
     │   └── Single stage? ─────────────────→ run-pipeline-stage
-    ├── Implementing code? ────────────────→ tdd
+    ├── Implementing a task? ──────────────→ implement-task
+    │   ├── Proving one behaviour? ────────→ tdd
     │   ├── Designing an interface? ───────→ design-an-interface
     │   └── Need style conventions? ───────→ style-code
     ├── Reviewing code? ───────────────────→ style-code
@@ -97,12 +98,19 @@ For a complete feature, the typical skill sequence is:
 4. `prd-to-tasks` → Break into verifiable chunks
 5. `plan` → Orchestrate the full flow end-to-end
 6. `ralph` → Execute all pending beads
-7. `tdd` → Prove each slice works
-8. `style-code` → Review before merge
-9. `review-security` → Check for secrets
-10. `git-workflow` → Clean commit history
+7. `implement-task` → Own the criteria, the scope, and the proof
+8. `tdd` → Prove each slice works
+9. `style-code` → Review before merge
+10. `review-security` → Check for secrets
+11. `git-workflow` → Clean commit history
 
-Not every task needs every skill. A bug fix might only need: `tdd` → `style-code` → `review-security`.
+Not every task needs every skill. A bug fix might only need: `implement-task` → `tdd` →
+`style-code` → `review-security`.
+
+Routing boundary: `implement-task` owns the request — its criteria, its scope, its evidence. `tdd`
+owns the loop inside one criterion, and answers "how do I prove this behaviour" once the task is
+already understood. A request with acceptance criteria to satisfy starts at `implement-task`; a
+bare "write a test for X" still starts at `tdd`.
 
 ## Red Flags
 

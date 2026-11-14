@@ -8,4 +8,6 @@ stay files, and `handoff.md` plus the working-docs artefact directory are unchan
 reserved for exceptions — `bd set-state <id> progress=blocked --reason "…"` records an event bead
 and a label, so a cold agent can tell "stopped" from "never started" without reading prose. The
 text names `stage=` as forbidden for state, with the reason: `bd set-state` removes the existing
-label for the dimension it sets, so it would rewrite a chore's route.
+label for the dimension it sets, so it would rewrite a chore's route. Ship this in the same release
+as the removal of the `ralph-*.log` and `progress.md` writer sites (`agnt-ctx-ul91.1`): a published
+version that states the rule while a skill still writes progress files would contradict itself.

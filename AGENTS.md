@@ -251,11 +251,12 @@ beads, because they are reviewed, diffed and versioned as text.
 **`progress:` is for exceptions, never `stage:`.** `bd set-state <id> progress=blocked --reason "…"`
 (or `progress=paused`) is the only state dimension to set, and only when the work stopped for a
 reason a reader must know. It records an event bead and a `progress:` label, so a cold agent can
-tell "stopped" from "never started" without reading prose. No `progress:` label means never
-started, running, or finished — the status and the trail say which. Never set a `stage=`
-dimension: `bd set-state` removes the existing label for the dimension it sets, so
-`bd set-state <id> stage=verify` deletes `stage:code` and rewrites the chore's route. The reviewer
-handoff (`handoff.md`) and the working-docs artefact directory are unchanged — they are files.
+tell "stopped" from "never started" without reading prose. No `progress:` label means not an
+exception: the status says never started, running, finished or deferred, and the trail says what
+happened. Never set a `stage=` dimension: `bd set-state` removes the existing label for the
+dimension it sets, so `bd set-state <id> stage=verify` deletes `stage:code` and rewrites the
+chore's route. The reviewer handoff (`handoff.md`) and the working-docs artefact directory are
+unchanged — they are files.
 
 ```bash
 bd set-state agnt-ctx-abc.1 progress=blocked --reason "waiting on the upstream API key"

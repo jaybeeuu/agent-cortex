@@ -46,7 +46,7 @@ branch, PR, commit or worktree refs. A cold agent reads all of it from the bead.
 | State | Home |
 |---|---|
 | What a stage did, and what it learned | `bd note <id> "…"` — an append-only trail |
-| Stage status | the bead's own status: `open`, claimed `in_progress`, `closed` |
+| Stage status | the bead's own status: `open`, `in_progress`, `closed`, `deferred`, `blocked`, `pinned`, `hooked` |
 | Blocked or paused | `bd set-state <id> progress=blocked --reason "…"` |
 | Branch, PR, commit, worktree | `bd provenance record --issue <id> …` |
 | Reviewer handoff prose | `.agent-cortex/working-docs/hitl/<bead-id>/handoff.md` — unchanged |
@@ -65,7 +65,8 @@ it.
 
 - `progress:blocked` — something outside the worker's control must change first.
 - `progress:paused` — work stopped deliberately and expected to resume.
-- no `progress:` label — never started, running, or finished; the status and the trail say which.
+- no `progress:` label — not an exception; the status says never started, running, finished or
+  deferred, and the trail says what happened.
 
 Do not add a dimension per transition (`work:tests-green`): status and trail already say that.
 **Never set `stage=`**: `bd set-state` removes the existing label for the dimension it sets, so
@@ -83,7 +84,9 @@ $ bd show probe-kk4.1                  # the reason, on the event bead
   Reason: waiting on upstream API key
 ```
 
-Clear the exception with `bd label remove <id> progress:blocked`; the event bead stays as history.
+Clear the exception with `bd label remove <id> progress:blocked`; the event bead stays as
+history. `progress=none` is not a clear — `bd set-state` always writes a `<dimension>:<value>`
+label, so it leaves a literal `progress:none` behind.
 
 ## Creating work
 

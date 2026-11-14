@@ -504,6 +504,48 @@ Only plain release versions are compared, so a prerelease on either side also re
 The command is read-only: it stats and reads those manifests, and never installs, writes, or
 reaches the network.
 
+## Updating the CLI itself (`agent-cortex self-update`)
+
+`agent-cortex self-update` updates the globally installed CLI through the manager that installed it,
+then refreshes the harness installs with the newly installed binary.
+
+```sh
+agent-cortex self-update           # report, update, then refresh the harness installs
+agent-cortex self-update --check   # report the versions and the command, write nothing
+```
+
+The owning manager is inferred from the running entry point's real path, then confirmed — never
+assumed. A pnpm install lives under `<prefix>/global/<v>/…` (and the store link that path resolves
+into), an npm install under `<prefix>/lib/node_modules/…`, and the manager binary is taken from that
+`<prefix>` rather than from `PATH`. That matters because two managers can be installed and only one
+of them owns this copy: running the manager on `PATH` would update the wrong store or fail. The
+confirmation asks the inferred manager for its own global listing and matches this package's name
+and version. An owner that cannot be inferred or confirmed prints the exact command and exits
+non-zero — both managers' commands when it cannot even infer the layout, because that choice is
+the user's. The CLI never falls back to a manager found on `PATH`.
+
+The report gives the installed version (read from the manifest beside the entry point, so even a
+stale process reports what is on disk), the published version (from the confirmed manager's `view`),
+the owner, and the command it would run. A registry error is its own failure: it prints the
+manager's error, offers no update, and exits non-zero. A failed install reports the manager's stderr
+and runs nothing after it. Once the install succeeds, the refresh is the new binary's `update -a`,
+so one command brings the CLI and the harness installs to the same version.
+
+The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix, so it is POSIX-only;
+native Windows pnpm and npm write `.cmd` shims that this path does not match. A spawn that fails
+exits 1 with no reason printed. The install has already succeeded by then, so finish the refresh
+with `agent-cortex update -a`.
+
+```sh
+# what it reports, for a copy installed by a pnpm that is not the one on PATH
+agent-cortex self-update --check
+#   installed  1.2.3
+#   published  1.4.0
+#   owner      pnpm (/opt/pnpm-home/bin/pnpm)
+#   status     update available: 1.2.3 → 1.4.0
+#   command    /opt/pnpm-home/bin/pnpm add -g @jaybeeuu/agent-cortex@latest
+```
+
 ## Refreshing installed harnesses (`agent-cortex update`)
 
 `agent-cortex update` re-runs a harness installer and reports what changed. It installs nothing
@@ -536,9 +578,8 @@ the installer wrote; harnesses already at the CLI version are listed as skipped.
 version is read back from the manifest its installer wrote, so a refresh that failed to
 materialise reports `unknown` rather than claiming the CLI version.
 
-This refreshes the installs, not the CLI. Bump the global package first
-(`pnpm add -g @jaybeeuu/agent-cortex@latest`), then update the harnesses — see
-[`docs/dev-loop.md`](docs/dev-loop.md).
+This refreshes the installs, not the CLI. `agent-cortex self-update` does both in one step; the
+[`docs/dev-loop.md`](docs/dev-loop.md) page records what a global reinstall has to fix.
 
 ## Migrating a beads workspace
 

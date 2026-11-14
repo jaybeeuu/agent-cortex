@@ -19,7 +19,8 @@ import {
 } from "../lib/harness-update.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import { runSelfUpdate } from "../lib/self-update.mjs";
 import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mjs";
 
 /** @typedef {import("./installers/pi.mjs").InstallPiResult} InstallPiResult */
@@ -276,6 +277,24 @@ function printPiSweep({ removed }) {
   );
   for (const path of removed) {
     process.stdout.write(`    - ${path}\n`);
+  }
+}
+
+if (parsed.command === "self-update") {
+  if (parsed.optionError) {
+    process.stderr.write(`${parsed.optionError}\n`);
+    process.exit(1);
+  }
+  try {
+    // The real path follows the global bin shim into the layout of the manager
+    // that installed this copy, which is what identifies the owner. Taking it
+    // from this file's own URL keeps detection on the running entry point, not
+    // on the cwd or on PATH.
+    const entryPoint = await realpath(fileURLToPath(import.meta.url));
+    process.exitCode = await runSelfUpdate({ entryPoint, programName, check: parsed.check ?? false });
+  } catch (err) {
+    process.stderr.write(`${/** @type {Error} */ (err).message}\n`);
+    process.exit(1);
   }
 }
 

@@ -37,6 +37,7 @@ We use labels to track state. Key patterns:
 | `lifecycle:<phase>` | Lifecycle gate | `feature-pr` |
 | `epic:<id>` | Parent epic link | `epic:abc-123` |
 | `priority:<level>` | Priority (0-3) | `priority:1` |
+| `defect:<class>` | The kind of defect a review rejection names — one per rejection, closed list, never the whole message | `defect:test-unproven` |
 
 ## Where operational state lives
 
@@ -86,6 +87,11 @@ $ bd note probe-ijd "[2026-11-14T08:26:38Z] stopped: API choice open; decision b
 **Never set a state dimension.** `bd set-state` writes a label for a dimension and removes the
 label it replaces, so `bd set-state <id> stage=verify` deletes `stage:code` and rewrites the
 bead's route. Statuses and notes cover every case above, so no dimension is needed.
+
+### `defect:<class>` classifies a defect; it is not a state
+
+A review rejection carries one class from the closed list in
+[review-defects](../../review/review-defects/SKILL.md), which owns how to apply, remove and query it.
 
 ## Creating work
 

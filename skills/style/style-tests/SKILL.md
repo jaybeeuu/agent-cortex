@@ -25,6 +25,7 @@ description: Defines test-writing conventions — assertion strategy, mock disci
 - **Integration and e2e exercise real services.** Run the genuine collaborator — Postgres, Redis, a queue, object storage via TestContainers or LocalStack — never a fake that drifts from the real contract. Reserve e2e for a small number of smoke tests proving the system hangs together.
 - **No more tests than needed.** Every test earns its cost by pinpointing exactly where a failure lies. A test that cannot localise a fault adds maintenance weight without signal.
 - **One behaviour per test.** A test should fail for exactly one reason; several unrelated assertions turn a failure into a debugging exercise.
+- **A test's name is a claim, and every clause of it is an assertion.** A count in the name — "one notice", "both callers", "no retries" — asserts that count; a state in the name asserts that state; a "not" in the name asserts the absence. A name that outruns its assertions states a requirement the test never proves, so the test cannot fail for the reason its name promises. See _Red Flags_, and the "one notice" pair under _A test name is a claim_ in `EXAMPLES.md`.
 - **Test code is production code.** Linted, typechecked, properly typed — no `any`, no unsafe casts, no shortcuts in constructing data. Tolerate WETness where it leaves tests more descriptive.
 - **All setup and assertion data is visible inline.** Show exactly and only the values that explain the case; a helper with sensible defaults keeps it terse.
 - **Deterministic and performant.** A failing or flaky test is investigated now. Deferring is acceptable only against a top-priority bead.
@@ -71,7 +72,9 @@ Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 
 5. **Write targeted assertions.** Prefer `toMatchObject` over asserting every property. Multiple assertions are fine when they all verify the same behaviour. Avoid asserting call counts when asserting call arguments already covers the behaviour. Assert behaviour the file participates in, never its static contents.
 
-6. **Review against the checklist below.** Read the test as if you are seeing the codebase for the first time.
+6. **Run the mutation check.** Before you finish, disable or revert each behaviour a test claims, then run the suite. Every test named for that behaviour must fail. A named test that still passes proves nothing about its name: it is the _Red Flags_ row on empty implementations, applied to the whole name. Restore the behaviour and confirm the suite is green again.
+
+7. **Review against the checklist below.** Read the test as if you are seeing the codebase for the first time.
 
 ## Red Flags
 
@@ -80,7 +83,8 @@ Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 | Asserting static file content — an expected config/markdown/terraform string, or a snapshot of static content | Assert the behaviour the file participates in: data inserted into a template, a header compiled correctly, a deployed service ready to serve traffic |
 | Shared mutable top-level fixture reused across tests | Build fresh data per test via a factory; a module-scope constant only when genuinely immutable and read-only |
 | Repeated full literals for the same shape | A small configurable factory taking partial overrides with sensible defaults |
-| A test with no assertion, or one that cannot fail (`expect(result).toBeDefined()`) | Assert the observable contract — a specific value the code must produce |
+| A test with no assertion, or one that passes against an empty implementation (`expect(result).toBeDefined()`) | Assert the observable contract — a specific value the code must produce |
+| A test name whose claim no assertion mentions — "one notice" proven only by `toBeDefined()`, a count proven by truthiness | Assert every clause of the name: the count (`toHaveLength(1)`), the state, the absence |
 | Computing the expected value with the implementation's own logic | Hard-code the expected value from a known-good case; the test must not share the implementation's bug |
 | Mocking implementation details or internal module structure | Mock the genuine external boundary and test through the public interface |
 | An "integration" test that mocks the collaborator it is meant to integrate with | Run the real collaborator (TestContainers/LocalStack); a fake drifts from the real contract |
@@ -115,9 +119,8 @@ Worked examples for each rule are in `EXAMPLES.md` under _Test data_.
 
 ## Examples
 
-The full `❌ Instead` / `✅ Write` catalogue lives in `EXAMPLES.md`: behaviour over
-implementation, test data, mocking, integration and e2e, targeted assertions, structure and
-naming, determinism and async, isolation, and content assertions. Headline pairs:
+The full `❌ Instead` / `✅ Write` catalogue lives in `EXAMPLES.md` — including _A test name is a
+claim_, with the "one notice" pair. Headline pairs:
 
 | Instead of… | Write… |
 |---|---|
@@ -131,7 +134,8 @@ naming, determinism and async, isolation, and content assertions. Headline pairs
 - [ ] Test verifies behaviour, not implementation structure
 - [ ] Integration tests exercise the real collaborator — no mocking the engine you are integrating with
 - [ ] E2E smoke tests prove wiring, migrations, and the journey — not business rules covered lower down
-- [ ] Each test fails for exactly one reason, and its name states the behaviour
+- [ ] Each test fails for exactly one reason, and its name states only behaviour an assertion proves — count, state, and absence included
+- [ ] Mutation check run: each claimed behaviour was disabled, its named tests failed, and the suite is green again
 - [ ] No mocking of internal module details — only public interfaces
 - [ ] No `before`/`after` hooks for shared test state (infrastructure setup only)
 - [ ] Assertions are targeted — no over-asserting, no tautologies, no assertion-free tests

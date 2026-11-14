@@ -37,7 +37,7 @@ We use labels to track state. Key patterns:
 | `lifecycle:<phase>` | Lifecycle gate | `feature-pr` |
 | `epic:<id>` | Parent epic link | `epic:abc-123` |
 | `priority:<level>` | Priority (0-3) | `priority:1` |
-| `defect:<class>` | The kind of defect a review rejection names — one per rejection, closed list | `defect:test-unproven` |
+| `defect:<class>` | The kind of defect a review rejection names — one per rejection, closed list, never the whole message | `defect:test-unproven` |
 
 ## Where operational state lives
 
@@ -91,7 +91,7 @@ bead's route. Statuses and notes cover every case above, so no dimension is need
 ### `defect:<class>` classifies a defect; it is not a state
 
 A review rejection carries one class from the closed list in
-[review-defects](../../review/review-defects/SKILL.md), which also owns the queries that read it.
+[review-defects](../../review/review-defects/SKILL.md), which owns how to apply, remove and query it.
 
 ## Creating work
 

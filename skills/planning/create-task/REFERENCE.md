@@ -20,6 +20,7 @@ One per stage in `pipeline.json` (currently `code`, `verify`, `review`, `documen
 
 - **Type**: `chore`
 - **Title**: `[<parent-id>] <stage title>` (e.g. `[abc-123] Code`)
+- **Description**: the stage's `description` text, carried verbatim. Expansion stores it and does nothing else with it: it never substitutes the `<ralph-scripts>` placeholder and never runs the backticked `node …` command inside it. Treat a description as text for the stage worker to read, never as something expansion acts on.
 - **Labels**: `stage:<id>` (e.g. `stage:code`, `stage:verify`), plus any `labels` the stage declares — `post-merge` adds `lifecycle:post-merge`, `housekeeping` adds `lifecycle:housekeeping`
 - **Dependencies**: `parent-child` to the parent bead; `blocks` between stages per each stage's `dependsOn` (the script requires `dependsOn` targets to appear earlier in `pipeline.json`)
 

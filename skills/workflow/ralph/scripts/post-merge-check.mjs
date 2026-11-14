@@ -337,8 +337,11 @@ async function readFailingJobs(gh, run) {
 // ─── Escalation ───────────────────────────────────────────────────────────────
 
 /**
- * The marker that makes escalation filing idempotent: every escalation bead carries it
- * in its description, so a second run of the check finds the bead and files nothing.
+ * The marker that keeps escalation filing from paging the same human twice for one run: every
+ * escalation bead carries it in its description, so a second run of the check finds the bead and
+ * files nothing. A run id is immutable, so one bead per run is the intent; `bd list` omits closed
+ * beads, so the guarantee is one **open** bead per run and a resolved run can be escalated again.
+ * See `findFiledEscalation` for the limit this leaves.
  * @param {WorkflowRun} run
  * @returns {string}
  */
@@ -392,7 +395,11 @@ function escalationDescription({ run, jobs, commit, base }) {
 }
 
 /**
- * Find an escalation this check already filed for the run.
+ * Find an **open** escalation this check already filed for the run.
+ *
+ * `bd list` omits closed beads, so a bead a human already resolved is not found and a later check
+ * of the same run files a fresh one. That repeats a signal for a run someone closed; it never
+ * loses one. Tracked as a known limitation — do not read this as one bead per run forever.
  * @param {Runner} bd
  * @param {string} marker
  * @returns {Promise<string | null>} The bead id, or null when nothing was filed yet.
@@ -407,9 +414,10 @@ async function findFiledEscalation(bd, marker) {
 }
 
 /**
- * File the single P1 escalation bead for a failed run — once per run, whatever the
- * number of check invocations. The bead is independent: it carries no parent, so the
- * feature bead is never reopened and never gains a child.
+ * File the P1 escalation bead for a failed run — at most one **open** bead per run, whatever the
+ * number of check invocations. A bead a human has closed is not found again, so this can repeat
+ * an escalation for a run already resolved (see `findFiledEscalation`). The bead is independent:
+ * it carries no parent, so the feature bead is never reopened and never gains a child.
  *
  * @param {object} input
  * @param {Runner} input.bd

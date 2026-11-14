@@ -102,7 +102,9 @@ The deliverable this feature produces and the problem it solves.
 `post-merge` and `housekeeping` both wait on the gate and on nothing else: they become ready
 together when a human closes it. Neither waits on the other. Chaining housekeeping behind
 `post-merge` was rejected because a post-merge check that stays open — an inconclusive run nobody
-resolves — would then strand the worktree reclamation housekeeping exists to do.
+resolves — would then strand the worktree reclamation housekeeping exists to do. Putting
+`post-merge` after `housekeeping` was rejected too: it would make the pruner a dependency of a
+check that reads GitHub state, which no worktree removal can affect.
 
 ## Stage templates
 

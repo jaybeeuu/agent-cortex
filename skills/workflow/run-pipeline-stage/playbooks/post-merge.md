@@ -31,5 +31,6 @@
 - `OUTCOME: BLOCKED` — leave the chore **open**, report the exit status, the reason, and the
   escalation bead id when the script filed one. Build no remediation chain: there is no `stage:fix`
   round that repairs a commit which already merged, and nothing downstream waits on this chore.
-- The escalation bead is the script's to file, and only once per failing run. Never file a second
-  one, and never edit or close the one it filed.
+- The escalation bead is the script's to file: one **open** bead per failing run, because the
+  `bd list` search behind its marker does not see closed beads, so a run a human already resolved
+  can be escalated again. Never file a second one yourself, and never edit or close the one it filed.

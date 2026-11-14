@@ -33,14 +33,16 @@ const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  * @param {string} [options.updated]
  * @param {Record<string, string>} [options.answers]  Body text per section title.
  * @param {string[]} [options.omit]                   Sections to leave out of the file.
+ * @param {string} [options.changeLog]                A change-log entry; omit for no section.
  * @returns {string}
  */
-function createStrategy({ version = '2', updated = '2026-11-14', answers = {}, omit = [] } = {}) {
+function createStrategy({ version = '2', updated = '2026-11-14', answers = {}, omit = [], changeLog } = {}) {
   const sections = REQUIRED_SECTIONS.filter((title) => !omit.includes(title)).map((title) => {
     const answer = answers[title] ?? `- the answer for ${title}.`;
     return `## ${title}\n\n${answer}\n`;
   });
-  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}`;
+  const log = changeLog === undefined ? '' : `\n## Change log\n\n${changeLog}\n`;
+  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${log}`;
 }
 
 /**
@@ -248,10 +250,13 @@ describe('init', () => {
 });
 
 describe('bump', () => {
+  /** The reason every bump in this block records, so a case names only what it varies. */
+  const REASON = 'review speed is the theme now';
+
   it('raises the version by one and records the date', async () => {
     const file = await writeStrategy(createStrategy({ version: '2', updated: '2026-11-14' }));
 
-    const bump = await run(['bump', '--file', file], { today: '2026-12-01' });
+    const bump = await run(['bump', '--file', file, '--reason', REASON], { today: '2026-12-01' });
 
     assert.equal(bump.code, 0);
     assert.match(bump.stderr, /version 2 → 3, updated 2026-12-01/);
@@ -263,11 +268,73 @@ describe('bump', () => {
     const broken = createStrategy({ version: 'two' });
     const file = await writeStrategy(broken);
 
-    const bump = await run(['bump', '--file', file], { today: '2026-12-01' });
+    const bump = await run(['bump', '--file', file, '--reason', REASON], { today: '2026-12-01' });
 
     assert.equal(bump.code, 1);
     assert.match(bump.stderr, /refusing to bump an invalid strategy/);
     assert.equal(await readFile(file, 'utf8'), broken);
+  });
+
+  it('refuses to bump without a reason, leaving the version where it was', async () => {
+    const file = await writeStrategy(createStrategy({ version: '2' }));
+
+    const bump = await run(['bump', '--file', file], { today: '2026-12-01' });
+
+    assert.equal(bump.code, 2);
+    assert.match(bump.stderr, /"bump" needs --reason/);
+    assert.match(await readFile(file, 'utf8'), /- \*\*Version:\*\* 2/);
+  });
+});
+
+describe('the change log', () => {
+  it('appends one line naming the new version and the reason, and validates', async () => {
+    const file = await writeStrategy(
+      createStrategy({ version: '2', changeLog: '- 2026-11-14 v2: the rubric as it stands.' }),
+    );
+
+    const bump = await run(['bump', '--file', file, '--reason', 'review speed is the theme now'], {
+      today: '2026-12-01',
+    });
+
+    assert.equal(bump.code, 0);
+    assert.match(bump.stderr, /change log: - 2026-12-01 v3: review speed is the theme now/);
+    const text = await readFile(file, 'utf8');
+    assert.match(text, /- 2026-11-14 v2: the rubric as it stands\.\n- 2026-12-01 v3: review speed is the theme now\n/);
+    assert.equal((await run(['validate', '--file', file])).code, 0);
+  });
+
+  it('adds the section to a file that has none', async () => {
+    const file = await writeStrategy(createStrategy({ version: '2' }));
+
+    await run(['bump', '--file', file, '--reason', 'first recorded change'], { today: '2026-12-01' });
+
+    assert.match(await readFile(file, 'utf8'), /## Change log\n\n- 2026-12-01 v3: first recorded change\n$/);
+  });
+
+  it('fails validation when the newest line names a version the header does not', async () => {
+    const file = await writeStrategy(createStrategy({ version: '3', changeLog: '- 2026-11-14 v2: not bumped.' }));
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 1);
+    assert.match(check.stderr, /names v2 but the version is v3/);
+  });
+
+  it('accepts a file whose change log names the version it carries', async () => {
+    const file = await writeStrategy(createStrategy({ version: '3', changeLog: '- 2026-11-14 v3: the rubric as it stands.' }));
+
+    assert.equal((await run(['validate', '--file', file])).code, 0);
+  });
+
+  it('separates the first entry from the template guidance comment above it', async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const file = join(workspace, 'strategy.md');
+
+    await run(['init', '--file', file]);
+    await writeFile(file, answerEverySection(await readFile(file, 'utf8')), 'utf8');
+    await run(['bump', '--file', file, '--reason', 'first recorded change'], { today: '2026-12-01' });
+
+    assert.match(await readFile(file, 'utf8'), /-->\n\n- 2026-12-01 v2: first recorded change\n$/);
   });
 });
 
@@ -294,7 +361,7 @@ describe('the tracker', () => {
     const file = join(workspace, DEFAULT_FILE);
     await writeFile(file, answerEverySection(await readFile(file, 'utf8')), 'utf8');
     await exec(['validate']);
-    await exec(['bump']);
+    await exec(['bump', '--reason', 'tracker check']);
 
     assert.equal(await readFile(marker, 'utf8'), '');
   });

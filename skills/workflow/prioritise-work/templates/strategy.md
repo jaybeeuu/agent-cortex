@@ -49,3 +49,13 @@ Anchor the effort scale to work you have recently completed here, so two scorers
 For example: 1 = half a day, one file; 3 = two to three days, one module with its tests;
 5 = a week or more, several modules or a migration.
 -->
+
+## Change log
+
+<!--
+One line per change to this rubric, oldest first, written by
+`node <skill-scripts>/strategy.mjs bump --reason "<why>"`. The newest line must name the
+version above: `validate` fails when the two disagree, because a version that moved with
+no recorded reason is a rubric change nobody can review.
+-->
+

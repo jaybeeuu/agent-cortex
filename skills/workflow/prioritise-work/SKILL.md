@@ -13,6 +13,7 @@ The strategy is a **committed file**, never a bead and never a scratch note. A r
 
 - "What should I work on next?" — and there is no strategy file, or the one there is predates the current month.
 - "Set the strategy", "update the priorities", "we are optimising something else this month".
+- "This should be higher", "that is not the priority" — a challenge to the order, which is a strategy signal. See [CHALLENGE.md](CHALLENGE.md).
 - A scorer reports a score with no `strategyVersion`, or with one older than the file's.
 - Before ranking a backlog: the rubric has to be valid first.
 
@@ -80,13 +81,14 @@ node <skill-scripts>/strategy.mjs validate
 
 7. Ask the four questions again, plus the confidence question, and edit the sections that changed. Leave a section alone when the answer has not changed.
 
-8. Bump the version and record the date, then validate:
+8. Bump the version and record the date and the reason, then validate:
 
 ```bash
-node <skill-scripts>/strategy.mjs bump
+node <skill-scripts>/strategy.mjs bump --reason "<why the rubric changed>"
 ```
 
-The bump refuses a file that is not already valid, raises the version by exactly one, and writes today's date in UTC. Report the old and new version to the owner.
+The bump refuses a file that is not already valid and refuses an empty reason, raises the version by exactly one, writes today's date in UTC, and appends `- <date> v<n>: <reason>` to the change log.
+Report the old and new version to the owner.
 
 9. Commit the file. The version is what a score's `strategyVersion` points at, so a bump with no commit leaves scores pointing at a rubric nobody else has.
 
@@ -104,15 +106,16 @@ One question produces one section. Ask them in this order; each answer is one to
 
 The confidence question matters as much as the other four: effort and impact estimates are judgements, and the strategy is the only place the owner states how far to trust one.
 
-## The script
+## The scripts
 
-One script, three subcommands, zero dependencies, no tracker access. It reads and writes the strategy file and calls nothing else, so no run creates, tags or closes a bead.
+Two scripts, four subcommands, zero dependencies, no tracker access. `strategy.mjs` reads and writes the strategy file; `challenge.mjs` reads it and prints a trail entry. No run creates, tags or closes a bead.
 
 | Command | Behaviour | Exit |
 |---|---|---|
 | `init` | Writes the template, stamped with today's date; refuses an existing file | 0 written, 1 refused |
-| `validate` | Checks the version integer, the date, and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
-| `bump` | Refuses an invalid file, raises the version by one, records today | 0 bumped, 1 refused |
+| `validate` | Checks the version integer, the date, the change log and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
+| `bump` | Refuses an invalid file or an empty `--reason`, raises the version by one, records today, appends the change-log line | 0 bumped, 1 refused |
+| `record` (`challenge.mjs`) | Refuses an order or a resolution the strategy does not support; prints one bead-trail entry | 0 recorded, 1 refused |
 
 `validate` splits its output: status and errors go to stderr, the rubric goes to stdout. `validate > rubric.md` captures the rubric alone, which is how a scorer loads it. A failing run names the file and lists one line per defect, so one fix round clears the whole file.
 
@@ -122,27 +125,26 @@ Exit code 2 means a malformed call — an unknown subcommand or a bad `--today`.
 
 ## Hand edits and forgotten bumps
 
-A hand edit that changes a section but forgets `bump` still passes `validate`: the shape is intact, so nothing can tell the content moved. The version then understates the change, and a score recorded against the old version looks current.
-
-Validate catches shape, not intent. The protection is the version a score records: a scorer stores the `strategyVersion` it scored against, so a reader compares the two numbers and re-scores when they differ. Always finish an edit with `bump`, and never hand-raise the version.
+A hand edit that changes a section but forgets `bump` still passes `validate`: the shape is intact, so nothing can tell the content moved. The protection is the version a score records — a scorer stores the `strategyVersion` it scored against, so a reader compares the two numbers and re-scores when they differ. The change log closes the rest of the gap: `validate` fails when its newest line names a version the header does not, so a raised version with no recorded reason is caught.
 
 ## Red Flags
 
 - Red flag: moving the strategy into a bead, a label or a scratch file because it is "just a rubric".
-- Red flag: editing a strategy and skipping `bump`, so the recorded version hides the change.
-- Red flag: copying the template and leaving a guidance comment in place of an answer.
+- Red flag: editing a strategy and skipping `bump`, or hand-raising the version, so the record hides the change.
+- Red flag: editing a score to satisfy a challenge, instead of changing the rubric that produced it.
 - Red flag: scoring against a file whose `validate` was never run — a malformed rubric scores silently.
 
 ## Verification checklist
 
-- [ ] `node <skill-scripts>/strategy.mjs validate` exits 0 and printed the rubric.
-- [ ] Every section carries the owner's words, not the template's comment.
-- [ ] The version is one higher than the previous file for an update, or `1` for a new one.
+- [ ] `node <skill-scripts>/strategy.mjs validate` exits 0 and printed the rubric, and every section carries the owner's words.
+- [ ] The version is one higher than the previous file for an update, or `1` for a new one, and the change log names it.
+- [ ] A challenged order moved only after a bump, and the record names what moved.
 - [ ] `git ls-files --error-unmatch .agent-cortex/working-docs/strategy.md` succeeds.
 - [ ] No bead was created, tagged or closed by this skill.
 
 ## See Also
 
+- [CHALLENGE.md](CHALLENGE.md) — the sequence, the refusals and the no-change path when the order is challenged.
 - [plan](../../workflow/plan/SKILL.md) — shapes one feature into beads; this skill orders the beads that exist.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where operational state lives, and why a durable document does not belong there.
 - [hitl-collab](../../workflow/hitl-collab/SKILL.md) — the handoff document that shares the working-docs root with the strategy.

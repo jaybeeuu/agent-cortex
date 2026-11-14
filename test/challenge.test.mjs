@@ -368,6 +368,15 @@ describe('the entry file', () => {
       result.stderr.includes(`next: bd note agnt-ctx-demo.1 --file ${out}`),
       'the hint names the file, so the entry reaches the tracker as data',
     );
+
+    const hintLines = result.stderr.split('\n').filter((line) => line.includes('next:'));
+    assert.ok(hintLines.length > 0, 'the caller is told how to append the entry at all');
+    for (const line of hintLines) {
+      assert.ok(
+        !line.includes('"') && !line.includes("'"),
+        `every hint must point the caller at a file, never at a quoted entry, because a quoted entry re-interprets its own shell metacharacters: ${line.trim()}`,
+      );
+    }
   });
 
   it('carries a challenge with a substitution and a quote into the file verbatim', async () => {

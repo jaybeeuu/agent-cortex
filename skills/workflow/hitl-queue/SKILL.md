@@ -72,7 +72,7 @@ Every row carries its rank, scope, id, total, the four components the score was 
 
 ### One item, not the list
 
-A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own. [RECOMMEND.md](RECOMMEND.md) carries the four stated conditions, the `--why` rule and the `--bead` form for a bead the human named.
+A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own. [RECOMMEND.md](RECOMMEND.md) carries the four stated conditions, the `--why` rule and the `--bead` form for a bead the human named. When that item is done, `boundary.mjs` compares the theme's next item against the queue's top item and prints both scores, and [BOUNDARY.md](BOUNDARY.md) carries the block, the three outcomes and the options.
 
 ```bash
 node <skill-scripts>/recommend.mjs recommend --json          # the top row, structured

@@ -1,6 +1,6 @@
 ---
 name: hitl-queue
-description: Ranks the open execution:hitl beads into one list ordered by RICE, transitively blocked dependents and work in progress, and prints what each answer unblocks. Use when deciding which human decision to answer next, when a planning session starts, or when asked "what needs my decision", "show the queue" or "what should I answer first".
+description: Ranks the open execution:hitl beads into one list ordered by RICE, transitively blocked dependents and work in progress, prints what each answer unblocks, and recommends one item from that list with the line of the strategy that justifies it. Use when deciding which human decision to answer next, when a session cold-starts and must say one item, when a planning session starts, or when asked "what needs my decision", "show the queue", "what should we look at" or "what should I answer first".
 ---
 
 # HITL Queue
@@ -13,6 +13,7 @@ A queue is not a priority. The RICE score is `score-bead`'s judgement, the band 
 
 - A planning session starts and the owner needs to know which decision comes first.
 - "What needs my decision?", "show the queue", "what should I answer first?".
+- "What should we look at?" — a cold start that must say one item rather than print the list. See [RECOMMEND.md](RECOMMEND.md).
 - Before dispatching work from a backlog of HITL beads: the answer unblocks the work, so the order of answers is the order of the work.
 - A bead was scored or re-scored and the order should follow the new number.
 
@@ -64,6 +65,17 @@ excluded: 3 kind:idea beads (--include-ideas ranks them)
 Every row carries its rank, id, total, the four components the score was computed from, both multipliers, the title, and one clause naming what the answer unblocks. An unscored row keeps its place at the end of the same list with the reason: no `rice` metadata, no score inside a `rice` record, or scored against an older strategy version (that last one is ranked and marked `scored at strategy v1, current v2`).
 
 `--json` prints the same answer with every derived field, for a caller that needs to act on it.
+
+### One item, not the list
+
+A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and prints a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own.
+
+```bash
+node <skill-scripts>/recommend.mjs recommend --json          # the top row, structured
+node <skill-scripts>/recommend.mjs recommend --why "<line>"  # the block to say
+```
+
+[RECOMMEND.md](RECOMMEND.md) carries the four stated conditions, the `--why` rule and the `--bead` form for a bead the human named.
 
 ## Ordering rules
 
@@ -125,6 +137,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 - [ ] With no scores, the header says nothing can be ranked and every candidate is listed unscored with a reason.
 - [ ] Two identical runs printed byte-identical output.
 - [ ] The excluded idea and deferred counts were reported, or the header said there were none.
+- [ ] A session that had to decide said one block: the bead, its components, both multipliers, the unblocked beads and the quoted strategy line — or one stated condition with its next step.
 
 ## See Also
 

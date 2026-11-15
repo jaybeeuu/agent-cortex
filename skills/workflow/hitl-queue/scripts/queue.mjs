@@ -420,10 +420,11 @@ function right(text, width) {
 
 /**
  * The components as the score record holds them, so a reader can check the arithmetic
- * without opening the bead.
+ * without opening the bead. Exported so the one-item recommendation prints the same
+ * breakdown rather than a second copy of it that could drift.
  * @param {StoredRice} rice @returns {string}
  */
-function components(rice) {
+export function formatComponents(rice) {
   const part = (/** @type {number | undefined} */ value, /** @type {string} */ letter) =>
     `${letter}${value === undefined ? '?' : value}`;
   return `${part(rice.reach, 'R')} · ${part(rice.impact, 'I')} · ${part(rice.confidence, 'C')} · ${part(rice.effort, 'E')}`;
@@ -433,7 +434,7 @@ function components(rice) {
  * What the answer unblocks, in one clause: named ids while they fit, a count after that.
  * @param {QueueRow} row @returns {string}
  */
-function unblocks(row) {
+export function formatUnblocks(row) {
   if (row.dependentIds.length === 0) return 'unblocks nothing';
   const named = row.dependentIds.slice(0, NAMED_DEPENDENTS);
   const rest = row.dependentIds.length - named.length;
@@ -450,7 +451,7 @@ export function renderQueue(report) {
   const strategyLabel = strategy.version === undefined ? 'strategy unknown' : `strategy v${strategy.version}`;
 
   if (rows.length === 0) {
-    const excluded = excludedLine(counts);
+    const excluded = formatExcluded(counts);
     return `HITL decision queue · no open ${HITL_LABEL} beads\n${excluded}`;
   }
 
@@ -462,7 +463,7 @@ export function renderQueue(report) {
     `HITL decision queue · ${counts.ranked} ranked, ${counts.unscored} unscored · ${strategyLabel}`,
     'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress · ties break on rice, then id · unscored last',
   ];
-  const excluded = excludedLine(counts);
+  const excluded = formatExcluded(counts);
   if (excluded !== '') lines.push(excluded.trimEnd());
   if (counts.ranked === 0) {
     lines.push(
@@ -476,24 +477,34 @@ export function renderQueue(report) {
     const total = row.total === undefined ? '—' : row.total.toFixed(1);
     const numbers = row.score === undefined
       ? `unscored — ${row.unscoredReason ?? 'no score'} (score it with score-bead)`
-      : `rice ${row.score.toFixed(1)} = ${components(/** @type {StoredRice} */ (row.rice))}` +
-        `  ×${row.dependentMultiplier.toFixed(2)} dependents(${row.dependents})` +
-        `  ×${row.wipMultiplier.toFixed(1)}${row.inProgress ? ' in-progress' : ''}`;
+      : formatNumbers(row);
     const stale = row.stale ? `  (scored at strategy v${row.scoredAtVersion}, current v${strategy.version})` : '';
     lines.push(
       `${right(rank, rankWidth)}  ${row.id.padEnd(idWidth)}  ${right(total, totalWidth)}  ${numbers}${stale}`,
     );
-    lines.push(`    ${row.title} — ${unblocks(row)}`);
+    lines.push(`    ${row.title} — ${formatUnblocks(row)}`);
   }
 
   return `${lines.join('\n')}\n`;
 }
 
 /**
+ * The score line of one row: the stored RICE total, the four components it was computed
+ * from, and both multipliers. Exported so the one-item recommendation prints the queue's
+ * own numbers instead of deriving them a second time.
+ * @param {QueueRow} row @returns {string}
+ */
+export function formatNumbers(row) {
+  return `rice ${/** @type {number} */ (row.score).toFixed(1)} = ${formatComponents(/** @type {StoredRice} */ (row.rice))}` +
+    `  ×${row.dependentMultiplier.toFixed(2)} dependents(${row.dependents})` +
+    `  ×${row.wipMultiplier.toFixed(1)}${row.inProgress ? ' in-progress' : ''}`;
+}
+
+/**
  * The excluded counts, so nothing leaves the list without a trace.
  * @param {QueueReport['counts']} counts @returns {string}
  */
-function excludedLine(counts) {
+export function formatExcluded(counts) {
   if (counts.excludedIdeas === 0 && counts.excludedDeferred === 0) return '';
   const parts = [];
   if (counts.excludedIdeas > 0) {

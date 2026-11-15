@@ -85,10 +85,10 @@ function flat(text) {
   return text.replace(/\s+/g, " ").trim();
 }
 
-/** What only the named step says. The step's label and this body text travel
- * together: a render that keeps both bodies and swaps two labels fails the
- * pairing assertion, which is the reorder the protocol actually protects
- * against.
+/** What only the named step says. A label swapped over untouched bodies fails
+ * the label-order assertion; a body swapped under untouched labels fails the
+ * pairing check this table drives, which is the reorder the protocol actually
+ * protects against.
  * @type {Record<string, RegExp>} */
 const STEP_BODY = {
   Checkpoint: /take a resume point before the interrupt is examined/i,

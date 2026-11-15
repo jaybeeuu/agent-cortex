@@ -254,6 +254,109 @@ describe('init', () => {
   });
 });
 
+describe('summary', () => {
+  /** A strategy whose sections carry the bullets a digest has to quote, and a change log. */
+  const FILLED = {
+    version: '3',
+    updated: '2026-12-01',
+    answers: {
+      'Current themes': '- shorter review turnaround\n- fewer manual release steps',
+      'What counts as value': '- unblocks a human gate\n- removes a manual step',
+      'Explicitly out of scope': '- new integrations\n- UI polish that changes no outcome',
+    },
+    changeLog: '- 2026-11-14 v2: the rubric as it stands.\n- 2026-12-01 v3: review speed is the theme now',
+  };
+
+  it('summarises an existing strategy: the path, the version, the themes, the precedence and the last change', async () => {
+    const file = await writeStrategy(createStrategy(FILLED));
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.ok(result.stdout.includes(`${file} — strategy v3`), `the digest must cite the file it read: ${result.stdout}`);
+    assert.match(result.stdout, /last change: 2026-12-01 v3: review speed is the theme now/);
+    assert.match(result.stdout, /themes: shorter review turnaround · fewer manual release steps/);
+    assert.match(result.stdout, /precedence — what counts as value: unblocks a human gate · removes a manual step/);
+    assert.match(result.stdout, /precedence — out of scope: new integrations · UI polish that changes no outcome/);
+  });
+
+  it('prints a handful of lines, not a re-print of the file', async () => {
+    const many = Array.from({ length: 6 }, (_, index) => `- rule number ${index + 1}`).join('\n');
+    const file = await writeStrategy(createStrategy({ ...FILLED, answers: { ...FILLED.answers, 'Current themes': many } }));
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.trimEnd().split('\n').length, 5, 'the digest is five lines however long the file is');
+    assert.match(result.stdout, /rule number 1 · rule number 2 · \(\+4 more in the file\)/);
+    assert.doesNotMatch(result.stdout, /## /, 'the digest must not re-print the headings it read');
+  });
+
+  it('says there is no strategy instead of printing an empty digest', async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const file = join(workspace, DEFAULT_FILE);
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 3);
+    assert.equal(result.stdout, '', 'a first run must print no digest at all');
+    assert.equal(result.stderr, `${file} does not exist — run "init" and interview the owner, or pass --file <path>\n`);
+  });
+
+  it('names the empty section rather than presenting the file as current', async () => {
+    const file = await writeStrategy(createStrategy({ ...FILLED, answers: { ...FILLED.answers, 'Current themes': '<!-- still the guidance -->' } }));
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, '', 'an invalid strategy must never be summarised');
+    assert.match(result.stderr, /is not a valid strategy:/);
+    assert.match(result.stderr, /required section is empty: "## Current themes"/);
+  });
+
+  it('names a version the change log disagrees with', async () => {
+    const file = await writeStrategy(
+      createStrategy({ ...FILLED, version: '4', changeLog: '- 2026-12-01 v3: review speed is the theme now' }),
+    );
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /the newest "## Change log" entry names v3 but the version is v4/);
+  });
+
+  it('reads the file it summarises, so it cannot describe a strategy that is not on disk', async () => {
+    const file = await writeStrategy(createStrategy(FILLED));
+
+    await writeFile(
+      file,
+      createStrategy({
+        ...FILLED,
+        answers: { ...FILLED.answers, 'Current themes': '- a cold start under a minute' },
+        changeLog: '- 2026-12-01 v3: cold starts matter more than review now',
+      }),
+      'utf8',
+    );
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /themes: a cold start under a minute/);
+    assert.match(result.stdout, /last change: 2026-12-01 v3: cold starts matter more than review now/);
+    assert.doesNotMatch(result.stdout, /review turnaround|review speed/);
+  });
+
+  it('says no reason is on file when the strategy carries no change-log entry', async () => {
+    const file = await writeStrategy(createStrategy({ ...FILLED, changeLog: undefined }));
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /last change: 2026-12-01 — no change-log entry, so no reason is on file/);
+  });
+});
+
 describe('bump', () => {
   /** The reason every bump in this block records, so a case names only what it varies. */
   const REASON = 'review speed is the theme now';
@@ -451,7 +554,7 @@ describe('the deadline tiers', () => {
 });
 
 describe('the tracker', () => {
-  it('is never invoked by init, validate or bump', async () => {
+  it('is never invoked by init, validate, bump or summary', async () => {
     const workspace = await tempRoot.createWorkspace();
     const stubDir = join(workspace, 'bin');
     const marker = join(workspace, 'bd-called.log');
@@ -473,6 +576,7 @@ describe('the tracker', () => {
     const file = join(workspace, DEFAULT_FILE);
     await writeFile(file, answerEverySection(await readFile(file, 'utf8')), 'utf8');
     await exec(['validate']);
+    await exec(['summary']);
     await exec(['bump', '--reason', 'tracker check']);
 
     assert.equal(await readFile(marker, 'utf8'), '');

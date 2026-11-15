@@ -1,5 +1,5 @@
 ---
-"@jaybeeuu/agent-cortex": minor
+"@jaybeeuu/agent-cortex": patch
 ---
 
 Correct two shipped-text contradictions in the review docs: a count word that the data beside it

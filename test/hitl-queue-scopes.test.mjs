@@ -23,7 +23,7 @@ import { promisify } from 'node:util';
 import { createTempRoot } from './helpers/temp-root.mjs';
 import { fakeBdByScope } from './helpers/fake-bd-queue.mjs';
 import { REQUIRED_SECTIONS } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
-import { buildQueue, renderQueue } from '../skills/workflow/hitl-queue/scripts/queue.mjs';
+import { buildQueue, renderQueue, renderToday } from '../skills/workflow/hitl-queue/scripts/queue.mjs';
 import {
   ScopeError,
   ScopeWriteError,
@@ -144,19 +144,20 @@ function rowFor(report, scope, id) {
  * @param {object} [options]
  * @param {string} [options.daily]         A daily line for the personal strategy, when given.
  * @param {boolean} [options.initialised]  Mark the personal workspace as a bd workspace.
+ * @param {string} [options.personalName]  The name the owner gave the personal scope.
  */
-async function threeScopes({ daily = DAILY_LINE, initialised = true } = {}) {
+async function threeScopes({ daily = DAILY_LINE, initialised = true, personalName = 'personal' } = {}) {
   const code = await makeWorkspace({ repository: true });
   const personal = await makeWorkspace({ daily, initialised });
   const ops = await makeWorkspace();
   const scopesFile = await writeScopes(code, [
     { name: 'code', path: code, kind: 'code', readOnly: false },
-    { name: 'personal', path: personal, kind: 'personal', readOnly: true },
+    { name: personalName, path: personal, kind: 'personal', readOnly: true },
     { name: 'ops', path: ops, kind: 'ops', readOnly: true },
   ]);
   const recorder = recordingBd({
     code: [{ id: 'c-1', title: 'Ship the queue', labels: ['execution:hitl'], rice: rice() }],
-    personal: [{ id: 'p-1', title: 'Write the objectives', labels: ['execution:hitl'], rice: rice(2) }],
+    [personalName]: [{ id: 'p-1', title: 'Write the objectives', labels: ['execution:hitl'], rice: rice(2) }],
     ops: [{ id: 'o-1', title: 'Renew the certificate', labels: ['execution:hitl'], rice: rice(1) }],
   });
   return { code, personal, ops, scopesFile, recorder };
@@ -412,6 +413,44 @@ describe('the privacy boundary', () => {
     assert.ok(local.rows.some((row) => row.scope === 'personal'));
     assert.match(renderQueue(local), /^2 {2}personal {2}p-1 /m);
   });
+
+  it('prints neither the name nor the path of a withheld scope in any form of a shared report', async () => {
+    const { code, personal, scopesFile, recorder } = await threeScopes({ personalName: 'glacier-notes' });
+    const personalPath = await realpath(personal);
+
+    const report = await buildQueue({ bd: recorder.bd, cwd: code, scopesFile, shared: true });
+
+    // Every form the report is serialised into is asserted on its own bytes, so a leak
+    // through any field — `reason` today, another one later — is caught where it leaves.
+    const text = renderQueue(report);
+    const forms = {
+      json: JSON.stringify(report, null, 2),
+      text,
+      header: text.split('\n')[0] ?? '',
+      dailyNote: renderToday(report.today),
+    };
+    for (const [form, bytes] of Object.entries(forms)) {
+      assert.ok(!bytes.includes('glacier-notes'), `the shared ${form} prints the withheld scope name:\n${bytes}`);
+      assert.ok(!bytes.includes(personalPath), `the shared ${form} prints the withheld workspace path:\n${bytes}`);
+    }
+  });
+
+  it('prints the name and the path of the personal scope in a local report', async () => {
+    const { code, personal, scopesFile, recorder } = await threeScopes({ personalName: 'glacier-notes' });
+    const personalPath = await realpath(personal);
+
+    const local = await buildQueue({ bd: recorder.bd, cwd: code, scopesFile });
+
+    const published = local.scopes.find((scope) => scope.kind === 'personal');
+    assert.equal(published?.name, 'glacier-notes');
+    assert.equal(published?.path, personalPath);
+
+    // Withholding on a shared run must not blind the owner on their own machine: the
+    // report they read locally still says which workspace the rows came from.
+    const json = JSON.stringify(local, null, 2);
+    assert.ok(json.includes('glacier-notes'), `the local report lost the personal scope name:\n${json}`);
+    assert.ok(json.includes(personalPath), `the local report lost the personal workspace path:\n${json}`);
+  });
 });
 
 describe('the command line over several scopes', () => {
@@ -499,6 +538,7 @@ describe('the command line over several scopes', () => {
     // the personal workspace may appear in them: not the location it sits at, not the name
     // the owner gave it.
     assert.ok(!stdout.includes(personal), `the shared report prints the personal workspace path:\n${stdout}`);
+    assert.ok(!stdout.includes('secret'), `the shared report prints the personal scope name:\n${stdout}`);
     /** @type {{ name: string | null, path: string | null, status: string }[]} */
     const scopes = JSON.parse(stdout).scopes;
     assert.deepEqual(

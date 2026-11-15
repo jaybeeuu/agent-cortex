@@ -123,15 +123,17 @@ this order, so the interrupt is kept and the task you were on can continue.
    `record-idea` for an idea that is not buildable yet, `classify-bead` for the execution label.
    Finish the record before you rewind: the rewind is what would lose a failed record.
 3. **Rewind.** Return to the checkpoint with {{TOOL:interrupt_rewind}}, so the interrupt's turns
-   leave the live context. Never delete the abandoned branch: it is the audit trail. If the rewind
-   fails, continue in the current context and say so plainly; never carry the interrupt silently.
+   leave the live context. Where the harness gives that to the human and not to you, hand them the
+   step and say the rewind is theirs; never report a rewind you did not make. Never delete the
+   abandoned branch: it is the audit trail. If the rewind fails, continue in the current context and
+   say so plainly; never carry the interrupt silently.
 4. **Resume.** Open with one sentence that names the task and the record:
    `back to <task> — recorded <what> as <bead id>`. Name the task; do not imply it.
 
 | Interrupt | Record it as |
 |---|---|
 | A meeting note | A `kind:idea` bead through `record-idea` when it is not buildable yet, otherwise a `task` bead through `create-task` |
-| PR feedback to pass on | A `handoff` message to ralph; `ralph`'s REFERENCE owns the kind and its acknowledgement rule |
+| PR feedback to pass on | A `task` bead through `create-task`, carrying the pull request's reference, plus a `handoff` document through `hitl-collab` when a human must act on it. Guppi is propose-only and resident, so it sends no peer message: ralph reads the bead from the tracker |
 | A Slack todo | A `task` bead through `create-task`; a question only a human can answer becomes an `execution:hitl` decision bead |
 
 ## Permitted writes

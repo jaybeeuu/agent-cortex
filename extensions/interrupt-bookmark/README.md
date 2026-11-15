@@ -82,9 +82,16 @@ The mechanism differs in kind between harnesses, so it is named once through `to
 `interrupt_rewind` row renders as `interrupt_resume` on pi and as Claude Code's own `/rewind` on
 claude. Claude Code checkpoints and rewinds with a user command rather than a model-callable tool,
 so prose that names the row must describe only what both do — the session returns to an earlier
-point and the abandoned turns leave the live context — never a call shape. No shipped skill names
-the row yet: it is a forward reference for the interrupt protocol, as the row's own note in
-`token-map.json` records.
+point and the abandoned turns leave the live context — never a call shape, and it must say who
+acts: the agent where the harness gives it a tool, the human where the harness gives it a user
+command. The row is consumed by `agents/guppi/agent.md`'s interrupt protocol, which checkpoints,
+records the interrupt, rewinds and resumes; `test/guppi-interrupt-render.test.mjs` stages both
+installs to prove the fork.
+
+Both halves are wired per harness. guppi's pi frontmatter declares this extension's
+`interrupt_checkpoint` and `interrupt_resume` in its tool list, so steps 1 and 3 of the protocol are
+callable there. On claude the agent declares neither, because `/rewind` is the human's command, and
+the protocol hands that step to the human.
 
 ## Proven against pi
 
@@ -98,8 +105,9 @@ generates agents, skills, hooks and docs, and copies no `extensions/` tree at al
 The claude side was therefore checked by hand, not by a test of this extension: `/rewind` is one of
 the commands the installed Claude Code CLI defines itself (verified in 2.1.294), and the
 `interrupt_rewind` row renders as `interrupt_resume` on pi and `/rewind` on claude when the token is
-substituted directly. The row has no shipped consumer yet, so that substitution was the only render
-to check.
+substituted directly. The row's consumer is guppi's interrupt protocol, and
+`test/guppi-interrupt-render.test.mjs` checks both staged renders; this hand check is what
+established the claude name before that test existed.
 
 The session shape a rewind produces was checked against pi's own `SessionManager` separately:
 `branchWithSummary()` plus the label change leaves a `branch_summary` entry parented at the

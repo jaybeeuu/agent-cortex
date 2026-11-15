@@ -54,12 +54,14 @@ function runCli(args) {
 }
 
 /** Stage both installs once and read their rendered guppi agents.
- * @returns {Promise<{ pi: string, claude: string, stdout: string }>} */
+ * @returns {Promise<{ pi: string, claude: string, dirs: Record<"pi" | "claude", string>, stdout: string }>} */
 let staged = null;
 function stageBoth() {
   staged ??= (async () => {
     /** @type {Record<string, string>} */
     const rendered = {};
+    /** @type {Record<string, string>} */
+    const dirs = {};
     /** @type {string[]} */
     const output = [];
     for (const harness of /** @type {const} */ (["pi", "claude"])) {
@@ -67,9 +69,10 @@ function stageBoth() {
       const result = await runCli(["install", harness, "--output", out]);
       assert.equal(result.exitCode, 0, `install ${harness} failed: ${result.stdout}${result.stderr}`);
       output.push(result.stdout, result.stderr);
+      dirs[harness] = out;
       rendered[harness] = await readFile(join(out, ...AGENT_PATH[harness]), "utf-8");
     }
-    return { ...rendered, stdout: output.join("\n") };
+    return { ...rendered, dirs: /** @type {Record<"pi" | "claude", string>} */ (dirs), stdout: output.join("\n") };
   })();
   return staged;
 }
@@ -120,7 +123,7 @@ describe("guppi's interrupt protocol renders per harness", () => {
     }
   });
 
-  it("names the harness's own rewind mechanism, and only that one", async () => {
+  it("names the harness's own rewind mechanism, only that one, and hands a human-only rewind to the human", async () => {
     const { pi, claude } = await stageBoth();
 
     /** @type {Record<string, string>} */
@@ -136,6 +139,46 @@ describe("guppi's interrupt protocol renders per harness", () => {
       );
       assert.equal(protocol.split(own).length - 1, 1, `${harness} names ${own} exactly once`);
       assert.ok(!protocol.includes(other), `the ${harness} protocol names no ${other}`);
+
+      // The values differ in kind, so the rewind is not always the agent's to
+      // perform: where the harness supplies a user command, the protocol must
+      // hand it to the human rather than claim it.
+      assert.match(
+        flat(protocol),
+        /where the harness gives that to the human and not to you/i,
+        `${harness} hands a human-only rewind to the human`,
+      );
+      assert.match(
+        flat(protocol),
+        /never report a rewind you did not make/i,
+        `${harness} forbids claiming a rewind the agent did not make`,
+      );
+    }
+  });
+
+  it("grants pi's guppi every interrupt tool the staged extension registers", async () => {
+    const { dirs } = await stageBoth();
+
+    // Both sides are read from the same staged pi package: the extension is the
+    // collaborator that registers the tools, the agent's frontmatter is the
+    // wiring that declares them to the model. A rename on either side leaves
+    // guppi unable to run steps 1 and 3, so it fails here.
+    const extension = await readFile(join(dirs.pi, "extensions", "interrupt-bookmark", "index.ts"), "utf-8");
+    const registered = [...extension.matchAll(/^export const (?:CHECKPOINT|RESUME)_TOOL = "([^"]+)";$/gm)].map(
+      (match) => match[1],
+    );
+    assert.deepEqual(
+      [...registered].sort(),
+      ["interrupt_checkpoint", "interrupt_resume"],
+      "the staged extension registers both interrupt tools",
+    );
+
+    const declared = /** @type {string} */ (
+      (await readFile(join(dirs.pi, ...AGENT_PATH.pi), "utf-8")).match(/^tools: "([^"]+)"$/m)?.[1]
+    ).split(", ");
+
+    for (const tool of registered) {
+      assert.ok(declared.includes(tool), `pi's guppi declares ${tool}`);
     }
   });
 

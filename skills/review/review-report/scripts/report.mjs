@@ -3,7 +3,7 @@
 // state, and print one bounded report. Filing that report upstream is a separate step.
 //
 // The class vocabulary is not defined here. `skills/review/review-defects/SKILL.md` owns the
-// closed list of eight classes and the worked example for each, so this script parses the
+// closed list of classes and the worked example for each, so this script parses the
 // table out of that file at run time: the words a reviewer applies and the words this report
 // counts cannot drift apart. A class that appears as a label but not in that table is
 // reported as vocabulary drift, never counted as a class of its own.
@@ -130,6 +130,10 @@ export const DEFECT_OWNERS = {
   'missing-proof': ['implement-task', 'run-pipeline-stage'],
   regression: ['implement-task', 'style-tests'],
   'docs-drift': ['maintain-agent-docs', 'style-documentation'],
+  'unsafe-instruction': ['write-a-skill'],
+  'ambiguous-rule': ['write-a-skill'],
+  'silent-degradation': ['style-tests', 'run-pipeline-stage'],
+  unclassified: ['review-defects'],
 };
 
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */

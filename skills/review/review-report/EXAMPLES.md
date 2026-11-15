@@ -90,12 +90,12 @@ Defects by class — `bd list --label-pattern 'defect:*' --all`
   8 unconfirmed defects across 4 changes. Top 3 of 8 classes.
 ```
 
-This is the owning-skill mapping in use. Each of the eight classes maps to at least one shipped
-skill, the report names the file to change rather than the symptom, and the suite fails if a mapped
-skill disappears or a vocabulary class has no owner.
+This is the owning-skill mapping in use. Each class maps to at least one shipped skill, the report
+names the file to change rather than the symptom, and the suite fails if a mapped skill disappears
+or a vocabulary class has no owner.
 
-`--json` prints all eight classes with their counts, their changes and their bead ids, for a caller
-that needs the whole table rather than the top three.
+`--json` prints every class with its count, its changes and its bead ids, for a caller that needs
+the whole table rather than the top three.
 
 ## With a previous report
 

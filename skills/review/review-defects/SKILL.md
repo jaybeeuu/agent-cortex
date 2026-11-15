@@ -12,16 +12,23 @@ be counted, compared and trended across tasks instead of re-read one at a time.
 
 Apply exactly one class from this table. Never invent one.
 
-| Class | The defect | Evidence the rejection must show |
-|---|---|---|
-| `test-unproven` | A test's name claims a requirement its assertions never check. | The named clause, and the assertion that is missing. |
-| `test-cannot-fail` | An assertion passes against a broken implementation. | The case that should fail and does not. |
-| `criteria-unmet` | A criterion from the bead is not delivered. | The criterion, quoted, and what is absent. |
-| `scope-creep` | The change does more than the criteria ask. | The touched behaviour that no criterion names. |
-| `style-violation` | A `style-*` rule is broken. | The rule, quoted, and the line that breaks it. |
-| `missing-proof` | A report claims success with no evidence. | The claim, and the command output that is absent. |
-| `regression` | Behaviour that worked before now breaks. | The old behaviour, and the check that now fails. |
-| `docs-drift` | Shipped text no longer matches what ships. | The text, and the behaviour that contradicts it. |
+The **Distinct from** column is part of the definition: two classes that sound alike are separated
+there, and a finding that matches the neighbour belongs to the neighbour.
+
+| Class | The defect | Distinct from | Evidence the rejection must show |
+|---|---|---|---|
+| `test-unproven` | A test's name claims a requirement its assertions never check. | `test-cannot-fail`: there the assertion is genuine and the case is absent. | The named clause, and the assertion that is missing. |
+| `test-cannot-fail` | An assertion passes against a broken implementation. | `test-unproven`: a name that outruns its body, not an assertion that cannot bite. | The case that should fail and does not. |
+| `criteria-unmet` | A criterion from the bead is not delivered. | `scope-creep`: too little work, not more than was asked. | The criterion, quoted, and what is absent. |
+| `scope-creep` | The change does more than the criteria ask. | `criteria-unmet`: the change is wider than its reason. | The touched behaviour that no criterion names. |
+| `style-violation` | A `style-*` rule is broken. | `unsafe-instruction`: a convention broken, not a machine put at risk. | The rule, quoted, and the line that breaks it. |
+| `missing-proof` | A report claims success with no evidence. | `silent-degradation`: evidence absent, not evidence that cannot be wrong. | The claim, and the command output that is absent. |
+| `regression` | Behaviour that worked before now breaks. | `criteria-unmet`: it breaks something nobody asked to change. | The old behaviour, and the check that now fails. |
+| `docs-drift` | Shipped text no longer matches what ships. | `ambiguous-rule`: drift is **stale**; ambiguity is **readable two ways**. | The text, and the behaviour that contradicts it. |
+| `unsafe-instruction` | Shipped text that, followed on an arbitrary machine, could destroy data or run something dangerous — destructive commands, force-pushes, credential handling, overwriting user config. | `docs-drift`: the text is still true, and the hazard is the point. `style-violation`: a convention, not a consequence. | The text, quoted, the state it endangers, and a safe form to use instead. |
+| `ambiguous-rule` | Wording a reasonable agent reads two ways, especially a phrase true of one context that reads as true of another. | `docs-drift`: true yesterday, false today. `criteria-unmet`: behaviour delivered, not wording. | Both readings, quoted, and the one the author intended. |
+| `silent-degradation` | A path that fails quietly or passes vacuously: a skipped check reported as success, a null mapping silently dropping a token, a guard that cannot fail. | `test-cannot-fail`: one assertion that cannot bite; this is any path that cannot report. | The quiet path, what it should have reported, and the run that shows it. |
+| `unclassified` | The defect matches no class. It exists so a reviewer never force-fits. | Everything: it is the honest answer when none of the others is true. | The finding, the classes considered and why each fails, and the gap bead filed for the missing class. |
 
 Two findings of different kinds are two entries in the rejection text and one label: the class of
 the finding that must be fixed first.
@@ -59,17 +66,39 @@ bd update <id> --remove-label defect:test-unproven
 Record the removal in that review's trail entry ("`defect:test-unproven` cleared"), not as a label.
 A closed defect is a fact in the trail, not a second class.
 
-## An unknown class is itself a defect
+## No class fits: the escape hatch
 
-A class that is not on the list above is not a label. Applying one is a review defect in itself:
-state it in the rejection text, use the nearest real class for the finding, and raise the gap with
-the owner. Do not extend the list inside a review — a vocabulary that grows per rejection counts
-nothing.
+Apply `defect:unclassified` when none of the classes above describes the finding. It exists so you
+never force-fit, because a forced label corrupts the aggregate the feedback loop reads: the classes
+are counted, so a `docs-drift` label on a dangerous instruction reports a text problem where the
+risk was a machine at risk.
+
+Applying it carries an obligation. The class is not a pass:
+
+1. Say in the rejection text that no class fits, and name the classes you considered.
+2. File a bead proposing the class that should have covered the finding, with this finding as its
+   case.
+3. Name that bead in the rejection text.
+
+Without step 2 the label records a defect and teaches nothing — silent degradation of the aggregate,
+which is the exact failure the class exists to prevent. An escape hatch without the bead is a
+miscount with a nicer name.
+
+## A label off this list is not a class
+
+Any other `defect:*` label is not a class: the report prints it as vocabulary drift and counts it as
+nothing. Inventing one is a review defect, and the escape hatch is the only honest way to say "no
+class fits".
+
+The vocabulary stays closed. A class is added by changing this file with the owner, never invented
+inside a review, and adding one does not licence the next reviewer to add another. Applying a class
+that does not fit is a review defect in itself, whatever the class: a label is never a near-miss.
 
 ## Query it
 
 ```bash
 bd list -l defect:test-unproven --all        # one class, any status
+bd list -l defect:unclassified --all        # the escape hatch: each names the gap bead filed
 bd list --label-pattern 'defect:*' --all     # every defect, any class
 ```
 

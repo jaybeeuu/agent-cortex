@@ -31,7 +31,7 @@ pipeline's own rate — then, as a separate step, files that report upstream.
 | Fix rounds per stage | `stage:fix` chores, attributed to the stage the fresh chore re-runs |
 | Change since the previous report | this report against the report kept at `--baseline` |
 
-The class vocabulary is not defined here. `review-defects` owns the closed list of eight classes, and
+The class vocabulary is not defined here. `review-defects` owns the closed list of classes, and
 the script parses that table at run time, so the words a reviewer applies and the words this report
 counts cannot drift apart. A class that appears as a label but not in the table is printed as
 vocabulary drift and is never counted as a class of its own.

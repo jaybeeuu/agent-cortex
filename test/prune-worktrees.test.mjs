@@ -25,13 +25,42 @@ async function git(cwd, args) {
   return stdout;
 }
 
+/** Run a git command and report the outcome instead of throwing, so a case can
+ * pass the same `{ ok, stdout } | { ok: false, stderr }` shape the script expects.
+ * @param {string} cwd @param {string[]} args
+ * @returns {Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} */
+async function gitResult(cwd, args) {
+  try {
+    return { ok: true, stdout: await git(cwd, args) };
+  } catch (error) {
+    const stderr = /** @type {{ stderr?: unknown, message?: unknown }} */ (error).stderr;
+    return { ok: false, stderr: typeof stderr === 'string' ? stderr : String(error) };
+  }
+}
+
 /**
- * A repository with an origin and one ralph worktree on a pushed feature
- * branch. The bead id is the worktree's directory name, and `bead` is the
- * status the injected `bd` reports for it — or `'missing'` for no bead at all.
- * @param {{ beadId?: string, bead: string }} options
+ * Land the worktree's branch on the base branch the way a squash merge does,
+ * then delete the remote branch and prune the stale remote-tracking ref. This is
+ * the shape every landed ralph branch has after a merge with branch deletion:
+ * the work is in the base branch and the local branch has no upstream left.
+ * @param {{ repoRoot: string, branch: string }} options
  */
-async function createRepo({ beadId = 'proj-1', bead }) {
+async function squashMergeOntoBase({ repoRoot, branch }) {
+  await git(repoRoot, ['merge', '--squash', '--quiet', branch]);
+  await git(repoRoot, ['commit', '-m', 'landed']);
+  await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+  await git(repoRoot, ['push', '--quiet', 'origin', '--delete', branch]);
+  await git(repoRoot, ['fetch', '--quiet', '--prune', 'origin']);
+}
+
+/**
+ * A repository with an origin and one ralph worktree on a feature branch. The
+ * bead id is the worktree's directory name, and `bead` is the status the
+ * injected `bd` reports for it — or `'missing'` for no bead at all. `push: false`
+ * leaves the branch unpublished, so it has no upstream and no remote branch.
+ * @param {{ beadId?: string, bead: string, push?: boolean }} options
+ */
+async function createRepo({ beadId = 'proj-1', bead, push = true }) {
   const workspace = await tempRoot.createWorkspace();
   const origin = join(workspace, 'origin.git');
   await git(workspace, ['init', '--bare', '--quiet', origin]);
@@ -48,12 +77,16 @@ async function createRepo({ beadId = 'proj-1', bead }) {
   await git(repoRoot, ['commit', '-m', 'base']);
   await git(repoRoot, ['remote', 'add', 'origin', origin]);
   await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+  // The origin's own HEAD decides the default branch, so the script derives the
+  // base from `origin/HEAD` the way it does on any machine.
+  await git(origin, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
+  await git(repoRoot, ['remote', 'set-head', 'origin', '--auto']);
 
   const branch = `feature/${beadId}`;
   await mkdir(join(repoRoot, '.agent-cortex', 'worktrees'), { recursive: true });
   const worktree = join(repoRoot, '.agent-cortex', 'worktrees', beadId);
   await git(repoRoot, ['worktree', 'add', '--quiet', '-b', branch, worktree]);
-  await git(worktree, ['push', '--quiet', '-u', 'origin', branch]);
+  if (push) await git(worktree, ['push', '--quiet', '-u', 'origin', branch]);
 
   /** @type {(args: string[]) => Promise<string>} */
   const exec = async (args) => {
@@ -170,6 +203,24 @@ describe('pruneWorktrees', () => {
     );
   });
 
+  it("keeps an orphan's unpublished branch even when --remove-orphans is passed", async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'missing', push: false });
+    await writeFile(join(worktree, 'never-pushed.txt'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+
+    const result = await pruneWorktrees({ repoRoot, exec, removeOrphans: true });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(
+      result.entries[0].reasons.join(' '),
+      /branch feature\/proj-1 has no remote-tracking branch and its bead is not closed/,
+    );
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+
   it('treats a remote branch that is already gone as removed, not failed', async () => {
     const { repoRoot, origin, worktree, branch, exec } = await createRepo({ bead: 'closed' });
     await git(origin, ['branch', '-D', branch]);
@@ -182,6 +233,106 @@ describe('pruneWorktrees', () => {
     );
     assert.equal(result.exitCode, 0);
     await assert.rejects(stat(worktree));
+  });
+
+  it('removes a landed closed-bead worktree whose remote branch is gone', async () => {
+    const { repoRoot, origin, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await writeFile(join(worktree, 'landed.txt'), 'the change\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'the change']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    await squashMergeOntoBase({ repoRoot, branch });
+    await assert.rejects(
+      git(worktree, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']),
+      'the fixture branch has no upstream left',
+    );
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.deepEqual(result.entries.map(({ outcome }) => outcome), ['removed']);
+    assert.equal(result.exitCode, 0);
+    await assert.rejects(stat(worktree), 'the worktree directory is gone');
+    assert.equal((await git(repoRoot, ['branch', '--list', branch])).trim(), '', 'the local branch is deleted');
+    assert.equal(
+      (await git(origin, ['for-each-ref', '--format=%(refname)', `refs/heads/${branch}`])).trim(),
+      '',
+      'no remote branch survives the merge',
+    );
+  });
+
+  it('keeps a closed-bead worktree whose content the base branch does not have', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed', push: false });
+    await writeFile(join(worktree, 'never-pushed.txt'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+    await assert.rejects(
+      git(worktree, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']),
+      'the fixture branch was never pushed',
+    );
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    const reasons = result.entries[0].reasons.join(' ');
+    assert.match(reasons, /branch feature\/proj-1 has no remote-tracking branch/);
+    assert.match(reasons, /holds 1 path\(s\) that origin\/main does not/);
+    assert.match(reasons, /may never have been pushed/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+
+  it('keeps a closed-bead worktree when the base branch cannot be resolved', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await writeFile(join(worktree, 'landed.txt'), 'the change\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'the change']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    await squashMergeOntoBase({ repoRoot, branch });
+
+    // git cannot name the remote's default branch. The script must not fall back
+    // to a hardcoded branch, so nothing proves the work landed.
+    /** @type {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} */
+    const gitWithoutDefaultBranch = async (cwd, args) =>
+      args[0] === 'symbolic-ref'
+        ? { ok: false, stderr: 'fatal: ref refs/remotes/origin/HEAD is not a symbolic ref' }
+        : gitResult(cwd, args);
+
+    const result = await pruneWorktrees({ repoRoot, exec, git: gitWithoutDefaultBranch });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(result.entries[0].reasons.join(' '), /the base branch cannot be resolved/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+
+  it('compares content against the ref given as base, not the remote default', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    const forkPoint = (await git(repoRoot, ['rev-parse', 'HEAD'])).trim();
+    await writeFile(join(worktree, 'landed.txt'), 'the change\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'the change']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    await squashMergeOntoBase({ repoRoot, branch });
+
+    const result = await pruneWorktrees({ repoRoot, exec, base: forkPoint });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(
+      result.entries[0].reasons.join(' '),
+      new RegExp(`holds 1 path\\(s\\) that ${forkPoint} does not`),
+    );
+    await stat(worktree);
+  });
+
+  it('rejects --base with no ref', async () => {
+    const { repoRoot, exec } = await createRepo({ bead: 'closed' });
+
+    await assert.rejects(
+      runCli({ argv: ['--base'], cwd: repoRoot, exec, write: () => {} }),
+      /--base needs a git ref/,
+    );
   });
 
   it('reports every worktree with its classification when run with no arguments', async () => {

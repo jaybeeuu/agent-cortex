@@ -231,11 +231,16 @@ A worktree outlives its bead: ralph leaves the directory behind when a feature c
 ```bash
 node skills/workflow/ralph/scripts/prune-worktrees.mjs                  # remove closed-bead worktrees, report the rest
 node skills/workflow/ralph/scripts/prune-worktrees.mjs --remove-orphans # also remove open-bead and missing-bead worktrees
+node skills/workflow/ralph/scripts/prune-worktrees.mjs --base <ref>     # prove content against <ref>, not origin/HEAD
 ```
 
 **Candidacy comes from bead state, never from git ancestry.** The repo squash-merges, so every landed branch still reports as unmerged. A directory named after a bead that `bd show` reports `closed` is the only proof that admits removal; an open bead, a missing bead, or a bead `bd` could not answer for is kept unless `--remove-orphans` asks otherwise. A bead `bd` could not read is never removed, whatever the flags say.
 
-**A candidate that fails a guard is refused, and the reason is printed.** The guards are: dirty working tree, `locked` worktree, detached HEAD, directory not registered with git, branch with no upstream, and branch with unpushed commits.
+**A candidate that fails a guard is refused, and the reason is printed.** The guards are: dirty working tree, `locked` worktree, detached HEAD, directory not registered with git or unreadable, branch with unpushed commits, and branch whose content is not proven landed.
+
+**No upstream is not a refusal by itself.** A merge that deletes the branch also deletes the local branch's upstream, so a closed bead's branch with no remote-tracking branch is the normal end of landed work. The guard is content: the base must hold the branch's own version of every path the branch changed since their merge base. That compares content, never history, so removal discards every commit the base does not contain, an empty commit or a change the branch added and reverted included, together with its message. The test is one-sided, so a base that moved on after the branch was cut still proves the branch landed. On a bead that is not closed, no upstream stays a refusal on its own.
+
+**The base is the remote's default branch,** read from `origin/HEAD` so that no branch name is hardcoded. `--base <ref>` names another, such as a release branch. A base that cannot be resolved, or that resolves to the worktree's own commit, keeps the worktree and refuses.
 
 **Removal is three commands.** `git worktree remove <path>`, then `git branch -D <branch>`, then `git push origin --delete <branch>`. The remote branch name is the worktree's own checked-out branch, so ralph's `feature/<parent-id>` deletes `origin/feature/<parent-id>`. A remote ref that git already reports as gone is not a failure.
 

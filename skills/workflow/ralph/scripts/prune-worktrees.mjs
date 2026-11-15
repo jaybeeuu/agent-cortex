@@ -5,6 +5,20 @@
 // reads bead state, not git ancestry: this repo squash-merges, so every ancestry
 // test reports a landed branch as unmerged.
 //
+// A merge that deletes its branch also deletes the local branch's upstream, so a
+// closed bead with no remote-tracking branch is the normal end of a landed branch.
+// Only the content can tell that apart from a branch that was never pushed: the
+// branch goes when the base holds the branch's own version of every path the
+// branch changed since their merge base, and stays otherwise. The test is
+// one-sided on purpose: this repo squash-merges, so a base that moved on after the
+// branch was cut holds paths the branch never had, and demanding tree equality
+// would keep every branch but the last one landed.
+//
+// The test proves content, never history. A branch removed here is discarded
+// together with every commit the base does not contain — a reverted change and a
+// run of empty commits both go, and so do their messages. The base is the remote's
+// default branch, never a hardcoded name.
+//
 // Zero dependencies: run with `node prune-worktrees.mjs`.
 
 import { execFile } from 'node:child_process';
@@ -155,14 +169,133 @@ async function classifyBead(id, exec) {
 }
 
 /**
+ * Resolve the branch a worktree's content must be contained in before its local
+ * branch may be dropped. The remote's default branch is the generic answer:
+ * `origin/HEAD` is a symbolic ref to whatever the remote calls its default
+ * branch, so no branch name is baked in here.
+ * @param {string} repoRoot
+ * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @returns {Promise<string | null>} the base ref, or null when git cannot name one.
+ */
+async function resolveBaseRef(repoRoot, git) {
+  const result = await git(repoRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+  if (!result.ok) return null;
+  const ref = result.stdout.trim();
+  return ref === '' ? null : ref;
+}
+
+/**
+ * Split the output of `git diff --name-only -z` into paths. `-z` is what makes the
+ * round trip lossless: without it git C-quotes a path holding a non-ASCII byte, a
+ * double quote, a backslash or a newline, and a quoted name fed back as a
+ * pathspec names no path. With it, every path arrives raw and NUL-terminated, so
+ * a path holding a newline stays one path.
+ * @param {string} stdout
+ * @returns {string[]}
+ */
+function splitNulPaths(stdout) {
+  // The output ends with a NUL, so the split leaves one empty entry to drop. A
+  // path is never empty, so no real path is lost with it.
+  return stdout.split('\0').filter((entry) => entry !== '');
+}
+
+/**
+ * Decide whether a branch with no upstream branch still holds work. Removing such
+ * a branch is only safe when the base holds the branch's own version of every path
+ * the branch changed — the squash-merge case. Anything unprovable keeps the
+ * worktree.
+ *
+ * One-sided containment, in three steps: take the merge base of the base and the
+ * branch, list the paths the branch changed since that merge base, then require the
+ * base to agree with the branch on those paths alone. Paths only the base added or
+ * changed lie outside that set and are ignored, so a base that advanced after the
+ * branch was cut still proves the branch landed.
+ *
+ * A status filter on the two-sided diff would be simpler and is wrong: `D` is the
+ * same status whether the branch deleted a path or the base never had it, so a
+ * filter cannot tell a deletion the base already carries from one it does not.
+ *
+ * Restricting to the branch's own paths is what makes an overlap detectable: when
+ * the base later changed a path the branch also changed, the two versions differ
+ * and the branch is not proven landed. A deletion on both sides agrees, so it is
+ * proven; a deletion on one side only is not.
+ *
+ * The branch's changed paths are read from git and then handed straight back to a
+ * second git call as pathspecs, so that round trip has to be exact. Two escapes
+ * make it inexact and both end in a false "proven": a path git would C-quote
+ * prints as a quoted string that names no path, and a path starting with `:` is
+ * read as pathspec magic instead of a name. Neither alone is sufficient to fix,
+ * so the first diff reads with `-z` and the second is run with
+ * `--literal-pathspecs`.
+ * @param {{ path: string, branch: string, beadClosed: boolean }} target
+ * @param {string | null} baseRef
+ * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @returns {Promise<string | null>} a refusal reason, or null when nothing is lost.
+ */
+async function findLostWork({ path, branch, beadClosed }, baseRef, git) {
+  if (!beadClosed) {
+    return `branch ${branch} has no remote-tracking branch and its bead is not closed`;
+  }
+  if (baseRef === null) {
+    return `branch ${branch} has no remote-tracking branch and the base branch cannot be resolved, so its content cannot be proven landed`;
+  }
+  const tip = await git(path, ['rev-parse', '--verify', 'HEAD']);
+  if (!tip.ok) {
+    const detail = tip.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and its tip cannot be read${suffix}`;
+  }
+  const baseTip = await git(path, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]);
+  if (!baseTip.ok) {
+    const detail = baseTip.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+  }
+  // A base that resolves to the branch being deleted compares the branch with
+  // itself: the diff is empty whatever the branch holds, so the guard cannot fail.
+  if (tip.stdout.trim() === baseTip.stdout.trim()) {
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} resolves to this branch's own commit, so the comparison would prove nothing`;
+  }
+  const mergeBase = await git(path, ['merge-base', baseRef, 'HEAD']);
+  if (!mergeBase.ok) {
+    const detail = mergeBase.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+  }
+  const touched = await git(path, ['diff', '--name-only', '-z', '--no-renames', mergeBase.stdout.trim(), 'HEAD', '--']);
+  if (!touched.ok) {
+    const detail = touched.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+  }
+  const changedPaths = splitNulPaths(touched.stdout);
+  // Nothing but empty commits: no content to prove, and no content to lose.
+  if (changedPaths.length === 0) return null;
+  // `--literal-pathspecs` is a git global option, so it precedes the subcommand.
+  // It keeps a leading `:` in a real filename from being read as pathspec magic.
+  const unproven = await git(path, ['--literal-pathspecs', 'diff', '--name-only', '-z', '--no-renames', 'HEAD', baseRef, '--', ...changedPaths]);
+  if (!unproven.ok) {
+    const detail = unproven.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+  }
+  const unprovenPaths = splitNulPaths(unproven.stdout).length;
+  if (unprovenPaths > 0) {
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} does not hold this branch's version of ${unprovenPaths} path(s), so its commits may never have been pushed`;
+  }
+  return null;
+}
+
+/**
  * Reasons git refuses to tear a worktree down. A worktree removed anyway would
  * throw away uncommitted work or an unpushed branch, so every reason keeps the
  * worktree in place.
- * @param {{ path: string, registered: { branch: string | null, locked: string | null } | undefined }} target
+ * @param {{ path: string, registered: { branch: string | null, locked: string | null } | undefined, beadClosed: boolean }} target
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @param {string | null} baseRef
  * @returns {Promise<{ branch: string | null, reasons: string[] }>}
  */
-async function findRefusals({ path, registered }, git) {
+async function findRefusals({ path, registered, beadClosed }, git, baseRef) {
   /** @type {string[]} */
   const reasons = [];
 
@@ -183,7 +316,8 @@ async function findRefusals({ path, registered }, git) {
 
   const upstream = await git(path, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
   if (!upstream.ok) {
-    reasons.push(`branch ${registered.branch} has no remote-tracking branch`);
+    const lost = await findLostWork({ path, branch: registered.branch, beadClosed }, baseRef, git);
+    if (lost !== null) reasons.push(lost);
     return { branch: registered.branch, reasons };
   }
   const trackingRef = upstream.stdout.trim();
@@ -231,12 +365,14 @@ async function removeWorktree(repoRoot, { path, branch }, git) {
  * @param {object} options
  * @param {string} options.repoRoot                              Repository to prune.
  * @param {boolean} [options.removeOrphans]                       Also remove worktrees whose bead is open or missing.
+ * @param {string} [options.base]                                 Ref the content check compares against; defaults to the remote's default branch.
  * @param {(args: string[]) => Promise<string>} [options.exec]    bd runner; injectable for tests.
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} [options.git]  git runner; injectable for tests.
  * @returns {Promise<PruneResult>}
  */
-export async function pruneWorktrees({ repoRoot, exec = runBd, removeOrphans = false, git = runGit }) {
+export async function pruneWorktrees({ repoRoot, exec = runBd, removeOrphans = false, git = runGit, base }) {
   const registered = await readRegisteredWorktrees(repoRoot);
+  const baseRef = base ?? (await resolveBaseRef(repoRoot, git));
   /** @type {WorktreeEntry[]} */
   const entries = [];
 
@@ -252,7 +388,11 @@ export async function pruneWorktrees({ repoRoot, exec = runBd, removeOrphans = f
     // an unreadable bead is never removed at all.
     const wanted = classification === 'closed-bead' || (classification !== 'unclassified' && removeOrphans);
     if (wanted) {
-      const { branch, reasons } = await findRefusals({ path, registered: registered.get(path) }, git);
+      const { branch, reasons } = await findRefusals(
+        { path, registered: registered.get(path), beadClosed: classification === 'closed-bead' },
+        git,
+        baseRef,
+      );
       entry.branch = branch;
       if (reasons.length > 0) {
         entry.outcome = 'refused';
@@ -275,18 +415,55 @@ export async function pruneWorktrees({ repoRoot, exec = runBd, removeOrphans = f
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
-const USAGE = `Usage: node prune-worktrees.mjs [--remove-orphans]
+const USAGE = `Usage: node prune-worktrees.mjs [--remove-orphans] [--base <ref>]
 
 Removes worktrees under .agent-cortex/worktrees whose bead is closed, then
 reports the rest. A worktree whose bead is open or missing is an orphan: it is
 only removed when --remove-orphans is passed. Run from anywhere inside the
 repository.
+
+A closed bead's branch may have no remote-tracking branch, because many merge
+methods delete the remote branch when the work lands. Such a branch is removed
+only when the base holds the branch's own version of every path the branch changed
+since their merge base. That proves content and never history: removal discards
+every commit the base does not contain, such as a reverted change or an empty
+commit, together with its message. The base defaults to the remote's default
+branch (origin/HEAD); --base names another ref, such as a release branch. A base
+that cannot be resolved, or that resolves to the worktree's own branch, keeps the
+worktree and refuses.
 `;
 
 /** Every flag the CLI accepts. */
 const REMOVE_ORPHANS_FLAG = '--remove-orphans';
+const BASE_FLAG = '--base';
 
 class UsageError extends Error {}
+
+/**
+ * @param {string[]} argv
+ * @returns {{ removeOrphans: boolean, base: string | undefined }}
+ */
+function parseArgs(argv) {
+  let removeOrphans = false;
+  /** @type {string | undefined} */
+  let base;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === REMOVE_ORPHANS_FLAG) {
+      removeOrphans = true;
+      continue;
+    }
+    if (arg === BASE_FLAG) {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith('-')) throw new UsageError(`${BASE_FLAG} needs a git ref`);
+      base = value;
+      index += 1;
+      continue;
+    }
+    throw new UsageError(`unexpected argument: ${arg}`);
+  }
+  return { removeOrphans, base };
+}
 
 /**
  * Resolve the repository root from any directory inside it — the main checkout
@@ -313,14 +490,12 @@ export async function runCli({ argv, cwd = process.cwd(), exec = runBd, git = ru
     write(USAGE);
     return 0;
   }
-  const unknown = argv.filter((arg) => arg !== REMOVE_ORPHANS_FLAG);
-  if (unknown.length > 0) throw new UsageError(`unexpected argument: ${unknown[0]}`);
-  const removeOrphans = argv.includes(REMOVE_ORPHANS_FLAG);
+  const { removeOrphans, base } = parseArgs(argv);
 
   const repoRoot = await resolveRepoRoot(cwd);
   if (repoRoot === null) throw new Error('not inside a git repository');
 
-  const { entries, exitCode } = await pruneWorktrees({ repoRoot, exec, removeOrphans, git });
+  const { entries, exitCode } = await pruneWorktrees({ repoRoot, exec, removeOrphans, git, base });
 
   write(`Scanning ${join(repoRoot, '.agent-cortex', 'worktrees')}\n`);
   for (const entry of entries) {

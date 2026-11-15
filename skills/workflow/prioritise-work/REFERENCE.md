@@ -11,7 +11,7 @@ or closes a bead.
 |---|---|---|
 | `init` | Writes the template, stamped with today's date; refuses an existing file | 0 written, 1 refused |
 | `validate` | Checks the version integer, the date, the change log, the deadline tiers and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
-| `bump` | Refuses an invalid file or an empty `--reason`, raises the version by one, records today, appends the change-log line | 0 bumped, 1 refused |
+| `bump` | Refuses an invalid file or an empty `--reason`, raises the version by one, records today, appends the change-log line | 0 bumped, 1 invalid file, 2 no or empty `--reason` |
 | `summary` | Validates first, then prints the digest a run opens with: the path it read, the version, the newest change-log entry, the themes and the two admissibility lists as up to two bullets each, and the deadline factors when the file states a table | 0 summarised, 1 invalid, 3 no file |
 | `record` (`challenge.mjs`) | Refuses an order or a resolution the strategy does not support; prints one bead-trail entry | 0 recorded, 1 refused |
 
@@ -30,5 +30,5 @@ both `validate` and `--today`, because V8's ISO parser rolls them into the next 
 them; `2024-02-29` passes and `2026-02-29` does not. A rolled date records a change on a day it did
 not happen.
 
-Exit code 2 means a malformed call — an unknown subcommand or a bad `--today`. `--today YYYY-MM-DD`
-exists so a test pins the recorded date; a person accepts the default.
+Exit code 2 means a malformed call — an unknown subcommand, a bad `--today`, or a missing or empty
+`--reason`. `--today YYYY-MM-DD` exists so a test pins the recorded date; a person accepts the default.

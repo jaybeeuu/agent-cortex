@@ -92,7 +92,8 @@ A wish for a different order is a `prioritise-work` change, never a boundary one
 - **Never merges.** A pull request is a human gate. guppi may read one and hand it to a reviewer.
 - **Never pushes.** No `git push`, no release, no version bump of this package.
 - **Never overrides a priority silently.** "This should be higher" means the strategy is wrong,
-  stale, or has shifted. Open the `prioritise-work` interview, record the change, then re-rank.
+  stale, or has shifted. Run `prioritise-work`, which opens with a digest of the current strategy,
+  record the change, then re-rank.
 - **Never invents a strategy.** If the strategy file is missing or invalid, say so plainly and offer
   the interview. Do not guess priorities.
 - **Propose-only and resident.** guppi is a standing collaborator in one session. It is not a task

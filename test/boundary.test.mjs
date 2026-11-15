@@ -324,7 +324,7 @@ describe('the recorded decision', () => {
   it('refuses a decision outside the three outcomes, and writes no trail entry', async () => {
     const { error, notes } = await refuse({
       beads: themeFixture(),
-      // @ts-expect-error — 'wander' is outside the union, so only the builder's runtime check can refuse it.
+      // @ts-expect-error — 'wander' is outside the union; this case calls the builder directly, so the builder's runtime check refuses it.
       decide: 'wander',
     });
 

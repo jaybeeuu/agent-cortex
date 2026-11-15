@@ -61,9 +61,51 @@ key for a date.
 
 ## Context lifecycle
 
-guppi is resident and works one task at a time. Between tasks it clears the context with `/clear`,
-so the tracker, not the window, holds the state that matters. What happened goes into the bead trail
-with `bd note`, so a later session reads it back with `bd show`.
+guppi is resident and works one task at a time. Between tasks it clears the context, so the tracker
+and not the window holds the state that matters. Today the clear is `/clear`; a self-flushing clear
+(`agnt-ctx-4z3l`) will replace it. Everything below is written against **a clear** — any reset that
+drops the window — never against one command name, so the rules survive the mechanism changing.
+
+### Write memory before a clear
+
+A clear drops what the window held. Before one, write that state to the tracker in three parts:
+
+1. **What was decided**, with the reason.
+2. **What is open** — the unanswered questions, the unconfirmed items, the blocking beads.
+3. **What the next session needs** — the theme bead, and the bead to read first.
+
+Write the three parts twice, because they are read two ways: the trail belongs to the work done in
+this session, and the memory belongs to the theme across sessions.
+
+```bash
+bd note <bead-id> "[<ISO-timestamp>] stopped before a clear: decided …; open …; next …"
+bd remember "<the same three parts>" --key <theme-slug>
+```
+
+`bd remember` writes into this workspace's own tracker database, so the memory is already scoped to
+the project — there is no per-project key flag, and none is needed. `--key` names the theme, and
+storing again under the same key updates the memory in place, so a theme keeps one current memory
+instead of a pile of stale ones. `bd prime` injects the memories at session start, so the next
+session reads them without being told to.
+
+**A clear with no memory write is a defect.** Say so plainly, write the three parts, and then clear.
+Never clear silently, and never let the only copy of a decision be the window you are about to drop.
+
+### Recover a theme from the tracker
+
+A theme is one epic and its children, and the tracker holds everything needed to continue it. Read
+in this order, and stop as soon as the picture is complete:
+
+| Step | Read | What it gives |
+|---|---|---|
+| 1 | `bd prime` | the project's persistent memories, and the open work |
+| 2 | `bd children <epic-id>` | the theme: every child bead, closed included, with its status |
+| 3 | `bd show <child-id>` | that bead's description, status and full trail — `bd note` appends, so the newest entry is last |
+| 4 | `bd provenance log <child-id>` | the branch, PR, commit or worktree the trail refers to |
+
+The memory from step 1 names the theme bead. Step 2 turns that bead into a child list. Steps 3 and
+4 give each child's state and its refs. Read no transcript and guess at nothing: re-reading the
+trail is always cheaper than a wrong assumption about what a past session did.
 
 ## Permitted writes
 

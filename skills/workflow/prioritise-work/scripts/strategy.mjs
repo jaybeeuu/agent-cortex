@@ -25,7 +25,8 @@
 //
 // `summary` is what the skill prints before it asks anything, and it exists so the digest
 // is read off the file rather than re-derived by an agent: it validates first, then reports
-// the version, the newest change-log entry and the precedence the file already states.
+// the version, the newest change-log entry, the themes, the two admissibility lists and the
+// deadline factors — each one read from the file, none restated from elsewhere.
 //
 // Exit codes: 0 the file is valid or summarised, 1 the file is invalid or the operation
 // refused, 2 the caller asked for something malformed, 3 `summary` found no strategy file —
@@ -149,6 +150,7 @@ const MS_PER_MINUTE = 60_000;
  * @property {boolean} ok
  * @property {DeadlineTier[]} tiers  The parsed tiers, or the documented default when absent.
  * @property {string[]} errors       One line per defect in the table.
+ * @property {'file' | 'default'} source  Whether the tiers were read from the file.
  */
 
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */
@@ -274,7 +276,7 @@ function parseTierRow(when, factorText) {
  */
 export function parseDeadlineTiers(text) {
   const body = sectionBody(text.split('\n'), DEADLINE_TIERS_SECTION);
-  if (body === null) return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [] };
+  if (body === null) return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [], source: 'default' };
 
   /** @type {DeadlineTier[]} */
   const rows = [];
@@ -300,8 +302,10 @@ export function parseDeadlineTiers(text) {
     rows.push(parsed.tier);
   }
 
+  // A heading with no readable row states no tiers, so the default applies and the file is
+  // not credited with a table it does not carry.
   if (rows.length === 0 && errors.length === 0) {
-    return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [] };
+    return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [], source: 'default' };
   }
 
   if (errors.length === 0) {
@@ -311,14 +315,14 @@ export function parseDeadlineTiers(text) {
     if (count('within') === 0) errors.push(`${DEADLINE_TIERS_SECTION}: needs at least one "within <time>" row`);
   }
 
-  if (errors.length > 0) return { ok: false, tiers: [...DEFAULT_DEADLINE_TIERS], errors };
+  if (errors.length > 0) return { ok: false, tiers: [...DEFAULT_DEADLINE_TIERS], errors, source: 'file' };
 
   const within = rows
     .filter((tier) => tier.kind === 'within')
     .sort((a, b) => (a.kind === 'within' && b.kind === 'within' ? a.minutes - b.minutes : 0));
   const beyond = rows.filter((tier) => tier.kind === 'beyond');
   const overdue = rows.filter((tier) => tier.kind === 'overdue');
-  return { ok: true, tiers: [...within, ...beyond, ...overdue], errors: [] };
+  return { ok: true, tiers: [...within, ...beyond, ...overdue], errors: [], source: 'file' };
 }
 
 /**
@@ -533,7 +537,7 @@ export function bumpStrategy(text, { today, reason }) {
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 /**
- * How many bullets the digest quotes from each precedence section. Two keeps the digest a
+ * How many bullets the digest quotes from each admissibility list. Two keeps the digest a
  * handful of lines; the count of what it left out points the reader back at the file.
  */
 const SUMMARY_ITEMS = 2;
@@ -597,6 +601,36 @@ function digestLine(items) {
 }
 
 /**
+ * A tier's distance in the largest unit that divides it, so the digest repeats the spelling
+ * the table uses: 1440 minutes reads `1d`, and 90 reads `90m`.
+ * @param {number} minutes @returns {string}
+ */
+function spanText(minutes) {
+  if (minutes % TIER_UNIT_MINUTES.d === 0) return `${minutes / TIER_UNIT_MINUTES.d}d`;
+  if (minutes % TIER_UNIT_MINUTES.h === 0) return `${minutes / TIER_UNIT_MINUTES.h}h`;
+  return `${minutes}m`;
+}
+
+/**
+ * One tier as the digest shows it: the phrase the table's row uses, then the factor.
+ * @param {DeadlineTier} tier @returns {string}
+ */
+function tierText(tier) {
+  if (tier.kind === 'overdue') return `overdue ×${tier.factor}`;
+  return `${tier.kind === 'within' ? 'within' : 'more than'} ${spanText(tier.minutes)} ×${tier.factor}`;
+}
+
+/**
+ * The deadline factors as one digest line, narrowest row first. The order is part of the
+ * rule — the queue multiplies by the narrowest row the remaining time fits inside — so the
+ * whole table prints: a truncated order would summarise a different rule.
+ * @param {DeadlineTier[]} tiers @returns {string}
+ */
+function deadlineLine(tiers) {
+  return tiers.map(tierText).join(' · ');
+}
+
+/**
  * When the rubric last changed and why: the newest change-log entry, because the log is
  * written oldest first and `validate` already proves it names the version the file carries.
  * A file with no entry says so rather than borrowing the header date as a reason.
@@ -613,14 +647,18 @@ function lastChange(lines, updated) {
 
 /**
  * The digest the skill opens with: the file it read, the version, the newest change-log
- * entry, the themes, and the precedence rules — a handful of lines, never a re-print.
+ * entry, the themes, the two admissibility lists, and the deadline factors when the file
+ * states them — a handful of lines, never a re-print.
  *
- * The precedence rules are not a section of their own and must not become one. `validate`
- * gates every strategy already committed, so a new required section would fail all of them.
- * The order a scorer ranks by is already written across three sections, and the digest
- * reads them that way: `## Current themes` is what the month is for, `## What counts as
- * value` raises a bead, and `## Explicitly out of scope` sinks one however good it looks.
- * The last two are the rules the digest prints as the precedence; the first is its themes.
+ * Nothing here is a ranking order, and the labels must not suggest one. `## What counts as
+ * value` and `## Explicitly out of scope` are admissibility: the test a bead passes to earn
+ * work, and the work the month rules out. What orders the beads that pass them is the
+ * scoring rubric — RICE with its multipliers — not this file. The one ordered rule set the
+ * file does state is `## Deadline tiers`, printed in its own order and omitted entirely when
+ * the section is absent, because the documented default then applies and the file is silent.
+ *
+ * None of these is a section of its own and none must become one. `validate` gates every
+ * strategy already committed, so a new required section would fail all of them.
  * @param {string} text @param {string} file @param {StrategyReport} report  A passing report.
  * @returns {string}
  */
@@ -630,9 +668,11 @@ export function summariseStrategy(text, file, report) {
     `${file} — strategy v${report.version}`,
     `  last change: ${lastChange(lines, report.updated ?? 'no date recorded')}`,
     `  themes: ${digestLine(sectionItems(lines, 'Current themes'))}`,
-    `  precedence — what counts as value: ${digestLine(sectionItems(lines, 'What counts as value'))}`,
-    `  precedence — out of scope: ${digestLine(sectionItems(lines, 'Explicitly out of scope'))}`,
+    `  admissibility — what counts as value: ${digestLine(sectionItems(lines, 'What counts as value'))}`,
+    `  admissibility — out of scope: ${digestLine(sectionItems(lines, 'Explicitly out of scope'))}`,
   ];
+  const tiers = parseDeadlineTiers(text);
+  if (tiers.source === 'file') digest.push(`  deadline factors: ${deadlineLine(tiers.tiers)}`);
   return `${digest.join('\n')}\n`;
 }
 
@@ -646,9 +686,9 @@ const USAGE = `Usage: node strategy.mjs <${COMMANDS.join('|')}> [options]
   init       Write the shipped template to the strategy path. Refuses to overwrite.
   validate   Check the shape and print the file to stdout only when it passes.
   bump       Raise the version by one, record today's date and append the reason.
-  summary    Print the digest to open a run with: path, version, last change, precedence.
-             Exits 3 when no strategy file exists, so a first run is told apart from a
-             strategy that is present but invalid.
+  summary    Print the digest to open a run with: path, version, last change, admissibility,
+             deadline factors. Exits 3 when no strategy file exists, so a first run is told
+             apart from a strategy that is present but invalid.
 
 Options:
   --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)

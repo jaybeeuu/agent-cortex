@@ -38,16 +38,30 @@ const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  * @param {string} [options.updated]
  * @param {Record<string, string>} [options.answers]  Body text per section title.
  * @param {string[]} [options.omit]                   Sections to leave out of the file.
+ * @param {[string, string][]} [options.deadlineTiers]  Rows for a `## Deadline tiers` table.
  * @param {string} [options.changeLog]                A change-log entry; omit for no section.
  * @returns {string}
  */
-function createStrategy({ version = '2', updated = '2026-11-14', answers = {}, omit = [], changeLog } = {}) {
+function createStrategy({
+  version = '2',
+  updated = '2026-11-14',
+  answers = {},
+  omit = [],
+  deadlineTiers,
+  changeLog,
+} = {}) {
   const sections = REQUIRED_SECTIONS.filter((title) => !omit.includes(title)).map((title) => {
     const answer = answers[title] ?? `- the answer for ${title}.`;
     return `## ${title}\n\n${answer}\n`;
   });
+  const tiers =
+    deadlineTiers === undefined
+      ? ''
+      : `\n## Deadline tiers\n\n| Remaining | Factor |\n|---|---|\n${deadlineTiers
+          .map(([when, factor]) => `| ${when} | ${factor} |`)
+          .join('\n')}\n`;
   const log = changeLog === undefined ? '' : `\n## Change log\n\n${changeLog}\n`;
-  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${log}`;
+  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${tiers}${log}`;
 }
 
 /**
@@ -267,7 +281,19 @@ describe('summary', () => {
     changeLog: '- 2026-11-14 v2: the rubric as it stands.\n- 2026-12-01 v3: review speed is the theme now',
   };
 
-  it('summarises an existing strategy: the path, the version, the themes, the precedence and the last change', async () => {
+  /**
+   * The shipped tier table, written the way the template writes it.
+   * @type {[string, string][]}
+   */
+  const TIER_TABLE = [
+    ['within 1d', '4'],
+    ['within 2d', '2'],
+    ['within 7d', '1.5'],
+    ['more than 7d', '1'],
+    ['overdue', '8'],
+  ];
+
+  it('summarises an existing strategy: the path, the version, the themes, the admissibility lists and the last change', async () => {
     const file = await writeStrategy(createStrategy(FILLED));
 
     const result = await run(['summary', '--file', file]);
@@ -276,8 +302,33 @@ describe('summary', () => {
     assert.ok(result.stdout.includes(`${file} — strategy v3`), `the digest must cite the file it read: ${result.stdout}`);
     assert.match(result.stdout, /last change: 2026-12-01 v3: review speed is the theme now/);
     assert.match(result.stdout, /themes: shorter review turnaround · fewer manual release steps/);
-    assert.match(result.stdout, /precedence — what counts as value: unblocks a human gate · removes a manual step/);
-    assert.match(result.stdout, /precedence — out of scope: new integrations · UI polish that changes no outcome/);
+    assert.match(result.stdout, /admissibility — what counts as value: unblocks a human gate · removes a manual step/);
+    assert.match(result.stdout, /admissibility — out of scope: new integrations · UI polish that changes no outcome/);
+    assert.doesNotMatch(result.stdout, /precedence/, 'these lists admit or rule out a bead; nothing here ranks one');
+  });
+
+  it('summarises the deadline tiers in the order the queue applies them', async () => {
+    const file = await writeStrategy(createStrategy({ ...FILLED, deadlineTiers: TIER_TABLE }));
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.match(
+      result.stdout,
+      /deadline factors: within 1d ×4 · within 2d ×2 · within 7d ×1.5 · more than 7d ×1 · overdue ×8/,
+      `the tiers print narrowest first, with their factors: ${result.stdout}`,
+    );
+    assert.equal(result.stdout.trimEnd().split('\n').length, 6, 'the deadline line joins the five');
+  });
+
+  it('says nothing about deadlines when the strategy states no tier table', async () => {
+    const file = await writeStrategy(createStrategy(FILLED));
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.doesNotMatch(result.stdout, /deadline/i, 'no table means no line, never an empty one');
+    assert.equal(result.stdout.trimEnd().split('\n').length, 5);
   });
 
   it('prints a handful of lines, not a re-print of the file', async () => {
@@ -287,7 +338,7 @@ describe('summary', () => {
     const result = await run(['summary', '--file', file]);
 
     assert.equal(result.code, 0);
-    assert.equal(result.stdout.trimEnd().split('\n').length, 5, 'the digest is five lines however long the file is');
+    assert.equal(result.stdout.trimEnd().split('\n').length, 5, 'five lines, or six with a tier table, however long the file is');
     assert.match(result.stdout, /rule number 1 · rule number 2 · \(\+4 more in the file\)/);
     assert.doesNotMatch(result.stdout, /## /, 'the digest must not re-print the headings it read');
   });

@@ -55,7 +55,7 @@ A run never opens with a question. Run the summary first: it reads the committed
 node <skill-scripts>/strategy.mjs summary
 ```
 
-The digest is all it prints: the path it read, the version, the newest change-log entry, the themes, and the precedence rules as up to two bullets per section. It is not a re-print — open the file for what a cut line left out.
+The digest is all it prints: the path it read, the version, the newest change-log entry, the themes, the two admissibility lists as up to two bullets each, and — when the file states a table — the deadline factors in the order the queue applies them. It is not a re-print — open the file for what a cut line left out.
 
 | Exit | The file | What to do |
 |---|---|---|
@@ -63,7 +63,7 @@ The digest is all it prints: the path it read, the version, the newest change-lo
 | 3 | absent | Say there is no strategy yet and take the first-run interview below. Print no digest. |
 | 1 | invalid or partly missing | Never present it as current. Say what it named — the empty or missing section, the field it could not read — and fix the file or re-interview before anything is scored against it. |
 
-**The file gains no new section.** A precedence heading would fail every strategy already committed, because `validate` gates them all. The order a scorer ranks by is already written across three sections, and the digest reads them that way: `## Current themes` is what the month is for, `## What counts as value` raises a bead, and `## Explicitly out of scope` sinks one however good it looks — the last two are what the digest calls the precedence rules.
+**The file gains no new section.** An admissibility heading would fail every strategy already committed, because `validate` gates them all. The file says what is worth doing and what is not: `## Current themes` is what the month is for, `## What counts as value` is the test a bead must pass, and `## Explicitly out of scope` is the work the month rules out — the last two are the digest's **admissibility** lines. What orders the beads that pass them is the **scoring rubric**, RICE with its multipliers, never this file. The one ordered rule set the file states is `## Deadline tiers`, and the digest prints it in that order, narrowest first; with no table the documented default applies and the digest says nothing about deadlines.
 
 ## Workflow
 
@@ -136,7 +136,7 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 
 ## Verification checklist
 
-- [ ] The run opened with the digest — file, version, last change, themes, precedence — before it asked anything, and `node <skill-scripts>/strategy.mjs validate` exits 0 with the rubric printed.
+- [ ] The run opened with the digest — file, version, last change, themes, admissibility, deadline factors — before it asked anything, and `node <skill-scripts>/strategy.mjs validate` exits 0 with the rubric printed.
 - [ ] The version is one higher than the previous file for an update, or `1` for a new one, and the change log names it.
 - [ ] A challenged order moved only after a bump, and the record names what moved.
 - [ ] No bead was created, tagged or closed by this skill; `git ls-files --error-unmatch .agent-cortex/working-docs/strategy.md` succeeds.

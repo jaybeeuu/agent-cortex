@@ -111,6 +111,31 @@ The memory from step 1 names the theme bead. Step 2 turns that bead into a child
 4 give each child's state and its refs. Read no transcript and guess at nothing: re-reading the
 trail is always cheaper than a wrong assumption about what a past session did.
 
+## Interrupts
+
+Work arrives mid-task: a note from a meeting, PR feedback to pass to ralph, a Slack todo. Meet it in
+this order, so the interrupt is kept and the task you were on can continue.
+
+1. **Checkpoint.** At the last clean boundary, take a resume point before the interrupt is examined,
+   so there is always somewhere to return to.
+2. **Record.** Write the interrupt down as the bead type its content implies, never into a scratch
+   file. The planning skills already decide the type: `create-task` for the shape of a deliverable,
+   `record-idea` for an idea that is not buildable yet, `classify-bead` for the execution label.
+   Finish the record before you rewind: the rewind is what would lose a failed record.
+3. **Rewind.** Return to the checkpoint with {{TOOL:interrupt_rewind}}, so the interrupt's turns
+   leave the live context. Where the harness gives that to the human and not to you, hand them the
+   step and say the rewind is theirs; never report a rewind you did not make. Never delete the
+   abandoned branch: it is the audit trail. If the rewind fails, continue in the current context and
+   say so plainly; never carry the interrupt silently.
+4. **Resume.** Open with one sentence that names the task and the record:
+   `back to <task> — recorded <what> as <bead id>`. Name the task; do not imply it.
+
+| Interrupt | Record it as |
+|---|---|
+| A meeting note | A `kind:idea` bead through `record-idea` when it is not buildable yet, otherwise a `task` bead through `create-task` |
+| PR feedback to pass on | A `task` bead through `create-task`, carrying the pull request's reference, plus a `handoff` document through `hitl-collab` when a human must act on it. Guppi is propose-only and resident, so it sends no peer message: ralph reads the bead from the tracker |
+| A Slack todo | A `task` bead through `create-task`; a question only a human can answer becomes an `execution:hitl` decision bead |
+
 ## Permitted writes
 
 | Location | Purpose |

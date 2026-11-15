@@ -99,16 +99,20 @@ the whole table rather than the top three.
 
 ## With a previous report
 
-The same project, recorded as a baseline one month earlier and re-run after two more rejections:
+The same project, recorded as a baseline one month earlier and re-run after eight more rejections:
 
 ```
 Change since the previous report
   Against /tmp/rr-example/trend/.agent-cortex-docs/defect-report.json, reported 2026-04-01T09:00:00Z
   criteria-unmet 1 (+1), docs-drift 1 (+1), missing-proof 1 (+1), and 5 more
-  First-pass review rate 75% (from 75%, no change)
+  First-pass review rate 33% (from 33%, no change)
+  Fix rounds review 12 (+8)
 ```
 
-The comparison reads the report the script wrote at `--baseline`, so it compares like with like.
+One label per rejection, so the eight rejections added eight labels: eight classes moved and the
+other four stayed where they were. The rejections re-ran four changes that already held a review
+cohort, so the rate did not move while the fix-round count did. The comparison reads the report the
+script wrote at `--baseline`, so it compares like with like.
 A class that did not change is not listed; when no class changed, the section says so. A baseline
 file with an unrecognised schema is refused rather than read as zeros, because a baseline that
 cannot be read must not become an invented trend.

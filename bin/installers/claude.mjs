@@ -156,10 +156,14 @@ function byName(a, b) {
 
 /**
  * Compose every agent from agents/<name>/ — all harnesses share the composable sources.
+ * `{{PATH:...}}` rows resolve against the plugin root, as they do in skills: a bare
+ * relative path would name a file relative to the reader's working directory, and the
+ * install ships the file under ${CLAUDE_PLUGIN_ROOT}.
  * @param {string} root
+ * @param {{ pluginRoot: string | undefined, warn: Warn }} options
  * @returns {Promise<{ files: { file: string, content: string }[] }>}
  */
-async function buildAgents(root) {
+async function buildAgents(root, { pluginRoot, warn }) {
   const files = [];
   const entries = (await readdir(join(root, "agents"), { withFileTypes: true })).sort((a, b) =>
     byName(a.name, b.name),
@@ -170,7 +174,7 @@ async function buildAgents(root) {
     const dir = join(root, "agents", entry.name);
     if (!(await isFile(join(dir, "agent.md"))) || !(await isFile(join(dir, "claude", "frontmatter.json")))) continue;
 
-    const fm = await composeAgent(root, entry.name, CLAUDE);
+    const fm = await composeAgent(root, entry.name, CLAUDE, { pluginRoot, resolveRelativePaths: true, warn });
     const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
     const header =
       `---\n` +
@@ -720,7 +724,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
       ? await installInstructions({ root, target: instructionsTarget, dryRun, warn: warnSink })
       : null;
 
-  const agents = await buildAgents(root);
+  const agents = await buildAgents(root, { pluginRoot: rootPlugin, warn: warnSink });
   const skillOut = join(out, "skills");
   const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
   const docs = await installDocs({ root, output: out, dryRun, tokenMap });

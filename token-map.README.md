@@ -87,6 +87,15 @@ rather than inventing a dotted form:
   runtime env var (expanded per context by Claude Code) points at wherever the plugin
   actually runs from. A literal home path in substituted files would break under
   cache-copy, so the installer passes the env form through verbatim.
+- **`layouts`** — the tree each installer stages a resource into, for the resources whose
+  shape differs per harness. Only `skills` differs: the repository nests every skill one group
+  deep (`skills/<group>/<name>/`), and `bin/installers/pi.mjs` preserves that, while Claude
+  Code's plugin scan discovers `skills/<name>/SKILL.md` directly under `skills/`, so
+  `bin/installers/claude.mjs` copies every skill flat. A `{{PATH:skills/…}}` row is authored
+  against the repository tree; resolution reads the harness's row here and drops the group
+  segment when the harness stages skills flat, so the row names a file the install contains.
+  The row is a harness fact, not a repository one, which is why it lives here rather than in
+  the resolver: a harness that stages skills differently changes this table, not the code.
 - **`agents`** — the `agent-cortex:` name-prefix convention per harness (claude strips the
   prefix during conversion). Agent names themselves do not get per-row mappings because
   the prefix rule covers all of them — every agent is composed from `agents/<name>/` for

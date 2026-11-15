@@ -45,21 +45,9 @@ Two edges of the walk are deliberate: only `blocks` edges count, because a relat
 
 ## Deadlines
 
-A `--due` date is the one deadline field, and `bd` already stores it. The queue multiplies the total by the factor of the narrowest tier the remaining time fits inside:
+A `--due` date is the one deadline field, and `bd` already stores it. The queue multiplies the total by the factor of the narrowest tier the remaining time fits inside. Those factors are the **shipped default**, and a strategy's optional `## Deadline tiers` section replaces them, so moving a tier is a strategy edit and a `bump`, never a code change. A bead with no due date keeps the factor 1.
 
-| Time left | Factor |
-|---|---|
-| more than a week | 1 |
-| within a week | 1.5 |
-| within two days | 2 |
-| within a day | 4 |
-| overdue | 8 |
-
-Those numbers are the **shipped default**. The strategy's optional `## Deadline tiers` section carries the table a repository tunes, so moving a tier is a strategy edit and a `bump`, never a code change; a strategy with no such section ranks on the default above. A row reads `| <when> | <factor> |`, narrowest first, and `<when>` is `within <n><m|h|d>`, `more than <n><m|h|d>` or `overdue`. A table that is present must carry exactly one `overdue` row, exactly one `more than` row and at least one `within` row, and `validate` exits 1 naming every row it cannot read — a malformed table never falls back to the default in silence. A boundary falls on the side that names it: with exactly one day left a bead earns 4, and a millisecond more earns 2. A bead whose deadline is exactly now has not slipped yet, so it is not overdue. A bead with no due date sits outside the tiers and keeps the factor 1, so tuning a row never lifts undated work by accident.
-
-A ranked row shows the deadline, the time left and the factor, and an overdue bead is flagged rather than lifted in silence: `2  bd-2  8.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)`. An unscored row has no total to multiply, so it shows the due moment and `OVERDUE` with no factor at all: `-  bd-6  —  unscored — no rice metadata  OVERDUE by 2d 11h (due 2026-11-13T00:00Z)`.
-
-`--defer` is bd's own field and bd's own rule, so the queue reads it rather than inventing a second one. `bd ready` wakes a bead whose defer date has passed, while `bd list` keeps reporting the stale `deferred` status it was parked in, so the queue applies that same wake rule to `defer_until`. A bead deferred into the future is absent and counted; a bead whose defer date has passed is listed.
+[DEADLINES.md](DEADLINES.md) carries the shipped table, the row syntax a strategy must hold, the `validate` rule, where a boundary falls, how a row shows its deadline, and bd's own defer rule.
 
 ## The report
 
@@ -148,8 +136,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 - [ ] The report is one flat list: ranked rows first, unscored rows last, no sections.
 - [ ] Each row shows the rank, id, total, the four components, all three multipliers, the title and what the answer unblocks.
 - [ ] A bead blocking three others ranks above an equal bead blocking none; an in-progress bead ranks above an equal not-started one.
-- [ ] A bead due in three days ranks above an otherwise identical bead with no due date; an overdue bead is flagged `OVERDUE` and carries the top tier of the table in force.
-- [ ] Every row with a due date shows the due moment and the time left or the overdue span; only a ranked row shows a factor, and a changed tier in the strategy moves the rank with no code change.
+- [ ] A bead due in three days ranks above an otherwise identical bead with no due date; an overdue bead is flagged `OVERDUE` and carries the top tier of the table in force. Every row with a due date shows the due moment and the time left, only a ranked row shows a factor, and a changed tier moves the rank with no code change.
 - [ ] With no scores, the header says nothing can be ranked and every candidate is listed unscored with a reason.
 - [ ] Two identical runs printed byte-identical output.
 - [ ] The excluded idea and deferred counts were reported, or the header said there were none.

@@ -8,8 +8,16 @@
 // A merge that deletes its branch also deletes the local branch's upstream, so a
 // closed bead with no remote-tracking branch is the normal end of a landed branch.
 // Only the content can tell that apart from a branch that was never pushed: the
-// branch goes when the base branch already holds everything in it, and stays
-// otherwise. The base is the remote's default branch, never a hardcoded name.
+// branch goes when the base holds the branch's own version of every path the
+// branch changed since their merge base, and stays otherwise. The test is
+// one-sided on purpose: this repo squash-merges, so a base that moved on after the
+// branch was cut holds paths the branch never had, and demanding tree equality
+// would keep every branch but the last one landed.
+//
+// The test proves content, never history. A branch removed here is discarded
+// together with every commit the base does not contain — a reverted change and a
+// run of empty commits both go, and so do their messages. The base is the remote's
+// default branch, never a hardcoded name.
 //
 // Zero dependencies: run with `node prune-worktrees.mjs`.
 
@@ -178,8 +186,24 @@ async function resolveBaseRef(repoRoot, git) {
 
 /**
  * Decide whether a branch with no upstream branch still holds work. Removing such
- * a branch is only safe when the base branch already contains its content — the
- * squash-merge case. Anything unprovable keeps the worktree.
+ * a branch is only safe when the base holds the branch's own version of every path
+ * the branch changed — the squash-merge case. Anything unprovable keeps the
+ * worktree.
+ *
+ * One-sided containment, in three steps: take the merge base of the base and the
+ * branch, list the paths the branch changed since that merge base, then require the
+ * base to agree with the branch on those paths alone. Paths only the base added or
+ * changed lie outside that set and are ignored, so a base that advanced after the
+ * branch was cut still proves the branch landed.
+ *
+ * A status filter on the two-sided diff would be simpler and is wrong: `D` is the
+ * same status whether the branch deleted a path or the base never had it, so a
+ * filter cannot tell a deletion the base already carries from one it does not.
+ *
+ * Restricting to the branch's own paths is what makes an overlap detectable: when
+ * the base later changed a path the branch also changed, the two versions differ
+ * and the branch is not proven landed. A deletion on both sides agrees, so it is
+ * proven; a deletion on one side only is not.
  * @param {{ path: string, branch: string, beadClosed: boolean }} target
  * @param {string | null} baseRef
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
@@ -192,16 +216,47 @@ async function findLostWork({ path, branch, beadClosed }, baseRef, git) {
   if (baseRef === null) {
     return `branch ${branch} has no remote-tracking branch and the base branch cannot be resolved, so its content cannot be proven landed`;
   }
-
-  const diff = await git(path, ['diff', '--name-only', baseRef, 'HEAD', '--']);
-  if (!diff.ok) {
-    const detail = diff.stderr.trim();
+  const tip = await git(path, ['rev-parse', '--verify', 'HEAD']);
+  if (!tip.ok) {
+    const detail = tip.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and its tip cannot be read${suffix}`;
+  }
+  const baseTip = await git(path, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]);
+  if (!baseTip.ok) {
+    const detail = baseTip.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
     return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
   }
-  const changedPaths = diff.stdout.split('\n').filter((line) => line !== '').length;
-  if (changedPaths > 0) {
-    return `branch ${branch} has no remote-tracking branch and holds ${changedPaths} path(s) that ${baseRef} does not, so its commits may never have been pushed`;
+  // A base that resolves to the branch being deleted compares the branch with
+  // itself: the diff is empty whatever the branch holds, so the guard cannot fail.
+  if (tip.stdout.trim() === baseTip.stdout.trim()) {
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} resolves to this branch's own commit, so the comparison would prove nothing`;
+  }
+  const mergeBase = await git(path, ['merge-base', baseRef, 'HEAD']);
+  if (!mergeBase.ok) {
+    const detail = mergeBase.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+  }
+  const touched = await git(path, ['diff', '--name-only', '--no-renames', mergeBase.stdout.trim(), 'HEAD', '--']);
+  if (!touched.ok) {
+    const detail = touched.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+  }
+  const changedPaths = touched.stdout.split('\n').filter((line) => line !== '');
+  // Nothing but empty commits: no content to prove, and no content to lose.
+  if (changedPaths.length === 0) return null;
+  const unproven = await git(path, ['diff', '--name-only', '--no-renames', 'HEAD', baseRef, '--', ...changedPaths]);
+  if (!unproven.ok) {
+    const detail = unproven.stderr.trim();
+    const suffix = detail === '' ? '' : `: ${detail}`;
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+  }
+  const unprovenPaths = unproven.stdout.split('\n').filter((line) => line !== '').length;
+  if (unprovenPaths > 0) {
+    return `branch ${branch} has no remote-tracking branch and ${baseRef} does not hold this branch's version of ${unprovenPaths} path(s), so its commits may never have been pushed`;
   }
   return null;
 }
@@ -344,9 +399,13 @@ repository.
 
 A closed bead's branch may have no remote-tracking branch, because many merge
 methods delete the remote branch when the work lands. Such a branch is removed
-only when the base branch already contains its content. The base defaults to the
-remote's default branch (origin/HEAD); --base names another ref, such as a
-release branch. A base that cannot be resolved keeps the worktree and refuses.
+only when the base holds the branch's own version of every path the branch changed
+since their merge base. That proves content and never history: removal discards
+every commit the base does not contain, such as a reverted change or an empty
+commit, together with its message. The base defaults to the remote's default
+branch (origin/HEAD); --base names another ref, such as a release branch. A base
+that cannot be resolved, or that resolves to the worktree's own branch, keeps the
+worktree and refuses.
 `;
 
 /** Every flag the CLI accepts. */

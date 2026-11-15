@@ -54,13 +54,10 @@ async function squashMergeOntoBase({ repoRoot, branch }) {
 }
 
 /**
- * A repository with an origin and one ralph worktree on a feature branch. The
- * bead id is the worktree's directory name, and `bead` is the status the
- * injected `bd` reports for it — or `'missing'` for no bead at all. `push: false`
- * leaves the branch unpublished, so it has no upstream and no remote branch.
- * @param {{ beadId?: string, bead: string, push?: boolean }} options
+ * A repository with a bare origin and one commit on the base branch: the shape
+ * the content check reads its base from.
  */
-async function createRepo({ beadId = 'proj-1', bead, push = true }) {
+async function createRepoRoot() {
   const workspace = await tempRoot.createWorkspace();
   const origin = join(workspace, 'origin.git');
   await git(workspace, ['init', '--bare', '--quiet', origin]);
@@ -82,12 +79,45 @@ async function createRepo({ beadId = 'proj-1', bead, push = true }) {
   await git(origin, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
   await git(repoRoot, ['remote', 'set-head', 'origin', '--auto']);
 
+  return { origin, repoRoot };
+}
+/**
+ * Add one ralph worktree on its own `feature/<beadId>` branch, cut from the base
+ * branch as it stands now. `push: false` leaves the branch unpublished, so it has
+ * no upstream and no remote branch.
+ * @param {{ repoRoot: string, beadId: string, push?: boolean }} options
+ */
+async function addWorktree({ repoRoot, beadId, push = true }) {
   const branch = `feature/${beadId}`;
   await mkdir(join(repoRoot, '.agent-cortex', 'worktrees'), { recursive: true });
   const worktree = join(repoRoot, '.agent-cortex', 'worktrees', beadId);
   await git(repoRoot, ['worktree', 'add', '--quiet', '-b', branch, worktree]);
   if (push) await git(worktree, ['push', '--quiet', '-u', 'origin', branch]);
-
+  return { worktree, branch };
+}
+/**
+ * A `bd` runner that reports every given bead id as closed, and any other id as
+ * missing.
+ * @param {string[]} beadIds
+ * @returns {(args: string[]) => Promise<string>}
+ */
+function closedBeadExec(beadIds) {
+  return async (args) => {
+    const [, id] = args;
+    if (!beadIds.includes(id)) throw new Error(`Issue ${id} not found`);
+    return JSON.stringify([{ id, status: 'closed' }]);
+  };
+}
+/**
+ * A repository with an origin and one ralph worktree on a feature branch. The
+ * bead id is the worktree's directory name, and `bead` is the status the
+ * injected `bd` reports for it, or `'missing'` for no bead at all. `push: false`
+ * leaves the branch unpublished, so it has no upstream and no remote branch.
+ * @param {{ beadId?: string, bead: string, push?: boolean }} options
+ */
+async function createRepo({ beadId = 'proj-1', bead, push = true }) {
+  const { origin, repoRoot } = await createRepoRoot();
+  const { worktree, branch } = await addWorktree({ repoRoot, beadId, push });
   /** @type {(args: string[]) => Promise<string>} */
   const exec = async (args) => {
     const [, id] = args;
@@ -275,7 +305,7 @@ describe('pruneWorktrees', () => {
     assert.equal(result.entries[0].outcome, 'refused');
     const reasons = result.entries[0].reasons.join(' ');
     assert.match(reasons, /branch feature\/proj-1 has no remote-tracking branch/);
-    assert.match(reasons, /holds 1 path\(s\) that origin\/main does not/);
+    assert.match(reasons, /does not hold this branch's version of 1 path\(s\)/);
     assert.match(reasons, /may never have been pushed/);
     assert.notEqual(result.exitCode, 0);
     await stat(worktree);
@@ -321,7 +351,7 @@ describe('pruneWorktrees', () => {
     assert.equal(result.entries[0].outcome, 'refused');
     assert.match(
       result.entries[0].reasons.join(' '),
-      new RegExp(`holds 1 path\\(s\\) that ${forkPoint} does not`),
+      new RegExp(`does not hold this branch's version of 1 path\\(s\\)`),
     );
     await stat(worktree);
   });
@@ -352,5 +382,120 @@ describe('pruneWorktrees', () => {
 
     assert.equal(exitCode, 0);
     await assert.rejects(stat(worktree));
+  });
+  it('removes every landed worktree when the base advanced after each branch was cut', async () => {
+    const { repoRoot, origin } = await createRepoRoot();
+    const beadIds = ['proj-1', 'proj-2', 'proj-3'];
+    /** @type {{ worktree: string, branch: string }[]} */
+    const cut = [];
+    for (const beadId of beadIds) {
+      const { worktree, branch } = await addWorktree({ repoRoot, beadId });
+      await writeFile(join(worktree, `${beadId}.txt`), `${beadId} work\n`);
+      await git(worktree, ['add', '-A']);
+      await git(worktree, ['commit', '-m', `${beadId} work`]);
+      await git(worktree, ['push', '--quiet', 'origin', branch]);
+      cut.push({ worktree, branch });
+    }
+    // Land them one after another, so every branch but the last was cut from a
+    // base that has since gained paths the branch never had. That drift is what a
+    // run of squash-merged pull requests always leaves behind.
+    for (const { branch } of cut) await squashMergeOntoBase({ repoRoot, branch });
+    const result = await pruneWorktrees({ repoRoot, exec: closedBeadExec(beadIds) });
+    assert.deepEqual(
+      result.entries.map(({ id, outcome }) => ({ id, outcome })),
+      [
+        { id: 'proj-1', outcome: 'removed' },
+        { id: 'proj-2', outcome: 'removed' },
+        { id: 'proj-3', outcome: 'removed' },
+      ],
+    );
+    assert.equal(result.exitCode, 0);
+    for (const { worktree, branch } of cut) {
+      await assert.rejects(stat(worktree), `the worktree for ${branch} is gone`);
+      assert.equal(
+        (await git(repoRoot, ['branch', '--list', branch])).trim(),
+        '',
+        `the local branch ${branch} is deleted`,
+      );
+    }
+    assert.equal(
+      (await git(origin, ['for-each-ref', '--format=%(refname)', 'refs/heads/feature/'])).trim(),
+      '',
+      'no remote feature branch survives the merges',
+    );
+  });
+  it('keeps a closed-bead worktree when the base changed a path the branch changed', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await writeFile(join(worktree, 'shared.txt'), 'branch version\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'branch version']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    // The base lands a different change to the same path while the branch sits
+    // behind it. Two versions of one path: the branch is not proven landed.
+    await writeFile(join(repoRoot, 'shared.txt'), 'base version\n');
+    await git(repoRoot, ['add', '-A']);
+    await git(repoRoot, ['commit', '-m', 'base version']);
+    await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+    await git(repoRoot, ['push', '--quiet', 'origin', '--delete', branch]);
+    await git(repoRoot, ['fetch', '--quiet', '--prune', 'origin']);
+    const result = await pruneWorktrees({ repoRoot, exec });
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(result.entries[0].reasons.join(' '), /does not hold this branch's version of 1 path\(s\)/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+  it('removes a closed-bead worktree when the branch and the base both deleted the same path', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await git(worktree, ['rm', '--quiet', 'README.md']);
+    await git(worktree, ['commit', '-m', 'drop the readme']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    await git(repoRoot, ['rm', '--quiet', 'README.md']);
+    await git(repoRoot, ['commit', '-m', 'drop the readme here too']);
+    await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+    await git(repoRoot, ['push', '--quiet', 'origin', '--delete', branch]);
+    await git(repoRoot, ['fetch', '--quiet', '--prune', 'origin']);
+    // The branch's one content change is the deletion, and the base carries that
+    // same deletion. Nothing the branch holds is lost, so the branch goes.
+    const result = await pruneWorktrees({ repoRoot, exec });
+    assert.deepEqual(result.entries.map(({ outcome }) => outcome), ['removed']);
+    assert.equal(result.exitCode, 0);
+    await assert.rejects(stat(worktree), 'the worktree directory is gone');
+    assert.equal((await git(repoRoot, ['branch', '--list', branch])).trim(), '');
+  });
+  it("refuses a --base that resolves to the worktree's own branch", async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed', push: false });
+    await writeFile(join(worktree, 'never-pushed.txt'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+    const tip = (await git(worktree, ['rev-parse', 'HEAD'])).trim();
+    let output = '';
+    const exitCode = await runCli({
+      argv: ['--base', branch],
+      cwd: repoRoot,
+      exec,
+      write: (chunk) => {
+        output += chunk;
+      },
+    });
+    assert.notEqual(exitCode, 0);
+    assert.match(output, /resolves to this branch's own commit/);
+    assert.equal((await git(worktree, ['rev-parse', 'HEAD'])).trim(), tip, 'the commit survives');
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+  it("refuses a --base tag that points at the worktree's own tip", async () => {
+    const { repoRoot, worktree, exec } = await createRepo({ bead: 'closed', push: false });
+    await writeFile(join(worktree, 'never-pushed.txt'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+    await git(worktree, ['tag', 'own-tip']);
+    const tip = (await git(worktree, ['rev-parse', 'HEAD'])).trim();
+    const result = await pruneWorktrees({ repoRoot, exec, base: 'own-tip' });
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(result.entries[0].reasons.join(' '), /own-tip resolves to this branch's own commit/);
+    assert.notEqual(result.exitCode, 0);
+    assert.equal((await git(worktree, ['rev-parse', 'HEAD'])).trim(), tip, 'the commit survives');
+    await stat(worktree);
   });
 });

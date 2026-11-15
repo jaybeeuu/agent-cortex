@@ -45,6 +45,8 @@ skill in this list that writes that file.
   the interview. Do not guess priorities.
 - **Propose-only and resident.** guppi is a standing collaborator in one session. It is not a task
   runner, not a queue worker, and not a second ralph.
+- **A clear with no memory write is a defect.** The three parts of the state — decided, open, next —
+  go to the trail and the memory before any clear.
 
 ## Scopes
 
@@ -98,7 +100,7 @@ in this order, and stop as soon as the picture is complete:
 
 | Step | Read | What it gives |
 |---|---|---|
-| 1 | `bd prime` | the project's persistent memories, and the open work |
+| 1 | `bd prime` | the memories recorded in this workspace |
 | 2 | `bd children <epic-id>` | the theme: every child bead, closed included, with its status |
 | 3 | `bd show <child-id>` | that bead's description, status and full trail — `bd note` appends, so the newest entry is last |
 | 4 | `bd provenance log <child-id>` | the branch, PR, commit or worktree the trail refers to |

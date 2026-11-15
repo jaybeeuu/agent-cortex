@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.11.0
+
+### Minor Changes
+
+- 0a98d7b: Open a `prioritise-work` run with a summary of the committed strategy instead of a question. A new
+  `strategy.mjs summary` subcommand validates the file first, then prints a handful of lines — the
+  path it read, the version, the newest change-log entry, the themes, the two admissibility lists as
+  up to two bullets each, and the deadline factors when the file states them — so the digest cannot
+  describe a strategy that is not on disk. The skill shows it and asks "what should change?" before
+  the interview; with no strategy file it exits `3` and the skill goes straight to the first-run
+  interview with no digest; with an invalid or partly missing one it exits `1` and names what is wrong
+  rather than presenting it as current. The change requires no new section of the strategy file, so
+  every strategy already committed still validates: `## What counts as value` and `## Explicitly out
+of scope` are summarised as the admissibility lists they are, never as a ranking order, and
+  `## Deadline tiers` is summarised narrowest first, the order the queue applies the factors, whatever
+  order the file holds the rows in.
+
+  The script contract moved to the skill's `REFERENCE.md` so `SKILL.md` stays within its length target.
+
+### Patch Changes
+
+- 5a6a14a: Let the content proof decide a closed bead's worktree, whatever its upstream is.
+  `prune-worktrees.mjs` still refused every worktree ralph created, because ralph
+  cuts its branch from the remote base (`git worktree add -b feature/<id> …
+origin/main`), `branch.autoSetupMerge` makes that base the branch's upstream, and
+  the squash merge that lands the work rewrites its commits — so the branch stays
+  ahead of its own base for ever and the unpushed-commit check, which ran first,
+  always fired. A closed bead is now decided by content alone: the base must hold
+  the branch's own version of every path the branch changed since their merge base,
+  and the refusal names that content when it does not. An open bead keeps the
+  upstream refusal, and with no upstream it is refused whatever the content says.
+  The base guard now tests the ref instead of the tip: a base that names the
+  worktree's own branch (local or remote-tracking) is a self-comparison and
+  refuses, while a branch cut from the base and never committed to holds the base's
+  own commit and is removed — the case every fresh ralph worktree used to reach.
+
 ## 2.10.0
 
 ### Minor Changes

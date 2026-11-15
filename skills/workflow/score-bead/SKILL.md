@@ -20,7 +20,7 @@ Score and band are two steps on purpose. `score` writes an auditable record; `ba
 - Setting or updating the strategy — use `prioritise-work`. This skill reads the rubric and never writes it.
 - Recording an idea for later — use `record-idea`.
 - Changing where a bead's state lives — use `bd-tool`.
-- Ordering the whole backlog into one list — that is the queue's job; this skill scores one bead.
+- Ordering the whole backlog into one list — that is the [hitl-queue](../hitl-queue/SKILL.md) skill's job; this skill scores one bead.
 
 ## The record
 
@@ -108,4 +108,5 @@ So a re-score never needs a note to explain the change. Write the new rationale,
 ## See Also
 
 - [prioritise-work](../../workflow/prioritise-work/SKILL.md) — owns the strategy file; run its `validate` before any score.
+- [hitl-queue](../hitl-queue/SKILL.md) — ranks the beads these scores belong to, and reads them back.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where the record lives, and why a bead holds operational state rather than the rubric.

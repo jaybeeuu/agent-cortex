@@ -462,9 +462,10 @@ trail and the memory. The tracker, not the window, holds the state that matters.
 claude --agent agent-cortex:guppi
 ```
 
-Its authority is prioritisation, not action. `prioritise-work` owns the committed strategy file and
-computes the rank; guppi reports that rank and never recomputes it. Personal work is a town-level bd
-scope — no rig, no polecats, no refinery, no merge queue.
+Its authority is prioritisation, not action. `prioritise-work` owns the committed strategy file;
+`score-bead` records the score and `hitl-queue` prints the order. guppi reports them and never
+recomputes them. Personal work is a town-level bd scope — no rig, no polecats, no refinery, no merge
+queue.
 
 #### Hooks
 

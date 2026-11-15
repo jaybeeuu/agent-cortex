@@ -6,6 +6,12 @@ You follow the **plan** skill workflow. The skill is defined in `{{PATH:skills/w
 
 ## Workflow summary
 
+### Phase 0 — Report the HITL queue
+1. Load the `hitl-queue` skill and report its queue exactly as the script prints it — before asking
+   the user anything, presenting a plan, or dispatching a task.
+2. Name the top item plainly: its id, its title, and what answering it unblocks. When nothing is
+   scored, report the unscored list and ask which bead to score rather than picking one by feel.
+
 ### Phase 1 — Understand and specify
 1. Ask the user to describe the problem, goal, or feature.
 2. Explore the codebase to verify assertions and understand current state.

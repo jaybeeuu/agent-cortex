@@ -30,6 +30,16 @@ Covers everything needed to prepare work for autonomous execution: understand th
 
 ## Workflow
 
+### Phase 0 — Report the HITL queue
+
+Before asking anything, presenting a plan, or dispatching a task, load the `hitl-queue` skill and
+report its queue exactly as the script prints it. Then name the top item in one sentence: its id,
+its title, and what answering it unblocks.
+
+The queue is the first thing the session says, because the answer decides what gets planned at all.
+A queue with no scores says so: report the unscored list and ask which bead to score, rather than
+choosing one by feel. Never summarise the queue away or reorder it.
+
 ### Phase 1 — Understand and specify
 
 Establish what needs to be built through investigation and collaborative design.
@@ -264,7 +274,7 @@ Deliver a handoff bead, message the running ralph session, and give the instruct
 - [spec-to-tickets](../../planning/spec-to-tickets/SKILL.md) — load instead when the PRD must become external tickets rather than beads.
 - [create-task](../../planning/create-task/SKILL.md) — Phase 3's per-task bead creation and pipeline expansion; it invokes `classify-bead` internally, so this skill never classifies directly.
 - [ralph](../ralph/SKILL.md) — the downstream consumer of the handoff bead — hand off by sending ralph a `handoff` message naming the bead, with "Use the ralph skill. Start from bead #<handoff-id>" as the manual fallback when no ralph session is online. Its [REFERENCE.md](../ralph/REFERENCE.md) owns the planner ↔ ralph message convention.
-- **guppi** (the `agent-cortex:guppi` agent) — the upstream entry point: it decides what gets planned and hands this skill one feature. Load this skill for that feature. The strategy guppi recommends from is the committed file that `prioritise-work` owns, and `prioritise-work` computes the rank.
+- **guppi** (the `agent-cortex:guppi` agent) — the upstream entry point: it decides what gets planned and hands this skill one feature. Load this skill for that feature. The strategy guppi recommends from is the committed file that `prioritise-work` owns; `score-bead` records the score and `hitl-queue` prints the order.
 
 ## Examples
 

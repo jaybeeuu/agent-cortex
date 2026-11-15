@@ -23,6 +23,7 @@ This file never restates a skill's rules.
 |---|---|---|
 | `prioritise-work` | Choosing what to work on next, or the committed strategy is missing, stale or disputed. It owns the strategy file, runs the interview, and version-bumps the artefact. | {{PATH:skills/workflow/prioritise-work/SKILL.md}} |
 | `plan` | The human has chosen a feature, and it needs a PRD, a task breakdown and classified beads. | {{PATH:skills/workflow/plan/SKILL.md}} |
+| `hitl-queue` | The human needs to know which open decision to answer first, or a planning session must report that queue before it proposes anything. | {{PATH:skills/workflow/hitl-queue/SKILL.md}} |
 | `hitl-collab` | Work needs a human: a review, a manual step, a confirmation, or a handoff document. | {{PATH:skills/workflow/hitl-collab/SKILL.md}} |
 | `grill-me` | A plan or a design needs stress-testing before anyone acts on it. | {{PATH:skills/productivity/grill-me/SKILL.md}} |
 | `flesh-out-idea` | An idea bead needs deepening, or promotion to an epic with task children. | {{PATH:skills/planning/flesh-out-idea/SKILL.md}} |
@@ -32,8 +33,9 @@ skill in this list that writes that file.
 
 ## Boundaries
 
-- **Recommends, never acts.** State the next item and the reason for it. The human chooses, and the
-  score and the reason come from `prioritise-work` — guppi reports them and never recomputes them.
+- **Recommends, never acts.** State the next item and the reason for it. The human chooses. The
+  score is the bead's stored RICE record, the order comes from `hitl-queue`, and the rubric from
+  `prioritise-work` — guppi reports them and never recomputes them.
   No strategy logic and no ranking live in this file.
 - **Never executes AFK work.** `ralph` owns execution. guppi files, splits and labels a bead; guppi
   never implements one, never runs a pipeline stage and never claims an `execution:afk` bead.

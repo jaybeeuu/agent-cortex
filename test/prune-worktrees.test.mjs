@@ -246,6 +246,12 @@ describe('pruneWorktrees', () => {
     const beadId = 'proj-1';
     const { repoRoot } = await createRepoRoot();
     const { worktree, branch } = await addRalphWorktree({ repoRoot, beadId });
+    const base = (await git(repoRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).trim();
+    assert.equal(
+      (await git(worktree, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])).trim(),
+      base,
+      'the fixture branch tracks the base branch, as every ralph worktree does',
+    );
     await writeFile(join(worktree, 'never-landed.txt'), 'work that never landed\n');
     await git(worktree, ['add', '-A']);
     await git(worktree, ['commit', '-m', 'never landed']);
@@ -254,7 +260,12 @@ describe('pruneWorktrees', () => {
     const result = await pruneWorktrees({ repoRoot, exec: closedBeadExec([beadId]) });
 
     assert.equal(result.entries[0].outcome, 'refused');
-    assert.match(result.entries[0].reasons.join(' '), /does not hold this branch's version of 1 path\(s\)/);
+    const reasons = result.entries[0].reasons.join(' ');
+    assert.match(reasons, /does not hold this branch's version of 1 path\(s\)/);
+    assert.ok(
+      reasons.includes(`branch ${branch} is not proven by ${base}`),
+      `the reason names the upstream ${base} that cannot prove the branch`,
+    );
     assert.notEqual(result.exitCode, 0);
     await stat(worktree);
     assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));

@@ -6,11 +6,12 @@
 // and never a scratch file: operational state belongs in the bead trail, and durable
 // documents that are reviewed, diffed and versioned belong in git.
 //
-// Three subcommands, and nothing else:
+// Four subcommands, and nothing else:
 //
 //   node strategy.mjs init     [--file <path>]             write the template
 //   node strategy.mjs validate [--file <path>]             check the shape, then print it
 //   node strategy.mjs bump     [--file <path>] [--today d] raise the version, set the date
+//   node strategy.mjs summary  [--file <path>]             the digest a run opens with
 //
 // `validate` prints the rubric to stdout only after it passes, so a scorer can never
 // read a stale or malformed strategy: the file and the proof of its shape arrive
@@ -22,8 +23,14 @@
 // Zero runtime dependencies, async fs only. `skills/*/scripts` sits outside the
 // check-no-sync scan, and this script stays async anyway so the rule holds everywhere.
 //
-// Exit codes: 0 the file is valid, 1 the file is invalid or the operation refused,
-// 2 the caller asked for something malformed.
+// `summary` is what the skill prints before it asks anything, and it exists so the digest
+// is read off the file rather than re-derived by an agent: it validates first, then reports
+// the version, the newest change-log entry, the themes, the two admissibility lists and the
+// deadline factors — each one read from the file, none restated from elsewhere.
+//
+// Exit codes: 0 the file is valid or summarised, 1 the file is invalid or the operation
+// refused, 2 the caller asked for something malformed, 3 `summary` found no strategy file —
+// a first run, which the skill answers with the interview and no digest.
 
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -143,6 +150,7 @@ const MS_PER_MINUTE = 60_000;
  * @property {boolean} ok
  * @property {DeadlineTier[]} tiers  The parsed tiers, or the documented default when absent.
  * @property {string[]} errors       One line per defect in the table.
+ * @property {'file' | 'default'} source  Whether the tiers were read from the file.
  */
 
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */
@@ -268,7 +276,7 @@ function parseTierRow(when, factorText) {
  */
 export function parseDeadlineTiers(text) {
   const body = sectionBody(text.split('\n'), DEADLINE_TIERS_SECTION);
-  if (body === null) return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [] };
+  if (body === null) return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [], source: 'default' };
 
   /** @type {DeadlineTier[]} */
   const rows = [];
@@ -294,8 +302,10 @@ export function parseDeadlineTiers(text) {
     rows.push(parsed.tier);
   }
 
+  // A heading with no readable row states no tiers, so the default applies and the file is
+  // not credited with a table it does not carry.
   if (rows.length === 0 && errors.length === 0) {
-    return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [] };
+    return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [], source: 'default' };
   }
 
   if (errors.length === 0) {
@@ -305,14 +315,14 @@ export function parseDeadlineTiers(text) {
     if (count('within') === 0) errors.push(`${DEADLINE_TIERS_SECTION}: needs at least one "within <time>" row`);
   }
 
-  if (errors.length > 0) return { ok: false, tiers: [...DEFAULT_DEADLINE_TIERS], errors };
+  if (errors.length > 0) return { ok: false, tiers: [...DEFAULT_DEADLINE_TIERS], errors, source: 'file' };
 
   const within = rows
     .filter((tier) => tier.kind === 'within')
     .sort((a, b) => (a.kind === 'within' && b.kind === 'within' ? a.minutes - b.minutes : 0));
   const beyond = rows.filter((tier) => tier.kind === 'beyond');
   const overdue = rows.filter((tier) => tier.kind === 'overdue');
-  return { ok: true, tiers: [...within, ...beyond, ...overdue], errors: [] };
+  return { ok: true, tiers: [...within, ...beyond, ...overdue], errors: [], source: 'file' };
 }
 
 /**
@@ -524,16 +534,161 @@ export function bumpStrategy(text, { today, reason }) {
   return { from, to, updated: today, reason: cleanReason, line, text: appendChangeLog(bumped, line) };
 }
 
+// ─── Summary ──────────────────────────────────────────────────────────────────
+
+/**
+ * How many bullets the digest quotes from each admissibility list. Two keeps the digest a
+ * handful of lines; the count of what it left out points the reader back at the file.
+ */
+const SUMMARY_ITEMS = 2;
+
+/** The longest one bullet may run in the digest, so one answer cannot re-print a section. */
+const SUMMARY_ITEM_LENGTH = 100;
+
+/**
+ * The items under one heading: each bullet with the continuation lines that belong to it,
+ * and the template's HTML-comment guidance skipped. A bullet that wraps over several lines
+ * is one item, so a quoting rule is read whole rather than sliced at its first line.
+ * @param {string[]} lines @param {string} title @returns {string[]}
+ */
+function sectionItems(lines, title) {
+  const body = sectionBody(lines, title);
+  if (body === null) return [];
+
+  /** @type {string[]} */
+  const items = [];
+  let inComment = false;
+  for (const line of body) {
+    const trimmed = line.trim();
+    if (inComment) {
+      if (trimmed.includes('-->')) inComment = false;
+      continue;
+    }
+    if (trimmed.startsWith('<!--')) {
+      if (!trimmed.includes('-->')) inComment = true;
+      continue;
+    }
+    const bullet = /^[-*][ \t]+(.+)$/.exec(trimmed);
+    if (bullet !== null) {
+      items.push(bullet[1].trim());
+      continue;
+    }
+    if (trimmed === '' || items.length === 0) continue;
+    items[items.length - 1] = `${items[items.length - 1]} ${trimmed}`;
+  }
+  return items;
+}
+
+/**
+ * One item as the digest shows it, cut when it is long. A cut item says so, because a
+ * silently shortened rule reads as the whole rule.
+ * @param {string} item @returns {string}
+ */
+function shorten(item) {
+  return item.length <= SUMMARY_ITEM_LENGTH ? item : `${item.slice(0, SUMMARY_ITEM_LENGTH).trimEnd()}…`;
+}
+
+/**
+ * One section as a single digest line: at most `SUMMARY_ITEMS` bullets, then how many the
+ * digest left out, so the reader knows the file still says more.
+ * @param {string[]} items @returns {string}
+ */
+function digestLine(items) {
+  const shown = items.slice(0, SUMMARY_ITEMS).map(shorten);
+  if (shown.length === 0) return '(none written)';
+  const hidden = items.length - shown.length;
+  return hidden === 0 ? shown.join(' · ') : `${shown.join(' · ')} · (+${hidden} more in the file)`;
+}
+
+/**
+ * A tier's distance in the largest unit that divides it, so the digest repeats the spelling
+ * the table uses: 1440 minutes reads `1d`, and 90 reads `90m`.
+ * @param {number} minutes @returns {string}
+ */
+function spanText(minutes) {
+  if (minutes % TIER_UNIT_MINUTES.d === 0) return `${minutes / TIER_UNIT_MINUTES.d}d`;
+  if (minutes % TIER_UNIT_MINUTES.h === 0) return `${minutes / TIER_UNIT_MINUTES.h}h`;
+  return `${minutes}m`;
+}
+
+/**
+ * One tier as the digest shows it: the phrase the table's row uses, then the factor.
+ * @param {DeadlineTier} tier @returns {string}
+ */
+function tierText(tier) {
+  if (tier.kind === 'overdue') return `overdue ×${tier.factor}`;
+  return `${tier.kind === 'within' ? 'within' : 'more than'} ${spanText(tier.minutes)} ×${tier.factor}`;
+}
+
+/**
+ * The deadline factors as one digest line, narrowest row first. The order is part of the
+ * rule — the queue multiplies by the narrowest row the remaining time fits inside — so the
+ * whole table prints: a truncated order would summarise a different rule.
+ * @param {DeadlineTier[]} tiers @returns {string}
+ */
+function deadlineLine(tiers) {
+  return tiers.map(tierText).join(' · ');
+}
+
+/**
+ * When the rubric last changed and why: the newest change-log entry, because the log is
+ * written oldest first and `validate` already proves it names the version the file carries.
+ * A file with no entry says so rather than borrowing the header date as a reason.
+ * @param {string[]} lines @param {string} updated @returns {string}
+ */
+function lastChange(lines, updated) {
+  const entries = (sectionBody(lines, CHANGE_LOG_SECTION) ?? [])
+    .map((line) => CHANGE_LOG_ENTRY.exec(line))
+    .filter((match) => match !== null);
+  const newest = entries[entries.length - 1];
+  if (newest === null || newest === undefined) return `${updated} — no change-log entry, so no reason is on file`;
+  return `${newest[1]} v${newest[2]}: ${newest[3]}`;
+}
+
+/**
+ * The digest the skill opens with: the file it read, the version, the newest change-log
+ * entry, the themes, the two admissibility lists, and the deadline factors when the file
+ * states them — a handful of lines, never a re-print.
+ *
+ * Nothing here is a ranking order, and the labels must not suggest one. `## What counts as
+ * value` and `## Explicitly out of scope` are admissibility: the test a bead passes to earn
+ * work, and the work the month rules out. What orders the beads that pass them is the
+ * scoring rubric — RICE with its multipliers — not this file. The one ordered rule set the
+ * file does state is `## Deadline tiers`, printed in its own order and omitted entirely when
+ * the section is absent, because the documented default then applies and the file is silent.
+ *
+ * None of these is a section of its own and none must become one. `validate` gates every
+ * strategy already committed, so a new required section would fail all of them.
+ * @param {string} text @param {string} file @param {StrategyReport} report  A passing report.
+ * @returns {string}
+ */
+export function summariseStrategy(text, file, report) {
+  const lines = text.split('\n');
+  const digest = [
+    `${file} — strategy v${report.version}`,
+    `  last change: ${lastChange(lines, report.updated ?? 'no date recorded')}`,
+    `  themes: ${digestLine(sectionItems(lines, 'Current themes'))}`,
+    `  admissibility — what counts as value: ${digestLine(sectionItems(lines, 'What counts as value'))}`,
+    `  admissibility — out of scope: ${digestLine(sectionItems(lines, 'Explicitly out of scope'))}`,
+  ];
+  const tiers = parseDeadlineTiers(text);
+  if (tiers.source === 'file') digest.push(`  deadline factors: ${deadlineLine(tiers.tiers)}`);
+  return `${digest.join('\n')}\n`;
+}
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
 /** @type {readonly string[]} */
-export const COMMANDS = /** @type {const} */ (['init', 'validate', 'bump']);
+export const COMMANDS = /** @type {const} */ (['init', 'validate', 'bump', 'summary']);
 
 const USAGE = `Usage: node strategy.mjs <${COMMANDS.join('|')}> [options]
 
   init       Write the shipped template to the strategy path. Refuses to overwrite.
   validate   Check the shape and print the file to stdout only when it passes.
   bump       Raise the version by one, record today's date and append the reason.
+  summary    Print the digest to open a run with: path, version, last change, admissibility,
+             deadline factors. Exits 3 when no strategy file exists, so a first run is told
+             apart from a strategy that is present but invalid.
 
 Options:
   --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)
@@ -638,6 +793,15 @@ export async function resolveStrategyPath({ file = DEFAULT_FILE, cwd = process.c
 }
 
 /**
+ * The one line every subcommand prints when the strategy file is not there yet. Reused so
+ * `summary` and `validate` cannot drift into two descriptions of the same absence.
+ * @param {string} file @returns {string}
+ */
+function missingMessage(file) {
+  return `${file} does not exist — run "init" and interview the owner, or pass --file <path>`;
+}
+
+/**
  * Build the report text for one failed run.
  * @param {string} file @param {string[]} errors @returns {string}
  */
@@ -706,14 +870,33 @@ export async function runCli({
       return 0;
     }
 
+    // `summary` separates the two states the skill answers differently: no file is a first
+    // run, which takes the interview and no digest; a file that fails the shape check is
+    // reported as what it is, never as the current strategy.
+    if (options.command === 'summary') {
+      /** @type {string} */
+      let current;
+      try {
+        current = await readFile(file, 'utf8');
+      } catch {
+        writeError(`${missingMessage(file)}\n`);
+        return 3;
+      }
+      const currentReport = validateStrategy(current);
+      if (!currentReport.ok) {
+        writeError(formatErrors(file, currentReport.errors));
+        return 1;
+      }
+      write(summariseStrategy(current, file, currentReport));
+      return 0;
+    }
+
     /** @type {string} */
     let text;
     try {
       text = await readFile(file, 'utf8');
     } catch {
-      throw new StrategyError(
-        `${file} does not exist — run "init" and interview the owner, or pass --file <path>`,
-      );
+      throw new StrategyError(missingMessage(file));
     }
 
     if (options.command === 'bump') {

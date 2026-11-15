@@ -47,17 +47,29 @@ Use that rather than `git add -f`: an ignored file disappears from `git status`,
 
 **One strategy, one workspace.** A rubric answers the question "what is worth doing here", so each bd workspace carries its own. The HITL queue reads several scopes at once; the **personal** scope's strategy is therefore also where the daily line lives, and the queue quotes it above the ranked list to say which scope the day belongs to. Write it under `## Current themes`, name the scopes first, then an em dash and the reason. `validate` does not require it: a strategy with no daily line is valid, and the queue says the note is missing rather than inventing one.
 
+## Step one — summarise what is already there
+
+A run never opens with a question. Run the summary first: it reads the committed file, so it cannot describe a strategy that is not on disk, and it shows the owner what they are about to edit.
+
+```bash
+node <skill-scripts>/strategy.mjs summary
+```
+
+The digest is all it prints: the path it read, the version, the newest change-log entry, the themes, the two admissibility lists as up to two bullets each, and — when the file states a table — the deadline factors in the order the queue applies them. It is not a re-print — open the file for what a cut line left out.
+
+| Exit | The file | What to do |
+|---|---|---|
+| 0 | valid | Show the digest, then ask "what should change?" |
+| 3 | absent | Say there is no strategy yet and take the first-run interview below. Print no digest. |
+| 1 | invalid or partly missing | Never present it as current. Say what it named — the empty or missing section, the field it could not read — and fix the file or re-interview before anything is scored against it. |
+
+**The file gains no new section.** An admissibility heading would fail every strategy already committed, because `validate` gates them all. The file says what is worth doing and what is not: `## Current themes` is what the month is for, `## What counts as value` is the test a bead must pass, and `## Explicitly out of scope` is the work the month rules out — the last two are the digest's **admissibility** lines. What orders the beads that pass them is the **scoring rubric**, RICE with its multipliers, never this file. The one ordered rule set the file states is `## Deadline tiers`, and the digest prints its rows narrowest first whatever order the file holds them in; with no table the documented default applies and the digest says nothing about deadlines.
+
 ## Workflow
 
 ### First run — no strategy file
 
-1. Confirm the file is absent:
-
-```bash
-node <skill-scripts>/strategy.mjs validate
-```
-
-It exits 1 and names the path it looked for. Do not search the repository for an alternative: one strategy, one location, or two scorers rank against two rubrics.
+1. The summary exited `3`: the file is absent. Do not search the repository for an alternative — one strategy, one location, or two scorers rank against two rubrics.
 
 2. Write the shipped template to that path. This is the copy step — the script resolves its own template, so it works from either install layout:
 
@@ -79,7 +91,7 @@ node <skill-scripts>/strategy.mjs validate
 
 ### Later runs — the file exists
 
-6. Read the current strategy and check its `**Updated:**` date. A date from an earlier month is stale: re-run the interview before scoring anything against it.
+6. The summary is step one above, so the version and the last change are already in front of the owner. A last change from an earlier month is stale: re-run the interview before scoring anything against it.
 
 7. Ask the four questions again, plus the confidence question, and edit the sections that changed. Edit the deadline-tier table too when a due date should move a rank further or sooner.
 
@@ -109,20 +121,7 @@ The confidence question matters as much as the other four: effort and impact est
 
 ## The scripts
 
-Two scripts, four subcommands, zero dependencies, no tracker access. `strategy.mjs` reads and writes the strategy file; `challenge.mjs` reads it and prints a trail entry. No run creates, tags or closes a bead.
-
-| Command | Behaviour | Exit |
-|---|---|---|
-| `init` | Writes the template, stamped with today's date; refuses an existing file | 0 written, 1 refused |
-| `validate` | Checks the version integer, the date, the change log, the deadline tiers and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
-| `bump` | Refuses an invalid file or an empty `--reason`, raises the version by one, records today, appends the change-log line | 0 bumped, 1 refused |
-| `record` (`challenge.mjs`) | Refuses an order or a resolution the strategy does not support; prints one bead-trail entry | 0 recorded, 1 refused |
-
-`validate` splits its output: status and errors go to stderr, the rubric goes to stdout. `validate > rubric.md` captures the rubric alone, which is how a scorer loads it. A failing run names the file and lists one line per defect, so one fix round clears the whole file.
-
-The date is checked as a **calendar** date, not as a shape. `2026-02-31` and `2026-04-31` fail in both `validate` and `--today`, because V8's ISO parser rolls them into the next month and accepts them; `2024-02-29` passes and `2026-02-29` does not. A rolled date records a change on a day it did not happen.
-
-Exit code 2 means a malformed call — an unknown subcommand or a bad `--today`. `--today YYYY-MM-DD` exists so a test pins the recorded date; a person accepts the default.
+Four subcommands of `strategy.mjs` and one of `challenge.mjs`, all zero dependencies with no tracker access: [REFERENCE.md](REFERENCE.md) lists what each one prints and the exit codes the steps above route on.
 
 ## Hand edits and forgotten bumps
 
@@ -137,7 +136,7 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 
 ## Verification checklist
 
-- [ ] `node <skill-scripts>/strategy.mjs validate` exits 0 and printed the rubric, and every section carries the owner's words.
+- [ ] The run opened with the digest — file, version, last change, themes, admissibility, deadline factors — before it asked anything, and `node <skill-scripts>/strategy.mjs validate` exits 0 with the rubric printed.
 - [ ] The version is one higher than the previous file for an update, or `1` for a new one, and the change log names it.
 - [ ] A challenged order moved only after a bump, and the record names what moved.
 - [ ] No bead was created, tagged or closed by this skill; `git ls-files --error-unmatch .agent-cortex/working-docs/strategy.md` succeeds.
@@ -145,6 +144,7 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 ## See Also
 
 - [CHALLENGE.md](CHALLENGE.md) — the sequence, the refusals and the no-change path when the order is challenged.
+- [REFERENCE.md](REFERENCE.md) — every subcommand, what it prints, and the exit codes that tell a first run from an invalid strategy.
 - [plan](../../workflow/plan/SKILL.md) — shapes one feature into beads; this skill orders the beads that exist.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where operational state lives, and why a durable document does not belong there.
 - [score-bead](../../workflow/score-bead/SKILL.md) — turns this rubric into a RICE record on a bead; the queue's daily line is read by [hitl-queue](../hitl-queue/SCOPES.md).

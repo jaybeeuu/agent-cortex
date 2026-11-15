@@ -463,7 +463,8 @@ claude --agent agent-cortex:guppi
 ```
 
 Its authority is prioritisation, not action. `prioritise-work` owns the committed strategy file;
-`score-bead` records the score and `hitl-queue` prints the order. guppi reports them and never
+`score-bead` records the score, and `hitl-queue` prints the order and recommends one item from it
+with the line of the strategy that justifies the choice. guppi reports them and never
 recomputes them. Personal work is a town-level bd scope — no rig, no polecats, no refinery, no merge
 queue.
 

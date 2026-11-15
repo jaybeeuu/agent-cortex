@@ -23,13 +23,48 @@ This file never restates a skill's rules.
 |---|---|---|
 | `prioritise-work` | Choosing what to work on next, or the committed strategy is missing, stale or disputed. It owns the strategy file, runs the interview, and version-bumps the artefact. | {{PATH:skills/workflow/prioritise-work/SKILL.md}} |
 | `plan` | The human has chosen a feature, and it needs a PRD, a task breakdown and classified beads. | {{PATH:skills/workflow/plan/SKILL.md}} |
-| `hitl-queue` | The human needs to know which open decision to answer first, or a planning session must report that queue before it proposes anything. | {{PATH:skills/workflow/hitl-queue/SKILL.md}} |
+| `hitl-queue` | The human needs to know which open decision to answer first, or the session must open with one recommendation drawn from that queue. | {{PATH:skills/workflow/hitl-queue/SKILL.md}} |
 | `hitl-collab` | Work needs a human: a review, a manual step, a confirmation, or a handoff document. | {{PATH:skills/workflow/hitl-collab/SKILL.md}} |
 | `grill-me` | A plan or a design needs stress-testing before anyone acts on it. | {{PATH:skills/productivity/grill-me/SKILL.md}} |
 | `flesh-out-idea` | An idea bead needs deepening, or promotion to an epic with task children. | {{PATH:skills/planning/flesh-out-idea/SKILL.md}} |
 
 **The strategy skill is `prioritise-work`.** It owns the committed strategy file, and it is the only
 skill in this list that writes that file.
+
+## Session start
+
+A session opens with **one** recommendation, never a list, and then waits. `hitl-queue` ranks, the
+strategy justifies, and guppi says the one item the two agree on.
+
+1. **Read the rubric.** Run `validate` in `prioritise-work`. It prints the file when it passes, and
+   that printed text is the only place a justification may be quoted from.
+2. **Read the queue's top row.** Run `recommend --json` in `hitl-queue`. The row carries the bead,
+   its total, the four components, both multipliers and the beads it unblocks. Report them as given;
+   guppi computes no score.
+3. **Say the block.** Choose the one line of the rubric that justifies that bead, and run
+   `recommend --why "<that line>"`. The script refuses a line the file does not contain, so an
+   invented reason fails before it is spoken. Say the block it prints, then **wait** for the human.
+
+**"What should we look at?"** is that same request in other words, and so is any opening that asks
+what to do next. Nothing about the session — the theme, the backlog, the last decision — replaces
+the three steps.
+
+**When the human names a bead instead**, pass it as `--bead <id>`. The recommendation is their bead,
+and the block adds one line naming the queue's own top choice. Where the two disagree, that line is
+the whole of the disagreement: the human's choice stands, and a wish to see another bead first is a
+strategy change through `prioritise-work`, never a silent override.
+
+### When nothing can be recommended
+
+Four conditions each stop at a stated result and one offered next step. Never fill the gap with a
+suggestion of your own, and never score or reorder anything to clear it.
+
+| The block says | What guppi offers |
+|---|---|
+| `No recommendation · no usable strategy` | The `prioritise-work` interview, which writes or bumps the file |
+| `No recommendation · nothing is scored` | `score-bead` on one bead, then the queue again |
+| `No recommendation · the queue is empty` | Filing the decision as an `execution:hitl` bead, or lifting a deferral |
+| `No recommendation · <id> is not in the queue` | `bd show <id>` to see why, then a bead from the queue |
 
 ## Boundaries
 

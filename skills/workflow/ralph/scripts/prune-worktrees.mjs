@@ -14,6 +14,15 @@
 // branch was cut holds paths the branch never had, and demanding tree equality
 // would keep every branch but the last one landed.
 //
+// A closed bead's upstream is never the arbiter. Ralph cuts its branch from the
+// remote base (`git worktree add -b feature/<id> … origin/<base>`), and
+// `branch.autoSetupMerge` then makes that base the branch's upstream. A squash
+// merge rewrites the commits, so the branch stays ahead of its own upstream for
+// ever: counting commits against it refuses every landed ralph worktree, which is
+// the one case the content test exists to decide. A closed bead is therefore
+// decided by content alone, whatever its upstream is. An open bead keeps the
+// upstream refusal, because nothing about an open bead is proven.
+//
 // The test proves content, never history. A branch removed here is discarded
 // together with every commit the base does not contain — a reverted change and a
 // run of empty commits both go, and so do their messages. The base is the remote's
@@ -200,10 +209,45 @@ function splitNulPaths(stdout) {
 }
 
 /**
- * Decide whether a branch with no upstream branch still holds work. Removing such
- * a branch is only safe when the base holds the branch's own version of every path
- * the branch changed — the squash-merge case. Anything unprovable keeps the
- * worktree.
+ * The opening clause of a content-proof refusal. Two situations reach the content
+ * check — a closed bead whose branch has lost its upstream, and a closed bead whose
+ * branch still tracks the base it was cut from — and both are refused for the same
+ * reason: the base does not hold the branch's content. The clause states which
+ * situation applies, so a reader can tell an unpublished branch from one whose
+ * upstream cannot prove it.
+ * @param {string} branch
+ * @param {string | null} upstream the branch's remote-tracking ref, or null when it has none.
+ * @returns {string}
+ */
+function contentLead(branch, upstream) {
+  return upstream === null
+    ? `branch ${branch} has no remote-tracking branch`
+    : `branch ${branch} is not proven by ${upstream}`;
+}
+
+/**
+ * True when `ref` names the worktree's own branch, locally or as its
+ * remote-tracking ref. Comparing such a ref with the branch is a self-comparison:
+ * the diff is empty whatever the branch holds, so it proves nothing.
+ * @param {string} path
+ * @param {string} ref
+ * @param {string} branch
+ * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @returns {Promise<boolean>}
+ */
+async function namesOwnBranch(path, ref, branch, git) {
+  const resolved = await git(path, ['rev-parse', '--symbolic-full-name', ref]);
+  if (!resolved.ok) return false;
+  const name = resolved.stdout.trim();
+  if (name === `refs/heads/${branch}`) return true;
+  // `refs/remotes/<remote>/<branch>`, whatever the remote is called.
+  return name.startsWith('refs/remotes/') && name.endsWith(`/${branch}`);
+}
+
+/**
+ * Decide whether a closed bead's branch still holds work. Removing such a branch is
+ * only safe when the base holds the branch's own version of every path the branch
+ * changed — the squash-merge case. Anything unprovable keeps the worktree.
  *
  * One-sided containment, in three steps: take the merge base of the base and the
  * branch, list the paths the branch changed since that merge base, then require the
@@ -227,46 +271,51 @@ function splitNulPaths(stdout) {
  * read as pathspec magic instead of a name. Neither alone is sufficient to fix,
  * so the first diff reads with `-z` and the second is run with
  * `--literal-pathspecs`.
- * @param {{ path: string, branch: string, beadClosed: boolean }} target
+ * @param {{ path: string, branch: string, beadClosed: boolean, upstream: string | null }} target
+ *   `upstream` is the branch's remote-tracking ref, or null when it has none.
  * @param {string | null} baseRef
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
  * @returns {Promise<string | null>} a refusal reason, or null when nothing is lost.
  */
-async function findLostWork({ path, branch, beadClosed }, baseRef, git) {
+async function findLostWork({ path, branch, beadClosed, upstream }, baseRef, git) {
   if (!beadClosed) {
     return `branch ${branch} has no remote-tracking branch and its bead is not closed`;
   }
+  /** @param {string} clause @returns {string} */
+  const refuse = (clause) => `${contentLead(branch, upstream)}: ${clause}`;
   if (baseRef === null) {
-    return `branch ${branch} has no remote-tracking branch and the base branch cannot be resolved, so its content cannot be proven landed`;
+    return refuse('the base branch cannot be resolved, so its content cannot be proven landed');
   }
   const tip = await git(path, ['rev-parse', '--verify', 'HEAD']);
   if (!tip.ok) {
     const detail = tip.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
-    return `branch ${branch} has no remote-tracking branch and its tip cannot be read${suffix}`;
+    return refuse(`its tip cannot be read${suffix}`);
   }
   const baseTip = await git(path, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]);
   if (!baseTip.ok) {
     const detail = baseTip.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
-    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+    return refuse(`${baseRef} cannot be compared with it${suffix}`);
   }
-  // A base that resolves to the branch being deleted compares the branch with
-  // itself: the diff is empty whatever the branch holds, so the guard cannot fail.
-  if (tip.stdout.trim() === baseTip.stdout.trim()) {
-    return `branch ${branch} has no remote-tracking branch and ${baseRef} resolves to this branch's own commit, so the comparison would prove nothing`;
+  // A base that names the branch being deleted compares the branch with itself,
+  // whatever the branch holds. The test is on the ref, not on the tip: a branch cut
+  // from the base and never committed to holds the base's own commit, and that is a
+  // real proof — it has no content of its own to lose.
+  if (await namesOwnBranch(path, baseRef, branch, git)) {
+    return refuse(`${baseRef} names this branch, so the comparison would prove nothing`);
   }
   const mergeBase = await git(path, ['merge-base', baseRef, 'HEAD']);
   if (!mergeBase.ok) {
     const detail = mergeBase.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
-    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+    return refuse(`${baseRef} cannot be compared with it${suffix}`);
   }
   const touched = await git(path, ['diff', '--name-only', '-z', '--no-renames', mergeBase.stdout.trim(), 'HEAD', '--']);
   if (!touched.ok) {
     const detail = touched.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
-    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+    return refuse(`${baseRef} cannot be compared with it${suffix}`);
   }
   const changedPaths = splitNulPaths(touched.stdout);
   // Nothing but empty commits: no content to prove, and no content to lose.
@@ -277,11 +326,11 @@ async function findLostWork({ path, branch, beadClosed }, baseRef, git) {
   if (!unproven.ok) {
     const detail = unproven.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
-    return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
+    return refuse(`${baseRef} cannot be compared with it${suffix}`);
   }
   const unprovenPaths = splitNulPaths(unproven.stdout).length;
   if (unprovenPaths > 0) {
-    return `branch ${branch} has no remote-tracking branch and ${baseRef} does not hold this branch's version of ${unprovenPaths} path(s), so its commits may never have been pushed`;
+    return refuse(`${baseRef} does not hold this branch's version of ${unprovenPaths} path(s), so its content is not landed`);
   }
   return null;
 }
@@ -315,12 +364,18 @@ async function findRefusals({ path, registered, beadClosed }, git, baseRef) {
   if (dirtyPaths > 0) reasons.push(`worktree is dirty: ${dirtyPaths} uncommitted path(s)`);
 
   const upstream = await git(path, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
-  if (!upstream.ok) {
-    const lost = await findLostWork({ path, branch: registered.branch, beadClosed }, baseRef, git);
+  const trackingRef = upstream.ok ? upstream.stdout.trim() : null;
+
+  // A closed bead is decided by content alone, never by its upstream: a ralph
+  // branch is cut from the remote base, so it tracks that base and stays ahead of
+  // it after a squash merge rewrites its commits. Counting commits against such an
+  // upstream refuses every landed ralph worktree. An open bead with no upstream has
+  // nothing to prove, so it lands here too and refuses below.
+  if (beadClosed || trackingRef === null) {
+    const lost = await findLostWork({ path, branch: registered.branch, beadClosed, upstream: trackingRef }, baseRef, git);
     if (lost !== null) reasons.push(lost);
     return { branch: registered.branch, reasons };
   }
-  const trackingRef = upstream.stdout.trim();
   const unpushed = await git(path, ['rev-list', '--count', `${trackingRef}..HEAD`]);
   if (!unpushed.ok) return { branch: registered.branch, reasons: [...reasons, `branch ${registered.branch} cannot be compared with ${trackingRef}: ${unpushed.stderr.trim()}`] };
   const unpushedCommits = Number.parseInt(unpushed.stdout.trim(), 10);
@@ -422,15 +477,20 @@ reports the rest. A worktree whose bead is open or missing is an orphan: it is
 only removed when --remove-orphans is passed. Run from anywhere inside the
 repository.
 
-A closed bead's branch may have no remote-tracking branch, because many merge
-methods delete the remote branch when the work lands. Such a branch is removed
-only when the base holds the branch's own version of every path the branch changed
-since their merge base. That proves content and never history: removal discards
-every commit the base does not contain, such as a reverted change or an empty
-commit, together with its message. The base defaults to the remote's default
-branch (origin/HEAD); --base names another ref, such as a release branch. A base
-that cannot be resolved, or that resolves to the worktree's own branch, keeps the
-worktree and refuses.
+A closed bead's branch is proven by content alone, whatever its upstream is: many
+merge methods delete the remote branch when the work lands, and a branch cut from
+the remote base tracks that base, which a squash merge leaves behind. Such a branch
+is removed only when the base holds the branch's own version of every path the
+branch changed since their merge base. That proves content and never history:
+removal discards every commit the base does not contain, such as a reverted change
+or an empty commit, together with its message. The base defaults to the remote's
+default branch (origin/HEAD); --base names another ref, such as a release branch. A
+base that names the worktree's own branch compares the branch with itself, so it
+proves nothing: the worktree is kept and refused, as it is when no base resolves.
+
+An open bead is proven by its upstream instead, and only with --remove-orphans: its
+branch must carry an upstream and no commit unpushed to it. With no upstream it is
+refused whatever its content says.
 `;
 
 /** Every flag the CLI accepts. */

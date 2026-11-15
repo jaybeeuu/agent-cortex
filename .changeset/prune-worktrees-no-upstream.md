@@ -18,3 +18,10 @@ hardcoded, with `--base <ref>` as the documented override; an unresolvable base
 keeps the worktree and refuses. A base that resolves to the worktree's own
 commit also keeps the worktree and refuses, because comparing a branch with
 itself proves nothing.
+
+The content proof also survives a path git would otherwise rewrite. The branch's
+changed paths are read with `git diff --name-only -z` and split on NUL, then fed
+back under `git --literal-pathspecs`, so a path holding a non-ASCII byte, a double
+quote, a backslash, a leading colon or a newline round-trips exactly. Without both,
+such a path matched no pathspec, the second diff came back empty, and a branch the
+base never received was removed with an empty reason list.

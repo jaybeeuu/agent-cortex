@@ -185,6 +185,21 @@ async function resolveBaseRef(repoRoot, git) {
 }
 
 /**
+ * Split the output of `git diff --name-only -z` into paths. `-z` is what makes the
+ * round trip lossless: without it git C-quotes a path holding a non-ASCII byte, a
+ * double quote, a backslash or a newline, and a quoted name fed back as a
+ * pathspec names no path. With it, every path arrives raw and NUL-terminated, so
+ * a path holding a newline stays one path.
+ * @param {string} stdout
+ * @returns {string[]}
+ */
+function splitNulPaths(stdout) {
+  // The output ends with a NUL, so the split leaves one empty entry to drop. A
+  // path is never empty, so no real path is lost with it.
+  return stdout.split('\0').filter((entry) => entry !== '');
+}
+
+/**
  * Decide whether a branch with no upstream branch still holds work. Removing such
  * a branch is only safe when the base holds the branch's own version of every path
  * the branch changed — the squash-merge case. Anything unprovable keeps the
@@ -204,6 +219,14 @@ async function resolveBaseRef(repoRoot, git) {
  * the base later changed a path the branch also changed, the two versions differ
  * and the branch is not proven landed. A deletion on both sides agrees, so it is
  * proven; a deletion on one side only is not.
+ *
+ * The branch's changed paths are read from git and then handed straight back to a
+ * second git call as pathspecs, so that round trip has to be exact. Two escapes
+ * make it inexact and both end in a false "proven": a path git would C-quote
+ * prints as a quoted string that names no path, and a path starting with `:` is
+ * read as pathspec magic instead of a name. Neither alone is sufficient to fix,
+ * so the first diff reads with `-z` and the second is run with
+ * `--literal-pathspecs`.
  * @param {{ path: string, branch: string, beadClosed: boolean }} target
  * @param {string | null} baseRef
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
@@ -239,22 +262,24 @@ async function findLostWork({ path, branch, beadClosed }, baseRef, git) {
     const suffix = detail === '' ? '' : `: ${detail}`;
     return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
   }
-  const touched = await git(path, ['diff', '--name-only', '--no-renames', mergeBase.stdout.trim(), 'HEAD', '--']);
+  const touched = await git(path, ['diff', '--name-only', '-z', '--no-renames', mergeBase.stdout.trim(), 'HEAD', '--']);
   if (!touched.ok) {
     const detail = touched.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
     return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
   }
-  const changedPaths = touched.stdout.split('\n').filter((line) => line !== '');
+  const changedPaths = splitNulPaths(touched.stdout);
   // Nothing but empty commits: no content to prove, and no content to lose.
   if (changedPaths.length === 0) return null;
-  const unproven = await git(path, ['diff', '--name-only', '--no-renames', 'HEAD', baseRef, '--', ...changedPaths]);
+  // `--literal-pathspecs` is a git global option, so it precedes the subcommand.
+  // It keeps a leading `:` in a real filename from being read as pathspec magic.
+  const unproven = await git(path, ['--literal-pathspecs', 'diff', '--name-only', '-z', '--no-renames', 'HEAD', baseRef, '--', ...changedPaths]);
   if (!unproven.ok) {
     const detail = unproven.stderr.trim();
     const suffix = detail === '' ? '' : `: ${detail}`;
     return `branch ${branch} has no remote-tracking branch and ${baseRef} cannot be compared with it${suffix}`;
   }
-  const unprovenPaths = unproven.stdout.split('\n').filter((line) => line !== '').length;
+  const unprovenPaths = splitNulPaths(unproven.stdout).length;
   if (unprovenPaths > 0) {
     return `branch ${branch} has no remote-tracking branch and ${baseRef} does not hold this branch's version of ${unprovenPaths} path(s), so its commits may never have been pushed`;
   }

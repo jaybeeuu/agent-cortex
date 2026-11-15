@@ -312,6 +312,62 @@ describe('pruneWorktrees', () => {
     assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
   });
 
+  it('keeps a closed-bead worktree when its only change is a path git quotes (café.md)', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed', push: false });
+    await writeFile(join(worktree, 'café.md'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(result.entries[0].reasons.join(' '), /does not hold this branch's version of 1 path\(s\)/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+  it('keeps a closed-bead worktree when its only change is a path git quotes (say"hi.txt)', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed', push: false });
+    await writeFile(join(worktree, 'say"hi.txt'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(result.entries[0].reasons.join(' '), /does not hold this branch's version of 1 path\(s\)/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+  it('keeps a closed-bead worktree when its only change is a path that looks like pathspec magic (:notes.txt)', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed', push: false });
+    await writeFile(join(worktree, ':notes.txt'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(result.entries[0].reasons.join(' '), /does not hold this branch's version of 1 path\(s\)/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+  it('keeps a closed-bead worktree when its only change is a path containing a newline', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed', push: false });
+    await writeFile(join(worktree, 'two\nlines.md'), 'work that never left this machine\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'never pushed']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(result.entries[0].reasons.join(' '), /does not hold this branch's version of 1 path\(s\)/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
   it('keeps a closed-bead worktree when the base branch cannot be resolved', async () => {
     const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
     await writeFile(join(worktree, 'landed.txt'), 'the change\n');

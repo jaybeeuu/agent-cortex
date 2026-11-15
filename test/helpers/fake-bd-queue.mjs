@@ -1,5 +1,6 @@
-// Shared test helper: an in-memory `bd` answering the two calls the HITL queue makes,
-// so the queue's ordering can be driven from a graph a test writes down.
+// Shared test helper: an in-memory `bd` answering the calls the HITL queue and the boundary
+// re-rank make, so the queue's ordering and the boundary's comparison can be driven from a graph
+// a test writes down.
 //
 // One definition serves both call styles: the test imports `fakeBd` and calls the queue
 // in-process, and the CLI test writes a stub binary whose body imports this same module,
@@ -19,20 +20,42 @@
  * @property {object} [rice]         The stored `rice` record.
  * @property {string[]} [dependsOn]  Beads this one waits on, by a `blocks` edge.
  * @property {string[]} [relatesTo]  Beads this one merely relates to.
+ * @property {string} [parent]       The bead that owns this one, as `bd children` reads it.
  * @property {string} [dueAt]        The `--due` moment, as bd writes it: a UTC ISO string.
  * @property {string} [deferUntil]   The `--defer` wake moment, in the same form.
  */
 
 /**
- * A `bd` runner over an in-memory graph. It reproduces the shapes the queue reads:
- * `list -l execution:hitl --json` with closed beads already excluded (bd's default
- * filter) and the `due_at` / `defer_until` fields bd writes, and
- * `dep list <id> --direction up --json` naming the beads that depend on it.
+ * A `bd` runner over an in-memory graph, plus the record of what it was asked to write. It
+ * reproduces the shapes the queue and the boundary read: `list -l execution:hitl --json` with
+ * closed beads already excluded (bd's default filter) and the `due_at` / `defer_until` fields bd
+ * writes, `dep list <id> --direction up --json` naming the beads that depend on it, and
+ * `children <id> --json`. A `note` call appends to `state.notes` instead of writing a tracker.
  * @param {GraphBead[]} beads
- * @returns {(args: string[]) => Promise<string>}
+ * @returns {{ bd: (args: string[]) => Promise<string>, state: { notes: { id: string, text: string }[], calls: string[][] } }}
  */
-export function fakeBd(beads) {
-  return async (args) => {
+export function fakeQueueBd(beads) {
+  /** @type {{ notes: { id: string, text: string }[], calls: string[][] }} */
+  const state = { notes: [], calls: [] };
+  const bd = async (/** @type {string[]} */ args) => {
+    state.calls.push(args);
+    if (args[0] === 'note') {
+      state.notes.push({ id: args[1], text: args[2] ?? '' });
+      return '';
+    }
+    if (args[0] === 'children') {
+      return JSON.stringify(
+        beads
+          .filter((bead) => bead.parent === args[1])
+          .map((bead) => ({
+            id: bead.id,
+            title: bead.title,
+            status: bead.status ?? 'open',
+            labels: bead.labels ?? [],
+            parent: bead.parent,
+          })),
+      );
+    }
     if (args[0] === 'list') {
       return JSON.stringify(
         beads
@@ -64,6 +87,16 @@ export function fakeBd(beads) {
     }
     throw new Error(`fake bd: unsupported call ${args.join(' ')}`);
   };
+  return { bd, state };
+}
+
+/**
+ * The runner alone, for a caller that does not read what was written.
+ * @param {GraphBead[]} beads
+ * @returns {(args: string[]) => Promise<string>}
+ */
+export function fakeBd(beads) {
+  return fakeQueueBd(beads).bd;
 }
 
 /**

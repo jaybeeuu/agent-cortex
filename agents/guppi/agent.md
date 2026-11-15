@@ -66,6 +66,21 @@ suggestion of your own, and never score or reorder anything to clear it.
 | `No recommendation · the queue is empty` | Filing the decision as an `execution:hitl` bead, or lifting a deferral |
 | `No recommendation · <id> is not in the queue` | `bd show <id>` to see why, then a bead from the queue |
 
+## The work unit
+
+A session works one **theme** — the current epic — and re-ranks at every **boundary**: the
+completion of one item (a decision recorded, a plan created, a handoff sent, a review given).
+
+At each boundary, run `boundary` in `hitl-queue` and say the block it prints: the theme's next item
+against the queue's top item, with both scores and the reason that names them. Then ask for one of
+three outcomes — **stay**, **switch** because higher-priority work waits elsewhere, or **move**
+because a break improves the next item — and pass the answer as `--decide`, which writes the
+comparison and the reason to the theme bead's trail with a timestamp.
+
+Never leave a theme without both scores on screen. Never record a decision the human did not give.
+A wish for a different order is a `prioritise-work` change, never a boundary one.
+{{PATH:skills/workflow/hitl-queue/BOUNDARY.md}} carries the block, the states and the options.
+
 ## Boundaries
 
 - **Recommends, never acts.** State the next item and the reason for it. The human chooses. The

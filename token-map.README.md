@@ -87,6 +87,15 @@ rather than inventing a dotted form:
   runtime env var (expanded per context by Claude Code) points at wherever the plugin
   actually runs from. A literal home path in substituted files would break under
   cache-copy, so the installer passes the env form through verbatim.
+- **`layouts`** — the tree each installer stages a resource into, for the resources whose
+  shape differs per harness. Only `skills` differs: the repository nests every skill one group
+  deep (`skills/<group>/<name>/`), and `bin/installers/pi.mjs` preserves that, while Claude
+  Code's plugin scan discovers `skills/<name>/SKILL.md` directly under `skills/`, so
+  `bin/installers/claude.mjs` copies every skill flat. A `{{PATH:skills/…}}` row is authored
+  against the repository tree; resolution reads the harness's row here and drops the group
+  segment when the harness stages skills flat, so the row names a file the install contains.
+  The row is a harness fact, not a repository one, which is why it lives here rather than in
+  the resolver: a harness that stages skills differently changes this table, not the code.
 - **`agents`** — the `agent-cortex:` name-prefix convention per harness (claude strips the
   prefix during conversion). Agent names themselves do not get per-row mappings because
   the prefix rule covers all of them — every agent is composed from `agents/<name>/` for
@@ -147,13 +156,16 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
 3. For `TOOL`: look up the canonical key, replace with the harness name; null → drop/omit;
    unknown → throw.
 4. For `PATH`: named key → resolve from `paths`; anything else → resolve relative to
-   `plugin_root`; `${ENV_VAR}` values pass through verbatim for runtime expansion.
+   `plugin_root`, after mapping a `skills/…` row onto the harness's staged shape from
+   `layouts`; `${ENV_VAR}` values pass through verbatim for runtime expansion.
 5. Reject a map `version` they do not implement.
 
 ## Authoring guidance
 
 - Write tokens with the **canonical authoring names**: `Use {{TOOL:task}} to spawn
-  subagents`, `Read {{PATH:skills/workflow/plan/SKILL.md}}`.
+  subagents`, `Read {{PATH:skills/workflow/plan/SKILL.md}}`. Write a skill path row in this
+  repository's grouped form, `skills/<group>/<name>/<file>`; each install maps it onto the
+  shape it stages (see `layouts`), so one authored row names a real file on both harnesses.
 - Never embed a harness-specific name in the canonical sources (`agents/<name>/agent.md`,
   `skills/**/SKILL.md`) — that defeats the map. The materialised Claude plugin
   (`~/.agent-cortex/claude`), the generated `agents/*.agent.md` files, and any installed

@@ -8,7 +8,7 @@
     "decision": "Adopt the {{TOOL:name}} / {{PATH:name}} / {{SECTION:name}} grammar already standardised by ADR #63 (agents/README.md) rather than a dotted {{tool.name}} form. The uppercase type prefix disambiguates token kinds at a glance, keeps tool/path/section names in one namespace collision-free, and matches the token grammar skills are already written against.",
     "types": {
       "TOOL": "{{TOOL:<canonical tool key>}} — replaced at install time with the bound harness's tool name (see tools).",
-      "PATH": "{{PATH:<path key or relative path>}} — replaced at install time with the harness-resolved path (see paths).",
+      "PATH": "{{PATH:<path key or relative path>}} — replaced at install time with the harness-resolved path (see paths; a relative arg under skills/ is mapped onto the harness's staged shape first — see layouts).",
       "SECTION": "{{SECTION:<name>}} — replaced by the agent composer with <harness>/<name>.md section content. Not a global substitution; out of scope for token-map.json (see contract)."
     }
   },
@@ -49,6 +49,13 @@
     "skill_anatomy": {
       "claude": { "base": "plugin_root", "relative": "docs/skills/skill-anatomy.md" },
       "pi": { "base": "plugin_root", "relative": "docs/skills/skill-anatomy.md" }
+    }
+  },
+  "layouts": {
+    "description": "The tree each installer stages a resource into. `{{PATH:...}}` resolution reads it: a row is authored against the repository tree, so a harness that stages a resource in a different shape needs the row mapped onto its own. Only `skills` differs — Claude Code's plugin scan discovers `skills/<name>/SKILL.md` directly under `skills/`, so bin/installers/claude.mjs copies every skill flat and the group segment an authored row carries is dropped; bin/installers/pi.mjs preserves the repository grouping, so the row resolves as written.",
+    "skills": {
+      "claude": "flat",
+      "pi": "grouped"
     }
   },
   "agents": {
@@ -110,6 +117,7 @@
       "TOOL unknown: a {{TOOL:<key>}} with no entry in tools is a hard error — the map must be extended. This mirrors the generators (bin/installers/claude.mjs, bin/installers/pi.mjs), which throw on unknown tools.",
       "PATH named key: replace {{PATH:<key>}} with the resolved value of paths.<key>.<harness>.",
       "PATH relative: replace {{PATH:<relative>}} with plugin_root + '/' + <relative> (e.g. {{PATH:skills/workflow/plan/SKILL.md}}).",
+      "PATH relative skill: a relative arg whose first segment is `skills` is authored against the repository tree, which nests every skill at skills/<group>/<name>/<file>. Map it onto the harness's staged shape from layouts.skills.<harness>: `grouped` keeps it as written, `flat` drops the group segment (skills/<name>/<file>) because that installer copies skills flat. An arg with fewer than three segments is a hard error — no install has a skill one level under skills/.",
       "PATH resolution: a value may be a literal string, an ${ENV_VAR} token, or a {base, relative} spec. Resolve {base, relative} by joining relative onto the resolved base. Leave ${ENV_VAR} values verbatim — the harness expands them at runtime (claude's ${CLAUDE_PLUGIN_ROOT}).",
       "PATH unknown base: a {base, relative} spec whose base is not a key in paths is a hard error.",
       "SECTION: {{SECTION:<name>}} is resolved by the agent composer from <agents_dir>/<harness>/<name>.md; token-map.json does not substitute it. Installers must leave SECTION tokens untouched for the composer.",

@@ -8,22 +8,25 @@
 //   1. {{SECTION:name}} is replaced with <dir>/<harness>/<name>.md content.
 //   2. {{TOOL:key}} is replaced with the harness column of token-map.json.
 //   3. {{PATH:arg}} with a named key resolves through token-map.json's paths
-//      table; anything else is a relative path and stays verbatim.
+//      table; anything else is a relative path and stays verbatim, except that
+//      installers resolve it against the plugin root and map a `skills/…` row
+//      onto the tree that harness stages skills in (token-map.json `layouts`).
 // Substitution order is SECTION → TOOL → PATH (matches extensions/agent-modes).
 // Missing sections, unknown tool keys, or schema-invalid frontmatter are hard
 // errors: a committed generated file must never ship a literal token or a
 // silently dropped section.
 //
-// Options (the pi installer passes `dropNullTools`, `pluginRoot` and
-// `resolveRelativePaths`; the claude installer uses the strict defaults):
+// Options (both installers pass `pluginRoot` and `resolveRelativePaths`; pi also
+// passes `dropNullTools`):
 //   dropNullTools          replace null-mapped tool tokens with an empty string and
 //                          warn instead of throwing (pi's prose rule per the
 //                          token-map contract)
 //   pluginRoot             override the plugin_root used for resolved paths
 //                          (installers compute it from the actual install layout)
 //   resolveRelativePaths   non-keyed {{PATH:...}} args resolve to pluginRoot/arg
-//                          instead of staying verbatim (install time; without it
-//                          they stay bare for runtime resolution)
+//                          (a `skills/…` row mapped onto the harness's staged
+//                          skills shape) instead of staying verbatim (install
+//                          time; without it they stay bare for runtime resolution)
 //   warn                   callback for drop/omit warnings (default: no-op; the
 //                          pi installer collects them into its result)
 //
@@ -43,6 +46,7 @@ import { join } from "node:path";
  * @property {number} [version]
  * @property {Record<string, Record<string, string | null>>} tools
  * @property {Record<string, Record<string, string | PathSpec>>} paths
+ * @property {Record<string, Record<string, string>>} [layouts]
  */
 
 /**
@@ -100,6 +104,8 @@ function noop() {}
  *   with a warning when `dropNullTools`, otherwise throw.
  * - PATH: named key → resolve through the paths table (plugin_root overridable);
  *   non-keyed → join(pluginRoot, arg) when `resolveRelativePaths`, else verbatim.
+ *   A non-keyed `skills/…` arg is mapped onto the harness's staged shape first
+ *   (see stagedRelativePath).
  * - SECTION tokens are *not* handled here — the agent composer resolves them from
  *   the harness's section files before calling this.
  *
@@ -232,13 +238,43 @@ async function parseFrontmatter(path, name, harness) {
 // ─── Path resolution ─────────────────────────────────────────────────────────
 
 /**
+ * Map a repository-relative path onto the tree the harness stages it in.
+ *
+ * The repository nests every skill one group deep (skills/<group>/<name>/…), so
+ * an authored `skills/…` row is written in that grouped form. An installer that
+ * stages skills flat — Claude Code's plugin scan discovers skills/<name>/SKILL.md
+ * directly under skills/ — drops the group segment, and a row that kept it would
+ * name a directory the install does not have. The shape is a harness fact, read
+ * from token-map.json's layouts table, so a harness that stages skills
+ * differently needs no change here.
+ *
+ * @param {string} arg  Non-keyed {{PATH:...}} argument
+ * @param {string} harness
+ * @param {TokenMap} tokenMap
+ * @returns {string}
+ */
+function stagedRelativePath(arg, harness, tokenMap) {
+  const segments = arg.split("/");
+  if (segments[0] !== "skills") return arg;
+  // Every install ships a skill as a directory below skills/, so a shorter arg
+  // names nothing it can contain: fail now rather than render a dead row.
+  if (segments.length < 3) {
+    throw new Error(
+      `{{PATH:${arg}}} is not a staged path — a skill row is authored as skills/<group>/<name>/<file>`,
+    );
+  }
+  if (tokenMap.layouts?.skills?.[harness] !== "flat") return arg;
+  return [segments[0], segments[2], ...segments.slice(3)].join("/");
+}
+
+/**
  * Resolve a {{PATH:...}} argument for a harness's generated output.
  * Named keys resolve through token-map.json's paths table (recursively for
  * {base, relative} specs); non-keyed args are relative paths, kept verbatim —
  * the installer beads own precise runtime path resolution (see token-map.README.md).
  * With the installer options (`pluginRoot`, `resolveRelativePaths`) the
  * plugin_root base and bare relative paths resolve against the actual install
- * layout instead.
+ * layout instead, and a `skills/…` row is mapped onto that layout.
  * @param {string} arg
  * @param {string} harness
  * @param {TokenMap} tokenMap
@@ -248,7 +284,9 @@ async function parseFrontmatter(path, name, harness) {
 function resolvePath(arg, harness, tokenMap, opts = {}) {
   const entry = tokenMap.paths?.[arg];
   if (!entry) {
-    if (opts.resolveRelativePaths && opts.pluginRoot) return join(opts.pluginRoot, arg);
+    if (opts.resolveRelativePaths && opts.pluginRoot) {
+      return join(opts.pluginRoot, stagedRelativePath(arg, harness, tokenMap));
+    }
     return arg;
   }
 

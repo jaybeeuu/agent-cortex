@@ -152,6 +152,11 @@ When composing the final agent file for a specific harness:
    files / installing for claude and pi; pi's `agent-modes` extension does the same at runtime. See the `contract` section of `token-map.json` and
    `token-map.README.md` for the rules.
 
+A `{{PATH:skills/…}}` row is authored against this repository's tree, which nests every skill
+one group deep, and resolves to the tree the harness stages. Claude Code stages skills flat, so
+the row loses its group segment there; the pi install keeps it. `token-map.json`'s `layouts`
+table records the shape per harness, so a row never names a file the install does not contain.
+
 The pi harness's `agent-modes` extension is a runtime consumer of this format: it
 composes agent prompts on the fly from `agent.md` + `pi/frontmatter.json`, substituting
 tokens against `token-map.json`'s pi column with no install step. See

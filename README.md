@@ -455,7 +455,8 @@ manual confirmations. It is resident and propose-only: it recommends the next it
 reason, then loads `plan`, `grill-me`, `hitl-collab`, `flesh-out-idea` or `prioritise-work` for the
 chosen item. It never executes AFK work, never merges and never pushes, and a disagreement with a
 priority opens a strategy review rather than a silent reorder. Between tasks it clears the context
-with `/clear`, so the bead trail, not the window, holds the state that matters.
+with `/clear`, and only after writing what was decided, what is open and what comes next to the bead
+trail and the memory. The tracker, not the window, holds the state that matters.
 
 ```sh
 claude --agent agent-cortex:guppi

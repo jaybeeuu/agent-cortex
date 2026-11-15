@@ -20,8 +20,7 @@ The strategy is a **committed file**, never a bead and never a scratch note. A r
 ## When NOT to use
 
 - Shaping one feature — use `plan`; that skill scopes a feature, this one orders the work.
-- Recording an idea for later — use `record-idea`.
-- Tracker questions, or where a bead's state lives — use `bd-tool`.
+- Recording an idea — use `record-idea`; tracker questions, or where a bead's state lives — use `bd-tool`.
 - Writing a PRD or a design document — use `write-a-prd`.
 
 ## The strategy file
@@ -31,6 +30,7 @@ The strategy is a **committed file**, never a bead and never a scratch note. A r
 | Default path | `.agent-cortex/working-docs/strategy.md`, relative to the repository root |
 | Override | `--file <path>` on every subcommand |
 | Contents | a version integer, a date, five required sections, and an optional `## Deadline tiers` table |
+| Daily line | one `- daily: <scope>, <scope> — <why>` bullet under `## Current themes` |
 | Lifetime | committed; edited by interview, then versioned with `bump` |
 
 The working-docs root is the scratch directory the HITL handoff also uses: `.agent-cortex/working-docs/hitl/<bead-id>/handoff.md`. The strategy sits beside it and is the one file in that directory the repository commits.
@@ -44,6 +44,8 @@ That directory's contents are usually ignored (`working-docs/*`), so track the s
 ```
 
 Use that rather than `git add -f`: an ignored file disappears from `git status`, so the next update is committed by nobody.
+
+**One strategy, one workspace.** A rubric answers the question "what is worth doing here", so each bd workspace carries its own. The HITL queue reads several scopes at once; the **personal** scope's strategy is therefore also where the daily line lives, and the queue quotes it above the ranked list to say which scope the day belongs to. Write it under `## Current themes`, name the scopes first, then an em dash and the reason. `validate` does not require it: a strategy with no daily line is valid, and the queue says the note is missing rather than inventing one.
 
 ## Workflow
 
@@ -138,13 +140,11 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 - [ ] `node <skill-scripts>/strategy.mjs validate` exits 0 and printed the rubric, and every section carries the owner's words.
 - [ ] The version is one higher than the previous file for an update, or `1` for a new one, and the change log names it.
 - [ ] A challenged order moved only after a bump, and the record names what moved.
-- [ ] `git ls-files --error-unmatch .agent-cortex/working-docs/strategy.md` succeeds.
-- [ ] No bead was created, tagged or closed by this skill.
+- [ ] No bead was created, tagged or closed by this skill; `git ls-files --error-unmatch .agent-cortex/working-docs/strategy.md` succeeds.
 
 ## See Also
 
 - [CHALLENGE.md](CHALLENGE.md) — the sequence, the refusals and the no-change path when the order is challenged.
 - [plan](../../workflow/plan/SKILL.md) — shapes one feature into beads; this skill orders the beads that exist.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where operational state lives, and why a durable document does not belong there.
-- [score-bead](../../workflow/score-bead/SKILL.md) — turns this rubric into a RICE record on a bead.
-- [hitl-collab](../../workflow/hitl-collab/SKILL.md) — the handoff document that shares the working-docs root with the strategy.
+- [score-bead](../../workflow/score-bead/SKILL.md) — turns this rubric into a RICE record on a bead; the queue's daily line is read by [hitl-queue](../hitl-queue/SCOPES.md).

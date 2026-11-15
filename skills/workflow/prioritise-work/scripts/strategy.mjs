@@ -601,9 +601,12 @@ export function parseArgs(argv) {
  * carries `.git` as a file, so existence is the whole test. Walks with `node:fs/promises`
  * and never shells out, because this script spawns nothing. Falls back to `start` when no
  * ancestor is a repository, so a run outside one writes where the caller stands.
+ *
+ * Exported for the same reason as `resolveStrategyPath`: another skill's default path is
+ * documented against the repository root, and two walkers would be two answers.
  * @param {string} start @returns {Promise<string>}
  */
-async function findRepositoryRoot(start) {
+export async function findRepositoryRoot(start) {
   const from = resolve(start);
   let directory = from;
   for (;;) {

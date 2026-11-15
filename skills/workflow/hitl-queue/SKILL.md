@@ -1,11 +1,11 @@
 ---
 name: hitl-queue
-description: Ranks the open execution:hitl beads into one list ordered by RICE, transitively blocked dependents, work in progress and the time left to each due date, prints what each answer unblocks, and recommends one item from that list with the line of the strategy that justifies it. Use when deciding which human decision to answer next, when a session cold-starts and must say one item, when a planning session starts, or when asked "what needs my decision", "show the queue", "what should we look at" or "what should I answer first".
+description: Ranks the open execution:hitl beads across every configured bd workspace into one list ordered by RICE, transitively blocked dependents, work in progress and the time left to each due date, prints what each answer unblocks and which scope each row came from, notes which scope the day belongs to, and recommends one item from that list with the line of the strategy that justifies it. Use when deciding which human decision to answer next, when a session cold-starts and must say one item, when a planning session starts, or when asked "what needs my decision", "show the queue", "what should we look at" or "what should I answer first".
 ---
 
 # HITL Queue
 
-Owns one output: **the ranked list of beads waiting for a human answer**. Each row carries its own arithmetic, so the owner can check *why* one decision outranks another instead of trusting a number.
+Owns one output: **the ranked list of beads waiting for a human answer**, read from every configured workspace and tagged with the scope each row came from. Each row carries its own arithmetic, so the owner can check *why* one decision outranks another instead of trusting a number.
 
 A queue is not a priority. The RICE score is `score-bead`'s judgement, the band it implies is reviewed there, and this skill only orders beads by a number that already exists. Where no score exists, the queue says so and ranks nothing: inventing an order would hide the gap a person has to fill.
 
@@ -39,54 +39,50 @@ total = rice × (1 + ln(1 + dependents)) × (in progress ? 1.5 : 1) × deadline
 
 The dependent count is the load-bearing term. A bead blocking A, which blocks B, which blocks C, unblocks **three**. The walk follows `bd dep list <id> --direction up` from bead to bead, and collects **beads, not paths**: when the graph reconverges (a diamond — one bead reached by two routes), it is counted once, because counting paths would measure the shape of the graph instead of the work an answer releases.
 
-Two edges of the walk are deliberate: only `blocks` edges count, because a related or duplicate edge is not something anyone waits on; and the walk passes through every bead while counting only live ones, because a closed bead is still a link in the chain but finished work cannot be unblocked.
-
-`1 + ln(1 + n)` is logarithmic on purpose: unblocking thirty chores must not drown the list under one row, and zero dependents scores `1`, so a bead that unblocks nothing is not penalised — it is simply not lifted.
+Two edges of the walk are deliberate: only `blocks` edges count, because a related or duplicate edge is not something anyone waits on; and the walk passes through every bead while counting only live ones, because a closed bead is still a link in the chain but finished work cannot be unblocked. `1 + ln(1 + n)` is logarithmic on purpose: unblocking thirty chores must not drown the list under one row, and zero dependents scores `1`, so a bead that unblocks nothing is not penalised — it is simply not lifted.
 
 ## Deadlines
 
-A `--due` date is the one deadline field, and `bd` already stores it. The queue multiplies the total by the factor of the narrowest tier the remaining time fits inside. Those factors are the **shipped default**, and a strategy's optional `## Deadline tiers` section replaces them, so moving a tier is a strategy edit and a `bump`, never a code change. A bead with no due date keeps the factor 1.
+A `--due` date is the one deadline field, and `bd` already stores it. The queue multiplies the total by the factor of the narrowest tier the time left fits inside; those factors are the **shipped default**, and a strategy's optional `## Deadline tiers` section replaces them, so moving a tier is a strategy edit and a `bump`, never a code change. A bead with no due date keeps the factor 1. [DEADLINES.md](DEADLINES.md) carries the shipped table, the row syntax, the `validate` rule, the boundary and the defer rule.
 
-[DEADLINES.md](DEADLINES.md) carries the shipped table, the row syntax a strategy must hold, the `validate` rule, where a boundary falls, how a row shows its deadline, and bd's own defer rule.
+## Scopes
+
+A scope is one bd workspace. The queue reads every one and writes to none; the current workspace is the only writable scope, so every other is read-only, and a missing workspace is `unavailable` and skipped. A shared invocation (`--shared`, or `AGENT_CORTEX_QUEUE_SHARED=1`) withholds every personal scope and the daily note, and prints the count. [SCOPES.md](SCOPES.md) carries the list format, the writable rule, the daily note and the boundary.
 
 ## The report
 
 One flat list, no sections, ranked first and unscored last:
 
 ```
-HITL decision queue · 3 ranked, 1 unscored · strategy v2
-total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then id · unscored last
+HITL decision queue · 3 ranked, 1 unscored · 3 scopes, 1 unavailable · strategy v2
+total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last
 excluded: 3 kind:idea beads (--include-ideas ranks them)
+today · personal, code — "daily: personal, code — Monday and Tuesday are the personal objectives" (strategy v3, "## Current themes", scope notes)
+unavailable: ops (~/ops) — workspace does not exist
 
-1  bd-7       10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0
+1  code    bd-7  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0
     Ship the queue — unblocks bd-8, bd-9, bd-10
-2  bd-2        8.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)
+2  notes   bd-2   8.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)
     Decide the API shape — unblocks nothing
-3  bd-9        6.3  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.5 in-progress  deadline ×2 in 18h (due 2026-11-16T02:59Z)
-    Decide the vendor — unblocks nothing
--  bd-4          —  unscored — no rice metadata (score it with score-bead)
+-  code    bd-4     —  unscored — no rice metadata (score it with score-bead)
     Decide the rollout — unblocks nothing
 ```
 
-Every row carries its rank, id, total, the four components the score was computed from, all three multipliers, a deadline clause when the bead has a due date, the title, and one clause naming what the answer unblocks. An unscored row keeps its place at the end of the same list with the reason: no `rice` metadata, no score inside a `rice` record, or scored against an older strategy version (that last one is ranked and marked `scored at strategy v1, current v2`).
-
-`--json` prints the same answer with every derived field, for a caller that needs to act on it.
+Every row carries its rank, scope, id, total, the four components the score was computed from, all three multipliers, a deadline clause when the bead has a due date, the title, and one clause naming what the answer unblocks — the scope tag keeps two workspaces that reuse a bead id apart. An unscored row keeps its place at the end of the same list with the reason: no `rice` metadata, no score inside a `rice` record, or scored against an older strategy version (that last one is ranked and marked `scored at strategy v2, current v3`). `--json` prints the same answer with every derived field, including each scope's status and the daily note, for a caller that needs to act on it.
 
 ### One item, not the list
 
-A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and prints a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own.
+A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own. [RECOMMEND.md](RECOMMEND.md) carries the four stated conditions, the `--why` rule and the `--bead` form for a bead the human named.
 
 ```bash
 node <skill-scripts>/recommend.mjs recommend --json          # the top row, structured
 node <skill-scripts>/recommend.mjs recommend --why "<line>"  # the block to say
 ```
 
-[RECOMMEND.md](RECOMMEND.md) carries the four stated conditions, the `--why` rule and the `--bead` form for a bead the human named.
-
 ## Ordering rules
 
 - **Ranked by total, descending.** The total is rounded to one decimal *before* ranking, so the number a reader sees is the number the order was decided by.
-- **Ties break on rice, then id.** `ln` flattens, so different dependent counts can reach the same one-decimal total; a fixed tie-break means two runs over one backlog print byte-identical output.
+- **Ties break on rice, then scope, then id.** `ln` flattens, so different dependent counts can reach the same one-decimal total; a fixed tie-break means two runs over one backlog print byte-identical output. The scope breaks the tie before the id because two workspaces may hold the same bead id.
 - **Unscored beads never earn a rank.** They are listed, not placed, and never compared by title or by priority.
 
 ## Workflow
@@ -109,21 +105,24 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 
 | Option | Effect |
 |---|---|
+| `--scopes <path>` | Scope list. Default `.agent-cortex/scopes.json` from the repository root, then `~/.agent-cortex/scopes.json`, then the current workspace alone. |
+| `--shared` | Output that leaves this machine: personal scopes are not read, and the daily note is withheld. |
 | `--file <path>` | Strategy file. Default `.agent-cortex/working-docs/strategy.md`, relative to the repository root. |
 | `--include-ideas` | Rank `kind:idea` beads too. They are excluded by default — see below. |
-| `--cwd <dir>` | Directory the strategy path and `bd` resolve from. |
-| `--json` | Print the report as JSON, with every derived field, for a caller that needs to act on it. |
+| `--cwd <dir>` | Directory the current workspace, its strategy path and `bd` resolve from. |
+| `--json` | Print the report as JSON, including each scope's status and the daily note, for a caller that needs to act on it. |
 
-`BD_PATH` pins the `bd` binary. Exit `0` means the queue was built, including a run that ranked nothing. Exit `1` means a `bd` call failed, and exit `2` means a malformed argument. The script makes no writes: the tracker calls are `bd list` and `bd dep list`, nothing else.
+`BD_PATH` pins the `bd` binary. Exit `0` means the queue was built, including a run that ranked nothing or skipped an unavailable scope; exit `1` means an internal failure, and exit `2` a malformed argument or a scope list that cannot be read. The script makes no writes: the tracker calls are `bd list` and `bd dep list`, nothing else, and a read-only scope receives no other call.
 
 ## What the queue leaves out
 
 - **Ideas, by default.** `kind:idea` beads are HITL by convention but deliberately unshaped: a RICE score on an idea measures a guess about a guess, and the idea backlog is ranked by `flesh-out-idea` instead. An idea that outranks a ripe decision would send the owner into an interview they did not choose. The count is printed so nothing is dropped silently; `--include-ideas` ranks them when the backlog is what the owner is working.
-- **Deferred beads.** A bead parked into the future stays out of the queue until that date passes, and the count is printed. The queue never adds a second deferral concept — `bd update <id> --defer` and `--status open` are the only ways to move it.
-- **Closed beads.** Finished work waits on nothing.
+- **Deferred and closed beads.** A bead deferred into the future stays out of the queue until that date passes, and the count is printed; the queue never adds a second deferral concept. Finished work waits on nothing.
 
 ## Red Flags
 
+- Red flag: writing to a scope the list did not mark writable, so personal work lands in a code workspace.
+- Red flag: reporting only the scopes that answered, so a missing workspace looks like an empty backlog — or inventing a daily note instead of quoting the strategy line.
 - Red flag: scoring a bead inside this skill, so the queue's order rests on an unreviewed number.
 - Red flag: ranking an unscored bead by its priority or its title, so the list looks complete and hides the gap.
 - Red flag: counting dependency paths instead of distinct beads, so a diamond inflates one row above its real value.
@@ -134,16 +133,17 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 ## Verification checklist
 
 - [ ] The report is one flat list: ranked rows first, unscored rows last, no sections.
-- [ ] Each row shows the rank, id, total, the four components, all three multipliers, the title and what the answer unblocks.
+- [ ] Every row is tagged with its scope, every unavailable scope is named with its reason, and the daily note above the list quotes the strategy line with its version and section.
+- [ ] Each row shows the rank, scope, id, total, the four components, all three multipliers, the title and what the answer unblocks.
 - [ ] A bead blocking three others ranks above an equal bead blocking none; an in-progress bead ranks above an equal not-started one.
 - [ ] A bead due in three days ranks above an otherwise identical bead with no due date; an overdue bead is flagged `OVERDUE` and carries the top tier of the table in force. Every row with a due date shows the due moment and the time left, only a ranked row shows a factor, and a changed tier moves the rank with no code change.
 - [ ] With no scores, the header says nothing can be ranked and every candidate is listed unscored with a reason.
-- [ ] Two identical runs printed byte-identical output.
-- [ ] The excluded idea and deferred counts were reported, or the header said there were none.
+- [ ] Two identical runs printed byte-identical output, and the excluded idea and deferred counts were reported, or the header said there were none.
 - [ ] A session that had to decide said one block: the bead, its components, both multipliers, the unblocked beads and the quoted strategy line — or one stated condition with its next step.
 
 ## See Also
 
+- [SCOPES.md](SCOPES.md) — the scope list: its file, its default, the writable rule and the privacy boundary.
 - [score-bead](../score-bead/SKILL.md) — owns the `rice` record this queue reads, and the band proposal.
 - [prioritise-work](../prioritise-work/SKILL.md) — owns the strategy file and its version.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — the tracker commands, and where operational state lives.

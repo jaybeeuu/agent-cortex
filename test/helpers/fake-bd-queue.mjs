@@ -65,3 +65,20 @@ export function fakeBd(beads) {
     throw new Error(`fake bd: unsupported call ${args.join(' ')}`);
   };
 }
+
+/**
+ * A `bd` runner keyed by scope name, so one test can give each configured workspace its own
+ * graph. The queue passes the scope with every call, so the same stub answers a workspace's
+ * `bd list` from that workspace's beads and never from another's.
+ * @param {Record<string, GraphBead[]>} graphs  Beads per scope name.
+ * @returns {(args: string[], scope: { name: string }) => Promise<string>}
+ */
+export function fakeBdByScope(graphs) {
+  /** @type {Map<string, (args: string[]) => Promise<string>>} */
+  const runners = new Map(Object.entries(graphs).map(([name, beads]) => [name, fakeBd(beads)]));
+  return async (args, scope) => {
+    const runner = runners.get(scope.name);
+    if (runner === undefined) throw new Error(`fake bd: no graph for scope "${scope.name}"`);
+    return await runner(args);
+  };
+}

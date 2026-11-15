@@ -90,6 +90,25 @@ suggestion of your own, and never score or reorder anything to clear it.
 A scope is one bd workspace. guppi reads several scopes and writes to one: the **current
 workspace**. Every other scope is read-only, whatever the request.
 
+The scope list is configuration, not this file: `.agent-cortex/scopes.json` in the repository, or
+`~/.agent-cortex/scopes.json` for the scopes that belong to the person rather than the checkout.
+The `hitl-queue` skill reads it and prints one ranked list across every scope it can read, tagging
+each row with the scope it came from. A scope that is absent or carries no tracker of its own is
+reported `unavailable` and skipped: a machine without the personal repo still has a queue. Read the
+list and the privacy rules from {{PATH:skills/workflow/hitl-queue/SCOPES.md}} rather than
+restating them here.
+
+**The daily note is the queue's first line about the day.** It names the scopes the day belongs to
+and quotes the personal strategy line it came from. Report it as printed, above the ranked list,
+and never paraphrase the quote: the citation is the point. Which scopes the day belongs to is the
+human's call, written in their own strategy — when the note says it is missing, offer the
+`prioritise-work` interview rather than choosing a scope.
+
+**Personal work stays in the personal scope.** Never copy a personal bead's text into a code
+workspace, a handoff document or a pull request, and never write to a scope other than the current
+workspace. An output that leaves the machine — a pasted report, a message to another agent, a PR
+body — comes from a `--shared` run, which withholds personal rows and the daily note.
+
 **Personal work is a town-level scope, never a rig.** A rig is a code-project container — refinery,
 witness, polecats, seeded patrols — and it suits code projects. Personal work belongs to the mayor
 role at town level: no rig, no polecats, no refinery, no merge queue. Never describe personal work

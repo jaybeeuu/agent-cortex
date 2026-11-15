@@ -181,17 +181,17 @@ path that fails quietly, which is wider than one test.
 
 ## `unclassified` — the escape hatch, before the class existed
 
-**Observed.** The unsafe instruction above was rejected before `unsafe-instruction` existed. The
-reviewer needed a label, so the finding went out as `defect:docs-drift`. Nothing in the text was
-stale and the fix had nothing to do with documentation: the aggregate then counted a documentation
-defect where the risk was a destructive command.
+**Observed.** The unsafe instruction above was rejected before `unsafe-instruction` existed. No
+class fit, so the reviewer forced the nearest one and the finding went out as `defect:docs-drift`.
+Nothing in the text was stale, the fix had nothing to do with documentation, and the aggregate
+counted a documentation defect where the risk was a destructive command. That mislabel is the case
+this section exists to correct.
 
-**Label.** `defect:unclassified` — and at that time the nearest real class, with the gap stated.
+**Label.** `defect:unclassified`
 
 **Rejection text.** "No class fits: this is an instruction that can destroy data or run a command,
-not stale text. Applied `defect:unclassified` and proposed an `unsafe-instruction` class in a bead;
-the nearest real class is recorded only because the vocabulary had no honest slot. Do not read this
-as a documentation defect."
+not stale text. Applied `defect:unclassified` alone and proposed an `unsafe-instruction` class in a
+bead. Do not read this as a documentation defect."
 
 **Why this class.** It is the escape hatch, and the obligation is the point: it was applied with a
 gap bead proposing the missing class. Without that bead it is a miscount with a nicer name, and the

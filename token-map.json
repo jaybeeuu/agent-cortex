@@ -8,7 +8,7 @@
     "decision": "Adopt the {{TOOL:name}} / {{PATH:name}} / {{SECTION:name}} grammar already standardised by ADR #63 (agents/README.md) rather than a dotted {{tool.name}} form. The uppercase type prefix disambiguates token kinds at a glance, keeps tool/path/section names in one namespace collision-free, and matches the token grammar skills are already written against.",
     "types": {
       "TOOL": "{{TOOL:<canonical tool key>}} — replaced at install time with the bound harness's tool name (see tools).",
-      "PATH": "{{PATH:<path key or relative path>}} — replaced at install time with the harness-resolved path (see paths).",
+      "PATH": "{{PATH:<path key or relative path>}} — replaced at install time with the harness-resolved path (see paths; a relative arg under skills/ is mapped onto the harness's staged shape first — see layouts).",
       "SECTION": "{{SECTION:<name>}} — replaced by the agent composer with <harness>/<name>.md section content. Not a global substitution; out of scope for token-map.json (see contract)."
     }
   },

@@ -156,13 +156,16 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
 3. For `TOOL`: look up the canonical key, replace with the harness name; null → drop/omit;
    unknown → throw.
 4. For `PATH`: named key → resolve from `paths`; anything else → resolve relative to
-   `plugin_root`; `${ENV_VAR}` values pass through verbatim for runtime expansion.
+   `plugin_root`, after mapping a `skills/…` row onto the harness's staged shape from
+   `layouts`; `${ENV_VAR}` values pass through verbatim for runtime expansion.
 5. Reject a map `version` they do not implement.
 
 ## Authoring guidance
 
 - Write tokens with the **canonical authoring names**: `Use {{TOOL:task}} to spawn
-  subagents`, `Read {{PATH:skills/workflow/plan/SKILL.md}}`.
+  subagents`, `Read {{PATH:skills/workflow/plan/SKILL.md}}`. Write a skill path row in this
+  repository's grouped form, `skills/<group>/<name>/<file>`; each install maps it onto the
+  shape it stages (see `layouts`), so one authored row names a real file on both harnesses.
 - Never embed a harness-specific name in the canonical sources (`agents/<name>/agent.md`,
   `skills/**/SKILL.md`) — that defeats the map. The materialised Claude plugin
   (`~/.agent-cortex/claude`), the generated `agents/*.agent.md` files, and any installed

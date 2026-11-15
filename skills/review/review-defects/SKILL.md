@@ -111,7 +111,8 @@ class that keeps appearing is a gap in the stage before this one.
 
 ## Worked examples
 
-`EXAMPLES.md` carries one real case per class, with the rejection text a reviewer should write.
+`EXAMPLES.md` carries a case per class, with the rejection text a reviewer should write. Eleven are
+real observations; `scope-creep` is a described situation, because no recorded case exists.
 
 ## See Also
 

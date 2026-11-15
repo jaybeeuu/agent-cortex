@@ -101,7 +101,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 | `--cwd <dir>` | Directory the strategy path and `bd` resolve from. |
 | `--json` | Print the report as JSON. |
 
-`BD_PATH` pins the `bd` binary. The script makes no writes: the tracker calls are `bd list` and `bd dep list`, nothing else.
+`BD_PATH` pins the `bd` binary. Exit `0` means the queue was built, including a run that ranked nothing. Exit `1` means a `bd` call failed, and exit `2` means a malformed argument. The script makes no writes: the tracker calls are `bd list` and `bd dep list`, nothing else.
 
 ## What the queue leaves out
 

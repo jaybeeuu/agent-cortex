@@ -1,5 +1,136 @@
 # Changelog
 
+## 2.10.0
+
+### Minor Changes
+
+- 9d86a2d: Rank bd due dates in the `hitl-queue`. A bead's `--due` date now multiplies its total by the
+  factor of the narrowest tier its remaining time fits inside — `1` more than a week out, `1.5`
+  within a week, `2` within two days, `4` within a day, `8` once overdue. The numbers live in the
+  strategy's new optional `## Deadline tiers` table, so tuning them is a strategy edit and a
+  `bump`, never a code change; a strategy without that section ranks on the documented default,
+  and `validate` fails a table it cannot read. Each row shows the deadline, the time left and the
+  factor, an overdue bead is flagged `OVERDUE` rather than lifted in silence, and a bead with no
+  due date keeps the neutral factor. A deferred bead stays out of the queue until its
+  `defer_until` passes, applying bd's own wake rule to bd's own field.
+- 32395f6: Re-rank at every item boundary, with the comparison and the reason on the trail. `hitl-queue` gains
+  `boundary.mjs`: one command compares the theme's next item (the highest-ranked bead under the epic)
+  against the queue's top item, prints **both stored totals**, and says whether the scores point to
+  `stay` or `switch`. It computes no score — the totals, components and multipliers are the queue's —
+  and it recommends rather than switches: a run with no `--decide` writes nothing.
+
+  `--decide stay|switch|move` records the human's answer as one timestamped `bd note` on the theme
+  bead, carrying both scores and the reason, so a later session reads why the theme was kept or left.
+  A decision that contradicts the scores needs `--reason`, so an unexplained override cannot reach
+  the trail. A missing theme item, a named bead outside the queue and an empty queue are stated with
+  one next step instead of guessed.
+
+  The guppi agent gains its work unit: the theme is the current epic, a boundary is the completion of
+  one item, and every boundary ends in the documented trade-off — continue in the theme, switch
+  because higher-priority work waits elsewhere, or move because a break improves the next item. It
+  never leaves a theme without both scores on screen, and a wish for a different order stays a
+  `prioritise-work` change.
+
+- 763869c: Recommend one item from the queue and the strategy. `hitl-queue` gains `recommend.mjs`: one command
+  prints the queue's top row — its total, the four RICE components, the unblocking and
+  work-in-progress multipliers, what the answer unblocks — together with the line of the committed
+  strategy that justifies it, quoted from the file and refused when the file does not contain it.
+  `--bead <id>` recommends the bead a human named and notes the queue's own top choice in one line.
+
+  The guppi agent now opens a session with that one block and waits, answers "what should we look
+  at?" through the same steps, and states a condition with one next step instead of choosing when the
+  strategy is missing, nothing is scored, the queue is empty, or a named bead is not in the queue. It
+  still proposes only: no execution, no claim, no merge, no push.
+
+- 64b5deb: Resolve `{{PATH:skills/...}}` rows to the tree each install stages, so an agent row
+  always names a file the install contains. Claude Code stages skills flat
+  (`skills/<name>/SKILL.md`), so a row authored against the repository's grouped tree lost
+  its group segment and rendered as a bare relative path that resolved to nothing. The
+  staged shape is now declared per harness in `token-map.json`'s `layouts` table, the
+  claude installer resolves agent rows against the plugin root as it already did for
+  skills, and `test/rendered-paths-resolve.test.mjs` stages both installs and fails when
+  any rendered row names a file that is not there.
+- bed237e: Make the HITL queue scope-aware: it reads several `bd` workspaces and keeps one writable.
+
+  A scope list — `.agent-cortex/scopes.json` in the repository, then
+  `~/.agent-cortex/scopes.json` (`AGENT_CORTEX_HOME` overrides the root), then one implicit scope
+  for the current workspace — names each workspace, its kind (`code`, `personal`, `ops`) and whether
+  it is read-only. `readOnly` defaults to `true`, and a scope is writable only when it is not marked
+  read-only _and_ it is the current workspace, so a copied list cannot widen the writable set on
+  another machine.
+
+  Every configured scope contributes rows, each tagged with its scope. A scope whose directory is
+  missing or carries no `.beads` of its own is reported `unavailable` with the reason and skipped —
+  bd resolves a workspace by walking up, so the marker check is what stops one workspace's beads
+  being attributed to another. A failed `bd` call marks its own scope unavailable; the run still
+  exits `0`. A read-only scope passes through one guard that refuses any call other than the two
+  reads the queue issues, so the boundary survives a later edit.
+
+  One daily scope note sits above the ranked list, quoting the `- daily: <scope>, …` line from the
+  personal scope's own strategy and citing its version, section and scope. `--shared`
+  (`AGENT_CORTEX_QUEUE_SHARED=1`) marks output that leaves the machine: personal scopes are not read,
+  so personal rows and the daily note are withheld and counted.
+
+  `prioritise-work` documents the daily line, and guppi's agent text explains scopes, the note and the
+  privacy boundary.
+
+### Patch Changes
+
+- 7418a33: Prove that a refused boundary decision records nothing. The two refusal cases in
+  `test/boundary.test.mjs` now assert an empty trail as well as the message: `--decide` with an
+  outcome outside the three, and a decision against the scores with no `--reason`. The fake `bd` in
+  `test/helpers/fake-bd-queue.mjs` already records every `note` call, so the shared harness now
+  returns the trail a refused build left behind. A comment that claimed the parser refused a
+  bad `--decide` before the builder saw it was wrong for this case: the command line does refuse it,
+  but the test calls the builder directly, and the builder checks the runtime value itself, because
+  the union is a compile-time constraint only. No behaviour changes.
+- d8de6ba: Harden the guppi interrupt render test so a label that no longer sits with its own body fails.
+
+  The order assertion read the four step markers by offset, and the marker was the label, so the test
+  proved the four labels were ordered and nothing more. A render could keep every label in place and
+  exchange the two bodies — the record's text under `Rewind.`, the rewind's under `Record.` — inverting
+  the record-before-rewind rule the protocol exists to protect, and the test stayed green.
+
+  The test now reads the steps as (label, body) pairs and asserts the pair order, so each label must
+  carry its own body. No shipped text changed.
+
+- fd9c9a3: Remove a landed closed bead's worktree when the merge deleted its remote branch.
+  `prune-worktrees.mjs` refused every such worktree with "has no remote-tracking
+  branch", because a merge that deletes the branch also removes the local branch's
+  upstream — so the one case the script exists to handle failed housekeeping. A
+  missing upstream is now distinguished by content: with the tree clean and the
+  base branch holding the branch's own version of every path the branch changed
+  since their merge base, the worktree and its local branch are removed; otherwise
+  the worktree is kept and the refusal names the risk. The test is one-sided, so a
+  base that moved on after the branch was cut still proves the branch landed. It
+  proves content and never history: a removed branch is discarded with every
+  commit the base does not contain, such as a reverted change or an empty commit.
+  The base is the remote's default branch, read from `origin/HEAD` and never
+  hardcoded, with `--base <ref>` as the documented override; an unresolvable base
+  keeps the worktree and refuses. A base that resolves to the worktree's own
+  commit also keeps the worktree and refuses, because comparing a branch with
+  itself proves nothing.
+
+  The content proof also survives a path git would otherwise rewrite. The branch's
+  changed paths are read with `git diff --name-only -z` and split on NUL, then fed
+  back under `git --literal-pathspecs`, so a path holding a non-ASCII byte, a double
+  quote, a backslash, a leading colon or a newline round-trips exactly. Without both,
+  such a path matched no pathspec, the second diff came back empty, and a branch the
+  base never received was removed with an empty reason list.
+
+- 74ac309: Correct two shipped-text contradictions in the review docs: a count word that the data beside it
+  disproved, and a promise the sibling file did not keep.
+
+  `review-report`'s trend example is headed "re-run after two more rejections" but prints eight class
+  deltas, and one label per rejection makes that eight rejections. The heading now says eight, and the
+  sample is the script's own output over a tracker that took eight more rejections: eight classes
+  moved, the other four stayed, and the first-pass rate held because the rejections re-ran four
+  changes that already held a review cohort.
+
+  `review-defects` promised `EXAMPLES.md` carried "one real case per class". The file holds twelve
+  cases and eleven real observations, with `scope-creep` described as a situation because no recorded
+  case exists. The promise now says what the file delivers rather than inventing a case to satisfy it.
+
 ## 2.9.0
 
 ### Minor Changes

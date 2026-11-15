@@ -2,12 +2,18 @@
 // The ranked HITL queue: one flat list of the beads that are waiting for a human
 // answer, ordered by how much each answer unblocks.
 //
-//   node queue.mjs queue [--file <strategy>] [--include-ideas] [--cwd <dir>] [--json]
+//   node queue.mjs queue [--scopes <path>] [--shared] [--file <strategy>]
+//                        [--include-ideas] [--cwd <dir>] [--json]
+//
+// The list spans several bd workspaces — the *scopes* — and tags every row with the scope
+// it came from. See `scopes.mjs` for the list, the read-only guard and the daily note.
 //
 // One multiplier does the load-bearing work: a bead that unblocks three others outranks
 // an otherwise identical bead that unblocks none, and the count is **transitive** — a
 // bead blocking A, which blocks B, which blocks C, unblocks three. The walk collects
 // distinct beads, never paths, so a diamond (one bead reached by two routes) counts once.
+// The walk runs inside the candidate's own workspace, so two scopes may reuse a bead id
+// without their graphs mixing.
 //
 // A bd `--due` date adds a second factor, and its numbers live in the strategy's
 // `## Deadline tiers` table rather than here: the narrower the remaining time, the higher
@@ -23,8 +29,9 @@
 // `skills/*/scripts` sits outside the check-no-sync scan; this script stays async anyway,
 // so the rule holds everywhere. BD_PATH pins a bd binary the way the score script does.
 //
-// Exit codes: 0 the queue was built, 1 the tracker call failed, 2 the caller asked for
-// something malformed.
+// Exit codes: 0 the queue was built — a scope it could not read is reported as
+// `unavailable`, never fatal; 1 an internal failure; 2 the caller asked for something
+// malformed.
 
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
@@ -32,10 +39,26 @@ import { pathToFileURL } from 'node:url';
 import { DEFAULT_FILE, resolveStrategyPath, validateStrategy } from '../../prioritise-work/scripts/strategy.mjs';
 import { DEFAULT_DEADLINE_TIERS, deadlineMultiplier, parseDeadlineTiers } from '../../prioritise-work/scripts/strategy.mjs';
 import { BD_PATH, RICE_KEY, errorMessage, makeRunner, storedRice } from '../../score-bead/scripts/rice.mjs';
+import {
+  DEFAULT_SCOPES_FILE,
+  HOME_ENV,
+  PERSONAL_KIND,
+  SHARED_ENV,
+  ScopeError,
+  ScopeWriteError,
+  emptyNote,
+  guardRunner,
+  readDailyNote,
+  readScopeConfig,
+  unavailableReason,
+} from './scopes.mjs';
 
 /** @typedef {import('../../score-bead/scripts/rice.mjs').StoredRice} StoredRice */
 /** @typedef {import('../../prioritise-work/scripts/strategy.mjs').DeadlineTier} DeadlineTier */
+/** @typedef {import('./scopes.mjs').DailyNote} DailyNote */
+/** @typedef {import('./scopes.mjs').Scope} Scope */
 /** @typedef {(args: string[]) => Promise<string>} Runner */
+/** @typedef {(args: string[], scope: Scope) => Promise<string>} ScopedRunner */
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
@@ -75,11 +98,12 @@ export class QueueError extends Error {}
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /**
- * One bead as `bd list` reports it.
+ * One bead as `bd list` reports it, plus the scope it was read from.
  * @typedef {object} Candidate
  * @property {string} id
  * @property {string} title
  * @property {string} status
+ * @property {string} scope
  * @property {StoredRice | undefined} rice
  * @property {number | undefined} dueAt       The `--due` moment, epoch milliseconds.
  * @property {number | undefined} deferUntil  The `--defer` wake moment, epoch milliseconds.
@@ -90,6 +114,7 @@ export class QueueError extends Error {}
  * @typedef {object} QueueRow
  * @property {number | undefined} rank           Undefined for an unscored row.
  * @property {string} id
+ * @property {string} scope
  * @property {string} title
  * @property {string} status
  * @property {boolean} inProgress
@@ -110,10 +135,26 @@ export class QueueError extends Error {}
  */
 
 /**
+ * One configured scope, as the report publishes it. `name` and `path` are null for a
+ * withheld scope: they identify a workspace the reader may not see.
+ * @typedef {object} ScopeStatus
+ * @property {string | null} name
+ * @property {string} kind
+ * @property {boolean} readOnly
+ * @property {boolean} writable
+ * @property {string | null} path
+ * @property {'available' | 'unavailable' | 'withheld'} status
+ * @property {string | undefined} reason
+ */
+
+/**
  * The whole answer.
  * @typedef {object} QueueReport
  * @property {{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[] }} strategy
- * @property {{ ranked: number, unscored: number, excludedIdeas: number, excludedDeferred: number }} counts
+ * @property {'local' | 'shared'} invocation
+ * @property {ScopeStatus[]} scopes
+ * @property {DailyNote} today
+ * @property {{ ranked: number, unscored: number, excludedIdeas: number, excludedDeferred: number, availableScopes: number, unavailableScopes: number, withheldScopes: number }} counts
  * @property {QueueRow[]} rows                   Ranked rows first, then unscored rows.
  */
 
@@ -276,8 +317,9 @@ export function createDependentReader(bd) {
 }
 
 /**
- * The candidates: every open bead carrying `execution:hitl`. Closed beads are bd's own
- * default filter; an idea is unshaped, so it is counted and left out unless asked for.
+ * The candidates in one scope: every open bead carrying `execution:hitl`. Closed beads are
+ * bd's own default filter; an idea is unshaped, so it is counted and left out unless asked
+ * for.
  *
  * A deferral is bd's own field and bd's own rule, so the queue reads it rather than
  * inventing a second one. `bd ready` wakes a bead whose `defer_until` has passed, but
@@ -286,11 +328,12 @@ export function createDependentReader(bd) {
  * A `deferred` bead with no readable wake moment stays out: nothing says it woke.
  * @param {object} options
  * @param {Runner} options.bd
+ * @param {string} options.scope                  The scope name every row is tagged with.
  * @param {boolean} options.includeIdeas
  * @param {number} options.now  Epoch milliseconds the deferral is judged against.
  * @returns {Promise<{ candidates: Candidate[], excludedIdeas: number, excludedDeferred: number }>}
  */
-async function readCandidates({ bd, includeIdeas, now }) {
+async function readCandidates({ bd, scope, includeIdeas, now }) {
   const stdout = await bd(['list', '-l', HITL_LABEL, '--json', '--limit', '0']);
   const rows = parseJsonArray(stdout, `bd list -l ${HITL_LABEL} --json`);
 
@@ -318,6 +361,7 @@ async function readCandidates({ bd, includeIdeas, now }) {
     }
     candidates.push({
       id,
+      scope,
       title: asString(record.title) ?? id,
       status,
       rice: storedRice(record.metadata),
@@ -355,39 +399,154 @@ async function readStrategy({ file, cwd }) {
   };
 }
 
+// ─── Scopes ───────────────────────────────────────────────────────────────────
+
+/**
+ * One scope's half of the report: what it contributed, or why it contributed nothing.
+ * @typedef {object} ScopeRead
+ * @property {Scope} scope
+ * @property {'available' | 'unavailable' | 'withheld'} status
+ * @property {string | undefined} reason
+ * @property {Candidate[]} candidates
+ * @property {number} excludedIdeas
+ * @property {number} excludedDeferred
+ */
+
+/**
+ * Read every configured scope.
+ *
+ * Two scopes never reach the tracker: a scope whose workspace is missing or uninitialised
+ * is `unavailable` with the reason, and a personal scope is `withheld` in a shared
+ * invocation — not read, so nothing personal is even loaded, let alone printed. A bd call
+ * that fails marks its own scope unavailable and leaves the other scopes alone. A refused
+ * write is the one error that propagates: it is a defect in this script, not in the machine.
+ *
+ * @param {object} options
+ * @param {ScopedRunner} options.bd
+ * @param {Scope[]} options.scopes
+ * @param {boolean} options.includeIdeas
+ * @param {number} options.now                  Epoch milliseconds the deferral is judged against.
+ * @param {boolean} options.shared
+ * @returns {Promise<ScopeRead[]>}
+ */
+async function readScopes({ bd, scopes, includeIdeas, now, shared }) {
+  /** @type {ScopeRead[]} */
+  const reads = [];
+
+  for (const scope of scopes) {
+    /** @type {ScopeRead} */
+    const empty = { scope, status: 'unavailable', reason: undefined, candidates: [], excludedIdeas: 0, excludedDeferred: 0 };
+
+    if (shared && scope.kind === PERSONAL_KIND) {
+      reads.push({ ...empty, status: 'withheld', reason: 'personal scope, withheld in a shared invocation' });
+      continue;
+    }
+
+    const reason = await unavailableReason(scope);
+    if (reason !== undefined) {
+      reads.push({ ...empty, reason });
+      continue;
+    }
+
+    try {
+      const read = await readCandidates({ bd: guardRunner(scope, bd), scope: scope.name, includeIdeas, now });
+      reads.push({ ...empty, ...read, status: 'available' });
+    } catch (error) {
+      if (error instanceof ScopeWriteError) throw error;
+      reads.push({ ...empty, reason: `bd failed: ${errorMessage(error)}` });
+    }
+  }
+
+  return reads;
+}
+
 // ─── Queue ────────────────────────────────────────────────────────────────────
 
 /**
- * Build the queue: read the candidates, derive each row, then order them.
+ * One scope as the report publishes it.
  *
- * The order is total (desc), then stored score (desc), then id (asc). A tie is reachable
- * because the total is rounded and because the logarithm flattens: `ln` maps different
- * dependent counts onto the same one-decimal total. The tie-break is fixed, so two runs
- * over one backlog print byte-identical output — a queue that reordered itself between
- * reads could not be trusted to say what to do first.
+ * A withheld scope publishes no `name` and no `path`. Both identify the workspace a shared
+ * invocation is not allowed to see: a path encodes the home directory, and a name is
+ * whatever the owner called that workspace, so publishing either one while claiming the
+ * scope is withheld is a partial disclosure. `kind`, `readOnly` and `writable` stay,
+ * because the withholding rule keys on `kind` and the header already counts the withheld
+ * scopes — those disclose only that a personal scope exists, which the count says anyway.
+ * @param {ScopeRead} read @returns {ScopeStatus}
+ */
+function publishedScope(read) {
+  const withheld = read.status === 'withheld';
+  return {
+    name: withheld ? null : read.scope.name,
+    kind: read.scope.kind,
+    readOnly: read.scope.readOnly,
+    writable: read.scope.writable,
+    path: withheld ? null : read.scope.path,
+    status: read.status,
+    reason: read.reason,
+  };
+}
+
+/**
+ * Build the queue: read every scope, derive each row, then order them.
+ *
+ * The order is total (desc), then stored score (desc), then scope name, then id (both
+ * asc). A tie is reachable because the total is rounded and because the logarithm
+ * flattens: `ln` maps different dependent counts onto the same one-decimal total. The
+ * tie-break is fixed, and the scope name breaks it before the id because two workspaces
+ * may hold the same bead id, so two runs over one backlog print byte-identical output — a
+ * queue that reordered itself between reads could not be trusted to say what to do first.
  *
  * An unscored row keeps its place in the list, after the ranked rows, and carries the
  * reason. Nothing is dropped silently and no score is invented: the gap is the answer.
  *
  * @param {object} options
- * @param {Runner} options.bd
+ * @param {ScopedRunner} [options.bd]           The tracker; defaults to one bd call per scope.
  * @param {string | undefined} [options.file]   Strategy path; defaults to the documented default.
+ * @param {string | undefined} [options.scopesFile] Scope list; defaults to the documented default.
  * @param {string} [options.cwd]
  * @param {boolean} [options.includeIdeas]
  * @param {number} [options.now]  Epoch milliseconds the deadlines are measured from.
  *                               Injectable so a tier boundary test is deterministic.
+ * @param {Scope[]} [options.scopes]            An already-resolved scope list, for a caller.
+ * @param {boolean} [options.shared]            Output that will leave this machine.
  * @returns {Promise<QueueReport>}
  */
-export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas = false, now = Date.now() }) {
-  const [strategy, { candidates, excludedIdeas, excludedDeferred }] = await Promise.all([
+export async function buildQueue({
+  bd,
+  file,
+  scopesFile,
+  cwd = process.cwd(),
+  includeIdeas = false,
+  scopes,
+  shared = false,
+  now = Date.now(),
+}) {
+  const runBd = bd ?? (async (args, scope) => await makeRunner(BD_PATH, scope.path)(args));
+  const scopeList = scopes ??
+    (await readScopeConfig({ cwd, ...(scopesFile === undefined ? {} : { file: scopesFile }) })).scopes;
+
+  const [strategy, reads, today] = await Promise.all([
     readStrategy({ file, cwd }),
-    readCandidates({ bd, includeIdeas, now }),
+    readScopes({ bd: runBd, scopes: scopeList, includeIdeas, shared, now }),
+    shared ? Promise.resolve({ ...emptyNote('withheld in a shared invocation'), withheld: true }) : readDailyNote(scopeList),
+
   ]);
-  const dependentsOf = createDependentReader(bd);
+
+  /** @type {Map<string, ReturnType<typeof createDependentReader>>} */
+  const readers = new Map();
+  for (const read of reads) {
+    if (read.status !== 'available') continue;
+    readers.set(read.scope.name, createDependentReader(guardRunner(read.scope, runBd)));
+  }
+
+  const candidates = reads.flatMap((read) => read.candidates);
+  const excludedIdeas = reads.reduce((total, read) => total + read.excludedIdeas, 0);
+  const excludedDeferred = reads.reduce((total, read) => total + read.excludedDeferred, 0);
 
   /** @type {QueueRow[]} */
   const rows = [];
   for (const candidate of candidates) {
+    const dependentsOf = /** @type {ReturnType<typeof createDependentReader>} */ (readers.get(candidate.scope));
     const dependents = await dependentsOf(candidate.id);
     const live = [...dependents.values()]
       .filter((dependent) => dependent.status !== CLOSED_STATUS)
@@ -409,6 +568,7 @@ export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas =
     rows.push({
       rank: undefined,
       id: candidate.id,
+      scope: candidate.scope,
       title: candidate.title.replace(/\s+/g, ' ').trim(),
       status: candidate.status,
       inProgress,
@@ -442,7 +602,7 @@ export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas =
       if (byTotal !== 0) return byTotal;
       const byScore = /** @type {number} */ (b.score) - /** @type {number} */ (a.score);
       if (byScore !== 0) return byScore;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      return compareScopeThenId(a, b);
     });
   ranked.forEach((row, index) => {
     row.rank = index + 1;
@@ -450,18 +610,36 @@ export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas =
 
   const unscored = rows
     .filter((row) => row.total === undefined)
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    .sort(compareScopeThenId);
+
+  const available = reads.filter((read) => read.status === 'available').length;
 
   return {
     strategy,
+    invocation: shared ? 'shared' : 'local',
+    scopes: reads.map(publishedScope),
+    today,
     counts: {
       ranked: ranked.length,
       unscored: unscored.length,
       excludedIdeas,
       excludedDeferred,
+      availableScopes: available,
+      unavailableScopes: reads.filter((read) => read.status === 'unavailable').length,
+      withheldScopes: reads.filter((read) => read.status === 'withheld').length,
     },
     rows: [...ranked, ...unscored],
   };
+}
+
+/**
+ * The tie-break two workspaces both reach: the scope name first, because two workspaces may
+ * hold the same bead id, then the id. Stable and total, so one backlog prints one order.
+ * @param {QueueRow} a @param {QueueRow} b @returns {number}
+ */
+function compareScopeThenId(a, b) {
+  if (a.scope !== b.scope) return a.scope < b.scope ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
@@ -558,35 +736,79 @@ export function formatUnblocks(row) {
 }
 
 /**
- * Render the queue as text: a header naming the formula, then one block per row — its
- * numbers, then its title and what the answer unblocks.
+ * The scope summary for the header: how many scopes the run had, and how many it could not
+ * read. A scope that could not be read is counted in the open, never quietly dropped.
+ * @param {QueueReport['counts']} counts @returns {string}
+ */
+function scopeSummary(counts) {
+  const total = counts.availableScopes + counts.unavailableScopes + counts.withheldScopes;
+  const parts = [plural(total, 'scope')];
+  if (counts.unavailableScopes > 0) parts.push(`${counts.unavailableScopes} unavailable`);
+  if (counts.withheldScopes > 0) parts.push(`${counts.withheldScopes} withheld`);
+  return parts.join(', ');
+}
+
+/**
+ * The daily scope note, above the list: which scopes the day belongs to, and the strategy
+ * line that says so. A shared invocation withholds it, because the quote is personal
+ * strategy text; nothing personal is read, let alone printed, off this machine.
+ * @param {DailyNote} today @returns {string}
+ */
+export function renderToday(today) {
+  if (today.withheld === true) return 'today · withheld (shared invocation) — personal strategy text';
+  if (today.reason !== undefined) return `today · no daily note — ${today.reason}`;
+
+  const names = today.scopes.length === 0 ? 'unnamed scopes' : today.scopes.join(', ');
+  const version = today.strategyVersion === undefined ? 'strategy unknown' : `strategy v${today.strategyVersion}`;
+  const section = today.section === undefined ? '' : `, "## ${today.section}"`;
+  return `today · ${names} — "${today.line}" (${version}${section}, scope ${today.scopeName})`;
+}
+
+/**
+ * The scopes that contributed nothing, one clause each, so a missing personal workspace is
+ * visible instead of looking like an empty backlog.
+ * @param {QueueReport} report @returns {string}
+ */
+function unavailableLine(report) {
+  const quiet = report.scopes.filter((scope) => scope.status === 'unavailable');
+  if (quiet.length === 0) return '';
+  return `unavailable: ${quiet.map((scope) => `${scope.name} (${scope.path}) — ${scope.reason ?? 'unknown'}`).join('; ')}\n`;
+}
+
+/**
+ * Render the queue as text: a header naming the formula and the scopes, the daily scope
+ * note, then one block per row — its scope tag and numbers, then its title and what the
+ * answer unblocks.
  * @param {QueueReport} report @returns {string}
  */
 export function renderQueue(report) {
-  const { counts, strategy, rows } = report;
+  const { counts, strategy, rows, today } = report;
   const strategyLabel = strategy.version === undefined ? 'strategy unknown' : `strategy v${strategy.version}`;
+  const scopes = scopeSummary(counts);
 
-  if (rows.length === 0) {
-    const excluded = formatExcluded(counts);
-    return `HITL decision queue · no open ${HITL_LABEL} beads\n${excluded}`;
+  const head = rows.length === 0
+    ? [`HITL decision queue · no open ${HITL_LABEL} beads · ${scopes}`, renderToday(today)]
+    : [
+        `HITL decision queue · ${counts.ranked} ranked, ${counts.unscored} unscored · ${scopes} · ${strategyLabel}`,
+        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last',
+        renderToday(today),
+      ];
+
+  const excluded = formatExcluded(counts);
+  const unavailable = unavailableLine(report);
+  const hasNoScore = counts.ranked === 0 && rows.length > 0;
+  for (const line of [excluded, unavailable]) if (line !== '') head.push(line.trimEnd());
+  if (hasNoScore) {
+    head.push('no RICE score on any candidate — nothing can be ranked; score one with score-bead, then re-run');
   }
+  if (rows.length === 0) return `${head.join('\n')}\n`;
 
   const rankWidth = Math.max(1, String(counts.ranked).length);
+  const scopeWidth = Math.max(...rows.map((row) => row.scope.length));
   const idWidth = Math.max(...rows.map((row) => row.id.length));
   const totalWidth = Math.max(...rows.map((row) => (row.total === undefined ? 1 : row.total.toFixed(1).length)));
 
-  const lines = [
-    `HITL decision queue · ${counts.ranked} ranked, ${counts.unscored} unscored · ${strategyLabel}`,
-    'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then id · unscored last',
-  ];
-  const excluded = formatExcluded(counts);
-  if (excluded !== '') lines.push(excluded.trimEnd());
-  if (counts.ranked === 0) {
-    lines.push(
-      'no RICE score on any candidate — nothing can be ranked; score one with score-bead, then re-run',
-    );
-  }
-  lines.push('');
+  const lines = [...head, ''];
 
   for (const row of rows) {
     const rank = row.rank === undefined ? '-' : String(row.rank);
@@ -597,7 +819,8 @@ export function renderQueue(report) {
       : formatNumbers(row);
     const stale = row.stale ? `  (scored at strategy v${row.scoredAtVersion}, current v${strategy.version})` : '';
     lines.push(
-      `${right(rank, rankWidth)}  ${row.id.padEnd(idWidth)}  ${right(total, totalWidth)}  ${numbers}${stale}`,
+      `${right(rank, rankWidth)}  ${row.scope.padEnd(scopeWidth)}  ${row.id.padEnd(idWidth)}  ` +
+        `${right(total, totalWidth)}  ${numbers}${stale}`,
     );
     lines.push(`    ${row.title} — ${formatUnblocks(row)}`);
   }
@@ -639,36 +862,46 @@ export function formatExcluded(counts) {
 /** @type {readonly string[]} */
 export const COMMANDS = /** @type {const} */ (['queue']);
 
-const USAGE = `Usage: node queue.mjs queue [--file <path>] [--include-ideas] [--cwd <dir>] [--json]
+const USAGE = `Usage: node queue.mjs queue [--scopes <path>] [--shared] [--file <path>]
+                            [--include-ideas] [--cwd <dir>] [--json]
 
-  queue   Rank the open ${HITL_LABEL} beads into one list: RICE × (1 + ln(1 + dependents))
-          × 1.5 when in progress, × the strategy's deadline factor at the bead's --due.
+  queue   Rank the open ${HITL_LABEL} beads from every configured scope into one list:
+          RICE × (1 + ln(1 + dependents)) × 1.5 when in progress, × the strategy's
+          deadline factor at the bead's --due. Each row carries the scope it came from.
           A bead with no score is listed as unscored, never guessed.
 
 Options:
+  --scopes <path>   Scope list (default: ${DEFAULT_SCOPES_FILE} from the repository root,
+                    then ~/.agent-cortex/scopes.json, then the current workspace alone)
+  --shared          Output that leaves this machine: personal scopes are not read
   --file <path>     Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)
   --include-ideas   Rank ${IDEA_LABEL} beads too (they are excluded by default)
-  --cwd <dir>       Directory the strategy path and bd resolve from
+  --cwd <dir>       Directory the strategy, scope paths and bd resolve from
   --json            Print the report as JSON
   -h, --help        Show this text
 
 Environment:
-  BD_PATH   bd binary (default: bd)
+  BD_PATH                    bd binary (default: bd)
+  ${HOME_ENV}         Install root the user-level scope list is read from
+  ${SHARED_ENV}   Set to 1 to run as a shared invocation
 `;
 
 /**
  * Parse the CLI's argv.
  * @param {string[]} argv
- * @returns {{ command: string, file?: string, includeIdeas: boolean, cwd: string, json: boolean }}
+ * @returns {{ command: string, file?: string, scopesFile?: string, includeIdeas: boolean, shared: boolean, cwd: string, json: boolean }}
  */
 export function parseArgs(argv) {
   /** @type {string | undefined} */
   let command;
   /** @type {string | undefined} */
   let file;
+  /** @type {string | undefined} */
+  let scopesFile;
   let cwd = process.cwd();
   let json = false;
   let includeIdeas = false;
+  let shared = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -680,10 +913,15 @@ export function parseArgs(argv) {
       includeIdeas = true;
       continue;
     }
-    if (arg === '--file' || arg === '--cwd') {
+    if (arg === '--shared') {
+      shared = true;
+      continue;
+    }
+    if (arg === '--file' || arg === '--cwd' || arg === '--scopes') {
       const value = argv[++i];
       if (value === undefined) throw new UsageError(`${arg} needs a value`);
       if (arg === '--cwd') cwd = value;
+      else if (arg === '--scopes') scopesFile = value;
       else file = value;
       continue;
     }
@@ -697,7 +935,15 @@ export function parseArgs(argv) {
   }
 
   if (command === undefined) throw new UsageError(`a command is required: ${COMMANDS.join(', ')}`);
-  return { command, ...(file === undefined ? {} : { file }), includeIdeas, cwd, json };
+  return {
+    command,
+    ...(file === undefined ? {} : { file }),
+    ...(scopesFile === undefined ? {} : { scopesFile }),
+    includeIdeas,
+    shared,
+    cwd,
+    json,
+  };
 }
 
 /**
@@ -705,7 +951,7 @@ export function parseArgs(argv) {
  * @param {string[]} options.argv                        CLI arguments (without node/script).
  * @param {(chunk: string) => void} [options.write]        stdout sink; injectable for tests.
  * @param {(chunk: string) => void} [options.writeError]   stderr sink; injectable for tests.
- * @param {{ bd?: Runner }} [options.deps]                 Collaborators; injectable for tests.
+ * @param {{ bd?: ScopedRunner }} [options.deps]           Collaborators; injectable for tests.
  * @returns {Promise<number>} process exit code.
  */
 export async function runCli({
@@ -727,20 +973,30 @@ export async function runCli({
     return 2;
   }
 
-  const bd = deps.bd ?? makeRunner(BD_PATH, options.cwd);
+  const bd = deps.bd ?? (async (args, scope) => await makeRunner(BD_PATH, scope.path)(args));
+  const shared = options.shared || isTruthy(process.env[SHARED_ENV]);
+
   try {
     const report = await buildQueue({
       bd,
       cwd: options.cwd,
       includeIdeas: options.includeIdeas,
+      shared,
       ...(options.file === undefined ? {} : { file: options.file }),
+      ...(options.scopesFile === undefined ? {} : { scopesFile: options.scopesFile }),
     });
     write(options.json ? `${JSON.stringify(report, null, 2)}\n` : renderQueue(report));
     return 0;
   } catch (error) {
+    // A scope list that cannot be read is the caller's mistake; anything else is a defect.
     writeError(`queue failed: ${errorMessage(error)}\n`);
-    return 1;
+    return error instanceof ScopeError ? 2 : 1;
   }
+}
+
+/** @param {string | undefined} value @returns {boolean} */
+function isTruthy(value) {
+  return value !== undefined && ['1', 'true', 'yes'].includes(value.trim().toLowerCase());
 }
 
 // Only run the CLI when invoked directly, so tests can import the module.

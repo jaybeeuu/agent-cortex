@@ -30,6 +30,10 @@ import {
 const tempRoot = createTempRoot('hitl-queue-');
 const execFileAsync = promisify(execFile);
 
+// The scope list falls back to the user-level file, so point that at the temp root: the
+// suite must never read, or depend on, the machine's own ~/.agent-cortex.
+process.env.AGENT_CORTEX_HOME = await tempRoot.createWorkspace();
+
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'skills', 'workflow', 'hitl-queue', 'scripts', 'queue.mjs');
 const HELPER = join(REPO_ROOT, 'test', 'helpers', 'fake-bd-queue.mjs');
@@ -77,6 +81,15 @@ async function writeStrategy(workspace, version = 2, tiers) {
 }
 
 /**
+ * Mark a directory as a bd workspace. The queue reads a scope only when it carries its own
+ * `.beads`, because bd resolves a workspace by walking up — see `scopes.mjs`.
+ * @param {string} workspace
+ */
+async function markWorkspace(workspace) {
+  await mkdir(join(workspace, '.beads'), { recursive: true });
+}
+
+/**
  * Build the queue over a graph, in a fresh workspace with a valid strategy.
  * @param {object} options
  * @param {GraphBead[]} options.beads
@@ -87,6 +100,7 @@ async function writeStrategy(workspace, version = 2, tiers) {
  */
 async function queue({ beads, strategyVersion, includeIdeas, now, tiers }) {
   const workspace = await tempRoot.createWorkspace();
+  await markWorkspace(workspace);
   const file = await writeStrategy(workspace, strategyVersion, tiers);
   return await buildQueue({
     bd: fakeBd(beads),
@@ -483,14 +497,15 @@ describe('the emitted format', () => {
     assert.equal(
       renderQueue(report),
       [
-        'HITL decision queue · 2 ranked, 1 unscored · strategy v2',
-        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then id · unscored last',
+        'HITL decision queue · 2 ranked, 1 unscored · 1 scope · strategy v2',
+        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last',
+        'today · no daily note — no personal scope is configured, so there is no personal strategy to read a "daily:" line from',
         '',
-        '1  tst-a  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0',
+        '1  code  tst-a  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0',
         '    Ship the queue — unblocks tst-1, tst-2, tst-3',
-        '2  tst-b   2.0  rice 2.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0',
+        '2  code  tst-b   2.0  rice 2.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0',
         '    Decide the API shape — unblocks nothing',
-        '-  tst-c     —  unscored — no rice metadata (score it with score-bead)',
+        '-  code  tst-c     —  unscored — no rice metadata (score it with score-bead)',
         '    Decide the vendor — unblocks nothing',
         '',
       ].join('\n'),
@@ -544,6 +559,7 @@ describe('the command line', () => {
 
   it('prints byte-identical output on two identical runs', async () => {
     const workspace = await tempRoot.createWorkspace();
+    await markWorkspace(workspace);
     await writeStrategy(workspace);
     const stub = await makeStubBd(workspace, [
       { id: 'tst-a', title: 'Ship the queue', labels: ['execution:hitl'], rice: rice() },
@@ -556,11 +572,12 @@ describe('the command line', () => {
 
     assert.equal(first.stdout.split('\n').length, second.stdout.split('\n').length);
     assert.equal(first.stdout, second.stdout);
-    assert.match(first.stdout, /HITL decision queue · 2 ranked, 1 unscored · strategy v2/);
+    assert.match(first.stdout, /HITL decision queue · 2 ranked, 1 unscored · 1 scope · strategy v2/);
   });
 
   it('rejects an unknown command with exit 2 and an empty queue with exit 0', async () => {
     const workspace = await tempRoot.createWorkspace();
+    await markWorkspace(workspace);
     await writeStrategy(workspace);
     const stub = await makeStubBd(workspace, []);
 
@@ -575,7 +592,11 @@ describe('the command line', () => {
     assert.match(unknown.stderr, /unknown command "rank"/);
 
     const empty = await run({ workspace, stub });
-    assert.equal(empty.stdout, 'HITL decision queue · no open execution:hitl beads\n');
+    assert.equal(
+      empty.stdout,
+      'HITL decision queue · no open execution:hitl beads · 1 scope\n' +
+        'today · no daily note — no personal scope is configured, so there is no personal strategy to read a "daily:" line from\n',
+    );
   });
 
   it('loads the queue script from the flat plugin layout', async () => {
@@ -588,7 +609,7 @@ describe('the command line', () => {
 
     const { stdout } = await execFileAsync(process.execPath, [join(flat, 'hitl-queue', 'scripts', 'queue.mjs'), '--help']);
 
-    assert.match(stdout, /Rank the open execution:hitl beads into one list/);
+    assert.match(stdout, /Rank the open execution:hitl beads from every configured scope into one list/);
   });
 });
 

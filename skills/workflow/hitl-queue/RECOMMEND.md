@@ -13,7 +13,7 @@ on the block is the row's own.
 ## The three commands
 
 ```bash
-node <skill-scripts>/../../prioritise-work/scripts/strategy.mjs validate    # prints the rubric
+node <skill-scripts>/../../strategise/scripts/strategy.mjs validate    # prints the rubric
 node <skill-scripts>/recommend.mjs recommend --json     # the top row, structured
 node <skill-scripts>/recommend.mjs recommend --why "<one line of the rubric>"
 ```
@@ -60,7 +60,7 @@ queue top: tst-a · total 10.0 · Ship the decision queue
 ```
 
 That line is the whole of the disagreement. The human's choice stands, and a wish to see it first
-is a strategy change through `prioritise-work`, never a silent override.
+is a strategy change through `strategise`, never a silent override.
 
 ## The stated conditions
 
@@ -70,7 +70,7 @@ was printed, whichever answer it was.
 
 | First line | What it means | The step it offers |
 |---|---|---|
-| `No recommendation · no usable strategy` | The file is absent, or `validate` rejected it; every defect is listed | Write or fix it with `prioritise-work` |
+| `No recommendation · no usable strategy` | The file is absent, or `validate` rejected it; every defect is listed | Write or fix it with `strategise` |
 | `No recommendation · nothing is scored` | The queue holds beads, and not one carries a `rice` record | Score one bead with `score-bead` |
 | `No recommendation · the queue is empty` | No open `execution:hitl` bead exists; the excluded idea and deferred counts are printed | File the decision as an `execution:hitl` bead, or lift a deferral |
 | `No recommendation · <id> is not in the queue` | The bead the human named is not an open `execution:hitl` bead | Check it with `bd show`, then name one from the queue |

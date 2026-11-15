@@ -21,7 +21,7 @@ import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
 import { fakeQueueBd } from './helpers/fake-bd-queue.mjs';
-import { REQUIRED_SECTIONS } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import { UsageError } from '../skills/workflow/hitl-queue/scripts/queue.mjs';
 import {
   BOUNDARY_STATE,

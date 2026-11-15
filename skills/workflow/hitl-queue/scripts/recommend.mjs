@@ -23,7 +23,7 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { DEFAULT_FILE, resolveStrategyPath, validateStrategy } from '../../prioritise-work/scripts/strategy.mjs';
+import { DEFAULT_FILE, resolveStrategyPath, validateStrategy } from '../../strategise/scripts/strategy.mjs';
 import { BD_PATH, errorMessage, makeRunner } from '../../score-bead/scripts/rice.mjs';
 import {
   HITL_LABEL,
@@ -86,7 +86,7 @@ async function readStrategy(file) {
     text = await readFile(file, 'utf8');
   } catch (error) {
     if (/** @type {NodeJS.ErrnoException} */ (error).code === 'ENOENT') {
-      return { errors: ['no file at that path — write one with prioritise-work'] };
+      return { errors: ['no file at that path — write one with strategise'] };
     }
     throw error;
   }
@@ -301,7 +301,7 @@ export function renderRecommendation(recommendation) {
         'No recommendation · no usable strategy',
         `  file: ${recommendation.file}`,
         ...(recommendation.strategyErrors ?? []).map((error) => `  - ${error}`),
-        'next: write or fix the strategy with prioritise-work, then run this again',
+        'next: write or fix the strategy with strategise, then run this again',
       ].join('\n')
     }\n`;
   }

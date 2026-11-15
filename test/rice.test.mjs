@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
-import { REQUIRED_SECTIONS } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import {
   DEFAULT_BANDS,
   INCIDENT_PRIORITY,
@@ -33,7 +33,7 @@ const SCRIPT = join(REPO_ROOT, 'skills', 'workflow', 'score-bead', 'scripts', 'r
 const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
 
 /**
- * A filled strategy, built from the sections the prioritise-work validator requires.
+ * A filled strategy, built from the sections the strategise validator requires.
  * @param {object} [options]
  * @param {string} [options.version]
  * @param {string[]} [options.omit]
@@ -384,7 +384,7 @@ describe('the install layout', () => {
     const flat = join(workspace, 'skills');
     await mkdir(flat, { recursive: true });
     await cp(join(REPO_ROOT, 'skills', 'workflow', 'score-bead'), join(flat, 'score-bead'), { recursive: true });
-    await cp(join(REPO_ROOT, 'skills', 'workflow', 'prioritise-work'), join(flat, 'prioritise-work'), { recursive: true });
+    await cp(join(REPO_ROOT, 'skills', 'workflow', 'strategise'), join(flat, 'strategise'), { recursive: true });
 
     const { stdout } = await execFileAsync(process.execPath, [join(flat, 'score-bead', 'scripts', 'rice.mjs'), '--help']);
 

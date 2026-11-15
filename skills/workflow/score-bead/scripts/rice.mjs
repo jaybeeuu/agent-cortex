@@ -15,7 +15,7 @@
 // lands. P0 is an incident, so `band` neither proposes it nor touches a bead already at
 // P0 — that bead is refused before any proposal exists.
 //
-// The rubric is the strategy file owned by the prioritise-work skill. This script reads
+// The rubric is the strategy file owned by the strategise skill. This script reads
 // it through that skill's validator and resolver, so there is one definition of a valid
 // strategy and one way to find it. A missing or invalid strategy refuses the score before
 // the first tracker call, so a refusal writes nothing at all.
@@ -37,7 +37,7 @@ import {
   DEFAULT_FILE,
   resolveStrategyPath,
   validateStrategy,
-} from '../../prioritise-work/scripts/strategy.mjs';
+} from '../../strategise/scripts/strategy.mjs';
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
@@ -413,7 +413,7 @@ export async function scoreBead({
     strategyText = await readFile(strategyFile, 'utf8');
   } catch {
     throw new RiceError(
-      `${strategyFile} does not exist — write it with the prioritise-work skill, or pass --file <path>`,
+      `${strategyFile} does not exist — write it with the strategise skill, or pass --file <path>`,
     );
   }
   const strategy = validateStrategy(strategyText);

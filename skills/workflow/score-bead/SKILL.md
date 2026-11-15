@@ -5,7 +5,7 @@ description: Scores one bead RICE-style against the committed strategy and store
 
 # Score Bead
 
-Owns two things about one bead: the **RICE record** in its metadata, and a **band proposal** for its priority. The rubric the numbers are judged against is not this skill's — `prioritise-work` owns the strategy file, validates it and versions it.
+Owns two things about one bead: the **RICE record** in its metadata, and a **band proposal** for its priority. The rubric the numbers are judged against is not this skill's — `strategise` owns the strategy file, validates it and versions it.
 
 Score and band are two steps on purpose. `score` writes an auditable record; `band` only reads it and prints a proposal. A score is a judgement, so the priority it implies is reviewed before it lands. A script that re-prioritised the backlog silently would remove the review, not save it.
 
@@ -17,7 +17,7 @@ Score and band are two steps on purpose. `score` writes an auditable record; `ba
 
 ## When NOT to use
 
-- Setting or updating the strategy — use `prioritise-work`. This skill reads the rubric and never writes it.
+- Setting or updating the strategy — use `strategise`. This skill reads the rubric and never writes it.
 - Recording an idea for later — use `record-idea`.
 - Changing where a bead's state lives — use `bd-tool`.
 - Ordering the whole backlog into one list — that is the [hitl-queue](../hitl-queue/SKILL.md) skill's job; this skill scores one bead.
@@ -36,10 +36,10 @@ Components and total are both stored, so a reader can redo the arithmetic. The f
 
 ## Workflow
 
-1. **Check the strategy is valid.** Load `prioritise-work` and run its validator:
+1. **Check the strategy is valid.** Load `strategise` and run its validator:
 
 ```bash
-node <skill-scripts>/../../prioritise-work/scripts/strategy.mjs validate
+node <skill-scripts>/../../strategise/scripts/strategy.mjs validate
 ```
 
 A missing or malformed strategy stops here. `score` refuses in that state and writes nothing, so fixing the rubric is the only useful next action. The path above is the default (`.agent-cortex/working-docs/strategy.md` relative to the repository root); pass `--file <path>` to `score` when the repository keeps it elsewhere, and the same `--file` to the validator.
@@ -107,6 +107,6 @@ So a re-score never needs a note to explain the change. Write the new rationale,
 
 ## See Also
 
-- [prioritise-work](../../workflow/prioritise-work/SKILL.md) — owns the strategy file; run its `validate` before any score.
+- [strategise](../../workflow/strategise/SKILL.md) — owns the strategy file; run its `validate` before any score.
 - [hitl-queue](../hitl-queue/SKILL.md) — ranks the beads these scores belong to, and reads them back.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where the record lives, and why a bead holds operational state rather than the rubric.

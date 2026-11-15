@@ -452,7 +452,7 @@ it and it resumes from `bd ready`.
 feature into beads, guppi decides which feature that is. Ralph executes the work an agent can do;
 guppi helps with the work an agent cannot — design, ideation, prioritisation, human review and
 manual confirmations. It is resident and propose-only: it recommends the next item and names the
-reason, then loads `plan`, `grill-me`, `hitl-collab`, `flesh-out-idea` or `prioritise-work` for the
+reason, then loads `plan`, `grill-me`, `hitl-collab`, `flesh-out-idea` or `strategise` for the
 chosen item. It never executes AFK work, never merges and never pushes, and a disagreement with a
 priority opens a strategy review rather than a silent reorder. When that item is done it re-ranks
 at the boundary: the theme's next item against the queue's top item, both scores on screen, then one
@@ -465,7 +465,8 @@ matters.
 claude --agent agent-cortex:guppi
 ```
 
-Its authority is prioritisation, not action. `prioritise-work` owns the committed strategy file;
+Its authority is prioritisation, not action. `strategise` owns the committed strategy file, and
+`prioritise` is the score-then-rank sequence that refuses to run on an invalid one;
 `score-bead` records the score, and `hitl-queue` prints the order and recommends one item from it
 with the line of the strategy that justifies the choice. guppi reports them and never
 recomputes them. Personal work is a town-level bd scope — no rig, no polecats, no refinery, no merge

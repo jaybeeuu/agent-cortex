@@ -20,7 +20,7 @@ A queue is not a priority. The RICE score is `score-bead`'s judgement, the band 
 ## When NOT to use
 
 - Judging one bead's components — use `score-bead`. This skill reads a score, it never makes one.
-- Writing or bumping the rubric the score rests on — use `prioritise-work`.
+- Writing or bumping the rubric the score rests on — use `strategise`.
 - Choosing what to *build* next with an agent — `ralph` drains `execution:afk` beads, and ideas are ranked by `flesh-out-idea`.
 - Recording a new idea — use `record-idea`.
 
@@ -145,6 +145,6 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 
 - [SCOPES.md](SCOPES.md) — the scope list: its file, its default, the writable rule and the privacy boundary.
 - [score-bead](../score-bead/SKILL.md) — owns the `rice` record this queue reads, and the band proposal.
-- [prioritise-work](../prioritise-work/SKILL.md) — owns the strategy file and its version.
+- [strategise](../strategise/SKILL.md) — owns the strategy file and its version.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — the tracker commands, and where operational state lives.
 - [hitl-collab](../hitl-collab/SKILL.md) — the handoff document for a decision that needs more than an answer.

@@ -22,7 +22,7 @@ import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
 import { fakeBdByScope } from './helpers/fake-bd-queue.mjs';
-import { REQUIRED_SECTIONS } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import { buildQueue, renderQueue, renderToday } from '../skills/workflow/hitl-queue/scripts/queue.mjs';
 import {
   ScopeError,

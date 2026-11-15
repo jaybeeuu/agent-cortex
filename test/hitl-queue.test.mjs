@@ -19,7 +19,7 @@ import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
 import { fakeBd } from './helpers/fake-bd-queue.mjs';
-import { REQUIRED_SECTIONS } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import {
   buildQueue,
   dependentMultiplier,
@@ -603,7 +603,7 @@ describe('the command line', () => {
     const workspace = await tempRoot.createWorkspace();
     const flat = join(workspace, 'skills');
     await mkdir(flat, { recursive: true });
-    for (const name of ['hitl-queue', 'score-bead', 'prioritise-work']) {
+    for (const name of ['hitl-queue', 'score-bead', 'strategise']) {
       await cp(join(REPO_ROOT, 'skills', 'workflow', name), join(flat, name), { recursive: true });
     }
 

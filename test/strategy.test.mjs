@@ -1,4 +1,4 @@
-// Tests for skills/workflow/prioritise-work/scripts/strategy.mjs — the one validator and
+// Tests for skills/workflow/strategise/scripts/strategy.mjs — the one validator and
 // versioner for the prioritisation strategy file.
 //
 // The strategy is a file, and this script is the gate in front of it: a scorer reads the
@@ -21,13 +21,13 @@ import {
   REQUIRED_SECTIONS,
   parseDeadlineTiers,
   runCli,
-} from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+} from '../skills/workflow/strategise/scripts/strategy.mjs';
 
 const tempRoot = createTempRoot('strategy-');
 const execFileAsync = promisify(execFile);
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SCRIPT = join(REPO_ROOT, 'skills', 'workflow', 'prioritise-work', 'scripts', 'strategy.mjs');
+const SCRIPT = join(REPO_ROOT, 'skills', 'workflow', 'strategise', 'scripts', 'strategy.mjs');
 const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
 
 /**
@@ -593,7 +593,7 @@ describe('the deadline tiers', () => {
 
   it('ships a template whose table is the documented default', async () => {
     const template = await readFile(
-      join(REPO_ROOT, 'skills', 'workflow', 'prioritise-work', 'templates', 'strategy.md'),
+      join(REPO_ROOT, 'skills', 'workflow', 'strategise', 'templates', 'strategy.md'),
       'utf8',
     );
 

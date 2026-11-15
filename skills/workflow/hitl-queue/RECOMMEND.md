@@ -5,6 +5,8 @@ that one row — the same total, components and multipliers the queue computed, 
 strategy that justifies it — and states a condition instead of choosing whenever it cannot justify
 a row.
 
+Every run ends in one of five answers: the block, or one of the four conditions that replace it.
+
 It ranks nothing. The bead is `rows[0]` of the queue, or the bead the human named, and every number
 on the block is the row's own.
 

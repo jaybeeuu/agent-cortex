@@ -92,7 +92,9 @@ says that and names what to add — it never invents one.
 - **A shared invocation reads no personal scope at all.** `--shared`, or
   `AGENT_CORTEX_QUEUE_SHARED=1`, marks output that will leave this machine — a CI log, a pasted
   report, a handoff to another agent. Personal scopes are then `withheld`: not read, not ranked,
-  not quoted, and counted in the header so nothing disappears silently.
+  not quoted, and counted in the header so nothing disappears silently. **A withheld scope
+  publishes neither its name nor its path**, because both identify a workspace the reader may not
+  see: the header prints the count, and `--json` prints `null` for both fields.
 - **A withheld scope publishes no `name` and no `path`.** Both identify the workspace the reader
   may not see — a path encodes the home directory, and a name is whatever the owner called it —
   so `--json` carries `null` for both. `kind`, `readOnly` and `writable` remain, because the

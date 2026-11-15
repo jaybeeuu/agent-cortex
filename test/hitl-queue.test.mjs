@@ -261,7 +261,12 @@ describe('a queue with no scores', () => {
       beads: [{ id: 'tst-a', title: 'Stale', labels: ['execution:hitl'], rice: rice({ strategyVersion: 2 }) }],
     });
 
-    assert.equal(rowFor(report, 'tst-a').stale, true);
+    const row = rowFor(report, 'tst-a');
+    assert.equal(row.stale, true);
+    // An older score is still a score: it takes a total and a rank, not an unscored slot.
+    assert.equal(row.total, 4.2);
+    assert.equal(row.rank, 1);
+    assert.equal(report.counts.ranked, 1);
     assert.match(
       renderQueue(report),
       /\(scored at strategy v2, current v3\)/,

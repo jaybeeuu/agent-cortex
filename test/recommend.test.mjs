@@ -81,6 +81,18 @@ async function writeStrategy(workspace, name = 'strategy.md') {
 }
 
 /**
+ * A workspace the queue reads as a scope: the directory carries its own `.beads`, because bd
+ * resolves a workspace by walking up, so a directory without one is not a workspace at all.
+ * See `skills/workflow/hitl-queue/SCOPES.md`.
+ * @returns {Promise<string>}
+ */
+async function makeWorkspace() {
+  const workspace = await tempRoot.createWorkspace();
+  await mkdir(join(workspace, '.beads'), { recursive: true });
+  return workspace;
+}
+
+/**
  * Two scored beads — one of which unblocks three — plus the three beads that wait on it.
  * `tst-a` wins on the dependent multiplier; `tst-b` is in progress and scores lower.
  * @returns {GraphBead[]}
@@ -105,7 +117,7 @@ function queueFixture() {
  * @returns {Promise<string>}
  */
 async function recommend({ beads, file, why = THEME, bead }) {
-  const workspace = await tempRoot.createWorkspace();
+  const workspace = await makeWorkspace();
   const strategyFile = file ?? (await writeStrategy(workspace));
   const recommendation = await buildRecommendation({
     bd: fakeBd(beads),
@@ -182,7 +194,7 @@ describe('one recommendation, from the queue and the strategy', () => {
 
 describe('the states that are stated instead of guessed', () => {
   it('states a missing strategy, names the file, and offers the strategy interview', async () => {
-    const workspace = await tempRoot.createWorkspace();
+    const workspace = await makeWorkspace();
     const rendered = await recommend({ beads: queueFixture(), file: join(workspace, 'absent.md') });
 
     assert.equal(
@@ -247,7 +259,7 @@ describe('the states that are stated instead of guessed', () => {
   });
 
   it('keeps the four conditions distinct: no state reads like another', async () => {
-    const workspace = await tempRoot.createWorkspace();
+    const workspace = await makeWorkspace();
     const states = [
       await recommend({ beads: queueFixture(), file: join(workspace, 'absent.md') }),
       await recommend({ beads: queueFixture().map(({ rice: _rice, ...bead }) => bead) }),
@@ -268,7 +280,7 @@ describe('the states that are stated instead of guessed', () => {
 
 describe('the justification is quoted, never invented', () => {
   it('refuses a quote the strategy file does not contain', async () => {
-    const workspace = await tempRoot.createWorkspace();
+    const workspace = await makeWorkspace();
     const strategyFile = await writeStrategy(workspace);
 
     await assert.rejects(
@@ -283,7 +295,7 @@ describe('the justification is quoted, never invented', () => {
   });
 
   it('refuses to render a recommendation with no line at all', async () => {
-    const workspace = await tempRoot.createWorkspace();
+    const workspace = await makeWorkspace();
     const strategyFile = await writeStrategy(workspace);
 
     const recommendation = await buildRecommendation({
@@ -361,7 +373,7 @@ describe('the command line', () => {
   }
 
   it('prints the block and exits 0, and exits 2 on a quote the file does not hold', async () => {
-    const workspace = await tempRoot.createWorkspace();
+    const workspace = await makeWorkspace();
     await writeStrategy(workspace);
     const stub = await makeStubBd(workspace, queueFixture());
 

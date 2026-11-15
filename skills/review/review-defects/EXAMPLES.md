@@ -1,9 +1,8 @@
 # Review defects — worked examples
 
-One case per class. Each shows what was observed, the label, and the rejection text to write. Six
-were observed in real review rounds and one in a code stage's check of its own change; `scope-creep`
-is described as a situation, because no recorded case exists, so you can match its shape without
-guessing at history.
+One case per class. Each shows what was observed, the label, and the rejection text to write. Eleven
+were observed in real review rounds; `scope-creep` is described as a situation, because no recorded
+case exists, so you can match its shape without guessing at history.
 
 ## `test-unproven` — the name claims a settle-time cleanup
 
@@ -120,3 +119,80 @@ before writing, and cover the empty-source case with a test."
 
 **Why this class.** The change may satisfy its own criteria fully. It also breaks behaviour nobody
 asked to change, which is a separate fact from `criteria-unmet`.
+
+## `unsafe-instruction` — a documented command that ran the reader's text
+
+**Observed.** A shipped skill documented `bd note <bead> "<entry>"` and told the reader to embed a
+free-text entry, including text the user had typed. Following it with an entry containing `$(…)`
+ran the substitution when the line was pasted, and an entry containing a `"` ended the quoted
+argument early and corrupted the note. The sentence had shipped for many releases and still
+described the command correctly: the command does record a note.
+
+**Label.** `defect:unsafe-instruction`
+
+**Rejection text.** "The note command takes free text through a double-quoted shell argument, so a
+`$(…)` in the entry executes and a `"` truncates the note. Write the entry with `--out` and pass it
+with `bd note --file`, and say why. A reader on an arbitrary machine pastes this line as written."
+
+**Why this class.** Not `docs-drift`: the text matches the command's behaviour. Not
+`style-violation`: no convention was broken. The defect is the consequence of following the text —
+data loss and code execution on a machine the author never sees.
+
+## `ambiguous-rule` — two plausible readings of one rule
+
+**Observed.** Two in one round. A bead described a runtime that supplies "mail, rigs and pane
+conventions" and said the persona behaves the same in every scope, so a reader could take "rigs" as
+true of personal work too; the real rule is that rigs are code-project containers and personal work
+is a town-level scope with no rig. Separately, a shipped doc printed a live substitution token of
+the `TOOL` kind — a full token, colon and key included — to illustrate the token grammar, and the
+token guard necessarily rejects a literal token in a shipped doc: the line read both as an example
+and as a token that must resolve.
+
+**Label.** `defect:ambiguous-rule`
+
+**Rejection text.** "Two readings are possible and the text picks neither. 'Mail, rigs and pane
+conventions' reads as true of personal work; state that rigs are code-project containers and that
+personal work is a town-level scope with no rig. The doc prints a literal substitution token of the
+`TOOL` kind, which the guard reads as unresolved; show the grammar without a literal token, or mark
+the line as an example the guard must skip."
+
+**Why this class.** Not `docs-drift`: nothing was stale — each statement was true of the code
+projects it described. The text can be read two ways, and the reader who takes the wrong one cannot
+tell from the words.
+
+## `silent-degradation` — a guard that reported success on the tree it never read
+
+**Observed.** A materialiser check walked one harness's generated tree for leftover substitution
+tokens and reported success, while the other harness's tree shipped a literal token to readers. The
+guard was real and its assertion genuine; it never looked at half the surface, so it reported "no
+offenders" for a tree it had not read. A second instance in the same area: a token row whose
+second-harness column was empty dropped the token silently, leaving a sentence with a hole in it
+and no warning.
+
+**Label.** `defect:silent-degradation`
+
+**Rejection text.** "The guard reads one harness's tree only; the other tree ships an unsubstituted
+token and the check passes. Walk every generated tree, and fail on an empty token row rather than
+dropping the token. A skipped check must not report success."
+
+**Why this class.** Not `test-cannot-fail`: the assertion would fail for a token in the tree it
+reads. The defect is the unread surface, plus a mapping that degrades to prose with no warning — a
+path that fails quietly, which is wider than one test.
+
+## `unclassified` — the escape hatch, before the class existed
+
+**Observed.** The unsafe instruction above was rejected before `unsafe-instruction` existed. No
+class fit, so the reviewer forced the nearest one and the finding went out as `defect:docs-drift`.
+Nothing in the text was stale, the fix had nothing to do with documentation, and the aggregate
+counted a documentation defect where the risk was a destructive command. That mislabel is the case
+this section exists to correct.
+
+**Label.** `defect:unclassified`
+
+**Rejection text.** "No class fits: this is an instruction that can destroy data or run a command,
+not stale text. Applied `defect:unclassified` alone and proposed an `unsafe-instruction` class in a
+bead. Do not read this as a documentation defect."
+
+**Why this class.** It is the escape hatch, and the obligation is the point: it was applied with a
+gap bead proposing the missing class. Without that bead it is a miscount with a nicer name, and the
+class is not a pass on the review.

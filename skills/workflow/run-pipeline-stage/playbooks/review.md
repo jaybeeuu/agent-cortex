@@ -40,8 +40,11 @@ bd update <id> --add-label defect:test-unproven
   `review-defects` pass `--all` and a query without the flag finds nothing. Two findings of
   different kinds are two `BLOCKING_ISSUES` entries and one label: the class of the finding that
   must be fixed first.
-- A class that is not on the closed list is a review defect in itself. Say so under
-  `BLOCKING_ISSUES` and use the nearest real class — never invent a `defect:` label.
+- When no class fits, apply `defect:unclassified`, say so under `BLOCKING_ISSUES`, and file a bead
+  proposing the class with this finding as its case. The escape hatch is not a pass: without the
+  gap bead it silently degrades the aggregate the feedback loop reads.
+- Never invent a `defect:` label, and never apply a class that does not fit — that is a review
+  defect in itself. `defect:unclassified` is the only honest way to say no class fits.
 - The review that confirms the fix removes the label
   (`bd update <id> --remove-label defect:test-unproven`) and records the removal in its trail
   entry. A closed defect is a trail fact, never a second class.

@@ -76,26 +76,26 @@ chores.
 
 ## The whole vocabulary
 
-Eight labels, one per class, spread over four changes. The defect section prints the top three and
+Twelve labels, one per class, spread over four changes. The defect section prints the top three and
 summarises the rest:
 
 ```
 Defects by class — `bd list --label-pattern 'defect:*' --all`
-  1. criteria-unmet  1 defect in 1 change · owners: implement-task/SKILL.md, create-task/SKILL.md
+  1. ambiguous-rule  1 defect in 1 change · owners: write-a-skill/SKILL.md
+     example: acme-5q.1
+  2. criteria-unmet  1 defect in 1 change · owners: implement-task/SKILL.md, create-task/SKILL.md
+     example: acme-5q.2
+  3. docs-drift      1 defect in 1 change · owners: maintain-agent-docs/SKILL.md, style-documentation/SKILL.md
      example: acme-5q.3
-  2. docs-drift      1 defect in 1 change · owners: maintain-agent-docs/SKILL.md, style-documentation/SKILL.md
-     example: acme-6q.3
-  3. missing-proof   1 defect in 1 change · owners: implement-task/SKILL.md, run-pipeline-stage/SKILL.md
-     example: acme-4q.3
-  8 unconfirmed defects across 4 changes. Top 3 of 8 classes.
+  12 unconfirmed defects across 4 changes. Top 3 of 12 classes.
 ```
 
-This is the owning-skill mapping in use. Each of the eight classes maps to at least one shipped
-skill, the report names the file to change rather than the symptom, and the suite fails if a mapped
-skill disappears or a vocabulary class has no owner.
+This is the owning-skill mapping in use. Each class maps to at least one shipped skill, the report
+names the file to change rather than the symptom, and the suite fails if a mapped skill disappears
+or a vocabulary class has no owner.
 
-`--json` prints all eight classes with their counts, their changes and their bead ids, for a caller
-that needs the whole table rather than the top three.
+`--json` prints every class with its count, its changes and its bead ids, for a caller that needs
+the whole table rather than the top three.
 
 ## With a previous report
 

@@ -112,18 +112,22 @@ async function report({ beads = [], defects = [], argv = [], gh = null, git = gi
 // ─── Vocabulary and mapping ───────────────────────────────────────────────────
 
 describe('vocabulary', () => {
-  it('reads the eight classes review-defects owns', async () => {
+  it('reads the twelve classes review-defects owns', async () => {
     const vocabulary = await readVocabulary(SCRIPT);
 
     assert.deepEqual(vocabulary.sort(), [
+      'ambiguous-rule',
       'criteria-unmet',
       'docs-drift',
       'missing-proof',
       'regression',
       'scope-creep',
+      'silent-degradation',
       'style-violation',
       'test-cannot-fail',
       'test-unproven',
+      'unclassified',
+      'unsafe-instruction',
     ]);
   });
 
@@ -200,10 +204,10 @@ describe('defect counts', () => {
 
     const { stdout, model } = await report({ beads: [], defects });
 
-    assert.equal(Object.keys(model.defects.byClass).length, 8);
-    assert.equal(model.defects.labelled, 8);
-    assert.match(stdout, /Top 3 of 8 classes\./);
-    assert.match(stdout, /8 unconfirmed defects across 8 changes\./);
+    assert.equal(Object.keys(model.defects.byClass).length, 12);
+    assert.equal(model.defects.labelled, 12);
+    assert.match(stdout, /Top 3 of 12 classes\./);
+    assert.match(stdout, /12 unconfirmed defects across 12 changes\./);
   });
 
   it('names the owning skill and two examples for each class it prints', async () => {

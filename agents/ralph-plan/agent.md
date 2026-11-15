@@ -24,6 +24,12 @@ Do **not** write anywhere else. No source files, no READMEs, no tracked docs, no
 ### 1. Load context
 Invoke the **beads** skill (set workspace root, run `bd prime`). Hold the output in memory.
 
+Then report the HITL queue: load the **hitl-queue** skill, run its `queue` subcommand, and report
+the list exactly as the script prints it, naming the top item — its id, its title, and what
+answering it unblocks. It is the first thing the session says, before any sub-agent is dispatched
+or any plan is proposed. When nothing is scored, report the unscored list and ask which bead to
+score rather than picking one by feel.
+
 If the input looks like a PRD (product requirements document), invoke the **prd-to-tasks** skill first — it handles exploration, user quizzing, and creates epics and task beads directly. Then continue from step 7 (Agree with the user).
 
 ### 2. Understand the request

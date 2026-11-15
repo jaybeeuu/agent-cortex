@@ -29,6 +29,7 @@ Task arrives
     ├── Deciding what to work on next? ─────→ guppi
     │   └── Strategy stale or missing? ────→ prioritise-work
     ├── Scoring or banding one bead? ──────→ score-bead
+    ├── Ranking the HITL decision queue? ──→ hitl-queue
     ├── Collaborating on HITL work? ────────→ guppi
     ├── Running beads / task execution? ────→ ralph
     │   └── Single stage? ─────────────────→ run-pipeline-stage

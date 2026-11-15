@@ -147,4 +147,5 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 - [plan](../../workflow/plan/SKILL.md) — shapes one feature into beads; this skill orders the beads that exist.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where operational state lives, and why a durable document does not belong there.
 - [score-bead](../../workflow/score-bead/SKILL.md) — turns this rubric into a RICE record on a bead.
+- [hitl-queue](../../workflow/hitl-queue/SKILL.md) — orders the open HITL beads by those scores, and marks a score older than this file.
 - [hitl-collab](../../workflow/hitl-collab/SKILL.md) — the handoff document that shares the working-docs root with the strategy.

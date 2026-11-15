@@ -325,10 +325,11 @@ function readPriority(value, beadId) {
 }
 
 /**
- * The bead's metadata record, as far as a reader may rely on it.
+ * The bead's metadata record, as far as a reader may rely on it. Exported so the queue
+ * reads a `rice` record through exactly the same lens that wrote it.
  * @param {unknown} metadata @returns {StoredRice | undefined}
  */
-function storedRice(metadata) {
+export function storedRice(metadata) {
   if (typeof metadata !== 'object' || metadata === null) return undefined;
   const value = /** @type {Record<string, unknown>} */ (metadata)[RICE_KEY];
   if (typeof value !== 'object' || value === null) return undefined;

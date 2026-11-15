@@ -112,6 +112,27 @@ function fixedNow() {
 }
 
 /**
+ * One workspace, one strategy and one in-memory tracker, with the trail the tracker received. A
+ * case reads what the boundary wrote instead of the shape of the call, so a refusal is proven by
+ * an empty trail and not by the absence of an assertion.
+ * @param {GraphBead[]} beads
+ * @returns {Promise<{
+ *   bd: (args: string[]) => Promise<string>,
+ *   notes: { id: string, text: string }[],
+ *   theme: string,
+ *   file: string,
+ *   cwd: string,
+ *   now: number,
+ * }>}
+ */
+async function harness(beads) {
+  const cwd = await makeWorkspace();
+  const file = await writeStrategy(cwd);
+  const { bd, state } = fakeQueueBd(beads);
+  return { bd, notes: state.notes, theme: THEME, file, cwd, now: fixedNow() };
+}
+
+/**
  * Build one boundary answer from a fixture graph.
  * @param {object} options
  * @param {GraphBead[]} options.beads
@@ -122,14 +143,13 @@ function fixedNow() {
  * @returns {Promise<BoundaryAnswer>}
  */
 async function boundary({ beads, theme = THEME, next, decide, reason }) {
-  const workspace = await makeWorkspace();
-  const file = await writeStrategy(workspace);
+  const { bd, file, cwd, now } = await harness(beads);
   return await buildBoundary({
-    bd: fakeQueueBd(beads).bd,
+    bd,
     theme,
     file,
-    cwd: workspace,
-    now: fixedNow(),
+    cwd,
+    now,
     ...(next === undefined ? {} : { next }),
     ...(decide === undefined ? {} : { decide }),
     ...(reason === undefined ? {} : { reason }),
@@ -145,19 +165,43 @@ async function boundary({ beads, theme = THEME, next, decide, reason }) {
  * @returns {Promise<{ rendered: string, notes: { id: string, text: string }[] }>}
  */
 async function record({ beads, decide, reason }) {
-  const workspace = await makeWorkspace();
-  const file = await writeStrategy(workspace);
-  const { bd, state } = fakeQueueBd(beads);
+  const { bd, notes, theme, file, cwd, now } = await harness(beads);
   const answer = await buildBoundary({
     bd,
-    theme: THEME,
+    theme,
     file,
-    cwd: workspace,
-    now: fixedNow(),
+    cwd,
+    now,
     ...(decide === undefined ? {} : { decide }),
     ...(reason === undefined ? {} : { reason }),
   });
-  return { rendered: renderBoundary(answer), notes: state.notes };
+  return { rendered: renderBoundary(answer), notes };
+}
+
+/**
+ * Build one boundary answer that is expected to be refused, keeping the tracker it wrote to, so a
+ * case asserts what the refusal left behind and not only the message it carried.
+ * @param {object} options
+ * @param {GraphBead[]} options.beads
+ * @param {'stay' | 'switch' | 'move'} options.decide
+ * @param {string} [options.reason]
+ * @returns {Promise<{ error: unknown, notes: { id: string, text: string }[] }>}
+ */
+async function refuse({ beads, decide, reason }) {
+  const { bd, notes, theme, file, cwd, now } = await harness(beads);
+  const error = await buildBoundary({
+    bd,
+    theme,
+    file,
+    cwd,
+    now,
+    decide,
+    ...(reason === undefined ? {} : { reason }),
+  }).then(
+    () => undefined,
+    (caught) => caught,
+  );
+  return { error, notes };
 }
 
 describe('the boundary comparison', () => {
@@ -269,21 +313,24 @@ describe('the recorded decision', () => {
     assert.match(notes[0].text, /boundary: stay · theme next tst-a total 8\.0 vs queue top tst-a total 8\.0 · reason: the theme closes this week/);
   });
 
-  it('refuses a decision against the recommendation with no reason', async () => {
-    await assert.rejects(
-      boundary({ beads: themeFixture(), decide: 'move' }),
-      (error) =>
-        error instanceof UsageError &&
-        /--decide move contradicts the recommendation \(switch\), so it needs --reason/.test(error.message),
-    );
+  it('refuses a decision against the recommendation with no reason, and writes no trail entry', async () => {
+    const { error, notes } = await refuse({ beads: themeFixture(), decide: 'move' });
+
+    assert.ok(error instanceof UsageError);
+    assert.match(error.message, /--decide move contradicts the recommendation \(switch\), so it needs --reason/);
+    assert.deepEqual(notes, []);
   });
 
-  it('refuses a decision outside the three outcomes', async () => {
-    await assert.rejects(
-      // @ts-expect-error — the parser rejects this before the builder sees it.
-      boundary({ beads: themeFixture(), decide: 'wander' }),
-      (error) => error instanceof UsageError && /--decide takes stay, switch, move/.test(error.message),
-    );
+  it('refuses a decision outside the three outcomes, and writes no trail entry', async () => {
+    const { error, notes } = await refuse({
+      beads: themeFixture(),
+      // @ts-expect-error — 'wander' is outside the union; this case calls the builder directly, so the builder's runtime check refuses it.
+      decide: 'wander',
+    });
+
+    assert.ok(error instanceof UsageError);
+    assert.match(error.message, /--decide takes stay, switch, move/);
+    assert.deepEqual(notes, []);
   });
 });
 

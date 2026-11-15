@@ -210,7 +210,7 @@ describe('reading several scopes', () => {
     );
   });
 
-  it('reports a missing scope unavailable and still answers from the others, exit 0', async () => {
+  it('reports a missing scope unavailable and still answers from the others', async () => {
     const { code, scopesFile, recorder } = await threeScopes();
     const absent = join(code, 'no-such-workspace');
     await writeScopes(code, [
@@ -393,7 +393,7 @@ describe('the privacy boundary', () => {
 
     assert.equal(report.invocation, 'shared');
     assert.deepEqual(report.rows.map((row) => row.scope), ['code', 'ops']);
-    assert.equal(report.scopes.find((scope) => scope.name === 'personal')?.status, 'withheld');
+    assert.equal(report.scopes.filter((scope) => scope.status === 'withheld').length, 1);
     // Nothing personal is read, so nothing personal can be copied anywhere.
     assert.deepEqual(recorder.for('personal'), []);
 
@@ -403,13 +403,14 @@ describe('the privacy boundary', () => {
     assert.doesNotMatch(text, /Write the objectives|Monday and Tuesday are the personal objectives|daily:/);
   });
 
-  it('prints the personal rows in a local invocation, which is the only place they appear', async () => {
+  it('prints the personal rows in a local invocation', async () => {
     const { code, scopesFile, recorder } = await threeScopes();
 
     const local = await buildQueue({ bd: recorder.bd, cwd: code, scopesFile });
 
     assert.equal(local.invocation, 'local');
     assert.ok(local.rows.some((row) => row.scope === 'personal'));
+    assert.match(renderQueue(local), /^2 {2}personal {2}p-1 /m);
   });
 });
 
@@ -472,6 +473,38 @@ describe('the command line over several scopes', () => {
     assert.match(stdout, /^1 {2}code {2}c-1 /m);
     assert.match(stdout, /^2 {2}ops {3}o-1 /m);
     assert.doesNotMatch(stdout, /notes {2}n-/);
+  });
+
+  it('prints neither the name nor the path of a withheld scope in a shared JSON report', async () => {
+    const code = await makeWorkspace({ repository: true });
+    const personal = await makeWorkspace();
+    const scopesFile = await writeScopes(code, [
+      { name: 'code', path: code, kind: 'code', readOnly: false },
+      { name: 'secret', path: personal, kind: 'personal', readOnly: true },
+    ]);
+    const stub = await makeStubBd(code, {
+      [code]: [{ id: 'c-1', title: 'Ship the queue', labels: ['execution:hitl'], rice: rice() }],
+    });
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [SCRIPT, 'queue', '--scopes', scopesFile, '--cwd', code, '--shared', '--json'],
+      {
+        cwd: code,
+        env: { ...process.env, PATH: `${stub.binDir}:${process.env.PATH ?? ''}`, BD_GRAPHS: stub.graphsFile },
+      },
+    );
+
+    // The printed bytes are the answer that leaves this machine, so neither identifier of
+    // the personal workspace may appear in them: not the location it sits at, not the name
+    // the owner gave it.
+    assert.ok(!stdout.includes(personal), `the shared report prints the personal workspace path:\n${stdout}`);
+    /** @type {{ name: string | null, path: string | null, status: string }[]} */
+    const scopes = JSON.parse(stdout).scopes;
+    assert.deepEqual(
+      scopes.filter((scope) => scope.status === 'withheld').map((scope) => [scope.name, scope.path]),
+      [[null, null]],
+    );
   });
 
   it('reads a scope list named on the command line, and reports an unreadable one as exit 2', async () => {

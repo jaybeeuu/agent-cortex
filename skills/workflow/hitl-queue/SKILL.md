@@ -58,7 +58,7 @@ HITL decision queue · 3 ranked, 1 unscored · 3 scopes, 1 unavailable · strate
 total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last
 excluded: 3 kind:idea beads (--include-ideas ranks them)
 today · personal, code — "daily: personal, code — Monday and Tuesday are the personal objectives" (strategy v3, "## Current themes", scope notes)
-unavailable: ops (~/ops) — workspace does not exist
+unavailable: ops (/srv/ops) — workspace does not exist
 
 1  code    bd-7  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0
     Ship the queue — unblocks bd-8, bd-9, bd-10

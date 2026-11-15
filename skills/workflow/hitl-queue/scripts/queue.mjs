@@ -135,13 +135,14 @@ export class QueueError extends Error {}
  */
 
 /**
- * One configured scope, as the report publishes it.
+ * One configured scope, as the report publishes it. `name` and `path` are null for a
+ * withheld scope: they identify a workspace the reader may not see.
  * @typedef {object} ScopeStatus
- * @property {string} name
+ * @property {string | null} name
  * @property {string} kind
  * @property {boolean} readOnly
  * @property {boolean} writable
- * @property {string} path
+ * @property {string | null} path
  * @property {'available' | 'unavailable' | 'withheld'} status
  * @property {string | undefined} reason
  */
@@ -462,6 +463,30 @@ async function readScopes({ bd, scopes, includeIdeas, now, shared }) {
 // ─── Queue ────────────────────────────────────────────────────────────────────
 
 /**
+ * One scope as the report publishes it.
+ *
+ * A withheld scope publishes no `name` and no `path`. Both identify the workspace a shared
+ * invocation is not allowed to see: a path encodes the home directory, and a name is
+ * whatever the owner called that workspace, so publishing either one while claiming the
+ * scope is withheld is a partial disclosure. `kind`, `readOnly` and `writable` stay,
+ * because the withholding rule keys on `kind` and the header already counts the withheld
+ * scopes — those disclose only that a personal scope exists, which the count says anyway.
+ * @param {ScopeRead} read @returns {ScopeStatus}
+ */
+function publishedScope(read) {
+  const withheld = read.status === 'withheld';
+  return {
+    name: withheld ? null : read.scope.name,
+    kind: read.scope.kind,
+    readOnly: read.scope.readOnly,
+    writable: read.scope.writable,
+    path: withheld ? null : read.scope.path,
+    status: read.status,
+    reason: read.reason,
+  };
+}
+
+/**
  * Build the queue: read every scope, derive each row, then order them.
  *
  * The order is total (desc), then stored score (desc), then scope name, then id (both
@@ -592,15 +617,7 @@ export async function buildQueue({
   return {
     strategy,
     invocation: shared ? 'shared' : 'local',
-    scopes: reads.map((read) => ({
-      name: read.scope.name,
-      kind: read.scope.kind,
-      readOnly: read.scope.readOnly,
-      writable: read.scope.writable,
-      path: read.scope.path,
-      status: read.status,
-      reason: read.reason,
-    })),
+    scopes: reads.map(publishedScope),
     today,
     counts: {
       ranked: ranked.length,

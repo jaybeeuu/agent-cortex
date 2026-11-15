@@ -30,7 +30,7 @@ behaves as it did before scopes existed — one workspace, one list.
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | yes | The tag every row from this scope carries. Unique within the file. |
-| `path` | yes | The workspace. `~` is the home directory; a relative path resolves against the repository root of the list itself, never the directory the run started in. |
+| `path` | yes | The workspace. `~` is the home directory; a relative path resolves against the repository root of the list itself, never the directory the run started in. The queue reports the resolved absolute path, never the text this field holds. |
 | `kind` | no | `code`, `personal` or `ops`. Default `code`. A `personal` scope is the one a shared invocation withholds. |
 | `readOnly` | no | Default `true`. A scope you did not mark writable is read-only. |
 
@@ -93,6 +93,10 @@ says that and names what to add — it never invents one.
   `AGENT_CORTEX_QUEUE_SHARED=1`, marks output that will leave this machine — a CI log, a pasted
   report, a handoff to another agent. Personal scopes are then `withheld`: not read, not ranked,
   not quoted, and counted in the header so nothing disappears silently.
+- **A withheld scope publishes no `name` and no `path`.** Both identify the workspace the reader
+  may not see — a path encodes the home directory, and a name is whatever the owner called it —
+  so `--json` carries `null` for both. `kind`, `readOnly` and `writable` remain, because the
+  header already says a personal scope was withheld.
 - **A personal row appears only in a local invocation.** Local is the default, because the person
   reading their own queue on their own machine is the common case.
 - **Nothing personal is written anywhere.** The queue copies no bead text into another workspace
@@ -108,4 +112,5 @@ node <skill-scripts>/queue.mjs queue --json                # scope statuses and 
 ```
 
 `--json` carries the same answer with every derived field: each scope's `status`, `reason`,
-`readOnly` and `writable`, the daily note, and the withheld counts.
+`readOnly` and `writable`, the daily note, and the withheld counts. A withheld scope has `null`
+for `name` and `path`.

@@ -64,6 +64,30 @@ export const TEMPLATE_FILE = fileURLToPath(new URL('../templates/strategy.md', i
  */
 export const CHANGE_LOG_SECTION = 'Change log';
 
+/**
+ * The section that tunes the deadline factor a ranked queue applies. Optional in a
+ * hand-written file: a strategy created before the tiers existed ranks on
+ * `DEFAULT_DEADLINE_TIERS`, and `init` copies a table the owner can edit.
+ */
+export const DEADLINE_TIERS_SECTION = 'Deadline tiers';
+
+/**
+ * The deadline tiers the queue uses when the strategy carries none. The numbers live here
+ * once, as the documented default, so a caller that never opens the strategy still ranks
+ * predictably; a strategy overrides them, so the rise tunes without a code change.
+ *
+ * A boundary belongs to the tier that names it: with exactly one day left a bead earns the
+ * `within 1d` factor, and a millisecond more drops it to `within 2d`. A bead whose deadline
+ * is exactly now has not slipped yet, so it is not overdue; `overdue` covers the past.
+ */
+export const DEFAULT_DEADLINE_TIERS = /** @type {DeadlineTier[]} */ ([
+  { kind: 'within', minutes: 1440, factor: 4 },
+  { kind: 'within', minutes: 2880, factor: 2 },
+  { kind: 'within', minutes: 10080, factor: 1.5 },
+  { kind: 'beyond', minutes: 10080, factor: 1 },
+  { kind: 'overdue', factor: 8 },
+]);
+
 /** The shape of a date: four digits, two, two. Whether it exists is a separate question. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -78,6 +102,48 @@ const FIELD_PREFIX = /^([ \t]*[-*][ \t]*\*\*[A-Za-z]+:\*\*[ \t]*)\S.*?[ \t]*$/;
 
 /** One change-log line: the date it landed, the version it produced, and the reason. */
 const CHANGE_LOG_ENTRY = /^[ \t]*[-*][ \t]+(\d{4}-\d{2}-\d{2})[ \t]+v(\d+):[ \t]*(.+?)[ \t]*$/;
+
+/** One row of the deadline-tier table, with the cells the pipes delimit. */
+const TIER_ROW = /^[ \t]*\|(.*)\|[ \t]*$/;
+
+/** The table's header row, skipped as a label rather than read as a tier. */
+const TIER_HEADER = /^(remaining|time|when|deadline)$/i;
+
+/** The table's `|---|:--:|` rule, which carries no value. */
+const TIER_RULE = /^:?-{2,}:?$/;
+
+/** `within 7d` and `<= 7d`: the factor earned at or inside this much time left. */
+const TIER_WITHIN = /^(?:within|<=)\s+(\d+)\s*([mhd])$/i;
+
+/** `more than 7d` and `> 7d`: the factor for anything further out. */
+const TIER_BEYOND = /^(?:more than|>)\s+(\d+)\s*([mhd])$/i;
+
+/** `overdue`: the factor for a deadline already passed. */
+const TIER_OVERDUE = /^overdue$/i;
+
+/** A factor: a positive number, in the plain form a reader can check. */
+const TIER_FACTOR = /^\d+(?:\.\d+)?$/;
+
+/** How long each unit in a tier row lasts. */
+const TIER_UNIT_MINUTES = Object.freeze(/** @type {const} */ ({ m: 1, h: 60, d: 1440 }));
+
+/** How many milliseconds a minute holds, for turning a tier's minutes into a distance. */
+const MS_PER_MINUTE = 60_000;
+
+/**
+ * One deadline tier: the factor a bead earns at a stated distance from its deadline.
+ * @typedef {{ kind: 'overdue', factor: number }
+ *   | { kind: 'within', minutes: number, factor: number }
+ *   | { kind: 'beyond', minutes: number, factor: number }} DeadlineTier
+ */
+
+/**
+ * What `parseDeadlineTiers` found.
+ * @typedef {object} DeadlineTiersReport
+ * @property {boolean} ok
+ * @property {DeadlineTier[]} tiers  The parsed tiers, or the documented default when absent.
+ * @property {string[]} errors       One line per defect in the table.
+ */
 
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */
 export class UsageError extends Error {}
@@ -164,6 +230,124 @@ function sectionBody(lines, title) {
 }
 
 /**
+ * The minutes a tier row's `<number><unit>` names.
+ * @param {string} count @param {string} unit @returns {number}
+ */
+function tierMinutes(count, unit) {
+  const key = /** @type {'m'|'h'|'d'} */ (unit.toLowerCase());
+  return Number(count) * TIER_UNIT_MINUTES[key];
+}
+
+/**
+ * One table row as a tier, or a message naming what the row got wrong.
+ * @param {string} when        The "Remaining" cell.
+ * @param {string} factorText  The "Factor" cell.
+ * @returns {{ tier: DeadlineTier } | { error: string }}
+ */
+function parseTierRow(when, factorText) {
+  const factor = TIER_FACTOR.test(factorText) ? Number(factorText) : 0;
+  if (factor <= 0) return { error: `factor "${factorText}" is not a positive number` };
+
+  if (TIER_OVERDUE.test(when)) return { tier: { kind: 'overdue', factor } };
+  const within = TIER_WITHIN.exec(when);
+  if (within !== null) return { tier: { kind: 'within', minutes: tierMinutes(within[1], within[2]), factor } };
+  const beyond = TIER_BEYOND.exec(when);
+  if (beyond !== null) return { tier: { kind: 'beyond', minutes: tierMinutes(beyond[1], beyond[2]), factor } };
+  return { error: `"${when}" is not "overdue", "within <time>" or "more than <time>"` };
+}
+
+/**
+ * Read the deadline tiers out of a strategy: the `## Deadline tiers` table, or the
+ * documented default when the section is absent or carries no row.
+ *
+ * A table that is present must be complete — exactly one `overdue` row, exactly one
+ * `more than <time>` row, and at least one `within <time>` row — because a factor that
+ * silently fell back to a default would make the rise depend on a file the reader cannot
+ * see. Every defect is reported, so one run fixes the whole table.
+ * @param {string} text @returns {DeadlineTiersReport}
+ */
+export function parseDeadlineTiers(text) {
+  const body = sectionBody(text.split('\n'), DEADLINE_TIERS_SECTION);
+  if (body === null) return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [] };
+
+  /** @type {DeadlineTier[]} */
+  const rows = [];
+  /** @type {string[]} */
+  const errors = [];
+  let firstTableLine = true;
+
+  for (const line of body) {
+    const cells = TIER_ROW.exec(line)?.[1].split('|');
+    if (cells === undefined || cells.length !== 2) continue;
+    const when = cells[0].trim();
+    const factorText = cells[1].trim();
+    const isFirst = firstTableLine;
+    firstTableLine = false;
+    if (isFirst && TIER_HEADER.test(when)) continue;
+    if (TIER_RULE.test(when) || TIER_RULE.test(factorText)) continue;
+
+    const parsed = parseTierRow(when, factorText);
+    if ('error' in parsed) {
+      errors.push(`${DEADLINE_TIERS_SECTION}: row "| ${when} | ${factorText} |" — ${parsed.error}`);
+      continue;
+    }
+    rows.push(parsed.tier);
+  }
+
+  if (rows.length === 0 && errors.length === 0) {
+    return { ok: true, tiers: [...DEFAULT_DEADLINE_TIERS], errors: [] };
+  }
+
+  if (errors.length === 0) {
+    const count = (/** @type {DeadlineTier['kind']} */ kind) => rows.filter((tier) => tier.kind === kind).length;
+    if (count('overdue') !== 1) errors.push(`${DEADLINE_TIERS_SECTION}: needs exactly one "overdue" row, found ${count('overdue')}`);
+    if (count('beyond') !== 1) errors.push(`${DEADLINE_TIERS_SECTION}: needs exactly one "more than <time>" row, found ${count('beyond')}`);
+    if (count('within') === 0) errors.push(`${DEADLINE_TIERS_SECTION}: needs at least one "within <time>" row`);
+  }
+
+  if (errors.length > 0) return { ok: false, tiers: [...DEFAULT_DEADLINE_TIERS], errors };
+
+  const within = rows
+    .filter((tier) => tier.kind === 'within')
+    .sort((a, b) => (a.kind === 'within' && b.kind === 'within' ? a.minutes - b.minutes : 0));
+  const beyond = rows.filter((tier) => tier.kind === 'beyond');
+  const overdue = rows.filter((tier) => tier.kind === 'overdue');
+  return { ok: true, tiers: [...within, ...beyond, ...overdue], errors: [] };
+}
+
+/**
+ * What a deadline is worth `remainingMs` from now: the factor from the narrowest `within`
+ * tier the remaining time fits inside, the overdue factor once the moment has passed, and
+ * the `more than` factor beyond every tier.
+ *
+ * The boundaries are the whole contract, so each falls on one stated side: with exactly one
+ * day left a bead earns the `within 1d` factor, and a millisecond more drops it to
+ * `within 2d`; a bead whose deadline is exactly now has not slipped yet, so it is not
+ * overdue.
+ * @param {number} remainingMs
+ * @param {DeadlineTier[]} [tiers]
+ * @returns {{ factor: number, overdue: boolean }}
+ */
+export function deadlineMultiplier(remainingMs, tiers = DEFAULT_DEADLINE_TIERS) {
+  /** @type {{ minutes: number, factor: number }[]} */
+  const within = [];
+  let beyond = 1;
+  let overdue = 1;
+  for (const tier of tiers) {
+    if (tier.kind === 'within') within.push({ minutes: tier.minutes, factor: tier.factor });
+    else if (tier.kind === 'beyond') beyond = tier.factor;
+    else overdue = tier.factor;
+  }
+  within.sort((a, b) => a.minutes - b.minutes);
+
+  if (remainingMs < 0) return { factor: overdue, overdue: true };
+  for (const tier of within) {
+    if (remainingMs <= tier.minutes * MS_PER_MINUTE) return { factor: tier.factor, overdue: false };
+  }
+  return { factor: beyond, overdue: false };
+}
+
+/**
  * Whether a body carries anything a scorer can read. An HTML comment is guidance, not
  * content, so a template copied and never filled in is empty rather than filled.
  * @param {string[]} body @returns {boolean}
@@ -241,6 +425,9 @@ export function validateStrategy(text) {
   }
 
   const lines = text.split('\n');
+  const tiers = parseDeadlineTiers(text);
+  if (!tiers.ok) errors.push(...tiers.errors);
+
   for (const title of REQUIRED_SECTIONS) {
     const body = sectionBody(lines, title);
     if (body === null) errors.push(`missing required section: "## ${title}"`);

@@ -16,7 +16,12 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
-import { REQUIRED_SECTIONS, runCli } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+import {
+  DEFAULT_DEADLINE_TIERS,
+  REQUIRED_SECTIONS,
+  parseDeadlineTiers,
+  runCli,
+} from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
 
 const tempRoot = createTempRoot('strategy-');
 const execFileAsync = promisify(execFile);
@@ -355,6 +360,93 @@ describe('the change log', () => {
     await run(['bump', '--file', file, '--reason', 'first recorded change'], { today: '2026-12-01' });
 
     assert.match(await readFile(file, 'utf8'), /-->\n\n- 2026-12-01 v2: first recorded change\n$/);
+  });
+});
+
+describe('the deadline tiers', () => {
+  /** A strategy section carrying one table, in the order the rows are written. */
+  /** @param {[string, string][]} rows @returns {string} */
+  const table = (rows) =>
+    `## Deadline tiers\n\n| Remaining | Factor |\n|---|---|\n${rows.map(([when, factor]) => `| ${when} | ${factor} |`).join('\n')}\n`;
+
+  it('uses the documented default when the strategy carries no table', () => {
+    const parsed = parseDeadlineTiers(createStrategy());
+
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.tiers, DEFAULT_DEADLINE_TIERS);
+  });
+
+  it('reads the shipped table and orders its within rows narrowest first', () => {
+    const parsed = parseDeadlineTiers(
+      table([
+        ['within 7d', '1.5'],
+        ['overdue', '8'],
+        ['within 1d', '4'],
+        ['more than 7d', '1'],
+        ['within 2d', '2'],
+      ]),
+    );
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.deepEqual(parsed.tiers, DEFAULT_DEADLINE_TIERS);
+  });
+
+  it('names a row it cannot read instead of falling back in silence', () => {
+    const parsed = parseDeadlineTiers(
+      table([
+        ['soonish', '4'],
+        ['within 2d', '2'],
+        ['within 7d', '1.5'],
+        ['more than 7d', '1'],
+        ['overdue', '8'],
+      ]),
+    );
+
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.errors.join('\n'), /"soonish" is not "overdue", "within <time>" or "more than <time>"/);
+  });
+
+  it('names a table that is missing a kind or repeats one', () => {
+    const noOverdue = parseDeadlineTiers(
+      table([['within 1d', '4'], ['within 7d', '1.5'], ['more than 7d', '1']]),
+    );
+    assert.equal(noOverdue.ok, false);
+    assert.match(noOverdue.errors.join('\n'), /needs exactly one "overdue" row, found 0/);
+
+    const twoOverdue = parseDeadlineTiers(
+      table([['within 1d', '4'], ['more than 7d', '1'], ['overdue', '8'], ['overdue', '2']]),
+    );
+    assert.equal(twoOverdue.ok, false);
+    assert.match(twoOverdue.errors.join('\n'), /needs exactly one "overdue" row, found 2/);
+  });
+
+  it('fails validate with the tier defect, so a scorer never reads a table it cannot parse', async () => {
+    const file = await writeStrategy(
+      `${createStrategy()}\n${table([
+        ['soonish', '4'],
+        ['within 2d', '2'],
+        ['within 7d', '1.5'],
+        ['more than 7d', '1'],
+        ['overdue', '8'],
+      ])}`,
+    );
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 1);
+    assert.match(check.stderr, /Deadline tiers: row "\| soonish \| 4 \|"/);
+  });
+
+  it('ships a template whose table is the documented default', async () => {
+    const template = await readFile(
+      join(REPO_ROOT, 'skills', 'workflow', 'prioritise-work', 'templates', 'strategy.md'),
+      'utf8',
+    );
+
+    const parsed = parseDeadlineTiers(template);
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.deepEqual(parsed.tiers, DEFAULT_DEADLINE_TIERS);
   });
 });
 

@@ -30,7 +30,7 @@ The strategy is a **committed file**, never a bead and never a scratch note. A r
 |---|---|
 | Default path | `.agent-cortex/working-docs/strategy.md`, relative to the repository root |
 | Override | `--file <path>` on every subcommand |
-| Contents | a version integer, a date, and five required sections |
+| Contents | a version integer, a date, five required sections, and an optional `## Deadline tiers` table |
 | Lifetime | committed; edited by interview, then versioned with `bump` |
 
 The working-docs root is the scratch directory the HITL handoff also uses: `.agent-cortex/working-docs/hitl/<bead-id>/handoff.md`. The strategy sits beside it and is the one file in that directory the repository commits.
@@ -79,7 +79,7 @@ node <skill-scripts>/strategy.mjs validate
 
 6. Read the current strategy and check its `**Updated:**` date. A date from an earlier month is stale: re-run the interview before scoring anything against it.
 
-7. Ask the four questions again, plus the confidence question, and edit the sections that changed. Leave a section alone when the answer has not changed.
+7. Ask the four questions again, plus the confidence question, and edit the sections that changed. Edit the deadline-tier table too when a due date should move a rank further or sooner.
 
 8. Bump the version and record the date and the reason, then validate:
 
@@ -112,7 +112,7 @@ Two scripts, four subcommands, zero dependencies, no tracker access. `strategy.m
 | Command | Behaviour | Exit |
 |---|---|---|
 | `init` | Writes the template, stamped with today's date; refuses an existing file | 0 written, 1 refused |
-| `validate` | Checks the version integer, the date, the change log and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
+| `validate` | Checks the version integer, the date, the change log, the deadline tiers and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
 | `bump` | Refuses an invalid file or an empty `--reason`, raises the version by one, records today, appends the change-log line | 0 bumped, 1 refused |
 | `record` (`challenge.mjs`) | Refuses an order or a resolution the strategy does not support; prints one bead-trail entry | 0 recorded, 1 refused |
 

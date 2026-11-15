@@ -24,6 +24,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `agent-modes/` | — | **Reject** — no equivalent |
 | `session-clear/` | — | **Reject** — built-in `/clear` |
 | `post-merge-watch/` | — | **Reject** — no hook surface; Claude watches with its own tools |
+| `interrupt-bookmark/` | — | **Reject** — no hook surface; Claude rewinds with its own `/rewind` |
 
 ## `session-start/` → SessionStart (port)
 
@@ -162,3 +163,13 @@ an idle session. Claude watches the same check through its own tools instead, so
 there is nothing to port and no setting to add. The check script
 (`skills/workflow/ralph/scripts/post-merge-check.mjs`) is shared by both
 harnesses; only the wake mechanism is pi's.
+
+## `interrupt-bookmark/` → Reject (no hook surface)
+
+The extension wraps pi's command-only session navigation in two tools. An agent
+takes a resume point before an interruption, then returns to it afterwards.
+Claude Code registers no runtime tools and has no hook that rewinds a session,
+so neither tool can be ported. The harness already supplies the rewind itself as
+its own `/rewind` command, which the human runs. The `interrupt_rewind` row in
+`token-map.json` names that command for claude, and the extension's resume tool
+for pi. One protocol text therefore serves both harnesses.

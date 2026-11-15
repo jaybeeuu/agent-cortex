@@ -93,6 +93,12 @@ Both halves are wired per harness. guppi's pi frontmatter declares this extensio
 callable there. On claude the agent declares neither, because `/rewind` is the human's command, and
 the protocol hands that step to the human.
 
+An agent that uses these tools declares them in its own tool list, under the registered names
+`interrupt_checkpoint` and `interrupt_resume`. pi replaces the whole tool selection when a list is
+given. A tool an agent does not name is therefore never declared to its model, and the agent cannot
+call it. A tool list carries tool names only, so the `interrupt_rewind` prose row never appears in
+one.
+
 ## Proven against pi
 
 Behaviour is tested against a complete `ExtensionAPI` double, with a fake session that rejects

@@ -85,6 +85,45 @@ function flat(text) {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/** What only the named step says. The step's label and this body text travel
+ * together: a render that keeps both bodies and swaps two labels fails the
+ * pairing assertion, which is the reorder the protocol actually protects
+ * against.
+ * @type {Record<string, RegExp>} */
+const STEP_BODY = {
+  Checkpoint: /take a resume point before the interrupt is examined/i,
+  Record: /Write the interrupt down as the bead type its content implies/i,
+  Rewind: /Return to the checkpoint with/i,
+  Resume: /back to <task> — recorded <what> as <bead id>/,
+};
+
+/** The protocol's steps, read as (label, body) pairs in document order. A step
+ * is a numbered list item whose text opens with a bold label; the lines that
+ * follow until the next item or the table belong to that step's body.
+ * @param {string} protocol
+ * @returns {{ label: string, body: string }[]} */
+function protocolSteps(protocol) {
+  /** @type {{ label: string, body: string }[]} */
+  const found = [];
+  for (const line of protocol.split("\n")) {
+    const opening = line.match(/^\d+\. \*\*(?<label>\w+)\.\*\* (?<body>.*)$/);
+    if (opening) {
+      found.push({
+        label: /** @type {string} */ (opening.groups?.label),
+        body: /** @type {string} */ (opening.groups?.body),
+      });
+      continue;
+    }
+    // The numbered list closes where the summary table opens.
+    if (line.startsWith("|")) break;
+    if (found.length > 0 && line.trim() !== "") {
+      const current = /** @type {{ label: string, body: string }} */ (found.at(-1));
+      current.body += ` ${line.trim()}`;
+    }
+  }
+  return found;
+}
+
 /** One markdown section: from its heading up to the next heading of the same or a
  * shallower depth.
  * @param {string} doc
@@ -106,16 +145,20 @@ describe("guppi's interrupt protocol renders per harness", () => {
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
       const protocol = section(doc, HEADING);
 
-      const steps = ["**Checkpoint.**", "**Record.**", "**Rewind.**", "**Resume.**"];
-      const positions = steps.map((step) => protocol.indexOf(step));
-      for (const [index, position] of positions.entries()) {
-        assert.notEqual(position, -1, `${harness} states ${steps[index]}`);
-      }
+      const pairs = protocolSteps(protocol);
       assert.deepEqual(
-        [...positions].sort((a, b) => a - b),
-        positions,
-        `${harness} states the steps in the order checkpoint, record, rewind, resume`,
+        pairs.map((step) => step.label),
+        ["Checkpoint", "Record", "Rewind", "Resume"],
+        `${harness} numbers the steps checkpoint, record, rewind, resume`,
       );
+
+      // A label on its own says nothing: the safety property is that the step
+      // named Record holds the recording, so a swap of the two labels over
+      // untouched bodies must fail here. Each body is required to carry what
+      // only its own step says.
+      for (const { label, body } of pairs) {
+        assert.match(body, STEP_BODY[label], `${harness}'s ${label} step carries its own body`);
+      }
 
       // The order is the protocol, so it is asserted as a rule and not left to
       // the reader to infer from sentence order.

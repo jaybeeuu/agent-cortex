@@ -25,5 +25,4 @@ the owner, never invented inside a review.
 
 `review-report` gains an owning-skill mapping for the four classes (the authoring skill for unsafe
 and ambiguous text, the test and stage skills for a quiet path, and `review-defects` itself for an
-unclassified finding), and the worked examples in `review-defects/EXAMPLES.md` gain one real case
-per new class.
+unclassified finding), and `review-defects` gains one real worked example per new class.

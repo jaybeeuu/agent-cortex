@@ -62,7 +62,7 @@ Those numbers are the **shipped default**. The table lives in the strategy's `##
 
 A boundary falls on the side that names it: with exactly one day left a bead earns 4, and a millisecond more earns 2. A bead whose deadline is exactly now has not slipped yet, so it is not overdue. A bead with no due date sits outside the tiers and keeps the factor 1, so tuning a row never lifts undated work by accident.
 
-The row shows the deadline, the time left and the factor. An overdue bead is flagged in the row, so the slip is visible instead of folded silently into a bigger number:
+A ranked row shows the deadline, the time left and the factor. An overdue bead is flagged in the row, so the slip is visible instead of folded silently into a bigger number:
 
 ```
 2  bd-2   8.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)
@@ -163,7 +163,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 - [ ] Each row shows the rank, id, total, the four components, both multipliers, the title and what the answer unblocks.
 - [ ] A bead blocking three others ranks above an equal bead blocking none; an in-progress bead ranks above an equal not-started one.
 - [ ] A bead due in three days ranks above an otherwise identical bead with no due date; an overdue bead is flagged `OVERDUE` and carries the top tier.
-- [ ] Every row with a due date shows the deadline, the time left and the factor, and a changed tier in the strategy moves the rank.
+- [ ] Every row with a due date shows the due moment and the time left; only a ranked row shows a factor, and a changed tier in the strategy moves the rank.
 - [ ] With no scores, the header says nothing can be ranked and every candidate is listed unscored with a reason.
 - [ ] Two identical runs printed byte-identical output.
 - [ ] The excluded idea and deferred counts were reported, or the header said there were none.

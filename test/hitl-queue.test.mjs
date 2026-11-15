@@ -253,6 +253,23 @@ describe('the deadline factor', () => {
     assert.doesNotMatch(text, /tst-b\s+1\.0\s+rice[^\n]*deadline/);
   });
 
+  it('prints the due moment and OVERDUE on an unscored overdue row, and claims no factor there', async () => {
+    // An unscored row has no total, so there is no product for a factor to scale. The slip
+    // must still be visible: that row is often an appointment, not a scored backlog item.
+    const report = await queue({
+      now: NOW,
+      beads: [
+        { id: 'tst-u', title: 'Slipped, unscored', labels: ['execution:hitl'], dueAt: '2026-11-14T09:00:00Z' },
+      ],
+    });
+
+    const text = renderQueue(report);
+    assert.match(text, /unscored — no rice metadata \(score it with score-bead\)  OVERDUE by 1d \(due 2026-11-14T09:00Z\)/);
+    assert.equal(rowFor(report, 'tst-u').overdue, true);
+    assert.equal(rowFor(report, 'tst-u').total, undefined);
+    assert.doesNotMatch(text, /unscored[^\n]*deadline ×/);
+  });
+
   it('reads the tiers from the strategy, so a changed tier changes the rank', async () => {
     // Five days out, the due bead earns the shipped "within a week" factor of 1.5 while a
     // bead ten days out earns 1. Writing different numbers into those two rows flips the

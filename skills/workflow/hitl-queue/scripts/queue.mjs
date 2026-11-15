@@ -514,18 +514,36 @@ function formatInstant(instant) {
 }
 
 /**
- * The deadline as one clause: the factor, the distance, and the due moment, with the word
- * `OVERDUE` once the moment has passed. Empty for a bead with no deadline, which keeps the
- * factor 1 and is not ranked down for lacking one.
+ * The distance and the due moment, with the word `OVERDUE` once the moment has passed.
+ * Empty for a bead with no deadline. No factor here: the scored clause adds one.
  * @param {QueueRow} row @returns {string}
  */
-function deadlineClause(row) {
+function dueClause(row) {
   if (row.dueAt === undefined || row.remainingMs === undefined) return '';
   const due = formatInstant(row.dueAt);
   const span = formatSpan(row.remainingMs);
-  return row.overdue
-    ? `  deadline ×${row.deadlineFactor} OVERDUE by ${span} (due ${due})`
-    : `  deadline ×${row.deadlineFactor} in ${span} (due ${due})`;
+  return row.overdue ? `OVERDUE by ${span} (due ${due})` : `in ${span} (due ${due})`;
+}
+
+/**
+ * The deadline as one clause: the factor and the due clause. Empty for a bead with no
+ * deadline, which keeps the factor 1 and is not ranked down for lacking one.
+ * @param {QueueRow} row @returns {string}
+ */
+function deadlineClause(row) {
+  const due = dueClause(row);
+  return due === '' ? '' : `  deadline ×${row.deadlineFactor} ${due}`;
+}
+
+/**
+ * The same moment for a row with no total. An unscored row has no product to scale, so it
+ * shows the due moment and the slip and claims no factor — the deadline is still visible.
+ * @param {QueueRow} row @returns {string}
+ */
+function unscoredDueClause(row) {
+  const due = dueClause(row);
+  if (due === '') return '';
+  return row.overdue ? `  ${due}` : `  due ${due}`;
 }
 
 /**
@@ -574,7 +592,8 @@ export function renderQueue(report) {
     const rank = row.rank === undefined ? '-' : String(row.rank);
     const total = row.total === undefined ? '—' : row.total.toFixed(1);
     const numbers = row.score === undefined
-      ? `unscored — ${row.unscoredReason ?? 'no score'} (score it with score-bead)`
+      ? `unscored — ${row.unscoredReason ?? 'no score'} (score it with score-bead)` +
+        unscoredDueClause(row)
       : formatNumbers(row);
     const stale = row.stale ? `  (scored at strategy v${row.scoredAtVersion}, current v${strategy.version})` : '';
     lines.push(

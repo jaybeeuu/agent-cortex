@@ -487,6 +487,10 @@ or an empty commit, together with its message. The base defaults to the remote's
 default branch (origin/HEAD); --base names another ref, such as a release branch. A
 base that names the worktree's own branch compares the branch with itself, so it
 proves nothing: the worktree is kept and refused, as it is when no base resolves.
+
+An open bead is proven by its upstream instead, and only with --remove-orphans: its
+branch must carry an upstream and no commit unpushed to it. With no upstream it is
+refused whatever its content says.
 `;
 
 /** Every flag the CLI accepts. */

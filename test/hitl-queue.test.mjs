@@ -1,11 +1,12 @@
 // Tests for skills/workflow/hitl-queue/scripts/queue.mjs — the ranked HITL decision queue.
 //
 // The design rests on facts this file drives directly: the dependent multiplier is
-// transitive and counts beads rather than paths (a diamond counts once), the three
-// ordering properties the acceptance criteria name hold, a bead with no score is listed
-// as unscored instead of placed, and one backlog always prints in one order. The script
-// is exercised through its exported functions against an in-memory `bd`, and through its
-// real CLI against a stub binary, so the argv it issues is the argv the queue is tested
+// transitive and counts beads rather than paths (a diamond counts once), a `--due` date
+// moves a bead up by the factor its remaining time earns in the strategy's tier table,
+// the three ordering properties the acceptance criteria name hold, a bead with no score is
+// listed as unscored instead of placed, and one backlog always prints in one order. The
+// script is exercised through its exported functions against an in-memory `bd`, and through
+// its real CLI against a stub binary, so the argv it issues is the argv the queue is tested
 // with.
 
 import { describe, it } from 'node:test';
@@ -58,14 +59,18 @@ function rice(overrides = {}) {
  * A filled strategy at the given version, written into a workspace.
  * @param {string} workspace
  * @param {number} [version]
+ * @param {[string, string][]} [tiers]  Deadline-tier rows; omitted for no table at all.
  * @returns {Promise<string>} the strategy path
  */
-async function writeStrategy(workspace, version = 2) {
+async function writeStrategy(workspace, version = 2, tiers) {
   const sections = REQUIRED_SECTIONS.map((title) => `## ${title}\n\n- the answer for ${title}.\n`);
+  const table = tiers === undefined
+    ? ''
+    : `\n## Deadline tiers\n\n| Remaining | Factor |\n|---|---|\n${tiers.map(([when, factor]) => `| ${when} | ${factor} |`).join('\n')}\n`;
   const file = join(workspace, 'strategy.md');
   await writeFile(
     file,
-    `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** 2026-11-14\n\n${sections.join('\n')}`,
+    `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** 2026-11-14\n\n${sections.join('\n')}${table}`,
     'utf8',
   );
   return file;
@@ -77,15 +82,18 @@ async function writeStrategy(workspace, version = 2) {
  * @param {GraphBead[]} options.beads
  * @param {number} [options.strategyVersion]
  * @param {boolean} [options.includeIdeas]
+ * @param {number} [options.now]        The moment the deadlines are measured from.
+ * @param {[string, string][]} [options.tiers]  A deadline-tier table for the strategy.
  */
-async function queue({ beads, strategyVersion, includeIdeas }) {
+async function queue({ beads, strategyVersion, includeIdeas, now, tiers }) {
   const workspace = await tempRoot.createWorkspace();
-  const file = await writeStrategy(workspace, strategyVersion);
+  const file = await writeStrategy(workspace, strategyVersion, tiers);
   return await buildQueue({
     bd: fakeBd(beads),
     cwd: workspace,
     file,
     ...(includeIdeas === undefined ? {} : { includeIdeas }),
+    ...(now === undefined ? {} : { now }),
   });
 }
 
@@ -170,6 +178,161 @@ describe('ordering the queue', () => {
     assert.deepEqual(first.rows.map((row) => row.total), [10, 10, 10]);
     assert.deepEqual(first.rows.map((row) => row.id), ['tst-c', 'tst-a', 'tst-b']);
     assert.equal(renderQueue(first), renderQueue(second));
+  });
+});
+
+describe('the deadline factor', () => {
+  /** The moment every case below measures from, injected so no case depends on the clock. */
+  const NOW = Date.parse('2026-11-15T09:00:00Z');
+
+  it('ranks an item due in three days above an otherwise identical item with no deadline', async () => {
+    const report = await queue({
+      now: NOW,
+      beads: [
+        { id: 'tst-a', title: 'Due in three days', labels: ['execution:hitl'], rice: rice(), dueAt: '2026-11-18T09:00:00Z' },
+        { id: 'tst-b', title: 'No deadline', labels: ['execution:hitl'], rice: rice() },
+      ],
+    });
+
+    assert.equal(rowFor(report, 'tst-a').deadlineFactor, 1.5);
+    assert.equal(rowFor(report, 'tst-a').total, 6.3);
+    assert.equal(rowFor(report, 'tst-b').deadlineFactor, 1);
+    assert.equal(rowFor(report, 'tst-b').total, 4.2);
+    assert.deepEqual(report.rows.map((row) => row.id), ['tst-a', 'tst-b']);
+  });
+
+  it('applies each tier at its own edge: a boundary earns the factor that names it', async () => {
+    // Each case states one side of one boundary. "Exactly" earns the narrower tier, a
+    // millisecond more drops to the wider one, and a deadline exactly now has not slipped.
+    const cases = [
+      { id: 'tst-w1', left: 'just over a week', dueAt: '2026-11-22T09:01:00Z', factor: 1, overdue: false },
+      { id: 'tst-w2', left: 'exactly a week', dueAt: '2026-11-22T09:00:00Z', factor: 1.5, overdue: false },
+      { id: 'tst-d1', left: 'just over two days', dueAt: '2026-11-17T09:01:00Z', factor: 1.5, overdue: false },
+      { id: 'tst-d2', left: 'exactly two days', dueAt: '2026-11-17T09:00:00Z', factor: 2, overdue: false },
+      { id: 'tst-d3', left: 'just over a day', dueAt: '2026-11-16T09:01:00Z', factor: 2, overdue: false },
+      { id: 'tst-d4', left: 'exactly a day', dueAt: '2026-11-16T09:00:00Z', factor: 4, overdue: false },
+      { id: 'tst-n1', left: 'due now', dueAt: '2026-11-15T09:00:00Z', factor: 4, overdue: false },
+      { id: 'tst-o1', left: 'a minute past', dueAt: '2026-11-15T08:59:00Z', factor: 8, overdue: true },
+    ];
+
+    const report = await queue({
+      now: NOW,
+      beads: cases.map((each) => ({
+        id: each.id,
+        title: each.left,
+        labels: ['execution:hitl'],
+        rice: rice(),
+        dueAt: each.dueAt,
+      })),
+    });
+
+    for (const each of cases) {
+      const row = rowFor(report, each.id);
+      assert.equal(row.deadlineFactor, each.factor, `${each.left}: expected factor ${each.factor}`);
+      assert.equal(row.overdue, each.overdue, `${each.left}: expected overdue=${each.overdue}`);
+    }
+  });
+
+  it('shows the deadline and the factor in a row that has one, and flags an overdue row OVERDUE', async () => {
+    const report = await queue({
+      now: NOW,
+      beads: [
+        { id: 'tst-a', title: 'Due in three days', labels: ['execution:hitl'], rice: rice(), dueAt: '2026-11-18T09:00:00Z' },
+        { id: 'tst-o', title: 'Slipped', labels: ['execution:hitl'], rice: rice({ score: 1 }), dueAt: '2026-11-14T09:00:00Z' },
+        { id: 'tst-b', title: 'No deadline', labels: ['execution:hitl'], rice: rice({ score: 1 }) },
+      ],
+    });
+
+    const text = renderQueue(report);
+    assert.match(text, /deadline ×1\.5 in 3d \(due 2026-11-18T09:00Z\)/);
+    assert.match(text, /deadline ×8 OVERDUE by 1d \(due 2026-11-14T09:00Z\)/);
+    assert.equal(rowFor(report, 'tst-o').overdue, true);
+    assert.equal(rowFor(report, 'tst-o').deadlineFactor, 8);
+    // A row without a deadline keeps the neutral factor and shows no deadline clause.
+    assert.equal(rowFor(report, 'tst-b').deadlineFactor, 1);
+    assert.doesNotMatch(text, /tst-b\s+1\.0\s+rice[^\n]*deadline/);
+  });
+
+  it('prints the due moment and OVERDUE on an unscored overdue row, and claims no factor there', async () => {
+    // An unscored row has no total, so there is no product for a factor to scale. The slip
+    // must still be visible: that row is often an appointment, not a scored backlog item.
+    const report = await queue({
+      now: NOW,
+      beads: [
+        { id: 'tst-u', title: 'Slipped, unscored', labels: ['execution:hitl'], dueAt: '2026-11-14T09:00:00Z' },
+      ],
+    });
+
+    const text = renderQueue(report);
+    assert.match(text, /unscored — no rice metadata \(score it with score-bead\)  OVERDUE by 1d \(due 2026-11-14T09:00Z\)/);
+    assert.equal(rowFor(report, 'tst-u').overdue, true);
+    assert.equal(rowFor(report, 'tst-u').total, undefined);
+    assert.doesNotMatch(text, /unscored[^\n]*deadline ×/);
+  });
+
+  it('reads the tiers from the strategy, so a changed tier changes the rank', async () => {
+    // Five days out, the due bead earns the shipped "within a week" factor of 1.5 while a
+    // bead ten days out earns 1. Writing different numbers into those two rows flips the
+    // order between them: only a strategy-held factor can move an order that way.
+    const beads = [
+      { id: 'tst-d', title: 'Due in five days', labels: ['execution:hitl'], rice: rice(), dueAt: '2026-11-20T09:00:00Z' },
+      { id: 'tst-f', title: 'Due in ten days', labels: ['execution:hitl'], rice: rice(), dueAt: '2026-11-25T09:00:00Z' },
+      { id: 'tst-n', title: 'No deadline', labels: ['execution:hitl'], rice: rice() },
+    ];
+
+    const shipped = await queue({ now: NOW, beads });
+    assert.equal(rowFor(shipped, 'tst-d').deadlineFactor, 1.5);
+    assert.equal(rowFor(shipped, 'tst-f').deadlineFactor, 1);
+    assert.equal(rowFor(shipped, 'tst-n').deadlineFactor, 1);
+    assert.deepEqual(shipped.rows.map((row) => row.id), ['tst-d', 'tst-f', 'tst-n']);
+
+    const custom = await queue({
+      now: NOW,
+      beads,
+      tiers: [
+        ['within 1d', '4'],
+        ['within 2d', '2'],
+        ['within 7d', '0.5'],
+        ['more than 7d', '10'],
+        ['overdue', '1'],
+      ],
+    });
+
+    assert.equal(rowFor(custom, 'tst-d').deadlineFactor, 0.5);
+    assert.equal(rowFor(custom, 'tst-f').deadlineFactor, 10);
+    // A bead with no deadline sits outside the tiers: its factor stays 1, so tuning a
+    // row never lifts undated work by accident.
+    assert.equal(rowFor(custom, 'tst-n').deadlineFactor, 1);
+    assert.deepEqual(custom.rows.map((row) => row.id), ['tst-f', 'tst-n', 'tst-d']);
+  });
+
+  it('keeps a deferred bead out until its defer date, then admits it once that date has passed', async () => {
+    const report = await queue({
+      now: NOW,
+      beads: [
+        { id: 'tst-a', title: 'Decide', labels: ['execution:hitl'], rice: rice() },
+        {
+          id: 'tst-f',
+          title: 'Parked forward',
+          status: 'deferred',
+          labels: ['execution:hitl'],
+          rice: rice(),
+          deferUntil: '2026-11-18T09:00:00Z',
+        },
+        {
+          id: 'tst-w',
+          title: 'Woken',
+          status: 'deferred',
+          labels: ['execution:hitl'],
+          rice: rice(),
+          deferUntil: '2026-11-15T08:00:00Z',
+        },
+      ],
+    });
+
+    assert.deepEqual(report.rows.map((row) => row.id).sort(), ['tst-a', 'tst-w']);
+    assert.equal(report.counts.excludedDeferred, 1);
+    assert.match(renderQueue(report), /excluded: 1 deferred bead/);
   });
 });
 
@@ -321,7 +484,7 @@ describe('the emitted format', () => {
       renderQueue(report),
       [
         'HITL decision queue · 2 ranked, 1 unscored · strategy v2',
-        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress · ties break on rice, then id · unscored last',
+        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then id · unscored last',
         '',
         '1  tst-a  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0',
         '    Ship the queue — unblocks tst-1, tst-2, tst-3',

@@ -19,12 +19,15 @@
  * @property {object} [rice]         The stored `rice` record.
  * @property {string[]} [dependsOn]  Beads this one waits on, by a `blocks` edge.
  * @property {string[]} [relatesTo]  Beads this one merely relates to.
+ * @property {string} [dueAt]        The `--due` moment, as bd writes it: a UTC ISO string.
+ * @property {string} [deferUntil]   The `--defer` wake moment, in the same form.
  */
 
 /**
  * A `bd` runner over an in-memory graph. It reproduces the shapes the queue reads:
  * `list -l execution:hitl --json` with closed beads already excluded (bd's default
- * filter), and `dep list <id> --direction up --json` naming the beads that depend on it.
+ * filter) and the `due_at` / `defer_until` fields bd writes, and
+ * `dep list <id> --direction up --json` naming the beads that depend on it.
  * @param {GraphBead[]} beads
  * @returns {(args: string[]) => Promise<string>}
  */
@@ -40,6 +43,8 @@ export function fakeBd(beads) {
             title: bead.title,
             status: bead.status ?? 'open',
             labels: bead.labels ?? [],
+            ...(bead.dueAt === undefined ? {} : { due_at: bead.dueAt }),
+            ...(bead.deferUntil === undefined ? {} : { defer_until: bead.deferUntil }),
             ...(bead.rice === undefined ? {} : { metadata: { rice: bead.rice } }),
           })),
       );

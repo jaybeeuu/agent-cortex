@@ -9,6 +9,12 @@
 // bead blocking A, which blocks B, which blocks C, unblocks three. The walk collects
 // distinct beads, never paths, so a diamond (one bead reached by two routes) counts once.
 //
+// A bd `--due` date adds a second factor, and its numbers live in the strategy's
+// `## Deadline tiers` table rather than here: the narrower the remaining time, the higher
+// the factor, and a passed deadline is flagged `OVERDUE` in its row instead of being
+// lifted in silence. `now` is a parameter of the build, never read deep inside the
+// ranking, so a boundary case is deterministic.
+//
 // The RICE score is read from the bead's own metadata, written by the score-bead skill.
 // This script never recomputes it and never invents one: a bead with no score is listed
 // as `unscored` with the reason, because a queue that guessed would hide the gap.
@@ -24,9 +30,11 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { DEFAULT_FILE, resolveStrategyPath, validateStrategy } from '../../prioritise-work/scripts/strategy.mjs';
+import { DEFAULT_DEADLINE_TIERS, deadlineMultiplier, parseDeadlineTiers } from '../../prioritise-work/scripts/strategy.mjs';
 import { BD_PATH, RICE_KEY, errorMessage, makeRunner, storedRice } from '../../score-bead/scripts/rice.mjs';
 
 /** @typedef {import('../../score-bead/scripts/rice.mjs').StoredRice} StoredRice */
+/** @typedef {import('../../prioritise-work/scripts/strategy.mjs').DeadlineTier} DeadlineTier */
 /** @typedef {(args: string[]) => Promise<string>} Runner */
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -55,6 +63,9 @@ export const BLOCKS_TYPE = 'blocks';
 /** How many dependent ids a row names before it summarises the rest as a count. */
 const NAMED_DEPENDENTS = 5;
 
+/** How many milliseconds a minute holds, for showing a deadline as days and hours. */
+const MS_PER_MINUTE = 60_000;
+
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */
 export class UsageError extends Error {}
 
@@ -70,6 +81,8 @@ export class QueueError extends Error {}
  * @property {string} title
  * @property {string} status
  * @property {StoredRice | undefined} rice
+ * @property {number | undefined} dueAt       The `--due` moment, epoch milliseconds.
+ * @property {number | undefined} deferUntil  The `--defer` wake moment, epoch milliseconds.
  */
 
 /**
@@ -86,6 +99,10 @@ export class QueueError extends Error {}
  * @property {string[]} dependentIds             Those dependents, sorted, closed excluded.
  * @property {number} dependentMultiplier        1 + ln(1 + dependents).
  * @property {number} wipMultiplier              WIP_MULTIPLIER, or 1.
+ * @property {number | undefined} dueAt          The `--due` moment, epoch milliseconds.
+ * @property {number | undefined} remainingMs    Distance to the deadline; negative once past.
+ * @property {number} deadlineFactor             The strategy's factor; 1 without a deadline.
+ * @property {boolean} overdue                   The deadline has passed.
  * @property {number | undefined} total          The rounded ranking key; undefined if unscored.
  * @property {number | undefined} scoredAtVersion
  * @property {boolean} stale                     Scored against an older strategy version.
@@ -95,7 +112,7 @@ export class QueueError extends Error {}
 /**
  * The whole answer.
  * @typedef {object} QueueReport
- * @property {{ file: string, version: number | undefined }} strategy
+ * @property {{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[] }} strategy
  * @property {{ ranked: number, unscored: number, excludedIdeas: number, excludedDeferred: number }} counts
  * @property {QueueRow[]} rows                   Ranked rows first, then unscored rows.
  */
@@ -119,17 +136,19 @@ export function dependentMultiplier(count) {
 }
 
 /**
- * The ranking key: RICE × dependent multiplier × work-in-progress multiplier, rounded to
- * one decimal. The rounded figure is the sort key as well as the printed one, so the
- * number a reader sees is the number the order was decided by.
+ * The ranking key: RICE × dependent multiplier × work-in-progress multiplier × deadline
+ * multiplier, rounded to one decimal. The rounded figure is the sort key as well as the
+ * printed one, so the number a reader sees is the number the order was decided by.
  * @param {object} input
  * @param {number} input.score
  * @param {number} input.dependents
  * @param {boolean} input.inProgress
+ * @param {number} [input.deadline]  The strategy's factor at the bead's remaining time; 1
+ *                                   when the bead has no deadline.
  * @returns {number}
  */
-export function queueTotal({ score, dependents, inProgress }) {
-  return round1(score * dependentMultiplier(dependents) * (inProgress ? WIP_MULTIPLIER : 1));
+export function queueTotal({ score, dependents, inProgress, deadline = 1 }) {
+  return round1(score * dependentMultiplier(dependents) * (inProgress ? WIP_MULTIPLIER : 1) * deadline);
 }
 
 // ─── Tracker ──────────────────────────────────────────────────────────────────
@@ -156,6 +175,17 @@ function asRecord(value) {
 /** @param {unknown} value @returns {string | undefined} */
 function asString(value) {
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * An ISO instant as epoch milliseconds, or undefined when the field is absent or unreadable.
+ * `bd` writes both `due_at` and `defer_until` as UTC ISO strings.
+ * @param {unknown} value @returns {number | undefined}
+ */
+function instantOf(value) {
+  if (typeof value !== 'string') return undefined;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 /**
@@ -247,14 +277,20 @@ export function createDependentReader(bd) {
 
 /**
  * The candidates: every open bead carrying `execution:hitl`. Closed beads are bd's own
- * default filter; deferred beads are parked by the owner and an idea is unshaped, so both
- * are counted and left out unless asked for.
+ * default filter; an idea is unshaped, so it is counted and left out unless asked for.
+ *
+ * A deferral is bd's own field and bd's own rule, so the queue reads it rather than
+ * inventing a second one. `bd ready` wakes a bead whose `defer_until` has passed, but
+ * `bd list` keeps reporting the stale `deferred` status the moment it was parked in, so
+ * applying the wake rule to `defer_until` here keeps this list equal to bd's own view.
+ * A `deferred` bead with no readable wake moment stays out: nothing says it woke.
  * @param {object} options
  * @param {Runner} options.bd
  * @param {boolean} options.includeIdeas
+ * @param {number} options.now  Epoch milliseconds the deferral is judged against.
  * @returns {Promise<{ candidates: Candidate[], excludedIdeas: number, excludedDeferred: number }>}
  */
-async function readCandidates({ bd, includeIdeas }) {
+async function readCandidates({ bd, includeIdeas, now }) {
   const stdout = await bd(['list', '-l', HITL_LABEL, '--json', '--limit', '0']);
   const rows = parseJsonArray(stdout, `bd list -l ${HITL_LABEL} --json`);
 
@@ -271,11 +307,12 @@ async function readCandidates({ bd, includeIdeas }) {
     const status = asString(record.status) ?? 'open';
     if (status === CLOSED_STATUS) continue;
     const labels = Array.isArray(record.labels) ? record.labels.filter((label) => typeof label === 'string') : [];
+    const deferUntil = instantOf(record.defer_until);
     if (!includeIdeas && labels.includes(IDEA_LABEL)) {
       excludedIdeas += 1;
       continue;
     }
-    if (status === DEFERRED_STATUS) {
+    if (status === DEFERRED_STATUS && (deferUntil === undefined || deferUntil > now)) {
       excludedDeferred += 1;
       continue;
     }
@@ -284,6 +321,8 @@ async function readCandidates({ bd, includeIdeas }) {
       title: asString(record.title) ?? id,
       status,
       rice: storedRice(record.metadata),
+      dueAt: instantOf(record.due_at),
+      deferUntil,
     });
   }
 
@@ -291,20 +330,29 @@ async function readCandidates({ bd, includeIdeas }) {
 }
 
 /**
- * The strategy version a score is compared against. A missing or malformed strategy does
- * not stop the queue: the scores are already on the beads, and refusing to rank them
- * would hide the backlog behind a file. The version is reported for what it is — unknown.
+ * The strategy a run ranks against: the version a score is compared with, and the deadline
+ * tiers its factor comes from. A missing or malformed strategy does not stop the queue:
+ * the scores are already on the beads, and refusing to rank them would hide the backlog
+ * behind a file. The version is then reported for what it is — unknown — and the tiers
+ * fall back to their documented default, which is a value a reader can look up.
  * @param {object} options
  * @param {string | undefined} options.file
  * @param {string} options.cwd
- * @returns {Promise<{ file: string, version: number | undefined }>}
+ * @returns {Promise<{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[] }>}
  */
-async function readStrategyVersion({ file, cwd }) {
+async function readStrategy({ file, cwd }) {
   const path = await resolveStrategyPath({ ...(file === undefined ? {} : { file }), cwd });
   const text = await readFile(path, 'utf8').catch(() => undefined);
-  if (text === undefined) return { file: path, version: undefined };
+  if (text === undefined) {
+    return { file: path, version: undefined, deadlineTiers: [...DEFAULT_DEADLINE_TIERS] };
+  }
   const strategy = validateStrategy(text);
-  return { file: path, version: strategy.ok ? strategy.version : undefined };
+  const tiers = parseDeadlineTiers(text);
+  return {
+    file: path,
+    version: strategy.ok ? strategy.version : undefined,
+    deadlineTiers: tiers.ok ? tiers.tiers : [...DEFAULT_DEADLINE_TIERS],
+  };
 }
 
 // ─── Queue ────────────────────────────────────────────────────────────────────
@@ -326,12 +374,14 @@ async function readStrategyVersion({ file, cwd }) {
  * @param {string | undefined} [options.file]   Strategy path; defaults to the documented default.
  * @param {string} [options.cwd]
  * @param {boolean} [options.includeIdeas]
+ * @param {number} [options.now]  Epoch milliseconds the deadlines are measured from.
+ *                               Injectable so a tier boundary test is deterministic.
  * @returns {Promise<QueueReport>}
  */
-export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas = false }) {
+export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas = false, now = Date.now() }) {
   const [strategy, { candidates, excludedIdeas, excludedDeferred }] = await Promise.all([
-    readStrategyVersion({ file, cwd }),
-    readCandidates({ bd, includeIdeas }),
+    readStrategy({ file, cwd }),
+    readCandidates({ bd, includeIdeas, now }),
   ]);
   const dependentsOf = createDependentReader(bd);
 
@@ -345,6 +395,10 @@ export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas =
       .sort();
     const inProgress = candidate.status === IN_PROGRESS_STATUS;
     const score = candidate.rice?.score;
+    const remainingMs = candidate.dueAt === undefined ? undefined : candidate.dueAt - now;
+    const deadline = remainingMs === undefined
+      ? { factor: 1, overdue: false }
+      : deadlineMultiplier(remainingMs, strategy.deadlineTiers);
     const scoredAtVersion = candidate.rice?.strategyVersion;
     const stale =
       score !== undefined &&
@@ -364,9 +418,13 @@ export async function buildQueue({ bd, file, cwd = process.cwd(), includeIdeas =
       dependentIds: live,
       dependentMultiplier: dependentMultiplier(live.length),
       wipMultiplier: inProgress ? WIP_MULTIPLIER : 1,
+      dueAt: candidate.dueAt,
+      remainingMs,
+      deadlineFactor: deadline.factor,
+      overdue: deadline.overdue,
       total: score === undefined
         ? undefined
-        : queueTotal({ score, dependents: live.length, inProgress }),
+        : queueTotal({ score, dependents: live.length, inProgress, deadline: deadline.factor }),
       scoredAtVersion,
       stale,
       unscoredReason: score === undefined
@@ -431,6 +489,64 @@ export function formatComponents(rice) {
 }
 
 /**
+ * A span of milliseconds as the largest units that fit, so a row reads `2d 23h` instead of
+ * a count of milliseconds. Rounded down: the row shows the time left, never a figure the
+ * deadline has not reached.
+ * @param {number} ms @returns {string}
+ */
+function formatSpan(ms) {
+  const totalMinutes = Math.floor(Math.abs(ms) / MS_PER_MINUTE);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (parts.length === 0) parts.push(`${totalMinutes % 60}m`);
+  return parts.join(' ');
+}
+
+/**
+ * The due moment in UTC, to the minute: a fixed form, so two runs print it identically.
+ * @param {number} instant @returns {string}
+ */
+function formatInstant(instant) {
+  return `${new Date(instant).toISOString().slice(0, 16)}Z`;
+}
+
+/**
+ * The distance and the due moment, with the word `OVERDUE` once the moment has passed.
+ * Empty for a bead with no deadline. No factor here: the scored clause adds one.
+ * @param {QueueRow} row @returns {string}
+ */
+function dueClause(row) {
+  if (row.dueAt === undefined || row.remainingMs === undefined) return '';
+  const due = formatInstant(row.dueAt);
+  const span = formatSpan(row.remainingMs);
+  return row.overdue ? `OVERDUE by ${span} (due ${due})` : `in ${span} (due ${due})`;
+}
+
+/**
+ * The deadline as one clause: the factor and the due clause. Empty for a bead with no
+ * deadline, which keeps the factor 1 and is not ranked down for lacking one.
+ * @param {QueueRow} row @returns {string}
+ */
+function deadlineClause(row) {
+  const due = dueClause(row);
+  return due === '' ? '' : `  deadline ×${row.deadlineFactor} ${due}`;
+}
+
+/**
+ * The same moment for a row with no total. An unscored row has no product to scale, so it
+ * shows the due moment and the slip and claims no factor — the deadline is still visible.
+ * @param {QueueRow} row @returns {string}
+ */
+function unscoredDueClause(row) {
+  const due = dueClause(row);
+  if (due === '') return '';
+  return row.overdue ? `  ${due}` : `  due ${due}`;
+}
+
+/**
  * What the answer unblocks, in one clause: named ids while they fit, a count after that.
  * @param {QueueRow} row @returns {string}
  */
@@ -461,7 +577,7 @@ export function renderQueue(report) {
 
   const lines = [
     `HITL decision queue · ${counts.ranked} ranked, ${counts.unscored} unscored · ${strategyLabel}`,
-    'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress · ties break on rice, then id · unscored last',
+    'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then id · unscored last',
   ];
   const excluded = formatExcluded(counts);
   if (excluded !== '') lines.push(excluded.trimEnd());
@@ -476,7 +592,8 @@ export function renderQueue(report) {
     const rank = row.rank === undefined ? '-' : String(row.rank);
     const total = row.total === undefined ? '—' : row.total.toFixed(1);
     const numbers = row.score === undefined
-      ? `unscored — ${row.unscoredReason ?? 'no score'} (score it with score-bead)`
+      ? `unscored — ${row.unscoredReason ?? 'no score'} (score it with score-bead)` +
+        unscoredDueClause(row)
       : formatNumbers(row);
     const stale = row.stale ? `  (scored at strategy v${row.scoredAtVersion}, current v${strategy.version})` : '';
     lines.push(
@@ -497,7 +614,8 @@ export function renderQueue(report) {
 export function formatNumbers(row) {
   return `rice ${/** @type {number} */ (row.score).toFixed(1)} = ${formatComponents(/** @type {StoredRice} */ (row.rice))}` +
     `  ×${row.dependentMultiplier.toFixed(2)} dependents(${row.dependents})` +
-    `  ×${row.wipMultiplier.toFixed(1)}${row.inProgress ? ' in-progress' : ''}`;
+    `  ×${row.wipMultiplier.toFixed(1)}${row.inProgress ? ' in-progress' : ''}` +
+    deadlineClause(row);
 }
 
 /**
@@ -524,7 +642,8 @@ export const COMMANDS = /** @type {const} */ (['queue']);
 const USAGE = `Usage: node queue.mjs queue [--file <path>] [--include-ideas] [--cwd <dir>] [--json]
 
   queue   Rank the open ${HITL_LABEL} beads into one list: RICE × (1 + ln(1 + dependents))
-          × 1.5 when in progress. A bead with no score is listed as unscored, never guessed.
+          × 1.5 when in progress, × the strategy's deadline factor at the bead's --due.
+          A bead with no score is listed as unscored, never guessed.
 
 Options:
   --file <path>     Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)

@@ -1,5 +1,5 @@
 ---
-"@jaybeeuu/agent-cortex": minor
+"@jaybeeuu/agent-cortex": major
 ---
 
 Split `prioritise-work` into two skills, because it carried two jobs and its name described only the
@@ -19,3 +19,7 @@ The strategy file's format, version, `REQUIRED_SECTIONS` and `validate`/`bump` b
 unchanged: the two scripts move byte-identical, and every strategy already committed still
 validates. `strategise`'s scripts are the ones `score-bead` and `hitl-queue` import, so their import
 paths and the commands in `RECOMMEND.md` and `score-bead/SKILL.md` follow the move.
+
+This removes a skill: `prioritise-work` is no longer installed, so anyone who names it must load
+`strategise` or `prioritise` instead. Nothing about the strategy file, its version or its commands
+changes, so a replacement is a rename at the call site and a reload.

@@ -31,6 +31,8 @@ Three steps, in this order. Step one gates the other two.
 node <strategise-scripts>/strategy.mjs validate
 ```
 
+`<strategise-scripts>` is the absolute path to the `strategise` skill's `scripts/` directory, resolved from wherever that skill was loaded. The path varies by harness and install location, so never hardcode one. `strategise` sits beside this skill in every harness, so `../strategise/scripts/` resolves to it. This skill ships no `scripts/` directory of its own, so it names the directory it calls.
+
 `validate` prints the rubric to stdout and exits `0` only when the file is valid. A non-zero exit stops the run here:
 
 | Exit | The file | What to do |

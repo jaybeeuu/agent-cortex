@@ -479,6 +479,79 @@ describe('what the queue leaves out', () => {
     assert.equal(report.counts.excludedDeferred, 1);
     assert.match(renderQueue(report), /excluded: 1 deferred bead/);
   });
+
+  it('withholds a bead an open bead blocks, and counts it with the reason it was withheld', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-gate', title: 'Gate: merge the change', labels: ['execution:hitl'], rice: rice({ score: 9 }), dependsOn: ['tst-doc'] },
+        { id: 'tst-work', title: 'Decide the storage shape', labels: ['execution:hitl'], rice: rice() },
+        { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+      ],
+    });
+
+    // The blocked bead scores higher than the workable one and is still not ranked.
+    assert.deepEqual(report.rows.map((row) => row.id), ['tst-work']);
+    assert.equal(report.counts.ranked, 1);
+    assert.equal(report.counts.withheldBlocked, 1);
+    assert.deepEqual(report.withheld, [
+      { id: 'tst-gate', scope: 'code', title: 'Gate: merge the change', blockedBy: ['tst-doc'] },
+    ]);
+    assert.match(renderQueue(report), /^excluded: 1 bead held by an open blocker$/m);
+    assert.doesNotMatch(renderQueue(report), /9\.0/);
+  });
+
+  it('ranks a bead whose blockers all closed exactly as a bead with no blocker at all', async () => {
+    // Two fixtures identical but for the closed prerequisite: the rendered queue and every
+    // derived number must match byte for byte, because withholding must not touch the ranking
+    // of a bead that is answerable.
+    const workable = [
+      { id: 'tst-a', title: 'Decide the storage shape', labels: ['execution:hitl'], rice: rice() },
+      { id: 'tst-b', title: 'Decide the vendor', status: 'in_progress', labels: ['execution:hitl'], rice: rice({ score: 2 }) },
+      { id: 'tst-1', title: 'waits 1', labels: ['execution:afk'], dependsOn: ['tst-a'] },
+    ];
+    const withClosedBlocker = [
+      { ...workable[0], dependsOn: ['tst-done'] },
+      workable[1],
+      workable[2],
+      { id: 'tst-done', title: 'Finished prerequisite', status: 'closed', labels: ['execution:afk'] },
+    ];
+
+    const plain = await queue({ beads: workable });
+    const released = await queue({ beads: withClosedBlocker });
+
+    assert.equal(renderQueue(released), renderQueue(plain));
+    assert.deepEqual(released.rows, plain.rows);
+    assert.deepEqual(released.counts, plain.counts);
+    assert.deepEqual(released.withheld, []);
+    // The same bytes a pre-withholding run printed for this fixture: a filter that moved a
+    // total or a tie-break would fail here even if both fixtures moved together.
+    assert.equal(
+      renderQueue(released),
+      [
+        'HITL decision queue · 2 ranked, 0 unscored · 1 scope · strategy v2',
+        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last',
+        'today · no daily note — no personal scope is configured, so there is no personal strategy to read a "daily:" line from',
+        '',
+        '1  code  tst-a  7.1  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.69 dependents(1)  ×1.0',
+        '    Decide the storage shape — unblocks tst-1',
+        '2  code  tst-b  3.0  rice 2.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.5 in-progress',
+        '    Decide the vendor — unblocks nothing',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('treats a parent-child edge as ownership, not as a blocker', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-epic', title: 'The epic', labels: ['execution:hitl'], rice: rice({ score: 1 }) },
+        { id: 'tst-a', title: 'Decide the storage shape', labels: ['execution:hitl'], rice: rice(), parent: 'tst-epic' },
+      ],
+    });
+
+    assert.equal(report.counts.withheldBlocked, 0);
+    assert.deepEqual(report.rows.map((row) => row.id), ['tst-a', 'tst-epic']);
+  });
 });
 
 describe('the emitted format', () => {

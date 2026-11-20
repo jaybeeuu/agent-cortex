@@ -72,7 +72,7 @@ Every row carries its rank, scope, id, total, the four components the score was 
 
 ### One item, not the list
 
-A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own. [RECOMMEND.md](RECOMMEND.md) carries the four stated conditions, the `--why` rule and the `--bead` form for a bead the human named. When that item is done, `boundary.mjs` compares the theme's next item against the queue's top item and prints both scores, and [BOUNDARY.md](BOUNDARY.md) carries the block, the three outcomes and the options.
+A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own. [RECOMMEND.md](RECOMMEND.md) carries the five stated conditions, the `--why` rule and the `--bead` form for a bead the human named. When that item is done, `boundary.mjs` compares the theme's next item against the queue's top item and prints both scores, and [BOUNDARY.md](BOUNDARY.md) carries the block, the three outcomes and the options.
 
 ```bash
 node <skill-scripts>/recommend.mjs recommend --json          # the top row, structured
@@ -117,7 +117,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 ## What the queue leaves out
 
 - **Ideas, by default.** `kind:idea` beads are HITL by convention but deliberately unshaped: a RICE score on an idea measures a guess about a guess, and the idea backlog is ranked by `flesh-out-idea` instead. An idea that outranks a ripe decision would send the owner into an interview they did not choose. The count is printed so nothing is dropped silently; `--include-ideas` ranks them when the backlog is what the owner is working.
-- **Deferred and closed beads.** A bead deferred into the future stays out of the queue until that date passes, and the count is printed; the queue never adds a second deferral concept. Finished work waits on nothing.
+- **Deferred, closed and blocked beads.** A bead deferred into the future stays out of the queue until that date passes, and the count is printed; the queue never adds a second deferral concept. Finished work waits on nothing. A scored bead an **open** `blocks` dependency points at is withheld from the ranking and counted with its blocker, because a row nobody can answer yet must not be the one item a session says out loud; `bd dep list <id> --direction down` is that read, and a closed blocker changes nothing. An ownership edge is not a blocker: an epic that owns a bead does not stop it being answered.
 
 ## Red Flags
 
@@ -128,7 +128,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 - Red flag: counting dependency paths instead of distinct beads, so a diamond inflates one row above its real value.
 - Red flag: re-sorting or grouping the flat list before reporting it, so the order the owner reads is not the order that was computed.
 - Red flag: hardcoding a deadline factor in the script, so the owner cannot tune the rise without a release.
-- Red flag: excluding ideas or deferrals without printing how many were excluded.
+- Red flag: excluding ideas, deferrals or blocked beads without printing how many were excluded and why.
 
 ## Verification checklist
 
@@ -138,7 +138,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 - [ ] A bead blocking three others ranks above an equal bead blocking none; an in-progress bead ranks above an equal not-started one.
 - [ ] A bead due in three days ranks above an otherwise identical bead with no due date; an overdue bead is flagged `OVERDUE` and carries the top tier of the table in force. Every row with a due date shows the due moment and the time left, only a ranked row shows a factor, and a changed tier moves the rank with no code change.
 - [ ] With no scores, the header says nothing can be ranked and every candidate is listed unscored with a reason.
-- [ ] Two identical runs printed byte-identical output, and the excluded idea and deferred counts were reported, or the header said there were none.
+- [ ] Two identical runs printed byte-identical output, and the excluded idea, deferred and blocked counts were reported, or the header said there were none.
 - [ ] A session that had to decide said one block: the bead, its components, both multipliers, the unblocked beads and the quoted strategy line — or one stated condition with its next step.
 
 ## See Also

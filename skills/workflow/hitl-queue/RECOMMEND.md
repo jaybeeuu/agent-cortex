@@ -5,10 +5,11 @@ that one row — the same total, components and multipliers the queue computed, 
 strategy that justifies it — and states a condition instead of choosing whenever it cannot justify
 a row.
 
-Every run ends in one of five answers: the block, or one of the four conditions that replace it.
+Every run ends in one of six answers: the block, or one of the five conditions that replace it.
 
 It ranks nothing. The bead is `rows[0]` of the queue, or the bead the human named, and every number
-on the block is the row's own.
+on the block is the row's own. A row the queue withheld — a scored bead an open `blocks` dependency
+points at — is never named, because a gate nobody can close yet is not an answer anyone can give.
 
 ## The three commands
 
@@ -74,6 +75,8 @@ was printed, whichever answer it was.
 | `No recommendation · nothing is scored` | The queue holds beads, and not one carries a `rice` record | Score one bead with `score-bead` |
 | `No recommendation · the queue is empty` | No open `execution:hitl` bead exists; the excluded idea and deferred counts are printed | File the decision as an `execution:hitl` bead, or lift a deferral |
 | `No recommendation · <id> is not in the queue` | The bead the human named is not an open `execution:hitl` bead | Check it with `bd show`, then name one from the queue |
+| `No recommendation · nothing is answerable yet` | Every scored bead is held by an open bead; the withheld rows and their blockers are printed | Close what blocks one of them, then re-run |
+| `No recommendation · <id> is held by an open bead` | The bead the human named leads the queue's withheld rows | Close the blocker the line names, then re-run |
 
 | Option | Effect |
 |---|---|

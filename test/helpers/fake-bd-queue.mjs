@@ -29,12 +29,23 @@
  * A `bd` runner over an in-memory graph, plus the record of what it was asked to write. It
  * reproduces the shapes the queue and the boundary read: `list -l execution:hitl --json` with
  * closed beads already excluded (bd's default filter) and the `due_at` / `defer_until` fields bd
- * writes, `dep list <id> --direction up --json` naming the beads that depend on it, and
+ * writes, `dep list <id> --direction up --json` naming the beads that depend on it,
+ * `dep list <id> --direction down --json` naming the beads it waits on (its own `dependsOn`,
+ * `relatesTo` and `parent` edges, each tagged with its type, as bd reports them), and
  * `children <id> --json`. A `note` call appends to `state.notes` instead of writing a tracker.
  * @param {GraphBead[]} beads
  * @returns {{ bd: (args: string[]) => Promise<string>, state: { notes: { id: string, text: string }[], calls: string[][] } }}
  */
 export function fakeQueueBd(beads) {
+  /**
+   * One dependency record, read from the graph so its status is the status the graph gives it.
+   * @param {string} id @param {string} type @returns {{ id: string, status: string, dependency_type: string }}
+   */
+  const edge = (id, type) => ({
+    id,
+    status: beads.find((bead) => bead.id === id)?.status ?? 'open',
+    dependency_type: type,
+  });
   /** @type {{ notes: { id: string, text: string }[], calls: string[][] }} */
   const state = { notes: [], calls: [] };
   const bd = async (/** @type {string[]} */ args) => {
@@ -74,6 +85,18 @@ export function fakeQueueBd(beads) {
     }
     if (args[0] === 'dep' && args[1] === 'list') {
       const id = args[2];
+      // bd's default direction is `down`: the beads this one waits on.
+      const at = args.indexOf('--direction');
+      const direction = at === -1 ? 'down' : args[at + 1];
+      if (direction === 'down') {
+        const self = beads.find((bead) => bead.id === id);
+        if (self === undefined) return JSON.stringify([]);
+        return JSON.stringify([
+          ...(self.dependsOn ?? []).map((blocker) => edge(blocker, 'blocks')),
+          ...(self.relatesTo ?? []).map((related) => edge(related, 'related')),
+          ...(self.parent === undefined ? [] : [edge(self.parent, 'parent-child')]),
+        ]);
+      }
       return JSON.stringify(
         beads.flatMap((bead) => [
           ...(bead.dependsOn ?? []).includes(id)

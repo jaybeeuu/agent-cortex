@@ -69,6 +69,8 @@ moment, never the whole history. The trend compares snapshots, and the report sa
    node <review-report-scripts>/report.mjs
    ```
 
+   `<review-report-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path.
+
    It reads two tracker queries, both read-only and both carrying `--all` — the defect query
    `bd list --label-pattern 'defect:*' --all` and the chore tree. Without `--all` a query for a label
    on a closed bead returns nothing.

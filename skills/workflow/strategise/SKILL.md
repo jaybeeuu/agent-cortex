@@ -1,27 +1,28 @@
 ---
-name: prioritise-work
-description: Sets, updates and validates the committed prioritisation strategy that bead scoring ranks against. Use when choosing what to work on next, when the strategy file is missing or stale, or when asked to "set the strategy".
+name: strategise
+description: Sets, updates and validates the committed prioritisation strategy that bead scoring ranks against. Use when the strategy file is missing, stale or disputed, or when asked to "set the strategy".
 ---
 
-# Prioritise Work
+# Strategise
 
-Owns one artefact: the **strategy file**, the rubric a scorer reads before it judges a bead's reach, impact, confidence and effort. The skill interviews the owner to write or update it, and validates it before any scorer reads it.
+Owns one artefact: the **strategy file**, the rubric a scorer reads before it judges a bead's reach, impact, confidence and effort. The skill opens by summarising the file, interviews the owner to write or update it, and validates it before any scorer reads it.
+
+This skill does not score a bead and does not rank a backlog. `score-bead` records a RICE score against this rubric, and `hitl-queue` prints the order; [prioritise](../prioritise/SKILL.md) is the sequence that runs both and the guard that stops them on a bad file.
 
 The strategy is a **committed file**, never a bead and never a scratch note. A rubric is reviewed, diffed and versioned as text; a bead carries progress and decisions about *work*, not the durable document that judges work. The tracker convention draws the same line: operational state — progress, decisions, refs — goes in the bead trail, and a document a reviewer diffs stays a file. Keep the strategy a file even when a bead could hold the same words, because then nobody can review a change to the rubric.
 
 ## When to use
 
-- "What should I work on next?" — and there is no strategy file, or the one there is predates the current month.
 - "Set the strategy", "update the priorities", "we are optimising something else this month".
+- The order looks wrong and the rubric behind it predates the current month.
 - "This should be higher", "that is not the priority" — a challenge to the order, which is a strategy signal. See [CHALLENGE.md](CHALLENGE.md).
 - A scorer reports a score with no `strategyVersion`, or with one older than the file's.
-- Before ranking a backlog: the rubric has to be valid first.
 
 ## When NOT to use
 
-- Shaping one feature — use `plan`; that skill scopes a feature, this one orders the work.
-- Recording an idea — use `record-idea`; tracker questions, or where a bead's state lives — use `bd-tool`.
-- Writing a PRD or a design document — use `write-a-prd`.
+- Scoring one bead, or ranking the queue — use [prioritise](../prioritise/SKILL.md).
+- Shaping one feature — use `plan`; that skill scopes a feature, this one judges the work.
+- Recording an idea — use `record-idea`; where a bead's state lives — use `bd-tool`.
 
 ## The strategy file
 
@@ -119,10 +120,6 @@ One question produces one section. Ask them in this order; each answer is one to
 
 The confidence question matters as much as the other four: effort and impact estimates are judgements, and the strategy is the only place the owner states how far to trust one.
 
-## The scripts
-
-Four subcommands of `strategy.mjs` and one of `challenge.mjs`, all zero dependencies with no tracker access: [REFERENCE.md](REFERENCE.md) lists what each one prints and the exit codes the steps above route on.
-
 ## Hand edits and forgotten bumps
 
 A hand edit that changes a section but forgets `bump` still passes `validate`: the shape is intact, so nothing can tell the content moved. The protection is the version a score records — a scorer stores the `strategyVersion` it scored against, so a reader compares the two numbers and re-scores when they differ. The change log closes the rest of the gap: `validate` fails when its newest line names a version the header does not, so a raised version with no recorded reason is caught.
@@ -145,6 +142,6 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 
 - [CHALLENGE.md](CHALLENGE.md) — the sequence, the refusals and the no-change path when the order is challenged.
 - [REFERENCE.md](REFERENCE.md) — every subcommand, what it prints, and the exit codes that tell a first run from an invalid strategy.
-- [plan](../../workflow/plan/SKILL.md) — shapes one feature into beads; this skill orders the beads that exist.
+- [prioritise](../prioritise/SKILL.md) — the score-then-rank sequence, and the guard that refuses it on an invalid strategy.
+- [plan](../../workflow/plan/SKILL.md) — shapes one feature into beads; this skill judges the beads that exist.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — where operational state lives, and why a durable document does not belong there.
-- [score-bead](../../workflow/score-bead/SKILL.md) — turns this rubric into a RICE record on a bead; the queue's daily line is read by [hitl-queue](../hitl-queue/SCOPES.md).

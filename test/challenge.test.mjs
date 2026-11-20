@@ -1,4 +1,4 @@
-// Tests for skills/workflow/prioritise-work/scripts/challenge.mjs — the recorder that turns
+// Tests for skills/workflow/strategise/scripts/challenge.mjs — the recorder that turns
 // a priority challenge into a strategy review and refuses a silent reorder.
 //
 // The failure this file exists to prevent is the tempting one: the human says "this should
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
-import { REQUIRED_SECTIONS } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import {
   buildEntry,
   fingerprintEntry,
@@ -32,7 +32,7 @@ import {
   parseOrder,
   reviewChallenge,
   runCli,
-} from '../skills/workflow/prioritise-work/scripts/challenge.mjs';
+} from '../skills/workflow/strategise/scripts/challenge.mjs';
 
 const tempRoot = createTempRoot('challenge-');
 const execFileAsync = promisify(execFile);
@@ -483,7 +483,7 @@ describe('the tracker', () => {
     assert.equal(await readFile(marker, 'utf8'), 'ready\n');
     await writeFile(marker, '', 'utf8');
 
-    const script = fileURLToPath(new URL('../skills/workflow/prioritise-work/scripts/challenge.mjs', import.meta.url));
+    const script = fileURLToPath(new URL('../skills/workflow/strategise/scripts/challenge.mjs', import.meta.url));
     await execFileAsync(process.execPath, [script, ...recordArgs(file)], { cwd: workspace, env });
 
     assert.equal(await readFile(marker, 'utf8'), '');

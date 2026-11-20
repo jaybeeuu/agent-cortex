@@ -28,7 +28,7 @@ import { access, readFile, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 
-import { findRepositoryRoot, resolveStrategyPath, validateStrategy } from '../../prioritise-work/scripts/strategy.mjs';
+import { findRepositoryRoot, resolveStrategyPath, validateStrategy } from '../../strategise/scripts/strategy.mjs';
 
 /** @typedef {(args: string[]) => Promise<string>} Runner */
 /** @typedef {(args: string[], scope: Scope) => Promise<string>} ScopedRunner */

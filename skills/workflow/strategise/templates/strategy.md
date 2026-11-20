@@ -8,7 +8,13 @@ It lives in the repository as a committed file, never in the tracker, so a revie
 diff how the judgement changed. Every `##` section below is required: leave one empty and
 the validator names it. `## Deadline tiers` is the one exception — omit it and the queue
 ranks on its documented default. Set the version and the date with
-`node <skill-scripts>/strategy.mjs bump` after you edit the content.
+`node <strategise-scripts>/strategy.mjs bump` after you edit the content.
+
+`<strategise-scripts>` is the absolute path to the `scripts/` directory of the `strategise`
+skill you loaded to get this template. It sits at `../scripts/` from this template's directory
+inside that skill. The path varies by harness and install location, so never hardcode one. The
+copy of this file in your repository carries no scripts of its own, so read the path from the
+skill each time.
 -->
 
 - **Version:** 1
@@ -80,7 +86,7 @@ uses it.
 
 <!--
 One line per change to this rubric, oldest first, written by
-`node <skill-scripts>/strategy.mjs bump --reason "<why>"`. The newest line must name the
+`node <strategise-scripts>/strategy.mjs bump --reason "<why>"`. The newest line must name the
 version above: `validate` fails when the two disagree, because a version that moved with
 no recorded reason is a rubric change nobody can review.
 -->

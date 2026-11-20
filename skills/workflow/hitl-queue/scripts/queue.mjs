@@ -36,8 +36,8 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { DEFAULT_FILE, resolveStrategyPath, validateStrategy } from '../../prioritise-work/scripts/strategy.mjs';
-import { DEFAULT_DEADLINE_TIERS, deadlineMultiplier, parseDeadlineTiers } from '../../prioritise-work/scripts/strategy.mjs';
+import { DEFAULT_FILE, resolveStrategyPath, validateStrategy } from '../../strategise/scripts/strategy.mjs';
+import { DEFAULT_DEADLINE_TIERS, deadlineMultiplier, parseDeadlineTiers } from '../../strategise/scripts/strategy.mjs';
 import { BD_PATH, RICE_KEY, errorMessage, makeRunner, storedRice } from '../../score-bead/scripts/rice.mjs';
 import {
   DEFAULT_SCOPES_FILE,
@@ -54,7 +54,7 @@ import {
 } from './scopes.mjs';
 
 /** @typedef {import('../../score-bead/scripts/rice.mjs').StoredRice} StoredRice */
-/** @typedef {import('../../prioritise-work/scripts/strategy.mjs').DeadlineTier} DeadlineTier */
+/** @typedef {import('../../strategise/scripts/strategy.mjs').DeadlineTier} DeadlineTier */
 /** @typedef {import('./scopes.mjs').DailyNote} DailyNote */
 /** @typedef {import('./scopes.mjs').Scope} Scope */
 /** @typedef {(args: string[]) => Promise<string>} Runner */

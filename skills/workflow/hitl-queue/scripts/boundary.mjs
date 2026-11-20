@@ -23,7 +23,7 @@
 
 import { pathToFileURL } from 'node:url';
 
-import { DEFAULT_FILE } from '../../prioritise-work/scripts/strategy.mjs';
+import { DEFAULT_FILE } from '../../strategise/scripts/strategy.mjs';
 import { BD_PATH, errorMessage, makeRunner } from '../../score-bead/scripts/rice.mjs';
 import { HITL_LABEL, IDEA_LABEL, UsageError, buildQueue } from './queue.mjs';
 

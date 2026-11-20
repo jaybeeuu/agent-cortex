@@ -22,7 +22,7 @@ import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
 import { fakeBd } from './helpers/fake-bd-queue.mjs';
-import { REQUIRED_SECTIONS } from '../skills/workflow/prioritise-work/scripts/strategy.mjs';
+import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import { UsageError } from '../skills/workflow/hitl-queue/scripts/queue.mjs';
 import {
   RECOMMEND_STATE,
@@ -202,8 +202,8 @@ describe('the states that are stated instead of guessed', () => {
       [
         'No recommendation · no usable strategy',
         `  file: ${join(workspace, 'absent.md')}`,
-        '  - no file at that path — write one with prioritise-work',
-        'next: write or fix the strategy with prioritise-work, then run this again',
+        '  - no file at that path — write one with strategise',
+        'next: write or fix the strategy with strategise, then run this again',
         '',
       ].join('\n'),
     );

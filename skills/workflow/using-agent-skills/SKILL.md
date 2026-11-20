@@ -27,7 +27,8 @@ Task arrives
     ├── Need a single task tracked? ────────→ create-task
     ├── Need to plan a feature end-to-end? ─→ plan
     ├── Deciding what to work on next? ─────→ guppi
-    │   └── Strategy stale or missing? ────→ prioritise-work
+    │   ├── Strategy stale or missing? ────→ strategise
+    │   └── Need the order? ──────────────→ prioritise
     ├── Scoring or banding one bead? ──────→ score-bead
     ├── Ranking the HITL decision queue? ──→ hitl-queue
     ├── Collaborating on HITL work? ────────→ guppi

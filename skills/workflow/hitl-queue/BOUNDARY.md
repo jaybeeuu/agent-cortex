@@ -76,7 +76,7 @@ no reason says nothing about intent.
   `stay` or `switch` that contradicts the two scores. The refusal is the point: an unexplained
   override is the case the trail exists to catch.
 - **The boundary changes what to do next, never what outranks what.** The order is the queue's and
-  the rubric is the strategy's. A wish for a different order is a `prioritise-work` change, not a
+  the rubric is the strategy's. A wish for a different order is a `strategise` change, not a
   boundary decision.
 
 ## Which item is compared

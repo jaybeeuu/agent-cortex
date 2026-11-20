@@ -290,7 +290,7 @@ instructions file, leaving the rest of that file — and a `.bak` copy — intac
 
 A plain `agent-cortex install claude` **materialises** the plugin into the home install
 root `~/.agent-cortex/claude` — **5 agents** (`strategy`, `plan`, `ralph-plan`, `ralph`, `guppi`),
-**34 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
+**41 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
 symlinks), `SessionStart` + `Notification` hooks, and 2 MCP servers — writes a marketplace
 manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude`, and
 registers it with Claude Code, and merges the committed `claude/settings.json` template into

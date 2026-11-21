@@ -17,6 +17,10 @@ The project list is read first, so a repository can commit the scopes its work s
 list is the personal one: it travels with the person, not the checkout. With neither, the queue
 behaves as it did before scopes existed — one workspace, one list.
 
+The user list is written by `agent-cortex scope add`, which keeps every other entry and every
+unknown key, and refuses a directory that does not exist or carries no `.beads` of its own. The
+project list is committed and reviewed like source, so it is edited by hand.
+
 ```json
 {
   "scopes": [

@@ -650,3 +650,35 @@ names the beads and exits non-zero.
 agent-cortex migrate            # dry run — per-bead plan, zero writes
 agent-cortex migrate --apply    # apply pending steps, verifying each
 ```
+
+## Registering bd workspaces (`agent-cortex scope`)
+
+`agent-cortex scope add` registers a bd workspace in the user-level scope list, so the list the
+`hitl-queue` skill reads no longer has to be hand-edited. `agent-cortex scope list` prints what a
+run in the current directory resolves.
+
+```sh
+agent-cortex scope add --path ../ops        # name: the directory's own name; kind: code
+agent-cortex scope add --path ~/personal --name notes --kind personal
+agent-cortex scope list                     # name, kind, read-only flag, availability, path
+```
+
+The list is the user-level one — `<AGENT_CORTEX_HOME>/scopes.json`, `~/.agent-cortex/scopes.json`
+by default. A repository's own `.agent-cortex/scopes.json` is committed and reviewed like source,
+so `add` writes only the user list. Both commands resolve paths and validate the file through the
+`hitl-queue` skill's `scopes.mjs`, so `scope list` shows `~` and relative paths as the queue
+resolves them.
+
+`add` refuses a directory that does not exist, is not a directory, or carries no `.beads` of its
+own, and names the check that failed. The marker is tested at that exact directory, never by
+walking up: bd resolves a workspace by walking up, so a nested directory would otherwise read the
+enclosing workspace's beads and tag them with the wrong scope.
+
+A configured list replaces the implicit "workspace you are standing in" scope, so `add` keeps the
+current workspace in the written list as the `code` entry and reports that it did. The write is a
+read-modify-write of one entry: every other entry and every unknown key survives, and the merged
+document is validated by the queue's own parser before any write, so a malformed file is refused
+rather than truncated.
+
+Exit `0` means a write or a listing succeeded, `2` a refusal the command explains, and `1` an
+invocation it cannot parse.

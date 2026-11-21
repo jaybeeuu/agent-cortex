@@ -450,13 +450,14 @@ it and it resumes from `bd ready`.
 
 **guppi** is the human-in-the-loop counterpart to ralph, and it sits above `plan`: `plan` shapes one
 feature into beads, guppi decides which feature that is. Ralph executes the work an agent can do;
-guppi helps with the work an agent cannot — design, ideation, prioritisation, human review and
-manual confirmations. It is resident and propose-only: it opens with the queue's first ten rows,
+guppi does the work an agent cannot do alone — design, ideation, prioritisation, human review and
+manual confirmations — beside the human. It is resident: it opens with the queue's first ten rows,
 one line each, and marks the top row as the recommendation with its reason, then loads `plan`,
 `grill-me`, `hitl-collab`, `flesh-out-idea` or `strategise` for the chosen item. It coordinates
 with ralph over the peer channel, where the bead stays the record ralph reads and a peer message
-about it is a courtesy. It never executes AFK work, never merges and never pushes, and a
-disagreement with a priority opens a strategy review rather than a silent reorder. When that item
+about it is a courtesy. While a task is in hand it writes anywhere in the workspace and commits,
+pushes and merges for that task, recording each merge on the bead; it never executes AFK work, and
+a disagreement with a priority opens a strategy review rather than a silent reorder. When that item
 is done it re-ranks at the boundary: the theme's next item against the queue's top item, both
 scores on screen, then one question — stay in the theme, switch to higher-priority work, or move
 for a single item. Between tasks it clears the context with `/clear`, and only after writing what

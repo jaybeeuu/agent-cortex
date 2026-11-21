@@ -190,6 +190,21 @@ describe('one recommendation, from the queue and the strategy', () => {
     assert.match(rendered, /^Recommendation · tst-a · total 10\.0/m);
     assert.doesNotMatch(rendered, /queue top:/);
   });
+
+  it('recommends the workable bead when an open bead holds the highest score', async () => {
+    // The gate scores 9.9 and is held by its open document stage; the workable bead scores
+    // 4.2. The one item a session says out loud must be the bead somebody can actually answer.
+    const beads = [
+      { id: 'tst-gate', title: 'Gate: merge the change', labels: ['execution:hitl'], rice: rice({ score: 9.9 }), dependsOn: ['tst-doc'] },
+      { id: 'tst-work', title: 'Decide the storage shape', labels: ['execution:hitl'], rice: rice() },
+      { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+    ];
+    const rendered = await recommend({ beads });
+
+    assert.match(rendered, /^Recommendation · tst-work · total 4\.2 · strategy v2$/m);
+    assert.doesNotMatch(rendered, /Recommendation · tst-gate/);
+    assert.doesNotMatch(rendered, /9\.9/);
+  });
 });
 
 describe('the states that are stated instead of guessed', () => {
@@ -258,13 +273,57 @@ describe('the states that are stated instead of guessed', () => {
     );
   });
 
-  it('keeps the four conditions distinct: no state reads like another', async () => {
+  it('states that every scored bead is held by an open bead instead of naming one', async () => {
+    const beads = [
+      { id: 'tst-gate', title: 'Gate: merge the change', labels: ['execution:hitl'], rice: rice({ score: 9.9 }), dependsOn: ['tst-doc'] },
+      { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+    ];
+    const rendered = await recommend({ beads });
+
+    assert.equal(
+      rendered,
+      [
+        'No recommendation · nothing is answerable yet',
+        '  1 scored bead an open bead blocks',
+        '  tst-gate (blocked by tst-doc)',
+        'next: close what blocks one of them, then run this again',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('states a named bead the queue withheld, and names the bead that holds it', async () => {
+    const beads = [
+      { id: 'tst-gate', title: 'Gate: merge the change', labels: ['execution:hitl'], rice: rice({ score: 9.9 }), dependsOn: ['tst-doc'] },
+      { id: 'tst-work', title: 'Decide the storage shape', labels: ['execution:hitl'], rice: rice() },
+      { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+    ];
+    const rendered = await recommend({ beads, bead: 'tst-gate' });
+
+    assert.equal(
+      rendered,
+      [
+        'No recommendation · tst-gate is held by an open bead',
+        '  Gate: merge the change — blocked by tst-doc',
+        'next: close tst-doc, then run this again',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps the stated conditions distinct: no state reads like another', async () => {
     const workspace = await makeWorkspace();
     const states = [
       await recommend({ beads: queueFixture(), file: join(workspace, 'absent.md') }),
       await recommend({ beads: queueFixture().map(({ rice: _rice, ...bead }) => bead) }),
       await recommend({ beads: [] }),
       await recommend({ beads: queueFixture(), bead: 'tst-zz' }),
+      await recommend({
+        beads: [
+          { id: 'tst-gate', title: 'Gate: merge the change', labels: ['execution:hitl'], rice: rice({ score: 9.9 }), dependsOn: ['tst-doc'] },
+          { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+        ],
+      }),
     ];
 
     const firstLines = states.map((rendered) => rendered.split('\n')[0]);
@@ -275,6 +334,7 @@ describe('the states that are stated instead of guessed', () => {
     }
     assert.match(states[2], /^No recommendation · the queue is empty$/m);
     assert.match(states[3], /^No recommendation · tst-zz is not in the queue$/m);
+    assert.match(states[4], /^No recommendation · nothing is answerable yet$/m);
   });
 });
 

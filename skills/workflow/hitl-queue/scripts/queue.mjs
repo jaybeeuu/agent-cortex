@@ -25,6 +25,14 @@
 // This script never recomputes it and never invents one: a bead with no score is listed
 // as `unscored` with the reason, because a queue that guessed would hide the gap.
 //
+// A scored bead whose own `blocks` dependency points at an open bead is **withheld**: it is
+// left out of the ranking and reported with the blocker that holds it. A row nobody can
+// answer yet must not be the one item a session names, and a row that vanished in silence
+// would be worse than one ranked too high — so the count and the reason print, and `--json`
+// carries the rows. Only the downward `blocks` edge withholds: an ownership edge
+// (`parent-child`) is not a blocker, and a closed blocker leaves the row ranked exactly as
+// before.
+//
 // Zero runtime dependencies, async fs only, every child process with an argv array.
 // `skills/*/scripts` sits outside the check-no-sync scan; this script stays async anyway,
 // so the rule holds everywhere. BD_PATH pins a bd binary the way the score script does.
@@ -148,14 +156,25 @@ export class QueueError extends Error {}
  */
 
 /**
+ * A row the queue withheld from the ranking because an open bead blocks it. It carries what a
+ * reader needs to see the withholding rather than an absence: which bead, where, and by what.
+ * @typedef {object} WithheldRow
+ * @property {string} id
+ * @property {string} scope
+ * @property {string} title
+ * @property {string[]} blockedBy     The open blockers, sorted.
+ */
+
+/**
  * The whole answer.
  * @typedef {object} QueueReport
  * @property {{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[] }} strategy
  * @property {'local' | 'shared'} invocation
  * @property {ScopeStatus[]} scopes
  * @property {DailyNote} today
- * @property {{ ranked: number, unscored: number, excludedIdeas: number, excludedDeferred: number, availableScopes: number, unavailableScopes: number, withheldScopes: number }} counts
+ * @property {{ ranked: number, unscored: number, excludedIdeas: number, excludedDeferred: number, withheldBlocked: number, availableScopes: number, unavailableScopes: number, withheldScopes: number }} counts
  * @property {QueueRow[]} rows                   Ranked rows first, then unscored rows.
+ * @property {WithheldRow[]} withheld           Scored rows an open bead blocks, left out of the ranking.
  */
 
 // ─── Arithmetic ───────────────────────────────────────────────────────────────
@@ -313,6 +332,55 @@ export function createDependentReader(bd) {
 
     found.delete(beadId);
     return found;
+  };
+}
+
+/**
+ * A blocker: the bead this one waits on, and the status it is in.
+ * @typedef {object} Blocker
+ * @property {string} id
+ * @property {string} status
+ */
+
+/**
+ * Read the dependency graph downwards: the beads one row waits on.
+ *
+ * `bd dep list <id> --direction down` names what `<id>` depends on — the beads that must
+ * finish before it can be answered. Only `blocks` edges count, for the reason the upward
+ * walk gives: an ownership edge (a `parent-child` record) is not a blocker, so an epic that
+ * owns a bead does not stop that bead being answered.
+ *
+ * The direct edge is enough, and a deeper walk would be wrong. If `A` waits on an open `B`,
+ * then `A` is held whatever `B` waits on; and if `B` is closed then the chain behind `B` is
+ * closed with it — a closed bead is a completed prerequisite, not a gap. Each bead's direct
+ * edges are read once and remembered.
+ *
+ * @param {Runner} bd
+ * @returns {(beadId: string) => Promise<Blocker[]>}
+ */
+export function createBlockerReader(bd) {
+  /** @type {Map<string, Promise<Blocker[]>>} */
+  const edges = new Map();
+
+  return function blockersOf(beadId) {
+    const cached = edges.get(beadId);
+    if (cached !== undefined) return cached;
+    const pending = bd(['dep', 'list', beadId, '--direction', 'down', '--json']).then((stdout) => {
+      const rows = parseJsonArray(stdout, `bd dep list ${beadId} --direction down --json`);
+      /** @type {Blocker[]} */
+      const out = [];
+      for (const row of rows) {
+        const record = asRecord(row);
+        if (record === undefined) continue;
+        if (record.dependency_type !== BLOCKS_TYPE) continue;
+        const id = asString(record.id);
+        if (id === undefined) continue;
+        out.push({ id, status: asString(record.status) ?? 'open' });
+      }
+      return out;
+    });
+    edges.set(beadId, pending);
+    return pending;
   };
 }
 
@@ -499,6 +567,12 @@ function publishedScope(read) {
  * An unscored row keeps its place in the list, after the ranked rows, and carries the
  * reason. Nothing is dropped silently and no score is invented: the gap is the answer.
  *
+ * A **withheld** row is a scored candidate that an open `blocks` dependency points at — the
+ * row somebody could not answer yet even if it ranked first. It is left out of the ranking
+ * and reported by id, scope and blocker, so the row is withheld rather than hidden. An
+ * unscored candidate is never ranked in the first place, so it stays in the unscored list
+ * where the scoring gap is visible; nothing there can be recommended by mistake.
+ *
  * @param {object} options
  * @param {ScopedRunner} [options.bd]           The tracker; defaults to one bd call per scope.
  * @param {string | undefined} [options.file]   Strategy path; defaults to the documented default.
@@ -534,9 +608,13 @@ export async function buildQueue({
 
   /** @type {Map<string, ReturnType<typeof createDependentReader>>} */
   const readers = new Map();
+  /** @type {Map<string, ReturnType<typeof createBlockerReader>>} */
+  const blockerReaders = new Map();
   for (const read of reads) {
     if (read.status !== 'available') continue;
-    readers.set(read.scope.name, createDependentReader(guardRunner(read.scope, runBd)));
+    const scoped = guardRunner(read.scope, runBd);
+    readers.set(read.scope.name, createDependentReader(scoped));
+    blockerReaders.set(read.scope.name, createBlockerReader(scoped));
   }
 
   const candidates = reads.flatMap((read) => read.candidates);
@@ -545,6 +623,8 @@ export async function buildQueue({
 
   /** @type {QueueRow[]} */
   const rows = [];
+  /** @type {WithheldRow[]} */
+  const withheld = [];
   for (const candidate of candidates) {
     const dependentsOf = /** @type {ReturnType<typeof createDependentReader>} */ (readers.get(candidate.scope));
     const dependents = await dependentsOf(candidate.id);
@@ -554,6 +634,22 @@ export async function buildQueue({
       .sort();
     const inProgress = candidate.status === IN_PROGRESS_STATUS;
     const score = candidate.rice?.score;
+    const title = candidate.title.replace(/\s+/g, ' ').trim();
+    if (score !== undefined) {
+      // Only a candidate that would be ranked can be withheld from the ranking: an unscored
+      // row is already unranked, so its place in the unscored list is not an answer.
+      const blockersOf = /** @type {ReturnType<typeof createBlockerReader>} */ (
+        blockerReaders.get(candidate.scope)
+      );
+      const blockedBy = (await blockersOf(candidate.id))
+        .filter((blocker) => blocker.status !== CLOSED_STATUS)
+        .map((blocker) => blocker.id)
+        .sort();
+      if (blockedBy.length > 0) {
+        withheld.push({ id: candidate.id, scope: candidate.scope, title, blockedBy });
+        continue;
+      }
+    }
     const remainingMs = candidate.dueAt === undefined ? undefined : candidate.dueAt - now;
     const deadline = remainingMs === undefined
       ? { factor: 1, overdue: false }
@@ -569,7 +665,7 @@ export async function buildQueue({
       rank: undefined,
       id: candidate.id,
       scope: candidate.scope,
-      title: candidate.title.replace(/\s+/g, ' ').trim(),
+      title,
       status: candidate.status,
       inProgress,
       score,
@@ -624,18 +720,20 @@ export async function buildQueue({
       unscored: unscored.length,
       excludedIdeas,
       excludedDeferred,
+      withheldBlocked: withheld.length,
       availableScopes: available,
       unavailableScopes: reads.filter((read) => read.status === 'unavailable').length,
       withheldScopes: reads.filter((read) => read.status === 'withheld').length,
     },
     rows: [...ranked, ...unscored],
+    withheld: withheld.sort(compareScopeThenId),
   };
 }
 
 /**
  * The tie-break two workspaces both reach: the scope name first, because two workspaces may
  * hold the same bead id, then the id. Stable and total, so one backlog prints one order.
- * @param {QueueRow} a @param {QueueRow} b @returns {number}
+ * @param {{ scope: string, id: string }} a @param {{ scope: string, id: string }} b @returns {number}
  */
 function compareScopeThenId(a, b) {
   if (a.scope !== b.scope) return a.scope < b.scope ? -1 : 1;
@@ -644,9 +742,18 @@ function compareScopeThenId(a, b) {
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 
-/** @param {number} count @param {string} noun @returns {string} */
-function plural(count, noun) {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+/**
+ * A count with both word forms spelled out by the caller. A plural suffix cannot be derived by
+ * appending `s` to the last word, because the counted noun is not always the last word: a
+ * phrase such as "bead held by an open blocker" carries its noun at the front. Requiring the
+ * plural form makes a caller state it rather than inherit an `s` on the tail of the phrase.
+ * @param {number} count @param {string} singular @param {string} pluralForm @returns {string}
+ */
+function counted(count, singular, pluralForm) {
+  if (pluralForm === undefined) {
+    throw new TypeError(`counted('${singular}') needs the singular and the plural form`);
+  }
+  return `${count} ${count === 1 ? singular : pluralForm}`;
 }
 
 /** @param {string} text @param {number} width @returns {string} */
@@ -742,7 +849,7 @@ export function formatUnblocks(row) {
  */
 function scopeSummary(counts) {
   const total = counts.availableScopes + counts.unavailableScopes + counts.withheldScopes;
-  const parts = [plural(total, 'scope')];
+  const parts = [counted(total, 'scope', 'scopes')];
   if (counts.unavailableScopes > 0) parts.push(`${counts.unavailableScopes} unavailable`);
   if (counts.withheldScopes > 0) parts.push(`${counts.withheldScopes} withheld`);
   return parts.join(', ');
@@ -786,7 +893,7 @@ export function renderQueue(report) {
   const strategyLabel = strategy.version === undefined ? 'strategy unknown' : `strategy v${strategy.version}`;
   const scopes = scopeSummary(counts);
 
-  const head = rows.length === 0
+  const head = rows.length === 0 && counts.withheldBlocked === 0
     ? [`HITL decision queue · no open ${HITL_LABEL} beads · ${scopes}`, renderToday(today)]
     : [
         `HITL decision queue · ${counts.ranked} ranked, ${counts.unscored} unscored · ${scopes} · ${strategyLabel}`,
@@ -846,13 +953,20 @@ export function formatNumbers(row) {
  * @param {QueueReport['counts']} counts @returns {string}
  */
 export function formatExcluded(counts) {
-  if (counts.excludedIdeas === 0 && counts.excludedDeferred === 0) return '';
+  if (counts.excludedIdeas === 0 && counts.excludedDeferred === 0 && counts.withheldBlocked === 0) return '';
   const parts = [];
   if (counts.excludedIdeas > 0) {
-    parts.push(`${plural(counts.excludedIdeas, IDEA_LABEL + ' bead')} (--include-ideas ranks them)`);
+    parts.push(`${counted(counts.excludedIdeas, `${IDEA_LABEL} bead`, `${IDEA_LABEL} beads`)} (--include-ideas ranks them)`);
   }
   if (counts.excludedDeferred > 0) {
-    parts.push(`${plural(counts.excludedDeferred, DEFERRED_STATUS + ' bead')}`);
+    parts.push(`${counted(counts.excludedDeferred, `${DEFERRED_STATUS} bead`, `${DEFERRED_STATUS} beads`)}`);
+  }
+  if (counts.withheldBlocked > 0) {
+    parts.push(counted(
+      counts.withheldBlocked,
+      'bead held by an open blocker',
+      'beads held by an open blocker',
+    ));
   }
   return `excluded: ${parts.join('; ')}\n`;
 }
@@ -868,7 +982,8 @@ const USAGE = `Usage: node queue.mjs queue [--scopes <path>] [--shared] [--file 
   queue   Rank the open ${HITL_LABEL} beads from every configured scope into one list:
           RICE × (1 + ln(1 + dependents)) × 1.5 when in progress, × the strategy's
           deadline factor at the bead's --due. Each row carries the scope it came from.
-          A bead with no score is listed as unscored, never guessed.
+          A bead with no score is listed as unscored, never guessed. A scored bead an
+          open blocks dependency points at is withheld and counted, never ranked.
 
 Options:
   --scopes <path>   Scope list (default: ${DEFAULT_SCOPES_FILE} from the repository root,

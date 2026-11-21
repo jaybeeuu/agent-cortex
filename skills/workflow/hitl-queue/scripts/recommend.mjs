@@ -12,8 +12,10 @@
 // refused (exit 2), so an invented reason fails here instead of reaching the human.
 //
 // Nothing is recommended unless it is ranked and justified. A missing strategy, no scores at
-// all, an empty queue, and a bead the human named that the queue does not hold are four stated
-// conditions, each with one next step, and none of them guesses a bead.
+// all, an empty queue, a bead the human named that the queue does not hold, and a queue whose
+// every scored bead an open bead blocks are five stated conditions, each with one next step,
+// and none of them guesses a bead. A row the queue withheld is named as withheld, never
+// printed as the answer: a gate nobody can close yet is not the one item to say out loud.
 //
 // Zero runtime dependencies, async fs only, every child process with an argv array.
 //
@@ -41,15 +43,16 @@ import {
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
 /**
- * The four states are deliberately different answers, not four shades of failure: a reader can
- * tell "write a strategy" from "score a bead" from "there is nothing to decide" by the first
- * line alone, and each one offers the step that clears it.
+ * The five states are deliberately different answers, not five shades of failure: a reader can
+ * tell "write a strategy" from "score a bead" from "there is nothing to decide" from "the only
+ * scored beads are blocked" by the first line alone, and each one offers the step that clears it.
  */
 export const RECOMMEND_STATE = /** @type {const} */ ({
   recommend: 'recommend',
   noStrategy: 'no-strategy',
   unscored: 'unscored',
   empty: 'empty',
+  blocked: 'blocked',
   notInQueue: 'not-in-queue',
 });
 
@@ -160,7 +163,10 @@ export function findQuote(text, quote) {
  * The row is the queue's own: `report.rows[0]` for a cold start, or the row carrying the id
  * the human named. Naming a bead outside the queue is not silently replaced by the queue's
  * choice — it is stated, with the top choice beside it, because the human's choice stands and
- * only the disagreement needs saying.
+ * only the disagreement needs saying. A row the queue withheld — a scored bead an open bead
+ * blocks — is never named as the answer: when every scored candidate is withheld, or when the
+ * human names one of them, the answer is the `blocked` condition, which says what holds it and
+ * what closes it.
  *
  * @param {object} options
  * @param {(args: string[]) => Promise<string>} options.bd
@@ -180,10 +186,16 @@ export async function buildRecommendation({ bd, file, cwd = process.cwd(), why, 
 
   const report = await buildQueue({ bd, cwd, includeIdeas, ...(file === undefined ? {} : { file }) });
   const top = report.rows[0];
+  const held = report.withheld;
 
   /** @type {QueueRow} */
   let row;
   if (bead === undefined) {
+    // The only scored candidates an open bead holds: there is no answerable row, so the run
+    // states the blockage instead of naming a row nobody can act on.
+    if (report.counts.ranked === 0 && held.length > 0) {
+      return { state: RECOMMEND_STATE.blocked, file: strategyFile, report, strategyVersion: report.strategy.version };
+    }
     if (report.rows.length === 0) {
       return { state: RECOMMEND_STATE.empty, file: strategyFile, report, strategyVersion: report.strategy.version };
     }
@@ -194,6 +206,15 @@ export async function buildRecommendation({ bd, file, cwd = process.cwd(), why, 
   } else {
     const named = report.rows.find((each) => each.id === bead);
     if (named === undefined) {
+      if (held.some((each) => each.id === bead)) {
+        return {
+          state: RECOMMEND_STATE.blocked,
+          file: strategyFile,
+          report,
+          strategyVersion: report.strategy.version,
+          named: bead,
+        };
+      }
       const ranked = top !== undefined && top.score !== undefined;
       return {
         state: RECOMMEND_STATE.notInQueue,
@@ -334,6 +355,27 @@ export function renderRecommendation(recommendation) {
     }\n`;
   }
 
+  if (state === RECOMMEND_STATE.blocked) {
+    const heldRow = report.withheld.find((each) => each.id === recommendation.named);
+    if (heldRow === undefined) {
+      return `${
+        [
+          'No recommendation · nothing is answerable yet',
+          `  ${plural(report.withheld.length, 'scored bead')} an open bead blocks`,
+          `  ${report.withheld.map((each) => `${each.id} (blocked by ${each.blockedBy.join(', ')})`).join('; ')}`,
+          'next: close what blocks one of them, then run this again',
+        ].join('\n')
+      }\n`;
+    }
+    return `${
+      [
+        `No recommendation · ${heldRow.id} is held by an open bead`,
+        `  ${heldRow.title} — blocked by ${heldRow.blockedBy.join(', ')}`,
+        `next: close ${heldRow.blockedBy.join(', ')}, then run this again`,
+      ].join('\n')
+    }\n`;
+  }
+
   const named = recommendation.named ?? 'that bead';
   return `${
     [
@@ -355,8 +397,9 @@ const USAGE = `Usage: node recommend.mjs recommend [--why "<strategy line>"] [--
 
   recommend   Print one recommendation: the queue's top row, the four score components, both
               multipliers, what answering it unblocks, and the line of the strategy that
-              justifies it. A missing strategy, no scores, an empty queue, or a named bead the
-              queue does not hold each print the condition and one next step instead.
+              justifies it. A missing strategy, no scores, an empty queue, every scored bead
+              held by an open bead, or a named bead the queue does not hold each print the
+              condition and one next step instead.
 
 Options:
   --why "<line>"    A line of the strategy that justifies the choice; must appear in the file

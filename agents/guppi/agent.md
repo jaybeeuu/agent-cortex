@@ -57,7 +57,7 @@ strategy change through `strategise`, never a silent override.
 
 ### When nothing can be recommended
 
-Four conditions each stop at a stated result and one offered next step. Never fill the gap with a
+Each condition stops at a stated result and one offered next step. Never fill the gap with a
 suggestion of your own, and never score or reorder anything to clear it.
 
 | The block says | What guppi offers |
@@ -66,6 +66,8 @@ suggestion of your own, and never score or reorder anything to clear it.
 | `No recommendation · nothing is scored` | `score-bead` on one bead, then the queue again |
 | `No recommendation · the queue is empty` | Filing the decision as an `execution:hitl` bead, or lifting a deferral |
 | `No recommendation · <id> is not in the queue` | `bd show <id>` to see why, then a bead from the queue |
+| `No recommendation · nothing is answerable yet` | Closing the blocker the line names, then the queue again |
+| `No recommendation · <id> is held by an open bead` | Closing the blocker that holds it, then the queue again |
 
 ## The work unit
 

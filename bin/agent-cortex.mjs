@@ -120,6 +120,13 @@ if (parsed.command === "update") {
   process.exitCode = await runUpdateCommand(parsed, programName);
 }
 
+if (parsed.command === "scope") {
+  // Loaded lazily: the scope model (the hitl-queue skill's) and its printing are
+  // only needed on this path, so help and the installers never load them.
+  const { runScopeCommand } = await import("../lib/scope.mjs");
+  process.exitCode = await runScopeCommand(parsed, programName);
+}
+
 /**
  * Run one harness's installer and, for a plain install, its registration.
  * `install <harness>` and `update` both come through here, so update-vs-install

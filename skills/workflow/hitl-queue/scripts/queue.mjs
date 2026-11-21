@@ -920,10 +920,7 @@ export function renderQueue(report) {
   for (const row of rows) {
     const rank = row.rank === undefined ? '-' : String(row.rank);
     const total = row.total === undefined ? '—' : row.total.toFixed(1);
-    const numbers = row.score === undefined
-      ? `unscored — ${row.unscoredReason ?? 'no score'} (score it with score-bead)` +
-        unscoredDueClause(row)
-      : formatNumbers(row);
+    const numbers = formatScoreClause(row);
     const stale = row.stale ? `  (scored at strategy v${row.scoredAtVersion}, current v${strategy.version})` : '';
     lines.push(
       `${right(rank, rankWidth)}  ${row.scope.padEnd(scopeWidth)}  ${row.id.padEnd(idWidth)}  ` +
@@ -946,6 +943,18 @@ export function formatNumbers(row) {
     `  ×${row.dependentMultiplier.toFixed(2)} dependents(${row.dependents})` +
     `  ×${row.wipMultiplier.toFixed(1)}${row.inProgress ? ' in-progress' : ''}` +
     deadlineClause(row);
+}
+
+/**
+ * The score clause of one row: the stored total with the four components it was computed from
+ * and both multipliers, or the reason no total exists — with the due moment either way. A row
+ * with no rank still shows its deadline, so the reason it is unscored is never the whole story.
+ * Exported so the queue, the one-item block and the shortlist print one definition of it.
+ * @param {QueueRow} row @returns {string}
+ */
+export function formatScoreClause(row) {
+  if (row.score !== undefined) return formatNumbers(row);
+  return `unscored — ${row.unscoredReason ?? 'no score'} (score it with score-bead)` + unscoredDueClause(row);
 }
 
 /**

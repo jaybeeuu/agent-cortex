@@ -1,6 +1,6 @@
 ---
 name: hitl-queue
-description: Ranks the open execution:hitl beads across every configured bd workspace into one list ordered by RICE, transitively blocked dependents, work in progress and the time left to each due date, prints what each answer unblocks and which scope each row came from, notes which scope the day belongs to, and recommends one item from that list with the line of the strategy that justifies it. Use when deciding which human decision to answer next, when a session cold-starts and must say one item, when a planning session starts, or when asked "what needs my decision", "show the queue", "what should we look at" or "what should I answer first".
+description: Ranks the open execution:hitl beads across every configured bd workspace into one list ordered by RICE, transitively blocked dependents, work in progress and the time left to each due date, prints what each answer unblocks and which scope each row came from, notes which scope the day belongs to, presents the first ten rows as one ranked list with the top row marked as the recommendation, and states what that list left out. Use when deciding which human decision to answer next, when a session cold-starts and must say one item, when a planning session starts, or when asked "what needs my decision", "show the queue", "what should we look at" or "what should I answer first".
 ---
 
 # HITL Queue
@@ -13,7 +13,7 @@ A queue is not a priority. The RICE score is `score-bead`'s judgement, the band 
 
 - A planning session starts and the owner needs to know which decision comes first.
 - "What needs my decision?", "show the queue", "what should I answer first?".
-- "What should we look at?" — a cold start that must say one item rather than print the list. See [RECOMMEND.md](RECOMMEND.md).
+- "What should we look at?" — a cold start that opens with the queue's first ten rows, one line each, the top row marked as the recommendation. See [RECOMMEND.md](RECOMMEND.md).
 - Before dispatching work from a backlog of HITL beads: the answer unblocks the work, so the order of answers is the order of the work.
 - A bead was scored or re-scored and the order should follow the new number.
 
@@ -70,13 +70,13 @@ unavailable: ops (/srv/ops) — workspace does not exist
 
 Every row carries its rank, scope, id, total, the four components the score was computed from, all three multipliers, a deadline clause when the bead has a due date, the title, and one clause naming what the answer unblocks — the scope tag keeps two workspaces that reuse a bead id apart. An unscored row keeps its place at the end of the same list with the reason: no `rice` metadata, no score inside a `rice` record, or scored against an older strategy version (that last one is ranked and marked `scored at strategy v2, current v3`). `--json` prints the same answer with every derived field, including each scope's status and the daily note, for a caller that needs to act on it.
 
-### One item, not the list
+### The list, and one item from it
 
-A session that must decide says one row and stops. `recommend.mjs` prints the top row with the line of the strategy that justifies it, and a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own. [RECOMMEND.md](RECOMMEND.md) carries the six stated conditions, the `--why` rule and the `--bead` form for a bead the human named. When that item is done, `boundary.mjs` compares the theme's next item against the queue's top item and prints both scores, and [BOUNDARY.md](BOUNDARY.md) carries the block, the three outcomes and the options.
+A session that must decide shows the queue's first ten rows, one line each, with the top row marked as the recommendation: every row carries its scope, its id, its total, the four components with both multipliers, the due moment where it has one, and what answering it unblocks, so a wrong top pick can be argued with instead of taken. Fewer eligible rows than the count says the list is complete; more states how many were omitted and the command that shows them. `recommend.mjs` also prints one row alone with the strategy line that justifies it, and a stated condition with one next step when it cannot justify a row. It ranks nothing: the total, the components and the multipliers are the row's own. [RECOMMEND.md](RECOMMEND.md) carries the `--top` count, the omission line, the six stated conditions, the `--why` rule, and the routing a row other than the top takes. When that item is done, `boundary.mjs` compares the theme's next item against the queue's top item and prints both scores, and [BOUNDARY.md](BOUNDARY.md) carries the block, the three outcomes and the options.
 
 ```bash
-node <skill-scripts>/recommend.mjs recommend --json          # the top row, structured
-node <skill-scripts>/recommend.mjs recommend --why "<line>"  # the block to say
+node <skill-scripts>/recommend.mjs shortlist                 # the top ten, top row marked
+node <skill-scripts>/recommend.mjs recommend --why "<line>"  # the one block to say
 ```
 
 ## Ordering rules
@@ -139,7 +139,7 @@ node <skill-scripts>/queue.mjs queue --file <path> --include-ideas
 - [ ] A bead due in three days ranks above an otherwise identical bead with no due date; an overdue bead is flagged `OVERDUE` and carries the top tier of the table in force. Every row with a due date shows the due moment and the time left, only a ranked row shows a factor, and a changed tier moves the rank with no code change.
 - [ ] With no scores, the header says nothing can be ranked and every candidate is listed unscored with a reason.
 - [ ] Two identical runs printed byte-identical output, and the excluded idea, deferred and blocked counts were reported, or the header said there were none.
-- [ ] A session that had to decide said one block: the bead, its components, both multipliers, the unblocked beads and the quoted strategy line — or one stated condition with its next step.
+- [ ] A session that had to decide showed the marked top row among ten one-line rows, each carrying its components, its unblocks, its scope and its due date, and stated what it omitted (or that the list was complete) — or said one stated condition with its next step.
 
 ## See Also
 

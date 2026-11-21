@@ -263,8 +263,17 @@ describe("scope add", () => {
     // Both directories are named "shared", so the second add takes the same default name.
     const result = await runCli(["scope", "add", "--path", second], { env, cwd: workspace });
 
+    const holder = await resolved(first);
+    const proposed = await resolved(second);
     assert.equal(result.exitCode, 2);
-    assert.match(result.stderr, /already names/);
+    assert.ok(
+      result.stderr.includes(`already names ${holder}.`),
+      `the refusal names the workspace that holds the name: ${result.stderr}`,
+    );
+    assert.ok(
+      !result.stderr.includes(`already names ${proposed}.`),
+      `the refusal does not name the workspace being added as the holder: ${result.stderr}`,
+    );
     assert.match(result.stderr, /Pass --name to register/);
     const config = await readConfig(cortexHome);
     assert.equal(config.scopes.length, 2, "the refused entry was not written");

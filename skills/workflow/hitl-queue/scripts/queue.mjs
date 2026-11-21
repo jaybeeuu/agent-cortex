@@ -742,9 +742,18 @@ function compareScopeThenId(a, b) {
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 
-/** @param {number} count @param {string} noun @returns {string} */
-function plural(count, noun) {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+/**
+ * A count with both word forms spelled out by the caller. A plural suffix cannot be derived by
+ * appending `s` to the last word, because the counted noun is not always the last word: a
+ * phrase such as "bead held by an open blocker" carries its noun at the front. Requiring the
+ * plural form makes a caller state it rather than inherit an `s` on the tail of the phrase.
+ * @param {number} count @param {string} singular @param {string} pluralForm @returns {string}
+ */
+function counted(count, singular, pluralForm) {
+  if (pluralForm === undefined) {
+    throw new TypeError(`counted('${singular}') needs the singular and the plural form`);
+  }
+  return `${count} ${count === 1 ? singular : pluralForm}`;
 }
 
 /** @param {string} text @param {number} width @returns {string} */
@@ -840,7 +849,7 @@ export function formatUnblocks(row) {
  */
 function scopeSummary(counts) {
   const total = counts.availableScopes + counts.unavailableScopes + counts.withheldScopes;
-  const parts = [plural(total, 'scope')];
+  const parts = [counted(total, 'scope', 'scopes')];
   if (counts.unavailableScopes > 0) parts.push(`${counts.unavailableScopes} unavailable`);
   if (counts.withheldScopes > 0) parts.push(`${counts.withheldScopes} withheld`);
   return parts.join(', ');
@@ -947,13 +956,17 @@ export function formatExcluded(counts) {
   if (counts.excludedIdeas === 0 && counts.excludedDeferred === 0 && counts.withheldBlocked === 0) return '';
   const parts = [];
   if (counts.excludedIdeas > 0) {
-    parts.push(`${plural(counts.excludedIdeas, IDEA_LABEL + ' bead')} (--include-ideas ranks them)`);
+    parts.push(`${counted(counts.excludedIdeas, `${IDEA_LABEL} bead`, `${IDEA_LABEL} beads`)} (--include-ideas ranks them)`);
   }
   if (counts.excludedDeferred > 0) {
-    parts.push(`${plural(counts.excludedDeferred, DEFERRED_STATUS + ' bead')}`);
+    parts.push(`${counted(counts.excludedDeferred, `${DEFERRED_STATUS} bead`, `${DEFERRED_STATUS} beads`)}`);
   }
   if (counts.withheldBlocked > 0) {
-    parts.push(`${plural(counts.withheldBlocked, 'bead held by an open blocker')}`);
+    parts.push(counted(
+      counts.withheldBlocked,
+      'bead held by an open blocker',
+      'beads held by an open blocker',
+    ));
   }
   return `excluded: ${parts.join('; ')}\n`;
 }

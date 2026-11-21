@@ -23,6 +23,7 @@ import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strateg
 import {
   buildQueue,
   dependentMultiplier,
+  formatExcluded,
   queueTotal,
   renderQueue,
 } from '../skills/workflow/hitl-queue/scripts/queue.mjs';
@@ -498,6 +499,46 @@ describe('what the queue leaves out', () => {
     ]);
     assert.match(renderQueue(report), /^excluded: 1 bead held by an open blocker$/m);
     assert.doesNotMatch(renderQueue(report), /9\.0/);
+  });
+
+  it('prints no withheld clause when no bead is held by an open blocker', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-work', title: 'Decide the storage shape', labels: ['execution:hitl'], rice: rice() },
+        { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+      ],
+    });
+
+    assert.equal(report.counts.withheldBlocked, 0);
+    // Zero emits no clause at all: the line must never read "0 bead held by an open blocker".
+    assert.equal(formatExcluded(report.counts), '');
+    assert.doesNotMatch(renderQueue(report), /excluded:|held by an open blocker/);
+  });
+
+  it('prints the withheld clause in the singular for one bead and the plural for two', async () => {
+    // One gate per withheld bead, every gate waiting on the same open Document bead.
+    /** @param {string[]} gateIds @returns {GraphBead[]} */
+    const backlog = (gateIds) => [
+      ...gateIds.map((id) => ({
+        id,
+        title: `Gate: merge ${id}`,
+        labels: ['execution:hitl'],
+        rice: rice({ score: 9 }),
+        dependsOn: ['tst-doc'],
+      })),
+      { id: 'tst-work', title: 'Decide the storage shape', labels: ['execution:hitl'], rice: rice() },
+      { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+    ];
+
+    const one = await queue({ beads: backlog(['tst-gate-1']) });
+    assert.equal(one.counts.withheldBlocked, 1);
+    assert.equal(formatExcluded(one.counts), 'excluded: 1 bead held by an open blocker\n');
+    assert.match(renderQueue(one), /^excluded: 1 bead held by an open blocker$/m);
+
+    const two = await queue({ beads: backlog(['tst-gate-1', 'tst-gate-2']) });
+    assert.equal(two.counts.withheldBlocked, 2);
+    assert.equal(formatExcluded(two.counts), 'excluded: 2 beads held by an open blocker\n');
+    assert.match(renderQueue(two), /^excluded: 2 beads held by an open blocker$/m);
   });
 
   it('ranks a bead whose blockers all closed exactly as a bead with no blocker at all', async () => {

@@ -19,3 +19,8 @@ node_modules/
 # Pi package install artifacts (from project-level installs)
 .pi/npm/
 .pi/node_modules/
+
+# pi-peer local state: the local peer identity and trust settings
+.pi/peers.json
+.pi/settings.json
+.pi/peer-*

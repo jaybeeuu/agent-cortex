@@ -187,6 +187,100 @@ describe("peer-messaging transport renders per harness", () => {
     }
   });
 
+  it("sends ralph's reports on pi without waiting for an answer and keeps the message id", async () => {
+    const { pi, claude } = await stageBoth();
+
+    // pi-peer's await defaults to true, so a report that omits it blocks until the
+    // planner answers — ralph's own rule says messaging never gates dispatch. The
+    // message id is what makes the send readable afterwards without a second send.
+    const piTransport = section(pi.ralphReference, "### Transport") + section(pi.ralphReference, "### The `pi-peer` package (PI)");
+    assert.match(piTransport, /await: false/, "the pi transport turns the reply wait off for a report");
+    assert.match(piTransport, /\bmessageId\b/, "the pi transport keeps the returned messageId");
+
+    // `await` is a pi-peer parameter. Claude Code's send has no such option, so a
+    // render that carries it would instruct a call the harness cannot make.
+    const claudeTransport = section(claude.ralphReference, "### Transport");
+    assert.doesNotMatch(claudeTransport, /\bawait\b/, "the claude transport is handed no pi-peer parameter");
+  });
+
+  it("maps every ralph kind to a transport intent inside the transport subsection alone", async () => {
+    const { pi, claude } = await stageBoth();
+
+    /** @type {Array<[string, string]>} */
+    const mapping = [
+      ["handoff", "task"],
+      ["update", "notify"],
+      ["done", "notify"],
+      ["blocked", "notify"],
+      ["failed", "notify"],
+      ["get", "ask"],
+      ["ask", "ask"],
+    ];
+
+    /** The table row whose first cell is the kind, so a row that merely names an
+     * intent is never mistaken for the kind's own row.
+     * @param {string} doc @param {string} kind @returns {string | undefined} */
+    const rowFor = (doc, kind) =>
+      section(doc, "### Transport")
+        .split("\n")
+        .filter((line) => line.startsWith("|"))
+        .find((line) => line.split("|")[1]?.trim() === `\`${kind}\``);
+
+    for (const [harness, doc] of [["pi", pi.ralphReference], ["claude", claude.ralphReference]]) {
+      for (const [kind, intent] of mapping) {
+        const row = rowFor(doc, kind);
+        assert.ok(row, `the ${harness} transport maps \`${kind}\``);
+        assert.ok(row.includes(`\`${intent}\``), `the ${harness} transport sends \`${kind}\` as \`${intent}\``);
+      }
+      // The mapping is the one thing the fork carries, so the shared table must
+      // state none of it — otherwise the two renders could disagree about an intent.
+      assert.doesNotMatch(section(doc, "### Message kinds"), /intent/i, `the ${harness} shared kinds table states no intent`);
+    }
+  });
+
+  it("quotes no peer-list output the installed package does not print", async () => {
+    const { pi, claude } = await stageBoth();
+
+    // pi-peer's peer_list prints one line per peer (`<id> · role:… · <status>`), and
+    // its status footer prints `N online`, never `N online - <id>`. A quoted string
+    // the package never emits sends the reader looking for output that cannot appear.
+    for (const [harness, doc] of [["pi", pi.ralphSkill], ["claude", claude.ralphSkill]]) {
+      assert.doesNotMatch(doc, /\b\d+ online\b/, `the ${harness} ralph skill quotes no online count`);
+    }
+    for (const [harness, doc] of [["pi", pi.ralphReference], ["claude", claude.ralphReference]]) {
+      const start = doc.indexOf("## Peer messaging");
+      assert.notEqual(start, -1, `the ${harness} reference carries the peer-messaging section`);
+      assert.doesNotMatch(doc.slice(start), /\bonline\s+[-–]\s/, `the ${harness} reference quotes no online-peer line`);
+    }
+  });
+
+  it("takes the peer's name from the session and the list instead of printing one", async () => {
+    const { pi, claude } = await stageBoth();
+
+    // A session's peers are configuration, so the shipped text cannot know what the
+    // one reachable peer is called. Naming it makes the reader hunt for an id that
+    // their config need not contain.
+    for (const [harness, doc] of [["pi", pi.ralphSkill], ["claude", claude.ralphSkill]]) {
+      const init = section(doc, "### 1. Initialize (run once at startup)");
+      assert.match(init, /that list reports/, `the ${harness} skill defers the peer id to the list`);
+    }
+  });
+
+  it("names the pi-only progress and context tools nowhere outside the runbook", async () => {
+    const { pi, claude } = await stageBoth();
+
+    // peer_progress and peer_context are pi-peer tools with no Claude Code
+    // counterpart. Shared prose that named them would either leave a literal token
+    // or a broken sentence once the token was dropped.
+    for (const [harness, doc] of [["pi", pi.ralphReference], ["claude", claude.ralphReference]]) {
+      const runbook = section(doc, "### The `pi-peer` package (PI)");
+      assert.doesNotMatch(doc.replace(runbook, ""), /peer_progress|peer_context/, `the ${harness} reference keeps them in the runbook`);
+    }
+    for (const [harness, doc] of [["pi", pi.ralphSkill], ["claude", claude.ralphSkill]]) {
+      assert.doesNotMatch(doc, /peer_progress|peer_context/, `the ${harness} ralph skill names neither`);
+    }
+  });
+
   it("leaves no surviving token and no dropped-tool prose in either render", async () => {
     const { pi, claude, stdout } = await stageBoth();
 

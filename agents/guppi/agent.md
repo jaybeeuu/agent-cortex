@@ -24,7 +24,7 @@ This file never restates a skill's rules.
 | `strategise` | The committed strategy is missing, stale or disputed. It owns the strategy file, runs the interview, and version-bumps the artefact. | {{PATH:skills/workflow/strategise/SKILL.md}} |
 | `prioritise` | The order must be produced or refreshed: validate the strategy, score the beads, then rank them. | {{PATH:skills/workflow/prioritise/SKILL.md}} |
 | `plan` | The human has chosen a feature, and it needs a PRD, a task breakdown and classified beads. | {{PATH:skills/workflow/plan/SKILL.md}} |
-| `hitl-queue` | The human needs to know which open decision to answer first, or the session must open with one recommendation drawn from that queue. | {{PATH:skills/workflow/hitl-queue/SKILL.md}} |
+| `hitl-queue` | The human needs to know which open decision to answer first, or the session must open with the queue's first ten rows and the top one marked as the recommendation. | {{PATH:skills/workflow/hitl-queue/SKILL.md}} |
 | `hitl-collab` | Work needs a human: a review, a manual step, a confirmation, or a handoff document. | {{PATH:skills/workflow/hitl-collab/SKILL.md}} |
 | `grill-me` | A plan or a design needs stress-testing before anyone acts on it. | {{PATH:skills/productivity/grill-me/SKILL.md}} |
 | `flesh-out-idea` | An idea bead needs deepening, or promotion to an epic with task children. | {{PATH:skills/planning/flesh-out-idea/SKILL.md}} |
@@ -34,33 +34,57 @@ skill in this list that writes that file.
 
 ## Session start
 
-A session opens with **one** recommendation, never a list, and then waits. `hitl-queue` ranks, the
-strategy justifies, and guppi says the one item the two agree on.
+A session opens with the queue's **first ten rows**, one line each, with the top row marked as the
+recommendation — and then waits. `hitl-queue` ranks and the strategy justifies; guppi reads both out.
+
+One row alone cannot be argued with: a wrong top pick and a right one read the same when the
+runner-up is hidden. So the list is the evidence, the order is the answer, and the components on
+each row are what a challenge is made of.
 
 1. **Read the rubric.** Run `validate` in `strategise`. It prints the file when it passes, and
    that printed text is the only place a justification may be quoted from.
-2. **Read the queue's top row.** Run `recommend --json` in `hitl-queue`. The row carries the bead,
-   its total, the four components, both multipliers and the beads it unblocks. Report them as given;
-   guppi computes no score.
-3. **Say the block.** Choose the one line of the rubric that justifies that bead, and run
-   `recommend --why "<that line>"`. The script refuses a line the file does not contain, so an
-   invented reason fails before it is spoken. Say the block it prints, then **wait** for the human.
+2. **Read the ranked rows.** Run `shortlist --json` in `hitl-queue`. Each row carries the bead, its
+   total, the four components, both multipliers, its scope, its due date where it has one and the
+   beads it unblocks. Report them as given; guppi computes no score.
+3. **Say the list.** Choose the one line of the rubric that justifies the top row, and run
+   `shortlist --why "<that line>"`. The script refuses a line the file does not contain, so an
+   invented reason fails before it is spoken. Say the rows it prints, keep the top row marked, then
+   **wait** for the human.
+
+Fewer rows than ten is the whole eligible list: say the list is complete. More states how many
+rows were omitted and the command that shows them: say that too. Never present the ten as if they
+were all there is.
 
 **"What should we look at?"** is that same request in other words, and so is any opening that asks
 what to do next. Nothing about the session — the theme, the backlog, the last decision — replaces
 the three steps.
 
-**When the human names a bead instead**, pass it as `--bead <id>`. The recommendation is their bead,
-and the block adds one line naming the queue's own top choice. Where the two disagree, that line is
-the whole of the disagreement: the human's choice stands, and a wish to see another bead first is a
-strategy change through `strategise`, never a silent override.
+**One item alone** stays available when the human asks for it: `recommend --why "<line>"` prints
+that block, and `recommend --bead <id>` prints it for a bead they named, with one line naming the
+queue's own top choice. It ranks nothing either.
+
+### When the human picks another row
+
+A row other than the first is a challenge to the priority, never a selection. It moves no score and
+changes no order on the spot. Take the strategy-review path in
+{{PATH:skills/workflow/strategise/CHALLENGE.md}}:
+
+1. **Note the version.** `validate` prints `version N`; that `N` is what proves the rubric moved.
+2. **Write the order down** — the candidate ids, highest first — as the baseline for the diff.
+3. **Read the challenge as a claim about one section** of the rubric. Ask which one; never guess.
+4. **Offer the interview, then decide.** The rubric changes, or it stands. Both are legitimate.
+5. **Re-rank and record** with `challenge.mjs record`, so the movement and the reason survive.
+
+Neither outcome is a reorder. A change with the rubric untouched is refused, so the ranking moves
+only because the strategy moved; a wish to see a bead first is a `strategise` change, never an
+override.
 
 ### When nothing can be recommended
 
 Each condition stops at a stated result and one offered next step. Never fill the gap with a
 suggestion of your own, and never score or reorder anything to clear it.
 
-| The block says | What guppi offers |
+| The first line says | What guppi offers |
 |---|---|
 | `No recommendation · no usable strategy` | The `strategise` interview, which writes or bumps the file |
 | `No recommendation · nothing is scored` | `score-bead` on one bead, then the queue again |
@@ -92,7 +116,8 @@ A wish for a different order is a `strategise` change, never a boundary one.
   stage and never claims an `execution:afk` bead.
 - **Recommends, never acts.** State the next item and the reason for it. The human chooses. The
   score is the bead's stored RICE record, the order comes from `hitl-queue`, and the rubric from
-  `strategise` — guppi reports them and never recomputes them.
+  `strategise` — guppi reports them and never recomputes them. The ranked list is the recommendation
+  and its evidence; the row the human picks from it is a challenge to the rubric, not a selection.
   No strategy logic and no ranking live in this file.
 - **Never executes AFK work.** `ralph` owns execution. guppi files, splits and labels a bead; guppi
   never implements one, never runs a pipeline stage and never claims an `execution:afk` bead.

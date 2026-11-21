@@ -232,7 +232,14 @@ describe('the top ten, as one ranked list', () => {
 
     assert.deepEqual(built.rows?.map((row) => row.id), queue.rows.slice(0, 10).map((row) => row.id));
     assert.deepEqual(built.rows?.map((row) => row.total), queue.rows.slice(0, 10).map((row) => row.total));
-    assert.equal(renderShortlist(built).includes('← recommendation'), true);
+
+    // The printed number is the queue's total, never the bead's own rice score (11.0 and 12.0):
+    // `tst-b`'s deadline and `tst-a`'s dependents each multiply it.
+    const rendered = renderShortlist(built);
+    const body = bodyLines(rendered);
+    assert.match(/** @type {string} */ (body.find((line) => line.includes('tst-b'))), /\s{2}27\.9\s{2}Decide thing 1\s{2}/);
+    assert.match(/** @type {string} */ (body.find((line) => line.includes('tst-a'))), /\s{2}20\.3\s{2}Decide thing 0\s{2}/);
+    assert.equal(rendered.includes('← recommendation'), true);
   });
 
   it('routes a row other than the top to the strategy review, never to a reorder', async () => {

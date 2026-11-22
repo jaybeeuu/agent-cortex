@@ -262,7 +262,18 @@ describe("peer-messaging transport renders per harness", () => {
     // their config need not contain.
     for (const [harness, doc] of [["pi", pi.ralphSkill], ["claude", claude.ralphSkill]]) {
       const init = section(doc, "### 1. Initialize (run once at startup)");
+
+      // "from the list": the id is read off what the peer list prints.
       assert.match(init, /that list reports/, `the ${harness} skill defers the peer id to the list`);
+
+      // "from the session": the step publishes a placeholder the session fills in,
+      // and no second, literal id beside it.
+      assert.match(init, /PI_PEER_ID=<[^<>]+>/, `the ${harness} skill takes the peer id as a placeholder`);
+      assert.doesNotMatch(init.replaceAll(/PI_PEER_ID=<[^<>]+>/g, ""), /PI_PEER_ID=/, `the ${harness} skill states no fixed peer id`);
+
+      // "instead of printing one": the two actor names are roles here, so neither is
+      // offered as something to type — backticked, as an @handle, or after "as".
+      assert.doesNotMatch(init, /`(?:planner|ralph)`|@(?:planner|ralph)\b|\bas\s+`?(?:planner|ralph)`?\b/, `the ${harness} skill prints no peer name`);
     }
   });
 

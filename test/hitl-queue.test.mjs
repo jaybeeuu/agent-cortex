@@ -450,6 +450,8 @@ describe('a queue with no scores', () => {
     const text = renderQueue(report);
     // Scoring cannot release a withheld row, so the no-score sentence would be false here.
     assert.doesNotMatch(text, /no RICE score on any candidate/);
+    // ...and so would the advice that sentence carried: only clearing a blocker releases it.
+    assert.doesNotMatch(text, /score one with score-bead/);
     assert.match(
       text,
       /^nothing can be ranked — 1 scored candidate is held by an open blocker; clear a blocker or score an unscored row with score-bead, then re-run$/m,

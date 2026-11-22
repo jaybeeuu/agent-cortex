@@ -903,11 +903,9 @@ export function renderQueue(report) {
 
   const excluded = formatExcluded(counts);
   const unavailable = unavailableLine(report);
-  const hasNoScore = counts.ranked === 0 && rows.length > 0;
+  const nothingRanked = counts.ranked === 0 && rows.length > 0;
   for (const line of [excluded, unavailable]) if (line !== '') head.push(line.trimEnd());
-  if (hasNoScore) {
-    head.push('no RICE score on any candidate — nothing can be ranked; score one with score-bead, then re-run');
-  }
+  if (nothingRanked) head.push(noRankLine(counts));
   if (rows.length === 0) return `${head.join('\n')}\n`;
 
   const rankWidth = Math.max(1, String(counts.ranked).length);
@@ -933,6 +931,20 @@ export function renderQueue(report) {
   }
 
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * The line that explains an empty ranked list. A scored candidate an open blocker holds is
+ * withheld, not missing: naming it as a missing score would send the reader to score-bead,
+ * which cannot release it, so the withheld count is the reason this line gives instead.
+ * @param {QueueReport['counts']} counts @returns {string}
+ */
+function noRankLine(counts) {
+  if (counts.withheldBlocked > 0) {
+    return `nothing can be ranked — ${counted(counts.withheldBlocked, 'scored candidate is', 'scored candidates are')}` +
+      ' held by an open blocker; clear a blocker or score an unscored row with score-bead, then re-run';
+  }
+  return 'no RICE score on any candidate — nothing can be ranked; score one with score-bead, then re-run';
 }
 
 /**

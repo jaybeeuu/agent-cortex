@@ -433,6 +433,45 @@ describe('a queue with no scores', () => {
     assert.match(text, /unscored — no score in its rice record/);
   });
 
+  it('says the scored candidate is withheld instead of telling the reader to score one', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-gate', title: 'Gate: merge the change', labels: ['execution:hitl'], rice: rice({ score: 9 }), dependsOn: ['tst-doc'] },
+        { id: 'tst-work', title: 'Decide the storage shape', labels: ['execution:hitl'] },
+        { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+      ],
+    });
+
+    // The only scored candidate is withheld, so the queue has a score and nothing to rank.
+    assert.equal(report.counts.ranked, 0);
+    assert.equal(report.counts.unscored, 1);
+    assert.equal(report.counts.withheldBlocked, 1);
+
+    const text = renderQueue(report);
+    // Scoring cannot release a withheld row, so the no-score sentence would be false here.
+    assert.doesNotMatch(text, /no RICE score on any candidate/);
+    // ...and so would the advice that sentence carried: only clearing a blocker releases it.
+    assert.doesNotMatch(text, /score one with score-bead/);
+    assert.match(
+      text,
+      /^nothing can be ranked — 1 scored candidate is held by an open blocker; clear a blocker or score an unscored row with score-bead, then re-run$/m,
+    );
+  });
+
+  it('counts the withheld candidates it names, in the plural', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-gate-1', title: 'Gate: merge one', labels: ['execution:hitl'], rice: rice({ score: 9 }), dependsOn: ['tst-doc'] },
+        { id: 'tst-gate-2', title: 'Gate: merge two', labels: ['execution:hitl'], rice: rice({ score: 8 }), dependsOn: ['tst-doc'] },
+        { id: 'tst-work', title: 'Decide the storage shape', labels: ['execution:hitl'] },
+        { id: 'tst-doc', title: 'Document the change', labels: ['execution:afk'] },
+      ],
+    });
+
+    assert.equal(report.counts.withheldBlocked, 2);
+    assert.match(renderQueue(report), /^nothing can be ranked — 2 scored candidates are held by an open blocker/m);
+  });
+
   it('marks a score older than the strategy file while still ranking it', async () => {
     const report = await queue({
       strategyVersion: 3,

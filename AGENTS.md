@@ -177,12 +177,18 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   `skills/workflow/ralph/REFERENCE.md` and is cross-referenced from `plan`: only its `### Transport`
   subsection differs per harness, while the message kinds and the acknowledgement rule stay
   byte-identical, and `test/skill-transport-render.test.mjs` stages both installs to prove it.
-  A new message kind, or a change to the acknowledgement rule, therefore goes in the shared text
-  and never into a per-harness `### Transport` — a kind that exists on one harness only would
-  break the byte-identical render.
+  A change to the acknowledgement rule, or to what a kind carries, therefore goes in the shared
+  text and never into a per-harness `### Transport` — a rule that held on one harness only would
+  break the byte-identical render. A new kind goes in **both** places: its row in the shared
+  `### Message kinds` table, and its kind-to-intent row in `### Transport`, because the intent is a
+  `pi-peer` parameter with no Claude Code counterpart. That table is plain text inside the forked
+  subsection, so it renders identically on both sides, and the shared table states no intent.
   `pi-peer`'s `peer_get` and `peer_await` have no Claude Code counterpart, so they are named only
   inside the harness-labelled `pi-peer` runbook — a null claude mapping would drop the token and
   leave the sentence broken.
+  The pi runbook states the installed package's own behaviour — `await` defaults true, and a send
+  returns a `messageId` — so read the installed `@cryptolibertus/pi-peer` when you touch that text.
+  The drift this convention was corrected for came from quoting an earlier version.
 - The post-merge watch forks the same way, through the single row `{{TOOL:post_merge_watch}}`:
   `post-merge-watch` (this package's own extension, on pi) and Claude Code's built-in
   `ScheduleWakeup` (on claude). The values differ in kind — an extension on one side, a tool on the

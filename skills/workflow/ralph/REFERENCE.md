@@ -432,6 +432,20 @@ The planner session (`plan` skill) and ralph are separate sessions with no share
 
 Send with {{TOOL:peer_send}}; list the peers you can reach with {{TOOL:peer_list}}, and address a peer only by the name or address that list reports. Where the mechanism provides a per-message intent, an idle subscription or a reply wait, use it — but never make a send depend on one.
 
+Set the intent from this table and from nowhere else. A kind is a word in the message text, so the intent is the only part of the classification the transport itself carries:
+
+| Kind | Intent |
+|------|--------|
+| `handoff` | `task` |
+| `update` | `notify` |
+| `done` | `notify` |
+| `blocked` | `notify` |
+| `failed` | `notify` |
+| `get` | `ask` |
+| `ask` | `ask` |
+
+`update`, `done`, `blocked` and `failed` are reports. Send each one without holding the session open for an answer, and keep the id the send returns: a report that stays blocked until the receiver replies turns a notification into a gate on ralph's dispatch, which the acknowledgement rule forbids. Where the mechanism offers no choice about holding the session open, report the outcome through your own output as well and treat the send as best effort.
+
 Send from a scripted call, **never** by typing text into a busy terminal session: during the `pi-peer` package's adoption spike, stray keystrokes aimed at a running session were queued as user prompts twice, so the receiving agent read them as new instructions.
 
 A send does not prove receipt. An inbound message may be held for approval before the receiving agent sees it, and delivery stays unconfirmed until the receiver answers.
@@ -446,8 +460,8 @@ A PI session gets its transport from this package, which a consuming repository 
 
 1. **Install once per repository:** `pi install npm:@cryptolibertus/pi-peer`.
 2. **List both roles** in `.pi/peers.json`: `planner` and `ralph`. The peer list is configuration, so both entries are required — see _Discovery is two-way only when both roles are listed_ below.
-3. **Start each session with its own identity:** `PI_PEER_ID=planner pi` for the planning session, `PI_PEER_ID=ralph pi` for ralph. The file holds a default `localPeerId`, and `PI_PEER_ID` overrides it for the session. Confirm with `peer_list` — it reports `1 online - <peer id>` when discovery works.
-4. **Send and read with the package's own tools:** `peer_send` (or `/peer send <id> "<text>" --intent <intent> --no-await`), `peer_list`, `peer_get` for a peer's current state and `peer_await` for a reply.
+3. **Start each session with its own identity:** `PI_PEER_ID=planner pi` for the planning session, `PI_PEER_ID=ralph pi` for ralph. The file holds a default `localPeerId`, and `PI_PEER_ID` overrides it for the session. Confirm with `peer_list`, which prints one line per configured peer with its transport, trust and status: read each session's own id from that line, and do not assume an id the file does not contain.
+4. **Send and read with the package's own tools:** `peer_send` and `peer_list`, `peer_get` for a peer's current state and `peer_await` for a reply. `peer_send` holds the session open until the receiver answers unless `await: false` is passed, so send `update`, `done`, `blocked` and `failed` with `await: false` and keep the returned `messageId` — that id is the only handle a send which never waited leaves behind, and `peer_get` takes it. The slash form is `/peer send <id> "<text>" --intent <intent> --no-await`.
 5. **Ignore the state files** the package writes — see _Files a consuming repository gains_ below.
 
 #### Discovery is two-way only when both roles are listed
@@ -468,17 +482,17 @@ All three are machine state, not tracked content. Tell the consuming repository 
 
 ### Message kinds
 
-The kinds map **onto** the transport's own intents where it has them (PI's `pi-peer`: `ask`, `review`, `notify`, `coordinate`, `task`); they never replace or re-implement the transport protocol.
+The kinds are the message vocabulary, carried on top of the transport's own protocol; they never replace or re-implement it.
 
-| Kind | Carries | Maps to intent | Direction |
-|------|---------|----------------|-----------|
-| `handoff` | bead id + one-line scope | `task` | planner → ralph |
-| `done` | bead id + run summary | `notify` | ralph → planner |
-| `blocked` | gate bead id awaiting a human | `notify` | ralph → planner |
-| `failed` | bead id + reason | `notify` | ralph → planner |
-| `update` | bead id + stage progress | `notify` | ralph → planner |
-| `get` | peer id, asks for current state | `coordinate` | either → either |
-| `ask` | question text, needs an answer | `ask` | either → either |
+| Kind | Carries | Direction |
+|------|---------|-----------|
+| `handoff` | bead id + one-line scope | planner → ralph |
+| `done` | bead id + run summary | ralph → planner |
+| `blocked` | gate bead id awaiting a human | ralph → planner |
+| `failed` | bead id + reason | ralph → planner |
+| `update` | bead id + stage progress | ralph → planner |
+| `get` | peer id, asks for current state | either → either |
+| `ask` | question text, needs an answer | either → either |
 
 Write the kind as the first word of the message text, e.g. `handoff agnt-ctx-abc.1 — implement the retry budget`.
 

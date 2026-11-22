@@ -1,5 +1,150 @@
 # Changelog
 
+## 3.0.0
+
+### Major Changes
+
+- 3b0b56f: Split `prioritise-work` into two skills, because it carried two jobs and its name described only the
+  second — so authoring a strategy was unfindable.
+
+  `strategise` inherits the whole skill: the strategy file contract, the summary-first run, the
+  interview, `init`/`validate`/`bump`/`summary`, `CHALLENGE.md`, `REFERENCE.md`, the scripts and the
+  template. Its own description now says what it is for, and it states that it neither scores nor
+  ranks.
+
+  `prioritise` is new and deliberately thin: it owns the score-then-rank sequence — validate the
+  strategy, score each bead with `score-bead`, then rank with `hitl-queue` — and the guard that refuses
+  to rank when `validate` exits non-zero, naming `strategise` as the fix. It restates no rule from
+  either skill it calls.
+
+  The strategy file's format, version, `REQUIRED_SECTIONS` and `validate`/`bump` behaviour are
+  unchanged: the two scripts move byte-identical, and every strategy already committed still
+  validates. `strategise`'s scripts are the ones `score-bead` and `hitl-queue` import, so their import
+  paths and the commands in `RECOMMEND.md` and `score-bead/SKILL.md` follow the move.
+
+  This removes a skill: `prioritise-work` is no longer installed, so anyone who names it must load
+  `strategise` or `prioritise` instead. Nothing about the strategy file, its version or its commands
+  changes, so a replacement is a rename at the call site and a reload.
+
+### Minor Changes
+
+- addfc87: Align ralph's peer-channel text with the installed `@cryptolibertus/pi-peer`, so a report stops
+  gating dispatch and every message kind travels with the transport's own intent.
+
+  The kind-to-intent mapping now has one home, the harness-labelled `### Transport` subsection:
+  `handoff` travels as `task`, `update`/`done`/`blocked`/`failed` as `notify`, and `get`/`ask` as
+  `ask`. The shared `### Message kinds` table states no intent, so the two harness renders stay
+  byte-identical outside that subsection.
+
+  On PI, the runbook now names the transport's own default: `peer_send` holds the session open until
+  the receiver answers unless `await: false` is passed, so the four report kinds are sent with
+  `await: false` and the returned `messageId` is kept as the handle for `peer_get`.
+
+  The text no longer quotes peer-list output the package never prints (`<N> online - <id>`), and
+  ralph's initialize step takes the planner's peer id from what the list reports instead of assuming
+  a peer named `planner` exists in every configuration.
+
+- 92bba30: Give `guppi` the peer tools on both harnesses, so it can coordinate with `ralph` while it stays out
+  of execution.
+
+  On pi the guppi allowlist gains `peer_list`, `peer_send`, `peer_get`, `peer_await`, `peer_progress`
+  and `peer_context`. On Claude Code it gains the built-in `SendMessage` and `ListAgents`. The agent
+  body names no harness tool: it grants coordination in one new first boundary bullet and restates the
+  one prohibition beside it — guppi never executes `execution:afk` work, never runs a pipeline stage
+  and never claims an AFK bead.
+
+  The PR-feedback interrupt row no longer says guppi sends no peer message. The bead stays the record
+  `ralph` reads, and a peer message about it is a courtesy beside that record.
+
+  `.gitignore` now ignores the local state `pi-peer` creates: `.pi/peers.json` holds the local peer
+  identity and trust settings, and `.pi/peer-*` holds the per-peer files. It also ignores
+  `.pi/settings.json`, which `pi-peer` reads and never writes.
+
+- e104115: Add `agent-cortex scope add` and `agent-cortex scope list`, so registering a bd workspace no longer
+  means hand-editing `~/.agent-cortex/scopes.json`.
+
+  `scope add --path <dir> [--name <n>] [--kind code|personal|ops]` writes or updates one entry in the
+  user-level list (`<AGENT_CORTEX_HOME>/scopes.json`, default `~/.agent-cortex/scopes.json`). It
+  refuses a directory that does not exist, is not a directory, or carries no `.beads` of its own, and
+  names the check that failed; the marker is tested at that exact directory, never by walking up, so a
+  nested directory cannot register itself against the enclosing workspace's beads. The write is a
+  read-modify-write of one entry: every other entry and every unknown key survives, and the merged
+  document is validated by the queue's own parser before anything is written, so a malformed file is
+  refused rather than truncated.
+
+  A configured list replaces the implicit "workspace you are standing in" scope, so `add` keeps the
+  current workspace in the written list as the default `code` entry and says so. Adding a personal
+  scope can no longer drop a repository out of the queue.
+
+  `scope list` prints every scope a run in the current directory resolves — its name, kind, read-only
+  flag, availability and resolved path — using the same resolution the HITL queue uses, so `~` and
+  relative paths print as the queue reads them.
+
+  Both commands reuse the `hitl-queue` skill's `scopes.mjs`; there is no second parser or path
+  resolver.
+
+- 64970cb: Add `recommend.mjs shortlist`, so a session that has to decide sees the queue's first ten rows as one
+  ranked list instead of a single recommendation it cannot argue with.
+
+  Each row is one line: rank, scope, id, total, title, the four RICE components with both multipliers,
+  the due moment where the bead has one, and what answering it unblocks. The top row carries
+  `← recommendation`; the rows, their order and every number are the queue's own. A queue with more
+  rows than the count states how many were omitted and the command that shows them; a queue with
+  fewer says the list is complete. `--top <n>` moves the count, and its default is 10.
+
+  A row other than the top is a priority challenge, never a selection: it routes to the strategy
+  review, so the ranking changes because the strategy changed. `recommend` still prints one row for a
+  session that must say one item, and every stated condition renders the same text on both commands.
+
+- 5477b4c: Withhold a HITL row an open bead blocks. `hitl-queue` ranked every open `execution:hitl` bead on
+  its full score and counted dependencies upward only, so a gate waiting on its own open stage could
+  take first place — and `recommend` would then name a bead nobody can answer yet.
+
+  The queue now reads `bd dep list <id> --direction down` for each scored candidate. A row held by an
+  open `blocks` dependency is left out of the ranking, counted on the `excluded:` line and published
+  in `--json` as `counts.withheldBlocked` and one `withheld[]` row per bead, each with the
+  `blockedBy` ids that hold it. Only the downward `blocks` edge withholds: a
+  `parent-child` edge is ownership, and a closed blocker leaves the row ranked exactly as before.
+  `recommend` gains one stated condition, `nothing is answerable yet`, and names a blocked bead as
+  held rather than printing it as the answer.
+
+### Patch Changes
+
+- 6847c67: Say that guppi recomputes the order **in a reprioritisation**, instead of "never recomputes it" as a
+  flat ban.
+
+  `prioritise` is the score-then-rank sequence, so guppi does in fact rescore and re-rank — on request,
+  through the skill, with the change recorded by `strategise`. The old wording read as a prohibition on
+  the one operation the reprioritisation path exists to perform, and someone following the boundary
+  literally would refuse a request the skills support.
+
+  The boundary now says guppi reports the stored order, and that a different order is a reprioritisation
+  rather than a silent reorder. README's guppi section carries the same correction.
+
+- ed87be6: Narrow guppi's write prohibition to the one action it must not take: executing AFK work. The agent
+  body read as "Recommends, never acts", so an edit that obviously served the task the human brought —
+  a note under `.agent-cortex/working-docs/`, a design document, the code the task needed — became a
+  refusal.
+
+  `## Where guppi writes` replaces the fixed table of permitted paths. guppi writes anywhere inside the
+  current workspace when the edit serves the current task, and needs no permission first. Three edges
+  bound it and nothing else does: another scope stays read-only, a personal-scope bead's text never
+  enters a shared artefact, and claiming, implementing or running an `execution:afk` bead stays
+  `ralph`'s work.
+
+  The prioritisation rule survives, narrowed to what it was about: guppi recommends the order and never
+  rescores or reorders silently. Merging and pushing are permitted in pursuit of the current task or on
+  the human's instruction, and each merge is recorded on the bead; the rails are the repository's own,
+  in `git-workflow`. `test/guppi-boundary-render.test.mjs` stages both installs and proves the rendered
+  boundary permits an in-workspace edit while keeping the AFK prohibition.
+
+- ab4ffec: Name the withheld candidates when the HITL queue can rank nothing. When every scored candidate was
+  withheld by an open blocker and an unscored row remained, `hitl-queue` printed "no RICE score on any
+  candidate — nothing can be ranked; score one with score-bead, then re-run" — advice that cannot help,
+  because the scores exist and a blocker holds them. That state now prints "nothing can be ranked —
+  <n> scored candidate(s) held by an open blocker; clear a blocker or score an unscored row with
+  score-bead, then re-run". The message for a queue with genuinely no scores is unchanged.
+
 ## 2.11.0
 
 ### Minor Changes

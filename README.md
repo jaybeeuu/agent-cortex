@@ -472,8 +472,9 @@ Its authority is prioritisation, not action. `strategise` owns the committed str
 `prioritise` is the score-then-rank sequence that refuses to run on an invalid one;
 `score-bead` records the score, and `hitl-queue` prints the first ten rows of the order and marks
 the top one as the recommendation, quoting the line of the strategy that justifies it. guppi
-reports them and never recomputes them. Personal work is a town-level bd scope — no rig, no
-polecats, no refinery, no merge queue.
+reports them as stored; a different order is a reprioritisation, where `prioritise` rescores and
+re-ranks and `strategise` records the change before the list moves. Personal work is a town-level bd
+scope — no rig, no polecats, no refinery, no merge queue.
 
 #### Hooks
 

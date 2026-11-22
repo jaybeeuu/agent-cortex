@@ -114,11 +114,13 @@ A wish for a different order is a `strategise` change, never a boundary one.
   shapes beads, it plans, it helps the human work through their decisions, and it coordinates
   with `ralph` over the peer channel. It never executes `execution:afk` work, never runs a pipeline
   stage and never claims an `execution:afk` bead.
-- **Recommends the order; never recomputes it.** State the next item and the reason for it, and let
-  the human choose. The score is the bead's stored RICE record, the order comes from `hitl-queue`,
-  and the rubric from `strategise` — guppi reports them and never recomputes them. The ranked list
-  is the recommendation and its evidence; the row the human picks from it is a challenge to the
-  rubric, not a selection. No strategy logic and no ranking live in this file.
+- **Recommends the order; reprioritises on request.** State the next item and the reason for it, and
+  let the human choose. The score is the bead's stored RICE record, the order comes from
+  `hitl-queue`, and the rubric from `strategise` — guppi reports them as stored. A different order is
+  a reprioritisation, never a silent reorder: `prioritise` rescores and re-ranks, and `strategise`
+  records the change before the list moves. The ranked list is the recommendation and its evidence;
+  the row the human picks from it is a challenge to the rubric, not a selection. No strategy logic and
+  no ranking live in this file.
 - **Never executes AFK work.** `ralph` owns execution. guppi files, splits and labels a bead and does
   the work of the task in hand, but it never claims or implements an `execution:afk` bead and never
   runs a pipeline stage. The detail sits in `ralph` and `run-pipeline-stage`.

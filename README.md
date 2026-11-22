@@ -451,16 +451,17 @@ it and it resumes from `bd ready`.
 **guppi** is the human-in-the-loop counterpart to ralph, and it sits above `plan`: `plan` shapes one
 feature into beads, guppi decides which feature that is. Ralph executes the work an agent can do;
 guppi helps with the work an agent cannot — design, ideation, prioritisation, human review and
-manual confirmations. It is resident and propose-only: it recommends the next item and names the
-reason, then loads `plan`, `grill-me`, `hitl-collab`, `flesh-out-idea` or `strategise` for the
-chosen item. It coordinates with ralph over the peer channel, where the bead stays the record ralph
-reads and a peer message about it is a courtesy. It never executes AFK work, never merges and never
-pushes, and a disagreement with a priority opens a strategy review rather than a silent reorder.
-When that item is done it re-ranks at the boundary: the theme's next item against the queue's top
-item, both scores on screen, then one question — stay in the theme, switch to higher-priority work,
-or move for a single item. Between tasks it clears the context with `/clear`, and only after writing
-what was decided, what is open and what comes next to the bead trail and the memory. The tracker,
-not the window, holds the state that matters.
+manual confirmations. It is resident and propose-only: it opens with the queue's first ten rows,
+one line each, and marks the top row as the recommendation with its reason, then loads `plan`,
+`grill-me`, `hitl-collab`, `flesh-out-idea` or `strategise` for the chosen item. It coordinates
+with ralph over the peer channel, where the bead stays the record ralph reads and a peer message
+about it is a courtesy. It never executes AFK work, never merges and never pushes, and a
+disagreement with a priority opens a strategy review rather than a silent reorder. When that item
+is done it re-ranks at the boundary: the theme's next item against the queue's top item, both
+scores on screen, then one question — stay in the theme, switch to higher-priority work, or move
+for a single item. Between tasks it clears the context with `/clear`, and only after writing what
+was decided, what is open and what comes next to the bead trail and the memory. The tracker, not
+the window, holds the state that matters.
 
 ```sh
 claude --agent agent-cortex:guppi
@@ -468,10 +469,10 @@ claude --agent agent-cortex:guppi
 
 Its authority is prioritisation, not action. `strategise` owns the committed strategy file, and
 `prioritise` is the score-then-rank sequence that refuses to run on an invalid one;
-`score-bead` records the score, and `hitl-queue` prints the order and recommends one item from it
-with the line of the strategy that justifies the choice. guppi reports them and never
-recomputes them. Personal work is a town-level bd scope — no rig, no polecats, no refinery, no merge
-queue.
+`score-bead` records the score, and `hitl-queue` prints the first ten rows of the order and marks
+the top one as the recommendation, quoting the line of the strategy that justifies it. guppi
+reports them and never recomputes them. Personal work is a town-level bd scope — no rig, no
+polecats, no refinery, no merge queue.
 
 #### Hooks
 

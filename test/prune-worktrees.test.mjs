@@ -459,6 +459,67 @@ describe('pruneWorktrees', () => {
     await assert.rejects(stat(worktree), 'the worktree directory is gone');
   });
 
+  it("keeps a closed-bead worktree when the base holds the branch's empty blob at another path", async () => {
+    const { repoRoot, origin, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await writeFile(join(worktree, 'never-landed.txt'), '');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'an empty file that never lands']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    // The base touches its own empty file. The empty blob is the same object in every
+    // repository, so holding that blob elsewhere proves nothing about this path.
+    await writeFile(join(repoRoot, 'unrelated.txt'), '');
+    await git(repoRoot, ['add', '-A']);
+    await git(repoRoot, ['commit', '-m', 'add an empty file of its own']);
+    await writeFile(join(repoRoot, 'unrelated.txt'), 'written by the base\n');
+    await git(repoRoot, ['add', '-A']);
+    await git(repoRoot, ['commit', '-m', 'fill the empty file in']);
+    await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.deepEqual(result.entries[0].proven, [], 'no commit holds the blob at the path');
+    assert.equal(result.entries[0].outcome, 'refused');
+    const reasons = result.entries[0].reasons.join(' ');
+    assert.match(reasons, /does not hold this branch's version of 1 path\(s\)/);
+    assert.match(reasons, /so its content is not landed/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+    assert.match(await git(origin, ['for-each-ref', '--format=%(refname)', `refs/heads/${branch}`]), new RegExp(branch));
+  });
+
+  it("keeps a closed-bead worktree when the base wrote the branch's bytes at another path", async () => {
+    const { repoRoot, origin, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    const plan = '1. keep the branch\n2. prove the path landed\n3. never assume the blob\n';
+    await mkdir(join(worktree, 'notes'), { recursive: true });
+    await writeFile(join(worktree, 'notes', 'plan.md'), plan);
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'notes that never land']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    // The base independently writes the same bytes elsewhere, then rewrites them, so
+    // its history adds and drops this blob without ever holding it at the path.
+    await mkdir(join(repoRoot, 'other'), { recursive: true });
+    await writeFile(join(repoRoot, 'other', 'plan.md'), plan);
+    await git(repoRoot, ['add', '-A']);
+    await git(repoRoot, ['commit', '-m', 'the base writes its own plan']);
+    await writeFile(join(repoRoot, 'other', 'plan.md'), 'the base changed its mind\n');
+    await git(repoRoot, ['add', '-A']);
+    await git(repoRoot, ['commit', '-m', 'the base rewrites its plan']);
+    await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.deepEqual(result.entries[0].proven, [], 'no commit holds the bytes at the path');
+    assert.equal(result.entries[0].outcome, 'refused');
+    const reasons = result.entries[0].reasons.join(' ');
+    assert.match(reasons, /does not hold this branch's version of 1 path\(s\)/);
+    assert.match(reasons, /so its content is not landed/);
+    assert.notEqual(result.exitCode, 0);
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+    assert.match(await git(origin, ['for-each-ref', '--format=%(refname)', `refs/heads/${branch}`]), new RegExp(branch));
+  });
+
   it('removes a closed-bead worktree whose changeset a release commit consumed, naming the release commit', async () => {
     const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
     await mkdir(join(worktree, '.changeset'), { recursive: true });

@@ -282,21 +282,29 @@ function recordedLine(text) {
  * commits whose diff added or removed that exact blob, and rename detection leaves
  * the blob in place, so a rename does not hide the landing.
  *
- * The oldest match is the commit that recorded the branch's content; every later
- * match rewrote or dropped it. Naming the recording commit tells a reader where the
- * work landed.
+ * A blob alone does not name a path, so a match is only a candidate: the empty blob
+ * is the same object in every repository, and two files holding the same bytes share
+ * one. A candidate therefore counts only when its own tree holds that blob at the
+ * path under test, which is what puts the path's content on the base. The oldest
+ * such commit recorded the branch's content; every later match rewrote or dropped it.
+ * Naming the recording commit tells a reader where the work landed.
  * @param {string} path
+ * @param {string} file the path under test, relative to the repository root.
  * @param {string} blob
  * @param {{ baseRef: string, mergeBase: string }} range
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
- * @returns {Promise<string | null>} a proof line, or null when the base never held the blob.
+ * @returns {Promise<string | null>} a proof line, or null when the base never held the blob at the path.
  */
-async function proveSuperseded(path, blob, { baseRef, mergeBase }, git) {
+async function proveSuperseded(path, file, blob, { baseRef, mergeBase }, git) {
   const found = await git(path, ['log', '--format=%H', `--find-object=${blob}`, baseRef, `^${mergeBase}`]);
   if (!found.ok) return null;
   const commits = found.stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '');
-  if (commits.length === 0) return null;
-  return `superseded at ${commits.at(-1)}`;
+  // `git log` reports newest first, so reading backwards finds the recording commit
+  // before any commit that rewrote or dropped the content.
+  for (const commit of commits.reverse()) {
+    if ((await blobAt(path, commit, file, git)) === blob) return `superseded at ${commit}`;
+  }
+  return null;
 }
 
 /**
@@ -354,7 +362,7 @@ async function proveLandedPath(path, file, range, git) {
   const blob = await blobAt(path, 'HEAD', file, git);
   // The branch deleted a path the base still holds: the deletion did not land.
   if (blob === null) return null;
-  return (await proveReleasedChangeset(path, file, blob, range, git)) ?? (await proveSuperseded(path, blob, range, git));
+  return (await proveReleasedChangeset(path, file, blob, range, git)) ?? (await proveSuperseded(path, file, blob, range, git));
 }
 
 /**
@@ -394,10 +402,10 @@ async function namesOwnBranch(path, ref, branch, git) {
  * Restricting to the branch's own paths is what makes an overlap detectable: when
  * the base later changed a path the branch also changed, the two versions differ and
  * the base's tip alone cannot prove the branch landed. A path the tip disagrees on is
- * therefore proven from history instead, by one of two rules: the branch's blob
- * appears in the base's history after the merge base (landed, then superseded), or a
- * commit on the base deleted a changeset and recorded its text (released). A path no
- * rule proves is lost work, and lost work keeps the worktree.
+ * therefore proven from history instead, by one of two rules: the branch's blob is
+ * held at the same path by a commit on the base after the merge base (landed, then
+ * superseded), or a commit on the base deleted a changeset and recorded its text
+ * (released). A path no rule proves is lost work, and lost work keeps the worktree.
  *
  * The branch's changed paths are read from git and then handed straight back to a
  * second git call as pathspecs, so that round trip has to be exact. Two escapes

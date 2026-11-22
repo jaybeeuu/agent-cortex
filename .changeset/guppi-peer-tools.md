@@ -14,6 +14,6 @@ and never claims an AFK bead.
 The PR-feedback interrupt row no longer says guppi sends no peer message. The bead stays the record
 `ralph` reads, and a peer message about it is a courtesy beside that record.
 
-`.gitignore` now ignores the local state `pi-peer` generates: `.pi/peers.json` and
-`.pi/settings.json` hold the local peer identity and trust settings, and `.pi/peer-*` holds the
-per-peer files.
+`.gitignore` now ignores the local state `pi-peer` creates: `.pi/peers.json` holds the local peer
+identity and trust settings, and `.pi/peer-*` holds the per-peer files. It also ignores
+`.pi/settings.json`, which `pi-peer` reads and never writes.

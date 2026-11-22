@@ -453,13 +453,14 @@ feature into beads, guppi decides which feature that is. Ralph executes the work
 guppi helps with the work an agent cannot — design, ideation, prioritisation, human review and
 manual confirmations. It is resident and propose-only: it recommends the next item and names the
 reason, then loads `plan`, `grill-me`, `hitl-collab`, `flesh-out-idea` or `strategise` for the
-chosen item. It never executes AFK work, never merges and never pushes, and a disagreement with a
-priority opens a strategy review rather than a silent reorder. When that item is done it re-ranks
-at the boundary: the theme's next item against the queue's top item, both scores on screen, then one
-question — stay in the theme, switch to higher-priority work, or move for a single item. Between
-tasks it clears the context with `/clear`, and only after writing what was decided, what is open and
-what comes next to the bead trail and the memory. The tracker, not the window, holds the state that
-matters.
+chosen item. It coordinates with ralph over the peer channel, where the bead stays the record ralph
+reads and a peer message about it is a courtesy. It never executes AFK work, never merges and never
+pushes, and a disagreement with a priority opens a strategy review rather than a silent reorder.
+When that item is done it re-ranks at the boundary: the theme's next item against the queue's top
+item, both scores on screen, then one question — stay in the theme, switch to higher-priority work,
+or move for a single item. Between tasks it clears the context with `/clear`, and only after writing
+what was decided, what is open and what comes next to the bead trail and the memory. The tracker,
+not the window, holds the state that matters.
 
 ```sh
 claude --agent agent-cortex:guppi

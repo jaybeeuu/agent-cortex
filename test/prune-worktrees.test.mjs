@@ -416,6 +416,88 @@ describe('pruneWorktrees', () => {
     );
   });
 
+  it('removes a closed-bead worktree whose landed path a later change rewrote, naming the commit that landed it', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await writeFile(join(worktree, 'landed.txt'), 'branch version\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'the change']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    await squashMergeOntoBase({ repoRoot, branch });
+    const landing = (await git(repoRoot, ['rev-parse', 'HEAD'])).trim();
+    // A later pull request rewrites the same path, so the base holds neither the
+    // branch's version nor the branch's commit. The work is landed all the same.
+    await writeFile(join(repoRoot, 'landed.txt'), 'rewritten by a later pull request\n');
+    await git(repoRoot, ['add', '-A']);
+    await git(repoRoot, ['commit', '-m', 'rewrite the landed path']);
+    await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.deepEqual(result.entries.map(({ outcome }) => outcome), ['removed']);
+    assert.deepEqual(result.entries[0].proven, [`superseded at ${landing}`]);
+    assert.equal(result.exitCode, 0);
+    await assert.rejects(stat(worktree), 'the worktree directory is gone');
+    assert.equal((await git(repoRoot, ['branch', '--list', branch])).trim(), '', 'the local branch is deleted');
+  });
+
+  it('removes a closed-bead worktree whose landed path the base later renamed', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await writeFile(join(worktree, 'before.md'), 'content the base keeps under another name\n');
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'the change']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    await squashMergeOntoBase({ repoRoot, branch });
+    const landing = (await git(repoRoot, ['rev-parse', 'HEAD'])).trim();
+    await git(repoRoot, ['mv', 'before.md', 'after.md']);
+    await git(repoRoot, ['commit', '-m', 'rename the landed path']);
+    await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+
+    const result = await pruneWorktrees({ repoRoot, exec });
+
+    assert.deepEqual(result.entries.map(({ outcome }) => outcome), ['removed']);
+    assert.deepEqual(result.entries[0].proven, [`superseded at ${landing}`], 'a rename does not hide the landing');
+    await assert.rejects(stat(worktree), 'the worktree directory is gone');
+  });
+
+  it('removes a closed-bead worktree whose changeset a release commit consumed, naming the release commit', async () => {
+    const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed' });
+    await mkdir(join(worktree, '.changeset'), { recursive: true });
+    await writeFile(
+      join(worktree, '.changeset', 'tidy-lions-go.md'),
+      "---\n'agent-cortex': patch\n---\n\nTeach the pruner that a released changeset still proves landed work\n",
+    );
+    await git(worktree, ['add', '-A']);
+    await git(worktree, ['commit', '-m', 'add a changeset']);
+    await git(worktree, ['push', '--quiet', 'origin', branch]);
+    await squashMergeOntoBase({ repoRoot, branch });
+    // A release commit consumes the changeset: the path goes and its text is
+    // recorded in the changelog, so the base holds the work and not the path.
+    await git(repoRoot, ['rm', '--quiet', '.changeset/tidy-lions-go.md']);
+    await writeFile(
+      join(repoRoot, 'CHANGELOG.md'),
+      '# Changelog\n\n## 1.0.1\n\n- Teach the pruner that a released changeset still proves landed work\n',
+    );
+    await git(repoRoot, ['add', '-A']);
+    await git(repoRoot, ['commit', '-m', 'chore: version packages']);
+    const release = (await git(repoRoot, ['rev-parse', 'HEAD'])).trim();
+    await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+    let output = '';
+
+    const exitCode = await runCli({
+      argv: [],
+      cwd: repoRoot,
+      exec,
+      write: (chunk) => {
+        output += chunk;
+      },
+    });
+
+    assert.equal(exitCode, 0);
+    assert.match(output, new RegExp(`proj-1\\s+closed-bead\\s+removed — proven: changeset released in ${release}`));
+    await assert.rejects(stat(worktree), 'the worktree directory is gone');
+    assert.equal((await git(repoRoot, ['branch', '--list', branch])).trim(), '', 'the local branch is deleted');
+  });
+
   it('keeps a closed-bead worktree whose content the base branch does not have', async () => {
     const { repoRoot, worktree, branch, exec } = await createRepo({ bead: 'closed', push: false });
     await writeFile(join(worktree, 'never-pushed.txt'), 'work that never left this machine\n');

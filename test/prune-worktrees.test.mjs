@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
@@ -43,12 +43,13 @@ async function gitResult(cwd, args) {
  * then delete the remote branch and prune the stale remote-tracking ref. This is
  * the shape every landed ralph branch has after a merge with branch deletion:
  * the work is in the base branch and the local branch has no upstream left.
- * @param {{ repoRoot: string, branch: string }} options
+ * @param {{ repoRoot: string, branch: string, baseRef?: string }} options  `baseRef` is the
+ *   remote branch the work lands on, defaulting to the default branch's remote ref.
  */
-async function squashMergeOntoBase({ repoRoot, branch }) {
+async function squashMergeOntoBase({ repoRoot, branch, baseRef = 'main' }) {
   await git(repoRoot, ['merge', '--squash', '--quiet', branch]);
   await git(repoRoot, ['commit', '-m', 'landed']);
-  await git(repoRoot, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+  await git(repoRoot, ['push', '--quiet', 'origin', `HEAD:refs/heads/${baseRef}`]);
   await git(repoRoot, ['push', '--quiet', 'origin', '--delete', branch]);
   await git(repoRoot, ['fetch', '--quiet', '--prune', 'origin']);
 }
@@ -116,11 +117,69 @@ async function addRalphWorktree({ repoRoot, beadId }) {
  * @returns {(args: string[]) => Promise<string>}
  */
 function closedBeadExec(beadIds) {
+  return beadExec(beadIds, 'closed');
+}
+/**
+ * A `bd` runner that reports every given bead id with `status`, and any other id as
+ * missing.
+ * @param {string[]} beadIds
+ * @param {string} status
+ * @returns {(args: string[]) => Promise<string>}
+ */
+function beadExec(beadIds, status) {
   return async (args) => {
     const [, id] = args;
     if (!beadIds.includes(id)) throw new Error(`Issue ${id} not found`);
-    return JSON.stringify([{ id, status: 'closed' }]);
+    return JSON.stringify([{ id, status }]);
   };
+}
+/**
+ * Land a branch on the remote epic branch the way a feature PR does: a squash
+ * merge, made in a second clone, so no local branch in `repoRoot` moves. Only
+ * `origin/epic/<epicId>` advances, and the remote feature branch is deleted.
+ * @param {{ origin: string, repoRoot: string, branch: string, epicId: string }} options
+ */
+async function landOnRemoteEpicBranch({ origin, repoRoot, branch, epicId }) {
+  const workspace = dirname(repoRoot);
+  const clone = join(workspace, 'landing');
+  await git(workspace, ['clone', '--quiet', origin, clone]);
+  await git(clone, ['config', 'user.email', 'test@example.com']);
+  await git(clone, ['config', 'user.name', 'Test']);
+  await git(clone, ['config', 'commit.gpgsign', 'false']);
+  await git(clone, ['checkout', '--quiet', `epic/${epicId}`]);
+  await git(clone, ['merge', '--squash', '--quiet', `origin/${branch}`]);
+  await git(clone, ['commit', '-m', 'landed']);
+  await git(clone, ['push', '--quiet', 'origin', `HEAD:refs/heads/epic/${epicId}`]);
+  await git(clone, ['push', '--quiet', 'origin', '--delete', branch]);
+  await git(repoRoot, ['fetch', '--quiet', '--prune', 'origin']);
+}
+/**
+ * A repository whose origin carries an `epic/<epicId>` branch, plus one ralph
+ * worktree cut from that epic branch: the shape a feature of a multi-feature epic
+ * has. The worktree's work is landed on the epic branch the way a squash merge
+ * lands it, in a second clone, so only `origin/epic/<epicId>` advances and the
+ * local epic branch stays where ralph created it. That gap is the whole point: the
+ * local branch is created once and never fast-forwarded, so it never holds the
+ * feature's own content.
+ * @param {{ beadId?: string, epicId?: string }} [options]
+ */
+async function createLandedEpicRepo({ beadId = 'proj-1', epicId = 'e1' } = {}) {
+  const { origin, repoRoot } = await createRepoRoot();
+  await git(repoRoot, ['push', '--quiet', 'origin', `HEAD:refs/heads/epic/${epicId}`]);
+  await git(repoRoot, ['fetch', '--quiet', 'origin']);
+  // The epic branch is cut from the remote default branch, as ralph creates it.
+  await git(repoRoot, ['branch', `epic/${epicId}`, `origin/epic/${epicId}`]);
+  const branch = `feature/${beadId}`;
+  await mkdir(join(repoRoot, '.agent-cortex', 'worktrees'), { recursive: true });
+  const worktree = join(repoRoot, '.agent-cortex', 'worktrees', beadId);
+  // Ralph bases the feature branch on the local epic branch, so it inherits no upstream.
+  await git(repoRoot, ['worktree', 'add', '--quiet', '-b', branch, worktree, `epic/${epicId}`]);
+  await writeFile(join(worktree, 'landed.txt'), 'the change\n');
+  await git(worktree, ['add', '-A']);
+  await git(worktree, ['commit', '-m', 'the change']);
+  await git(worktree, ['push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`]);
+  await landOnRemoteEpicBranch({ origin, repoRoot, branch, epicId });
+  return { origin, repoRoot, worktree, branch, epicId };
 }
 /**
  * A repository with an origin and one ralph worktree on a feature branch. The
@@ -604,6 +663,105 @@ describe('pruneWorktrees', () => {
     assert.notEqual(exitCode, 0);
     assert.match(output, /names this branch/);
     assert.equal((await git(worktree, ['rev-parse', 'HEAD'])).trim(), tip, 'the commit survives');
+    await stat(worktree);
+    assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
+  });
+  it('prints the base ref it tested against and names it in an epic refusal', async () => {
+    const { repoRoot, worktree, exec } = { ...(await createLandedEpicRepo()), exec: closedBeadExec(['proj-1']) };
+    let output = '';
+
+    const exitCode = await runCli({ argv: [], cwd: repoRoot, exec, write: (chunk) => { output += chunk; } });
+
+    assert.notEqual(exitCode, 0);
+    assert.match(output, /Base: origin\/HEAD/, 'the report names the ref the content test used');
+    assert.match(output, /proj-1\s+closed-bead\s+refused/);
+    assert.match(
+      output,
+      /origin\/HEAD does not hold this branch's version of 1 path\(s\)/,
+      'the refusal names the ref that decided it',
+    );
+    await stat(worktree);
+  });
+  it('refuses an epic-landed worktree when --base names the stale local epic branch', async () => {
+    const { repoRoot, worktree } = await createLandedEpicRepo();
+    // The local epic branch never fast-forwards, so it is behind the remote one
+    // that the squash merge landed on. A base that is behind does not hold the
+    // branch's content, and the content test refuses.
+    const localTip = (await git(repoRoot, ['rev-parse', 'epic/e1'])).trim();
+    const remoteTip = (await git(repoRoot, ['rev-parse', 'origin/epic/e1'])).trim();
+    assert.notEqual(localTip, remoteTip, 'the fixture leaves the local epic branch behind');
+    let output = '';
+
+    const exitCode = await runCli({
+      argv: ['--base', 'epic/e1'],
+      cwd: repoRoot,
+      exec: closedBeadExec(['proj-1']),
+      write: (chunk) => { output += chunk; },
+    });
+
+    assert.equal(exitCode, 1);
+    assert.match(output, /proj-1\s+closed-bead\s+refused/);
+    assert.match(
+      output,
+      /epic\/e1 does not hold this branch's version of 1 path\(s\)/,
+      'the refusal names the stale local ref that decided it',
+    );
+    await stat(worktree);
+  });
+  it('removes an epic-landed closed-bead worktree when --base names the remote epic branch', async () => {
+    const { repoRoot, origin, worktree, branch } = await createLandedEpicRepo();
+    const base = 'origin/epic/e1';
+    let output = '';
+
+    const exitCode = await runCli({
+      argv: ['--base', base],
+      cwd: repoRoot,
+      exec: closedBeadExec(['proj-1']),
+      write: (chunk) => { output += chunk; },
+    });
+
+    assert.equal(exitCode, 0);
+    assert.match(output, /Base: origin\/epic\/e1/, 'the report names the ref passed as --base');
+    assert.match(output, /proj-1\s+closed-bead\s+removed/);
+    await assert.rejects(stat(worktree), 'the worktree directory is gone');
+    assert.equal((await git(repoRoot, ['branch', '--list', branch])).trim(), '', 'the local branch is deleted');
+    assert.equal(
+      (await git(origin, ['for-each-ref', '--format=%(refname)', `refs/heads/${branch}`])).trim(),
+      '',
+      'no remote feature branch survives',
+    );
+  });
+  it('removes an epic-landed closed-bead worktree when no local epic branch exists', async () => {
+    const { repoRoot, worktree } = await createLandedEpicRepo();
+    // The epic branch exists on the remote only: the guard must key off
+    // `refs/remotes/origin/epic/<id>`, not a local branch that may never exist here.
+    await git(repoRoot, ['branch', '-D', 'epic/e1']);
+    await assert.rejects(git(repoRoot, ['rev-parse', '--verify', 'epic/e1']), 'no local epic branch');
+
+    const result = await pruneWorktrees({ repoRoot, exec: closedBeadExec(['proj-1']), base: 'origin/epic/e1' });
+
+    assert.deepEqual(result.entries.map(({ outcome }) => outcome), ['removed']);
+    assert.equal(result.baseRef, 'origin/epic/e1');
+    assert.equal(result.exitCode, 0);
+    await assert.rejects(stat(worktree), 'the worktree directory is gone');
+  });
+  it('keeps an open epic-bead worktree refused by its upstream even with --base', async () => {
+    const { repoRoot, worktree, branch } = await createLandedEpicRepo();
+
+    const result = await pruneWorktrees({
+      repoRoot,
+      exec: beadExec(['proj-1'], 'in_progress'),
+      removeOrphans: true,
+      base: 'origin/epic/e1',
+    });
+
+    assert.equal(result.entries[0].outcome, 'refused');
+    assert.match(
+      result.entries[0].reasons.join(' '),
+      /branch feature\/proj-1 has no remote-tracking branch and its bead is not closed/,
+      'an open bead is proven by its upstream, never by content',
+    );
+    assert.notEqual(result.exitCode, 0);
     await stat(worktree);
     assert.match(await git(repoRoot, ['branch', '--list', branch]), new RegExp(branch));
   });

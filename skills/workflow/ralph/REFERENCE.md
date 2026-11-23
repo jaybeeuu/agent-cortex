@@ -242,7 +242,7 @@ node skills/workflow/ralph/scripts/prune-worktrees.mjs --base <ref>     # prove 
 
 **An open bead is decided by its upstream.** With no upstream it is refused on that alone, whatever its content says; with one, every commit must be pushed to it.
 
-**The base is the remote's default branch,** read from `origin/HEAD` so that no branch name is hardcoded. `--base <ref>` names another, such as a release branch. A base that cannot be resolved, or that names the worktree's own branch, keeps the worktree and refuses.
+**The base is the remote's default branch,** read from `origin/HEAD` so that no branch name is hardcoded, and the report names it, so a refusal shows the ref that decided it. `--base <ref>` names another: the remote epic branch a multi-feature epic's feature landed on (`--base origin/epic/<epic-id>`), a release branch, and so on. Pass the remote-tracking ref, never the local `epic/<epic-id>` branch: ralph creates that branch once and never fast-forwards it, while a feature PR squash-merges into the remote epic branch, so only the remote-tracking ref holds the landed content. A base that cannot be resolved, or that names the worktree's own branch, keeps the worktree and refuses.
 
 **Removal is three commands.** `git worktree remove <path>`, then `git branch -D <branch>`, then `git push origin --delete <branch>`. The remote branch name is the worktree's own checked-out branch, so ralph's `feature/<parent-id>` deletes `origin/feature/<parent-id>`. A remote ref that git already reports as gone is not a failure.
 
@@ -254,7 +254,7 @@ node skills/workflow/ralph/scripts/prune-worktrees.mjs --base <ref>     # prove 
 
 Pruning is a pipeline stage, not a habit: `create-chores.mjs` pre-creates a `stage:housekeeping` chore for every expanded task, carrying `lifecycle:housekeeping` and blocked behind that task's `lifecycle:feature-pr` gate. It stays out of `bd ready` until a human closes the gate, so it never competes with pipeline work.
 
-- **Executor.** A dispatched worker — the `stage:housekeeping` chore in `bd ready -l execution:afk` — runs `prune-worktrees.mjs` from the **main checkout**, never from the feature worktree: the worktree it removes can be the parent's own. Ralph dispatches it with the main checkout as cwd for that reason.
+- **Executor.** A dispatched worker — the `stage:housekeeping` chore in `bd ready -l execution:afk` — runs `prune-worktrees.mjs` from the **main checkout**, never from the feature worktree: the worktree it removes can be the parent's own. Ralph dispatches it with the main checkout as cwd for that reason. The worker runs `git fetch origin` first, then passes `--base origin/epic/<epic-id>` when the bead landed on an epic branch and `git rev-parse --verify --quiet refs/remotes/origin/epic/<epic-id>` resolves, and no `--base` otherwise; the housekeeping playbook states how the bead graph tells the two cases apart.
 - **Retry once.** Exit status `1` means some scanned worktree survived, and an open bead counts as survival, so a live backlog always exits non-zero. The worker therefore retries the run once. The retry is the whole allowance — never a third run.
 - **Never close over a worktree the script did not remove.** The outcome comes from the per-worktree report, not the exit status: the chore succeeds when no `closed-bead` worktree is left `refused`. A closed-bead worktree still `refused` after the retry fails the chore, and the chore is left **open** with the printed reasons in its notes. A `kept` or `refused` entry for an open bead is a normal report, not a failure.
 

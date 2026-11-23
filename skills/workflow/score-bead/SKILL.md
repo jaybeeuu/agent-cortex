@@ -50,10 +50,10 @@ A missing or malformed strategy stops here. `score` refuses in that state and wr
 |---|---|---|
 | `reach` | How much work this changes — how many workflows, beads or users | Counting the author once, not the repeated cost |
 | `impact` | How much each unit of reach gains, on the rubric's own scale | A number the rubric does not define |
-
-When the strategy carries a `## Impact levels` table, `--impact` must be one of its values. `score` refuses any other figure with exit 1, before it reads the bead and before the first `bd` call, and names every level the table allows with its value — so nothing is written on a refusal. Cite the level's label in the rationale: it is the word that ties the figure to the rubric. A strategy with no table accepts any impact of zero or more, and `score` prints one line saying impact is unconstrained.
 | `confidence` | How sure the estimate is, as a probability `0..1` | A guess presented as a figure |
 | `effort` | Cost, on the effort calibration the rubric anchors | An effort that is a wish |
+
+When the strategy carries a `## Impact levels` table, `--impact` must be one of its values. `score` refuses any other figure with exit 1, before it reads the bead and before the first `bd` call, and names every level the table allows with its value — so nothing is written on a refusal. Cite the level's label in the rationale: it is the word that ties the figure to the rubric. A strategy with no table accepts any impact of zero or more, and `score` prints one line saying impact is unconstrained.
 
 3. **Record a confidence figure you can defend.** Use `0..1`, and let the rationale say what the evidence is and what is missing. `0.5` with "no comparable work yet" is honest; `0.9` with no evidence is a guess wearing a number. When you cannot estimate at all, lower the figure and name the gap rather than inflating it.
 

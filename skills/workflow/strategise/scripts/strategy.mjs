@@ -363,6 +363,10 @@ export function parseDeadlineTiers(text) {
  * different matter: it is an error rather than a fallback, because a rule the reader cannot
  * see must not decide the outcome either. Every defect is reported, so one run fixes the
  * whole table.
+ *
+ * A line that opens like a row but is not one is a defect, not a line to skip: a level the
+ * author wrote and this parser dropped would leave the allowed set in silence, and the scorer
+ * would then be told a value is not on a table that never said so.
  * @param {string} text @returns {ImpactLevelsReport}
  */
 export function parseImpactLevels(text) {
@@ -381,7 +385,22 @@ export function parseImpactLevels(text) {
 
   for (const line of body) {
     const cells = TABLE_ROW.exec(line)?.[1].split('|');
-    if (cells === undefined || cells.length !== 2) continue;
+    if (cells === undefined) {
+      // Prose and blank lines carry no row. A line that opens with a pipe does, and a row the
+      // reader cannot close is a row the author wrote.
+      if (line.trimStart().startsWith('|')) {
+        errors.push(
+          `${IMPACT_LEVELS_SECTION}: line "${line.trim()}" is not a "| <level> | <value> |" row — every row needs two cells between two pipes`,
+        );
+      }
+      continue;
+    }
+    if (cells.length !== 2) {
+      errors.push(
+        `${IMPACT_LEVELS_SECTION}: line "${line.trim()}" is not a "| <level> | <value> |" row — it divides into ${cells.length} cells`,
+      );
+      continue;
+    }
     const label = cells[0].trim();
     const valueText = cells[1].trim();
     const isFirst = firstTableLine;

@@ -682,6 +682,53 @@ describe('the impact levels', () => {
     assert.match(errors, /row "\| large \| 1 \|" — value 1 is already on the table/);
   });
 
+  it('reports a row that is not two columns instead of dropping the level in silence', () => {
+    const parsed = parseImpactLevels(
+      createStrategy({
+        impactLevels: [
+          ['minor', '0.25 | 9'],
+          ['normal', '1'],
+          ['large', '1 | 2'],
+          ['huge', '0'],
+        ],
+      }),
+    );
+
+    assert.equal(parsed.ok, false, 'a level the parser cannot read must not leave the table unannounced');
+    assert.deepEqual(parsed.levels, [{ label: 'normal', value: 1 }], 'the readable rows are still read');
+    const errors = parsed.errors.join('\n');
+    assert.match(errors, /Impact levels: line "\| minor \| 0\.25 \| 9 \|" is not a/);
+    assert.match(errors, /Impact levels: line "\| large \| 1 \| 2 \|" is not a/, 'every defect lands in one run');
+    assert.match(errors, /row "\| huge \| 0 \|" — value "0" is not a positive number/);
+  });
+
+  it('reports a row that opens with a pipe and never closes it', () => {
+    const text = createStrategy({ impactLevels: [['normal', '1']] }).replace('| normal | 1 |', '| normal | 1');
+
+    const parsed = parseImpactLevels(text);
+
+    assert.equal(parsed.ok, false);
+    assert.deepEqual(parsed.levels, []);
+    assert.match(parsed.errors.join('\n'), /Impact levels: line "\| normal \| 1" is not a/);
+  });
+
+  it('fails validate with the unreadable-row defect, so a scorer never sees a shortened table', async () => {
+    const file = await writeStrategy(
+      createStrategy({
+        impactLevels: [
+          ['minor', '0.25 | 9'],
+          ['normal', '1'],
+        ],
+      }),
+    );
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 1);
+    assert.equal(check.stdout, '');
+    assert.match(check.stderr, /Impact levels: line "\| minor \| 0\.25 \| 9 \|"/);
+  });
+
   it('reports nothing when the section is absent, and states no levels', () => {
     const parsed = parseImpactLevels(createStrategy());
 

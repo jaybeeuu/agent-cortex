@@ -625,6 +625,11 @@ A shell that is not a terminal cannot answer the prompt, so a bare `agent-cortex
 prints the same table plus the flags above and exits non-zero — a script can never mistake
 "nothing chosen" for "nothing to do".
 
+`update` exits 0 when every refresh it attempted completed — including a selection that refreshed
+nothing — and 1 when an installer fails, a harness name is unknown, an option cannot be parsed, or a
+bare invocation has no terminal to prompt on. `agent-cortex self-update` hands the refresh's exit
+code back, so a failed refresh fails the whole command.
+
 The report gives each refreshed harness its previous version, its new version, and the artifacts
 the installer wrote; harnesses already at the CLI version are listed as skipped. A harness's new
 version is read back from the manifest its installer wrote, so a refresh that failed to

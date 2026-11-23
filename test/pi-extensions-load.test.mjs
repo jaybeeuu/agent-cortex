@@ -125,6 +125,14 @@ function typeboxModes() {
 /**
  * Write the loader that imports each extension entrypoint and reports which ones
  * throw, plus the resolve hook that supplies `typebox` the way pi does.
+ *
+ * `registerHooks` is the in-thread hook API; `register` is deprecated
+ * (`[DEP0205]`) and writes a warning to stderr on every run, which the stderr
+ * assertion below would read as an extension writing to stderr. The hook the two
+ * APIs share is the same lookup — `registerHooks` only requires it to be
+ * synchronous, so `resolve` returns `next(...)` directly instead of awaiting it.
+ * `next` still delegates to the hooks `tsx` registers, so a non-`typebox`
+ * specifier resolves exactly as it did under `register`.
  * @param {TypeboxMode} [mode]
  * @returns {Promise<string>} Path of the loader module
  */
@@ -136,7 +144,7 @@ async function writeLoader(mode = "auto") {
     join(dir, "host-modules.mjs"),
     `const TYPEBOX = ${JSON.stringify(typeboxEntry)};
 
-export async function resolve(specifier, context, next) {
+export function resolve(specifier, context, next) {
   if (specifier === "typebox") return { url: TYPEBOX, shortCircuit: true };
   return next(specifier, context);
 }
@@ -146,9 +154,10 @@ export async function resolve(specifier, context, next) {
   const loaderPath = join(dir, "load-extensions.mjs");
   await writeFile(
     loaderPath,
-    `import { register } from "node:module";
+    `import { registerHooks } from "node:module";
+import { resolve } from "./host-modules.mjs";
 
-register("./host-modules.mjs", import.meta.url);
+registerHooks({ resolve });
 
 const entries = process.argv.slice(2);
 const failures = [];

@@ -8,11 +8,10 @@
 // A merge that deletes its branch also deletes the local branch's upstream, so a
 // closed bead with no remote-tracking branch is the normal end of a landed branch.
 // Only the content can tell that apart from a branch that was never pushed: the
-// branch goes when the base holds the branch's own version of every path the
-// branch changed since their merge base, and stays otherwise. The test is
-// one-sided on purpose: this repo squash-merges, so a base that moved on after the
-// branch was cut holds paths the branch never had, and demanding tree equality
-// would keep every branch but the last one landed.
+// branch goes when every path it changed since the merge base is proven landed, and
+// stays otherwise. The test is one-sided on purpose: this repo squash-merges, so a
+// base that moved on after the branch was cut holds paths the branch never had, and
+// demanding tree equality would keep every branch but the last one landed.
 //
 // A closed bead's upstream is never the arbiter. Ralph cuts its branch from the
 // remote base (`git worktree add -b feature/<id> … origin/<base>`), and
@@ -27,6 +26,11 @@
 // together with every commit the base does not contain — a reverted change and a
 // run of empty commits both go, and so do their messages. The base is the remote's
 // default branch, never a hardcoded name.
+//
+// Two ordinary endings leave the base holding work and not the branch's version of
+// a path, and both are landed work: a path the base landed and a later commit then
+// rewrote, and a changeset a release commit consumed. Each is proven from history
+// rather than assumed, so a path the base never held refuses exactly as before.
 //
 // Zero dependencies: run with `node prune-worktrees.mjs`.
 
@@ -53,6 +57,7 @@ const BD_PATH = process.env.BD_PATH || 'bd';
  * @property {string} beadStatus          Raw `bd` status, or `'missing'`.
  * @property {Outcome} outcome
  * @property {string[]} reasons           Why the worktree was not removed.
+ * @property {string[]} proven            The proof each unproven path landed, as `proven: …` text.
  */
 
 /**
@@ -226,6 +231,140 @@ function contentLead(branch, upstream) {
     : `branch ${branch} is not proven by ${upstream}`;
 }
 
+const CHANGESET_DIR = '.changeset/';
+
+// A recorded line shorter than this is not distinctive enough to prove that a
+// release carried a file's text forward: it would match an unrelated file.
+const MIN_RECORDED_LINE_LENGTH = 16;
+
+/**
+ * The blob a commit holds at a path, or null when that commit does not carry the
+ * path.
+ * @param {string} path
+ * @param {string} commit
+ * @param {string} file
+ * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @returns {Promise<string | null>}
+ */
+async function blobAt(path, commit, file, git) {
+  const result = await git(path, ['rev-parse', '--verify', '--quiet', `${commit}:${file}`]);
+  if (!result.ok) return null;
+  const blob = result.stdout.trim();
+  return blob === '' ? null : blob;
+}
+
+/**
+ * The line of a file's text that a later commit records verbatim: the longest line
+ * of the body, with a front-matter block skipped, because a consuming commit keeps
+ * the summary and drops the field values.
+ * @param {string} text
+ * @returns {string | null} the line, or null when the body holds nothing distinctive.
+ */
+function recordedLine(text) {
+  const lines = text.split('\n');
+  let bodyStart = 0;
+  if (lines[0]?.trim() === '---') {
+    const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
+    if (end !== -1) bodyStart = end + 1;
+  }
+  const longest = lines
+    .slice(bodyStart)
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .reduce((best, line) => (line.length > best.length ? line : best), '');
+  return longest.length >= MIN_RECORDED_LINE_LENGTH ? longest : null;
+}
+
+/**
+ * Prove a path landed on the base and a later commit rewrote or moved it. The
+ * branch's blob is looked for in the base's history after the merge base, so the
+ * base's own current version is irrelevant: `git log --find-object` reports the
+ * commits whose diff added or removed that exact blob, and rename detection leaves
+ * the blob in place, so a rename does not hide the landing.
+ *
+ * A blob alone does not name a path, so a match is only a candidate: the empty blob
+ * is the same object in every repository, and two files holding the same bytes share
+ * one. A candidate therefore counts only when its own tree holds that blob at the
+ * path under test, which is what puts the path's content on the base. The oldest
+ * such commit recorded the branch's content; every later match rewrote or dropped it.
+ * Naming the recording commit tells a reader where the work landed.
+ * @param {string} path
+ * @param {string} file the path under test, relative to the repository root.
+ * @param {string} blob
+ * @param {{ baseRef: string, mergeBase: string }} range
+ * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @returns {Promise<string | null>} a proof line, or null when the base never held the blob at the path.
+ */
+async function proveSuperseded(path, file, blob, { baseRef, mergeBase }, git) {
+  const found = await git(path, ['log', '--format=%H', `--find-object=${blob}`, baseRef, `^${mergeBase}`]);
+  if (!found.ok) return null;
+  const commits = found.stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  // `git log` reports newest first, so reading backwards finds the recording commit
+  // before any commit that rewrote or dropped the content.
+  for (const commit of commits.reverse()) {
+    if ((await blobAt(path, commit, file, git)) === blob) return `superseded at ${commit}`;
+  }
+  return null;
+}
+
+/**
+ * Prove a changeset file was consumed by a release. Three facts decide it: the path
+ * sits under `.changeset/`, the base's tip does not carry it, and one commit on the
+ * base deleted it while writing its text into another path — the changelog, whatever
+ * a project calls it. Nothing here knows a release tool or a repository: the proof
+ * is that a commit removed the file and recorded its text.
+ * @param {string} path
+ * @param {string} file
+ * @param {string} blob
+ * @param {{ baseRef: string, mergeBase: string }} range
+ * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @returns {Promise<string | null>} a proof line, or null when no release consumed it.
+ */
+async function proveReleasedChangeset(path, file, blob, { baseRef, mergeBase }, git) {
+  if (!file.startsWith(CHANGESET_DIR) || !file.endsWith('.md')) return null;
+  // A path the base still holds is the first rule's business, not this one's.
+  if ((await blobAt(path, baseRef, file, git)) !== null) return null;
+
+  const removed = await git(path, ['log', '--format=%H', '--max-count=1', '--diff-filter=D', baseRef, `^${mergeBase}`, '--', file]);
+  if (!removed.ok) return null;
+  const release = removed.stdout.trim();
+  if (release === '') return null;
+
+  const text = await git(path, ['cat-file', '-p', blob]);
+  if (!text.ok) return null;
+  const line = recordedLine(text.stdout);
+  if (line === null) return null;
+
+  // Where the release commit recorded the text, and what it changed. Both reads are
+  // NUL-separated, so a path holding a newline stays one path.
+  const recorded = await git(path, ['grep', '--fixed-strings', '--files-with-matches', '-z', '-e', line, release, '--']);
+  if (!recorded.ok) return null;
+  const recordedPaths = splitNulPaths(recorded.stdout).map((entry) => entry.slice(release.length + 1));
+  const changed = await git(path, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', release]);
+  if (!changed.ok) return null;
+  const changedPaths = new Set(splitNulPaths(changed.stdout));
+
+  const carried = recordedPaths.some((recordedPath) => recordedPath !== file && changedPaths.has(recordedPath));
+  return carried ? `changeset released in ${release}` : null;
+}
+
+/**
+ * Prove one unproven path landed, by the rule that fits it. The changeset rule runs
+ * first so that a consumed changeset names the release commit rather than the squash
+ * commit that carried it in.
+ * @param {string} path
+ * @param {string} file
+ * @param {{ baseRef: string, mergeBase: string }} range
+ * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
+ * @returns {Promise<string | null>} a proof line, or null when nothing proves the path landed.
+ */
+async function proveLandedPath(path, file, range, git) {
+  const blob = await blobAt(path, 'HEAD', file, git);
+  // The branch deleted a path the base still holds: the deletion did not land.
+  if (blob === null) return null;
+  return (await proveReleasedChangeset(path, file, blob, range, git)) ?? (await proveSuperseded(path, file, blob, range, git));
+}
+
 /**
  * True when `ref` names the worktree's own branch, locally or as its
  * remote-tracking ref. Comparing such a ref with the branch is a self-comparison:
@@ -247,8 +386,8 @@ async function namesOwnBranch(path, ref, branch, git) {
 
 /**
  * Decide whether a closed bead's branch still holds work. Removing such a branch is
- * only safe when the base holds the branch's own version of every path the branch
- * changed — the squash-merge case. Anything unprovable keeps the worktree.
+ * only safe when every path the branch changed is proven landed. Anything unprovable
+ * keeps the worktree.
  *
  * One-sided containment, in three steps: take the merge base of the base and the
  * branch, list the paths the branch changed since that merge base, then require the
@@ -261,9 +400,12 @@ async function namesOwnBranch(path, ref, branch, git) {
  * filter cannot tell a deletion the base already carries from one it does not.
  *
  * Restricting to the branch's own paths is what makes an overlap detectable: when
- * the base later changed a path the branch also changed, the two versions differ
- * and the branch is not proven landed. A deletion on both sides agrees, so it is
- * proven; a deletion on one side only is not.
+ * the base later changed a path the branch also changed, the two versions differ and
+ * the base's tip alone cannot prove the branch landed. A path the tip disagrees on is
+ * therefore proven from history instead, by one of two rules: the branch's blob is
+ * held at the same path by a commit on the base after the merge base (landed, then
+ * superseded), or a commit on the base deleted a changeset and recorded its text
+ * (released). A path no rule proves is lost work, and lost work keeps the worktree.
  *
  * The branch's changed paths are read from git and then handed straight back to a
  * second git call as pathspecs, so that round trip has to be exact. Two escapes
@@ -276,14 +418,15 @@ async function namesOwnBranch(path, ref, branch, git) {
  *   `upstream` is the branch's remote-tracking ref, or null when it has none.
  * @param {string | null} baseRef
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
- * @returns {Promise<string | null>} a refusal reason, or null when nothing is lost.
+ * @returns {Promise<{ refusal: string | null, proven: string[] }>} a refusal reason, or the
+ *   proof each path landed when nothing is lost.
  */
 async function findLostWork({ path, branch, beadClosed, upstream }, baseRef, git) {
   if (!beadClosed) {
-    return `branch ${branch} has no remote-tracking branch and its bead is not closed`;
+    return { refusal: `branch ${branch} has no remote-tracking branch and its bead is not closed`, proven: [] };
   }
-  /** @param {string} clause @returns {string} */
-  const refuse = (clause) => `${contentLead(branch, upstream)}: ${clause}`;
+  /** @param {string} clause @returns {{ refusal: string, proven: string[] }} */
+  const refuse = (clause) => ({ refusal: `${contentLead(branch, upstream)}: ${clause}`, proven: [] });
   if (baseRef === null) {
     return refuse('the base branch cannot be resolved, so its content cannot be proven landed');
   }
@@ -320,7 +463,7 @@ async function findLostWork({ path, branch, beadClosed, upstream }, baseRef, git
   }
   const changedPaths = splitNulPaths(touched.stdout);
   // Nothing but empty commits: no content to prove, and no content to lose.
-  if (changedPaths.length === 0) return null;
+  if (changedPaths.length === 0) return { refusal: null, proven: [] };
   // `--literal-pathspecs` is a git global option, so it precedes the subcommand.
   // It keeps a leading `:` in a real filename from being read as pathspec magic.
   const unproven = await git(path, ['--literal-pathspecs', 'diff', '--name-only', '-z', '--no-renames', 'HEAD', baseRef, '--', ...changedPaths]);
@@ -329,11 +472,23 @@ async function findLostWork({ path, branch, beadClosed, upstream }, baseRef, git
     const suffix = detail === '' ? '' : `: ${detail}`;
     return refuse(`${baseRef} cannot be compared with it${suffix}`);
   }
-  const unprovenPaths = splitNulPaths(unproven.stdout).length;
-  if (unprovenPaths > 0) {
-    return refuse(`${baseRef} does not hold this branch's version of ${unprovenPaths} path(s), so its content is not landed`);
+  // The base's tip agreeing is one proof; a path it disagrees on is proven only from
+  // history, because a squash-merged path a later commit rewrote, and a changeset a
+  // release consumed, are both landed work the tip no longer holds.
+  const range = { baseRef, mergeBase: mergeBase.stdout.trim() };
+  /** @type {string[]} */
+  const proven = [];
+  /** @type {string[]} */
+  const lost = [];
+  for (const file of splitNulPaths(unproven.stdout)) {
+    const proof = await proveLandedPath(path, file, range, git);
+    if (proof === null) lost.push(file);
+    else if (!proven.includes(proof)) proven.push(proof);
   }
-  return null;
+  if (lost.length > 0) {
+    return refuse(`${baseRef} does not hold this branch's version of ${lost.length} path(s), so its content is not landed`);
+  }
+  return { refusal: null, proven };
 }
 
 /**
@@ -343,24 +498,26 @@ async function findLostWork({ path, branch, beadClosed, upstream }, baseRef, git
  * @param {{ path: string, registered: { branch: string | null, locked: string | null } | undefined, beadClosed: boolean }} target
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
  * @param {string | null} baseRef
- * @returns {Promise<{ branch: string | null, reasons: string[] }>}
+ * @returns {Promise<{ branch: string | null, reasons: string[], proven: string[] }>}
  */
 async function findRefusals({ path, registered, beadClosed }, git, baseRef) {
   /** @type {string[]} */
   const reasons = [];
+  /** @type {string[]} */
+  const proven = [];
 
   if (registered === undefined) {
-    return { branch: null, reasons: ['not a registered git worktree'] };
+    return { branch: null, reasons: ['not a registered git worktree'], proven };
   }
   if (registered.locked !== null) {
     reasons.push(registered.locked === '' ? 'worktree is locked' : `worktree is locked: ${registered.locked}`);
   }
   if (registered.branch === null) {
-    return { branch: null, reasons: [...reasons, 'worktree is not on a branch'] };
+    return { branch: null, reasons: [...reasons, 'worktree is not on a branch'], proven };
   }
 
   const status = await git(path, ['status', '--porcelain']);
-  if (!status.ok) return { branch: registered.branch, reasons: [...reasons, `worktree cannot be read: ${status.stderr.trim()}`] };
+  if (!status.ok) return { branch: registered.branch, reasons: [...reasons, `worktree cannot be read: ${status.stderr.trim()}`], proven };
   const dirtyPaths = status.stdout.split('\n').filter((line) => line !== '').length;
   if (dirtyPaths > 0) reasons.push(`worktree is dirty: ${dirtyPaths} uncommitted path(s)`);
 
@@ -373,18 +530,22 @@ async function findRefusals({ path, registered, beadClosed }, git, baseRef) {
   // upstream refuses every landed ralph worktree. An open bead with no upstream has
   // nothing to prove, so it lands here too and refuses below.
   if (beadClosed || trackingRef === null) {
-    const lost = await findLostWork({ path, branch: registered.branch, beadClosed, upstream: trackingRef }, baseRef, git);
-    if (lost !== null) reasons.push(lost);
-    return { branch: registered.branch, reasons };
+    const { refusal, proven: proofs } = await findLostWork(
+      { path, branch: registered.branch, beadClosed, upstream: trackingRef },
+      baseRef,
+      git,
+    );
+    if (refusal !== null) reasons.push(refusal);
+    return { branch: registered.branch, reasons, proven: reasons.length > 0 ? [] : proofs };
   }
   const unpushed = await git(path, ['rev-list', '--count', `${trackingRef}..HEAD`]);
-  if (!unpushed.ok) return { branch: registered.branch, reasons: [...reasons, `branch ${registered.branch} cannot be compared with ${trackingRef}: ${unpushed.stderr.trim()}`] };
+  if (!unpushed.ok) return { branch: registered.branch, reasons: [...reasons, `branch ${registered.branch} cannot be compared with ${trackingRef}: ${unpushed.stderr.trim()}`], proven };
   const unpushedCommits = Number.parseInt(unpushed.stdout.trim(), 10);
   if (unpushedCommits > 0) {
     reasons.push(`branch ${registered.branch} has ${unpushedCommits} commit(s) not pushed to ${trackingRef}`);
   }
 
-  return { branch: registered.branch, reasons };
+  return { branch: registered.branch, reasons, proven };
 }
 
 /**
@@ -437,19 +598,20 @@ export async function pruneWorktrees({ repoRoot, exec = runBd, removeOrphans = f
     const { classification, beadStatus } = await classifyBead(id, exec);
 
     /** @type {WorktreeEntry} */
-    const entry = { id, path, branch: registered.get(path)?.branch ?? null, classification, beadStatus, outcome: 'kept', reasons: [] };
+    const entry = { id, path, branch: registered.get(path)?.branch ?? null, classification, beadStatus, outcome: 'kept', reasons: [], proven: [] };
 
     // A closed bead is the proof. Anything else — an open bead, a missing bead,
     // a bead bd could not answer for — is only removed on explicit request, and
     // an unreadable bead is never removed at all.
     const wanted = classification === 'closed-bead' || (classification !== 'unclassified' && removeOrphans);
     if (wanted) {
-      const { branch, reasons } = await findRefusals(
+      const { branch, reasons, proven } = await findRefusals(
         { path, registered: registered.get(path), beadClosed: classification === 'closed-bead' },
         git,
         baseRef,
       );
       entry.branch = branch;
+      entry.proven = proven;
       if (reasons.length > 0) {
         entry.outcome = 'refused';
         entry.reasons = reasons;
@@ -481,15 +643,25 @@ repository.
 A closed bead's branch is proven by content alone, whatever its upstream is: many
 merge methods delete the remote branch when the work lands, and a branch cut from
 the remote base tracks that base, which a squash merge leaves behind. Such a branch
-is removed only when the base holds the branch's own version of every path the
-branch changed since their merge base. That proves content and never history:
-removal discards every commit the base does not contain, such as a reverted change
-or an empty commit, together with its message. The report names the ref it tested
-the content against, so a refusal names the ref that decided it. The base defaults
-to the remote's default branch (origin/HEAD); --base names another ref, such as an
-epic or release branch. A base that names the worktree's own branch compares the
-branch with itself, so it proves nothing: the worktree is kept and refused, as it
-is when no base resolves.
+is removed only when every path it changed since their merge base is proven landed,
+by the first of these rules that proves it:
+
+  held now     the base's current version of the path equals the branch's.
+  superseded   a commit on the base after the merge base holds the branch's blob
+               at that same path, so the work landed and a later commit rewrote or
+               moved it. A blob at another path proves nothing: the empty blob, and
+               any two files holding the same bytes, share one object.
+  released     the path is under .changeset/, absent from the base's tip, and a
+               commit on the base deleted it while recording its text elsewhere,
+               as a release commit does with a changelog.
+
+A path no rule proves is lost work, so the worktree is kept and refused. The report
+names the rule and the commit that proved a path the base's tip does not hold back,
+and names the ref the content test used, so a refusal names the ref that decided it.
+The base defaults to the remote's default branch (origin/HEAD); --base names another
+ref, such as an epic or release branch. A base that names the worktree's own branch
+compares the branch with itself, so it proves nothing: the worktree is kept and
+refused, as it is when no base resolves.
 
 An open bead is proven by its upstream instead, and only with --remove-orphans: its
 branch must carry an upstream and no commit unpushed to it. With no upstream it is
@@ -567,8 +739,9 @@ export async function runCli({ argv, cwd = process.cwd(), exec = runBd, git = ru
       : `Base: ${baseRef}\n`,
   );
   for (const entry of entries) {
+    const proof = entry.proven.length > 0 ? ` — proven: ${entry.proven.join('; ')}` : '';
     const detail = entry.reasons.length > 0 ? ` — ${entry.reasons.join('; ')}` : '';
-    write(`  ${entry.id.padEnd(24)} ${entry.classification.padEnd(13)} ${entry.outcome}${detail}\n`);
+    write(`  ${entry.id.padEnd(24)} ${entry.classification.padEnd(13)} ${entry.outcome}${proof}${detail}\n`);
   }
   const removed = entries.filter((entry) => entry.outcome === 'removed').length;
   write(`Removed ${removed} of ${entries.length} worktree(s).\n`);

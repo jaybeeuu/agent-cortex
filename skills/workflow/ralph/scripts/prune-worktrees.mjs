@@ -647,8 +647,10 @@ is removed only when every path it changed since their merge base is proven land
 by the first of these rules that proves it:
 
   held now     the base's current version of the path equals the branch's.
-  superseded   the branch's blob appears in the base's history after the merge
-               base, so the work landed and a later commit rewrote or moved it.
+  superseded   a commit on the base after the merge base holds the branch's blob
+               at that same path, so the work landed and a later commit rewrote or
+               moved it. A blob at another path proves nothing: the empty blob, and
+               any two files holding the same bytes, share one object.
   released     the path is under .changeset/, absent from the base's tip, and a
                commit on the base deleted it while recording its text elsewhere,
                as a release commit does with a changelog.

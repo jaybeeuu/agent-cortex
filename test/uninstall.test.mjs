@@ -26,7 +26,7 @@ import {
   parseConfirmation,
 } from "../lib/harness-uninstall.mjs";
 import { makeFakeClaude, registrationActions as registrationActionsOf } from "./helpers/fake-claude.mjs";
-import { makeFakePi } from "./helpers/fake-pi.mjs";
+import { makeFakePi, setFakePiFailure } from "./helpers/fake-pi.mjs";
 import { writeFingerprint } from "./helpers/harness-fingerprint.mjs";
 import { createTempRoot } from "./helpers/temp-root.mjs";
 
@@ -561,6 +561,33 @@ describe("uninstallPi", () => {
     assert.equal(await exists(staged), false, "the staged package is gone");
     const settings = JSON.parse(await readFile(fake.settingsPath, "utf-8"));
     assert.deepEqual(settings.packages, [], "pi no longer lists the source");
+  });
+
+  it("leaves the registration and the staged package in place when pi refuses the removal, then removes both on a retry", async () => {
+    const home = await createHome();
+    const { staged, fake } = await makeFixture(home);
+    await setFakePiFailure(dirname(fake.bin), "remove");
+
+    const failed = await uninstallPi({ output: staged, settingsPath: fake.settingsPath, piBin: fake.bin });
+
+    assert.equal(failed.status, "incomplete");
+    assert.equal(await exists(staged), true, "the staged package survives a failed deregistration");
+    assert.deepEqual(
+      JSON.parse(await readFile(fake.settingsPath, "utf-8")).packages,
+      [staged],
+      "pi still names the staged source",
+    );
+
+    await setFakePiFailure(dirname(fake.bin), null);
+    const retry = await uninstallPi({ output: staged, settingsPath: fake.settingsPath, piBin: fake.bin });
+
+    assert.equal(retry.status, "removed");
+    assert.equal(await exists(staged), false, "the retry deletes the staged package");
+    assert.deepEqual(
+      JSON.parse(await readFile(fake.settingsPath, "utf-8")).packages,
+      [],
+      "the retry drops the source"
+    );
   });
 
   it("is idempotent: the second run reports absent and spawns nothing", async () => {

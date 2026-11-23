@@ -541,10 +541,10 @@ reaches the network.
 ## Updating the CLI itself (`agent-cortex self-update`)
 
 `agent-cortex self-update` updates the globally installed CLI through the manager that installed it,
-then refreshes the harness installs with the newly installed binary.
+then refreshes the installed harnesses with the newly installed binary.
 
 ```sh
-agent-cortex self-update           # report, update, then refresh the harness installs
+agent-cortex self-update           # report, update, then refresh the installed harnesses
 agent-cortex self-update --check   # report the versions and the command, write nothing
 ```
 
@@ -570,7 +570,7 @@ to, because the running process is still the old code; when that listing answers
 installed binary is asked instead, and a binary that disagrees with the listing is named as another
 copy. When neither source answers, the update is unverified: the refresh still runs, because the
 install exited 0 and a refresh is repeatable, but the command exits non-zero. One command brings the
-CLI and the harness installs to the same version, and otherwise the exit code is the refresh's.
+CLI and the installed harnesses to the same version, and otherwise the exit code is the refresh's.
 
 The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix with an argv array and
 inherits the terminal, so the refresh's own output is what the user reads. It is skipped in four
@@ -607,18 +607,28 @@ install can never disagree about what is out of date.
 ```sh
 agent-cortex update                 # list the harnesses, then ask which to refresh
 agent-cortex update pi claude       # refresh exactly these, no prompt
-agent-cortex update -a              # refresh every harness not at the CLI version
-agent-cortex update -a -f           # re-run every installer regardless of version
+agent-cortex update -a              # refresh every installed harness not at the CLI version
+agent-cortex update -a -f           # re-run every installed harness installer regardless of version
 ```
 
-The prompt lists every supported harness with its installed version, the CLI version, and a status
-marker (`current`, `stale`, `ahead`, `unknown`, or `missing`) — the data `agent-cortex version`
-reports, plus a row for a harness with no install. Answer with row numbers counted from the top
-row, `a` for every harness, or blank to cancel.
+The prompt lists every installed harness with its installed version, the CLI version, and a status
+marker (`current`, `stale`, `ahead`, or `unknown`) — the data `agent-cortex version` reports,
+plus a row for a harness with no install. Answer with row numbers counted from the top row, `a`
+for every installed harness, or blank to cancel.
 
-A harness named on the command line always refreshes, whatever version it reports, and takes
-precedence over `-a`. `-a` refreshes every harness that does not report `current`, so an
-uninstalled, stale, ahead, or unreadable harness is refreshed. `-f` requires `-a`: alone it says
+Updating never installs a harness. One that was never installed is reported `not installed` — its
+own state, not a stale version — and left alone by every path: the prompt, `-a`, `-a -f`, and
+`agent-cortex self-update`, which runs `update -a` itself. Installing is
+`agent-cortex install <harness>`'s job, so naming an absent harness on the command line is an
+error, not an install.
+
+An earlier release installed a harness through `agent-cortex update <harness>`. That no longer
+works. Run `agent-cortex install <harness>` once to install it, then `update` refreshes it as
+before.
+
+An installed harness named on the command line always refreshes, whatever version it reports, and
+takes precedence over `-a`. `-a` refreshes every installed harness that does not report `current`,
+so a stale, ahead, or unreadable harness is refreshed. `-f` requires `-a`: alone it says
 nothing about which harnesses to touch. An unknown name fails before any installer runs.
 
 A shell that is not a terminal cannot answer the prompt, so a bare `agent-cortex update` there
@@ -626,12 +636,17 @@ prints the same table plus the flags above and exits non-zero — a script can n
 "nothing chosen" for "nothing to do".
 
 `update` exits 0 when every refresh it attempted completed — including a selection that refreshed
-nothing — and 1 when an installer fails, a harness name is unknown, an option cannot be parsed, or a
-bare invocation has no terminal to prompt on. `agent-cortex self-update` hands the refresh's exit
-code back, so a failed refresh fails the whole command.
+nothing — and 1 when an installer fails, a harness name is unknown or names a harness that is not
+installed, an option cannot be parsed, or a bare invocation has no terminal to prompt on.
+`agent-cortex self-update` hands the refresh's exit code back, so a failed refresh fails the whole
+command.
 
 The report gives each refreshed harness its previous version, its new version, and the artifacts
-the installer wrote; harnesses already at the CLI version are listed as skipped. A harness's new
+the installer wrote. A previous version it cannot read is reported as `unknown` — the same state
+the table uses — because the refresh touched the harness, so `not installed` stays reserved for
+one update left alone. Installed harnesses already at the CLI version are listed as skipped, and
+each harness that was never installed is reported as `not installed` with the command that
+installs it. A harness's new
 version is read back from the manifest its installer wrote, so a refresh that failed to
 materialise reports `unknown` rather than claiming the CLI version.
 

@@ -9,7 +9,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -857,6 +857,53 @@ describe("self-update through the CLI", () => {
     // The version boundary, then the refresh: the chain a user reads.
     assert.match(result.stdout, /^ {2}cli {8}1\.4\.0 → 9\.9\.9$/m);
     assert.ok(result.stdout.indexOf("1.4.0 → 9.9.9") < result.stdout.indexOf("agent-cortex update -a"));
+    await assertPathUnused(decoys.used);
+  });
+
+  it("refreshes with the new binary and installs a harness that was never installed: nothing", async () => {
+    // The refresh step is the real `update -a` from the staged copy, run against
+    // a fake home with no harness install at all. An update that installs would
+    // create `.agent-cortex/pi` here, which is the bug this test pins down.
+    const workspace = await tempRoot.createWorkspace();
+    const install = await stageInstall({ manager: "pnpm", version: "1.4.0", workspace });
+    const decoys = await stageDecoys(workspace);
+    const home = join(workspace, "fake-home");
+    await mkdir(home, { recursive: true });
+    await writeExecutable(
+      join(install.prefix, "bin", "agent-cortex"),
+      `#!/usr/bin/env node
+(async () => {
+  const fs = require("node:fs/promises");
+  const { spawn } = require("node:child_process");
+  const argv = process.argv.slice(2);
+  await fs.appendFile(process.env.FAKE_CALLS, "agent-cortex " + argv.join(" ") + "\\n");
+  if (argv[0] === "--version") {
+    process.stdout.write((process.env.FAKE_REEXEC_VERSION ?? "") + "\\n");
+    return;
+  }
+  const child = spawn(process.execPath, [${JSON.stringify(install.entryPoint)}, ...argv], { stdio: "inherit" });
+  child.on("exit", (code) => {
+    process.exitCode = code ?? 1;
+  });
+})();
+`,
+    );
+
+    const result = await runCli(install.entryPoint, ["self-update"], {
+      HOME: home,
+      FAKE_CALLS: install.calls,
+      FAKE_LIST: pnpmListing("1.4.0"),
+      FAKE_LIST_AFTER_INSTALL: pnpmListing("9.9.9"),
+      FAKE_INSTALL_MARKER: join(workspace, "installed.marker"),
+      FAKE_VIEW: "9.9.9",
+      FAKE_REEXEC_VERSION: "9.9.9",
+      PATH: `${decoys.pathDir}:${process.env.PATH ?? ""}`,
+    });
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.deepEqual((await readCalls(install.calls)).at(-1), "agent-cortex update -a", "the refresh step ran");
+    assert.match(result.stdout, /Nothing to update — no harness is installed\./);
+    assert.deepEqual(await readdir(home), [], "the refresh wrote nothing into the fake home");
     await assertPathUnused(decoys.used);
   });
 

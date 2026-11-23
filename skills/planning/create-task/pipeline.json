@@ -40,7 +40,7 @@
     {
       "id": "housekeeping",
       "title": "Housekeeping",
-      "description": "Remove the worktrees of closed beads. Run `node <ralph-scripts>/prune-worktrees.mjs` from the main checkout and retry once if it exits non-zero. Pass `--base epic/<epic-id>` for a feature of a multi-feature epic and no `--base` otherwise: the stage playbook states how the bead graph tells the two cases apart. The exit status is 1 whenever any worktree survives — an open bead counts as survival — so fail this chore only when a closed-bead worktree is still refused after the retry, and leave it open. Never close it over a worktree the script did not remove.",
+      "description": "Remove the worktrees of closed beads. Run `node <ralph-scripts>/prune-worktrees.mjs` from the main checkout and retry once if it exits non-zero. Pass `--base origin/epic/<epic-id>` after `git fetch origin` for a feature of a multi-feature epic, and no `--base` otherwise: the stage playbook states how the bead graph tells the two cases apart. The exit status is 1 whenever any worktree survives — an open bead counts as survival — so fail this chore only when a closed-bead worktree is still refused after the retry, and leave it open. Never close it over a worktree the script did not remove.",
       "template": "templates/housekeeping.md",
       "labels": ["lifecycle:housekeeping"],
       "dependsOn": ["featurePrReview"]

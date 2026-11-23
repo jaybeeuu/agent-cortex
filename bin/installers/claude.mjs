@@ -1431,6 +1431,29 @@ export async function uninstallClaude({
     }
   }
 
+  /**
+   * Run one deregistration command. A CLI that rejects it leaves its
+   * registration in place, so the run stops and reports what survived instead
+   * of throwing: a throw would abort the report and hide the state the user
+   * needs to finish the job by hand.
+   * @param {string[]} args The deregistration command that ran
+   * @param {string[][]} remaining The steps still outstanding after it
+   * @returns {Promise<string | null>} The warning to report, or null on success
+   */
+  const deregister = async (args, remaining) => {
+    try {
+      await runClaudeCommand(claudeBin, args);
+      return null;
+    } catch (err) {
+      const steps = [args, ...remaining].map((step) => `  ${claudeBin} ${step.join(" ")}`).join("\n");
+      return (
+        `${/** @type {Error} */ (err).message} — the plugin directory ${out}, the marketplace manifest ` +
+        `${manifestPath} and every settings entry the install declared are left in place so the next run can retry. ` +
+        `Finish the deregistration by hand with:\n${steps}\nthen re-run`
+      );
+    }
+  };
+
   // Deregister by state, the inverse order of registration (the plugin lives in
   // the marketplace, so it goes first). A dry run prints the same sequence
   // without querying, matching the install's dry-run.
@@ -1440,13 +1463,27 @@ export async function uninstallClaude({
     registered = true;
   } else {
     if ((await installedPluginVersion(claudeBin, installId)) !== null) {
-      await runClaudeCommand(claudeBin, ["plugin", "uninstall", installId, "-y"]);
-      summary.commands.push(["plugin", "uninstall", installId, "-y"]);
+      const args = ["plugin", "uninstall", installId, "-y"];
+      const warning = await deregister(args, [["plugin", "marketplace", "remove", names.marketplace]]);
+      if (warning !== null) {
+        warnSink(warning);
+        summary.status = "incomplete";
+        summary.registered = registered;
+        return summary;
+      }
+      summary.commands.push(args);
       registered = true;
     }
     if (await marketplaceRegistered(claudeBin, names.marketplace)) {
-      await runClaudeCommand(claudeBin, ["plugin", "marketplace", "remove", names.marketplace]);
-      summary.commands.push(["plugin", "marketplace", "remove", names.marketplace]);
+      const args = ["plugin", "marketplace", "remove", names.marketplace];
+      const warning = await deregister(args, []);
+      if (warning !== null) {
+        warnSink(warning);
+        summary.status = "incomplete";
+        summary.registered = registered;
+        return summary;
+      }
+      summary.commands.push(args);
       registered = true;
     }
     summary.registered = registered;

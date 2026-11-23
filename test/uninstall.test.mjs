@@ -25,7 +25,7 @@ import {
   installedHarnesses,
   parseConfirmation,
 } from "../lib/harness-uninstall.mjs";
-import { makeFakeClaude, registrationActions as registrationActionsOf } from "./helpers/fake-claude.mjs";
+import { makeFakeClaude, registrationActions as registrationActionsOf, setFakeClaudeFailure } from "./helpers/fake-claude.mjs";
 import { makeFakePi, setFakePiFailure } from "./helpers/fake-pi.mjs";
 import { writeFingerprint } from "./helpers/harness-fingerprint.mjs";
 import { createTempRoot } from "./helpers/temp-root.mjs";
@@ -445,6 +445,72 @@ describe("uninstallClaude — settings removal symmetry", () => {
     assert.deepEqual(state.markets, []);
   });
 
+  it("reports incomplete instead of throwing when the CLI rejects the plugin deregistration", async () => {
+    const home = await createHome();
+    const fixture = await makeFixture(home);
+    const fake = await makeClaudeCli(join(home, ".claude", "fake-cli"));
+    await seedClaudeState(fake, { marketplaceRoot: dirname(fixture.output) });
+    await setFakeClaudeFailure(dirname(fake.bin), "plugin uninstall");
+    const settingsBefore = JSON.parse(await readFile(fixture.settingsPath, "utf-8"));
+    /** @type {string[]} */
+    const warnings = [];
+
+    const result = await uninstallClaude({
+      root: fixture.root,
+      output: fixture.output,
+      settingsPath: fixture.settingsPath,
+      instructionsPath: join(home, ".claude", "CLAUDE.md"),
+      claudeBin: fake.bin,
+      warn: (msg) => warnings.push(msg),
+    });
+
+    assert.equal(result.status, "incomplete", "a rejected command leaves the run incomplete, not thrown");
+    assert.deepEqual(result.commands, [], "a rejected command is not reported as run");
+    assert.equal(await exists(fixture.output), true, "the plugin directory survives");
+    assert.equal(
+      await exists(join(dirname(fixture.output), ".claude-plugin", "marketplace.json")),
+      true,
+      "the marketplace manifest survives",
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(fixture.settingsPath, "utf-8")),
+      settingsBefore,
+      "the settings entries the install declared survive",
+    );
+    assert.equal(warnings.length, 1, "one warning states the state and the way out");
+    assert.match(warnings[0], /plugin uninstall agent-cortex@jaybeeuu -y" exited 1/);
+    assert.match(warnings[0], /plugin uninstall agent-cortex@jaybeeuu -y\n {2}.* plugin marketplace remove jaybeeuu/);
+    assert.match(warnings[0], /the plugin directory .*, the marketplace manifest .* and every settings entry .* are left in place/);
+  });
+
+  it("reports the outstanding marketplace deregistration without repeating the plugin step that succeeded", async () => {
+    const home = await createHome();
+    const fixture = await makeFixture(home);
+    const fake = await makeClaudeCli(join(home, ".claude", "fake-cli"));
+    await seedClaudeState(fake, { marketplaceRoot: dirname(fixture.output) });
+    await setFakeClaudeFailure(dirname(fake.bin), "plugin marketplace remove");
+    /** @type {string[]} */
+    const warnings = [];
+
+    const result = await uninstallClaude({
+      root: fixture.root,
+      output: fixture.output,
+      settingsPath: fixture.settingsPath,
+      instructionsPath: join(home, ".claude", "CLAUDE.md"),
+      claudeBin: fake.bin,
+      warn: (msg) => warnings.push(msg),
+    });
+
+    assert.equal(result.status, "incomplete");
+    assert.deepEqual(result.commands, [["plugin", "uninstall", "agent-cortex@jaybeeuu", "-y"]], "the plugin went first");
+    const state = JSON.parse(await readFile(fake.state, "utf-8"));
+    assert.deepEqual(state.installed, [], "the plugin is deregistered");
+    assert.deepEqual(state.markets.map((/** @type {{ name: string }} */ market) => market.name), ["jaybeeuu"], "the marketplace stays registered");
+    assert.equal(await exists(fixture.output), true, "the plugin directory survives");
+    assert.match(warnings[0], /plugin marketplace remove jaybeeuu/);
+    assert.doesNotMatch(warnings[0], /plugin uninstall agent-cortex/, "a completed step is not offered again");
+  });
+
   it("deletes the plugin directory and the marketplace manifest, and the emptied marketplace dir", async () => {
     const home = await createHome();
     const fixture = await makeFixture(home);
@@ -716,6 +782,50 @@ describe("ctx uninstall", () => {
     assert.match(stdout, /\(dry-run — nothing written\)/);
     assert.deepEqual(await snapshot(home), before, "the dry run wrote nothing");
     assert.deepEqual(await callLines(fake.log), [], "the dry run deregistered nothing");
+  });
+
+  it("reports an incomplete claude uninstall and still removes the other harness with --all", async () => {
+    const home = await createHome();
+    const install = await makeClaudeInstall(home);
+    const settingsPath = join(home, ".claude", "settings.json");
+    await mkdir(dirname(settingsPath), { recursive: true });
+    const settings = settingsWithInstallEntries();
+    await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+    const claudeFake = await makeClaudeCli(join(home, ".claude", "fake-cli"));
+    await seedClaudeState(claudeFake, { marketplaceRoot: install.marketplaceRoot });
+    await setFakeClaudeFailure(dirname(claudeFake.bin), "plugin uninstall");
+    const staged = await makeStagedPi(home);
+    const piFake = await makePiCli(home, [staged]);
+    const env = {
+      HOME: home,
+      PATH: [dirname(claudeFake.bin), dirname(piFake.bin), SYSTEM_PATH].join(":"),
+    };
+
+    const { exitCode, stdout, stderr } = await runCli(["uninstall", "--all"], { env });
+
+    assert.equal(exitCode, 1, "an outstanding registration fails the run");
+    assert.equal(stderr, "", "the state is reported, not thrown as a bare error");
+    assert.match(stdout, /^claude: partially removed — the harness registration is still outstanding$/m);
+    assert.match(stdout, /⚠ "claude .*plugin uninstall agent-cortex@jaybeeuu -y" exited 1/);
+    assert.match(stdout, /claude plugin marketplace remove jaybeeuu/, "the report names the exact recovery command");
+    assert.match(stdout, /^pi: removed$/m, "--all still removes the harness that can be removed");
+    assert.equal(await exists(install.output), true, "the claude plugin directory survives");
+    assert.equal(await exists(install.manifestPath), true, "the marketplace manifest survives");
+    assert.deepEqual(
+      JSON.parse(await readFile(settingsPath, "utf-8")),
+      settings,
+      "the settings entries the install declared survive",
+    );
+    assert.equal(await exists(staged), false, "the pi staged package is gone");
+
+    // The warning ends with "then re-run", so the same command must finish once
+    // the CLI accepts the deregistration again.
+    await setFakeClaudeFailure(dirname(claudeFake.bin), null);
+    const retry = await runCli(["uninstall", "claude"], { env });
+
+    assert.equal(retry.exitCode, 0, retry.stdout);
+    assert.match(retry.stdout, /^claude: removed$/m);
+    assert.equal(await exists(install.output), false, "the retry removes the plugin directory");
   });
 
   it("removes a claude install and its declared settings entries end to end, leaving personal config", async () => {

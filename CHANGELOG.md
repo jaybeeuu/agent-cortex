@@ -1,5 +1,35 @@
 # Changelog
 
+## 3.0.1
+
+### Patch Changes
+
+- cfc54e1: Fix `self-update` reporting an available update while installing nothing. The install now states the exact published version instead of the `latest` tag, because a package manager resolves a tag inside the range it already recorded and so cannot cross a major release. The version after the install is read back from the manager's prefix, and an install that exits 0 without moving the version fails with the command, its exit code and its output instead of reporting success. An install whose version neither the prefix listing nor the new binary reports is unverified: the harness refresh still runs, and the command exits non-zero. The advisory messages for an owner that cannot be inferred or confirmed no longer print `@latest`; they name the version this copy holds and ask for the published version in place of `<version>`.
+- 03bc596: Teach `prune-worktrees.mjs` that a superseded path and a released changeset still prove landed work.
+  A closed-bead worktree was refused for ever in two ordinary cases: the branch's path landed in its
+  squash commit and a later pull request rewrote it, or the branch added a changeset the release commit
+  consumed into `CHANGELOG.md`. The content test now accepts a path when the base's tip holds the
+  branch's version, when a commit on the base holds the branch's blob at that same path after the merge
+  base, or when a commit on the base deleted a `.changeset/*.md` and recorded its text elsewhere. Each
+  proof names its commit in the report (`proven: superseded at <sha>`, `proven: changeset released in
+<sha>`). A blob on its own proves nothing: the empty blob, and any two files holding the same bytes,
+  are one object, so a match counts only where the base holds it at the path under test. Every existing
+  refusal is unchanged: a dirty worktree, a branch with no upstream, and content the base never held are
+  still refused.
+- a1bdb48: Prove an epic-landed worktree against the branch it landed on, and name that ref in
+  the pruner's report. `prune-worktrees.mjs` tested a closed bead's content against
+  `origin/HEAD` alone, so a task cut from `epic/<epic-id>` was refused while its epic
+  stayed open: that content never reaches the default branch. The housekeeping
+  playbook now fetches first, reads the bead graph — the feature bead's
+  `epic:<epic-id>` label and the epic's count of `feature` children from
+  `bd children --json` — and passes `--base origin/epic/<epic-id>` for a feature of a
+  multi-feature epic. The base is the remote-tracking branch, never the local
+  `epic/<epic-id>`: ralph creates that local branch once and never fast-forwards it,
+  while a feature PR squash-merges into the remote epic branch. The report's second
+  line is `Base: <ref>`, so a refusal names the ref that decided it, and the default
+  base now prints as `origin/HEAD`. An open bead keeps its upstream refusal, and
+  `--remove-orphans` is unchanged.
+
 ## 3.0.0
 
 ### Major Changes

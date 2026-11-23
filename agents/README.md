@@ -114,9 +114,12 @@ JSON schema for harness-specific metadata:
 - `tools` is required and must be a non-empty array of strings
 - `tools` may be the single sentinel `["*"]`, which means every tool the session has. It is the
   only value that means "all", and it cannot be combined with tool names: a mixed list would
-  reach a harness's rendered `tools:` scalar as a literal `*`, which `pi --tools` reads as a
-  glob matching every tool name and Claude Code reads as a tool name no Claude Code tool has
-- Surrounding whitespace is ignored, so `["* "]` is the same sentinel as `["*"]`
+  reach a harness's rendered `tools:` scalar as a literal `*`. pi's `--tools` turns any entry
+  containing `*` into an anchored glob, so a lone `*` compiles to `^.*$` and matches every tool
+  name. A literal there would grant full access to pi, not less. Claude Code's `tools:` field
+  takes exact names, so the same literal names no Claude Code tool at all.
+- Surrounding whitespace is ignored, so `["* "]` is the same sentinel as `["*"]`, in both
+  installers and in the `agent-modes` runtime that reads the composed agents
 - Both installers resolve `["*"]` by omitting the rendered `tools:` line, so the harness
   inherits its own full tool set. An authored list never renders a literal `*`
 
@@ -198,8 +201,10 @@ as well, so either form round-trips safely.
 A resolved list of exactly `["*"]` renders no `tools:` line at all, on either harness, so
 neither consumer reads a value it has to interpret: pi enables every tool, exactly as it does
 when `--tools` is absent, and Claude Code's `tools:` field, which takes exact names, never sees
-a `*` that names none of its tools. An agent whose rendered frontmatter has no `tools:` key
-therefore runs with every tool (see `extensions/agent-modes/discover.ts`).
+a `*` that names none of its tools. Rendering the literal instead would not be equivalent: pi
+compiles `*` to `^.*$`, while Claude Code would read a name no tool has. An agent whose
+rendered frontmatter has no `tools:` key therefore runs with every tool (see
+`extensions/agent-modes/discover.ts`).
 
 ## Composition Rules
 

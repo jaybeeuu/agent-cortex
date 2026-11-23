@@ -104,10 +104,14 @@ export const ALL_TOOLS = "*";
  * the padded form as a tool name here would render a literal `*` that a harness
  * treats as every tool, so one authored value would mean two things.
  *
+ * scripts/validate-agent-dir.mjs imports this, so the repository validator and
+ * both installers cannot drift apart. The extension keeps its own copy only
+ * because a staged pi package ships `extensions/` without `scripts/`.
+ *
  * @param {string} tool
  * @returns {boolean}
  */
-function isAllToolsEntry(tool) {
+export function isAllToolsEntry(tool) {
   return tool.trim() === ALL_TOOLS;
 }
 

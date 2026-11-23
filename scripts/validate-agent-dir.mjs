@@ -10,6 +10,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { isDirectory, isFile } from "./lib/fs.mjs";
+import { ALL_TOOLS, isAllToolsEntry } from "./lib/compose-agent.mjs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,20 +47,10 @@ const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
  * The one sentinel a `tools` list may carry instead of tool names: it means
  * every tool the session has (agents/README.md). It cannot be combined with
  * tool names, because each installer resolves it by omitting the `tools:` line.
+ * Both the sentinel and its padded comparison (`isAllToolsEntry`) come from
+ * scripts/lib/compose-agent.mjs, so this validator, both installers and the
+ * runtime all read one authored value the same way.
  */
-const ALL_TOOLS = "*";
-
-/**
- * True when one authored entry names the all-tools sentinel. Padding is ignored
- * (`"* "` is the sentinel), matching `isAllTools` in
- * scripts/lib/compose-agent.mjs and extensions/agent-modes/discover.ts: one
- * authored value must mean one thing at every layer.
- * @param {string} tool
- * @returns {boolean}
- */
-function isAllToolsEntry(tool) {
-  return tool.trim() === ALL_TOOLS;
-}
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 

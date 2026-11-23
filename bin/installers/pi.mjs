@@ -764,6 +764,117 @@ export async function registerPi({
 }
 
 /**
+ * Removal plan/outcome returned by uninstallPi.
+ * @typedef {object} UninstallPiResult
+ * @property {string} output
+ * @property {string} piBin
+ * @property {string} settingsPath
+ * @property {"removed" | "absent" | "incomplete"} status `absent` means neither
+ *   the staged package nor a registration naming it was there; `incomplete`
+ *   means the files are still in place because pi would not deregister them
+ * @property {boolean} present Whether the staged package directory existed
+ * @property {boolean} registered Whether pi's settings named the staged path
+ * @property {string[]} removed Paths removed
+ * @property {string[][]} commands The pi commands that ran, or would run
+ * @property {string[]} warnings
+ * @property {boolean} dryRun
+ */
+
+/**
+ * Remove the staged pi package and the registration that goes with it — the
+ * inverse of `install pi`.
+ *
+ * Registration is undone through the pi CLI, exactly as it was made: this
+ * function never writes pi's own settings.json, it reads it to decide whether a
+ * removal is needed and then asks pi to do it. The staged directory is deleted
+ * only after pi has dropped the source, so a failed deregistration leaves the
+ * pair intact and the next run retries it instead of orphaning a configured
+ * source that names a missing directory.
+ *
+ * Idempotent by state: a run with no directory and no registration reports
+ * `absent` and spawns nothing. `dryRun` reports the same plan and writes
+ * nothing. Shared state that outlives the install — the legacy-sweep record —
+ * is left where it is; it sits under ~/.agent-cortex, not in the staged
+ * package, and describes a migration that already happened.
+ *
+ * @param {object} options
+ * @param {string} [options.output]        Staged package dir (default ~/.agent-cortex/pi)
+ * @param {string} [options.settingsPath]  pi user settings (read only)
+ * @param {string} [options.piBin]         The `pi` executable (default: `pi` from PATH)
+ * @param {boolean} [options.dryRun]       Report the plan without deleting or spawning
+ * @param {(msg: string) => void} [options.warn] Warning sink
+ * @returns {Promise<UninstallPiResult>}
+ */
+export async function uninstallPi({
+  output = DEFAULT_OUTPUT,
+  settingsPath = DEFAULT_SETTINGS_PATH,
+  piBin = DEFAULT_PI_BIN,
+  dryRun = false,
+  warn = DEFAULT_WARN,
+} = {}) {
+  const stagedPath = resolve(output);
+  if (stagedPath === resolve(PACKAGE_ROOT)) {
+    throw new Error(`refusing to remove the package root ${stagedPath} — that is a checkout, not a staged install`);
+  }
+
+  const present = await isDirectory(stagedPath);
+  const registered = (await readConfiguredPackages(settingsPath)).some(
+    (source) => isLocalSource(source) && resolveSourcePath(source, dirname(settingsPath)) === stagedPath,
+  );
+
+  const summary = /** @type {UninstallPiResult} */ ({
+    output: stagedPath,
+    piBin,
+    settingsPath,
+    status: "absent",
+    present,
+    registered,
+    removed: [],
+    commands: registered ? [["remove", stagedPath]] : [],
+    warnings: [],
+    dryRun,
+  });
+  if (!present && !registered) return summary;
+
+  if (dryRun) {
+    summary.status = "removed";
+    if (present) summary.removed.push(stagedPath);
+    return summary;
+  }
+
+  if (registered) {
+    const probe = await probePi(piBin);
+    if (!probe.ok) {
+      const message =
+        `pi CLI "${piBin}" ${probe.detail} — the staged package and its pi registration are left in place. ` +
+        `Drop the registration with "${piBin} remove ${stagedPath}" and re-run`;
+      summary.warnings.push(message);
+      warn(message);
+      summary.status = "incomplete";
+      return summary;
+    }
+    try {
+      await runPiCommand(piBin, ["remove", stagedPath]);
+    } catch (err) {
+      const message =
+        `${/** @type {Error} */ (err).message} — the staged package is left in place so the next run can retry ` +
+        `the same deregistration`;
+      summary.warnings.push(message);
+      warn(message);
+      summary.status = "incomplete";
+      return summary;
+    }
+  }
+
+  if (present) {
+    await rm(stagedPath, { recursive: true, force: true });
+    summary.removed.push(stagedPath);
+  }
+  summary.status = "removed";
+  return summary;
+}
+
+/**
  * Local package sources configured in pi's settings file, in order. pi stores
  * each entry as a source string or a `{ source, … }` filter object.
  * @param {string} settingsPath

@@ -548,6 +548,86 @@ function mergeManagedSection(existing, block) {
 }
 
 /**
+ * Remove the CLI-owned entries an install declared — the exact inverse of
+ * installSettings.
+ *
+ * Install asserts only the entries the template declares, so uninstall removes
+ * only those keys: an `enabledPlugins` entry the user added, an
+ * `extraKnownMarketplaces` entry another plugin brought, and every other key in
+ * the file survive untouched. `declared` carries the entries the install's own
+ * registration names (the plugin id and marketplace it registered) in addition
+ * to the template's, because Claude Code — not the template — writes those keys
+ * when the user enables the plugin.
+ *
+ * A key left empty by the removal is dropped, so the file returns to the shape
+ * it had before the install claimed it. Nothing is written when no declared
+ * entry was present, and `dryRun` reports the same plan without writing.
+ * @param {{ root: string, target: string, declared: Record<string, string[]>, dryRun: boolean, warn: Warn }} options
+ * @returns {Promise<{ path: string, action: string, removed: string[] } | null>} null when there is no settings file
+ */
+async function uninstallSettings({ root, target, declared, dryRun, warn }) {
+  const raw = await readFileMaybe(target);
+  if (raw === null) return null;
+  const existing = tryParseJsonObject(raw);
+  if (existing === null) {
+    warn(`${target} is not a JSON object — left unchanged; remove its agent-cortex entries by hand`);
+    return { path: target, action: "skipped-unreadable", removed: [] };
+  }
+  const template = await readTemplateJson(join(root, SETTINGS_TEMPLATE), warn);
+
+  const next = /** @type {Record<string, any>} */ (JSON.parse(JSON.stringify(existing)));
+  /** @type {string[]} */
+  const removed = [];
+  for (const key of SETTINGS_OWNED_KEYS) {
+    const owned = next[key];
+    if (!isPlainObject(owned)) continue;
+    const declaredKeys = new Set([...Object.keys(template?.[key] ?? {}), ...(declared[key] ?? [])]);
+    for (const name of declaredKeys) {
+      if (!(name in owned)) continue;
+      delete owned[name];
+      removed.push(`${key}[${JSON.stringify(name)}]`);
+    }
+    if (Object.keys(owned).length === 0) delete next[key];
+  }
+  if (removed.length === 0) return { path: target, action: "unchanged", removed };
+
+  const written = await writeManagedFile({ target, content: `${JSON.stringify(next, null, 2)}\n`, dryRun });
+  return { path: written.path, action: written.action, removed };
+}
+
+/**
+ * Remove the managed section installInstructions wrote into the user's memory
+ * file — only the text between the markers, so personal memory survives. A file
+ * without both markers, or without markers at all, is left untouched.
+ * @param {{ target: string, dryRun: boolean }} options
+ * @returns {Promise<ManagedFileResult | null>} null when there is no memory file
+ */
+async function uninstallInstructions({ target, dryRun }) {
+  const existing = await readFileMaybe(target);
+  if (existing === null) return null;
+  const next = stripManagedSection(existing);
+  if (next === existing) return { path: target, action: "unchanged", removedSymlink: false };
+  return writeManagedFile({ target, content: next, dryRun });
+}
+
+/**
+ * Return `existing` without the managed section, or the same string when there
+ * is nothing this installer owns. Both markers are required: a half-written
+ * section is the user's problem to fix, not a range to guess at.
+ * @param {string} existing
+ * @returns {string}
+ */
+function stripManagedSection(existing) {
+  const start = existing.indexOf(INSTRUCTIONS_BEGIN);
+  const end = existing.indexOf(INSTRUCTIONS_END);
+  if (start === -1 || end === -1 || end < start) return existing;
+  const before = existing.slice(0, start).replace(/\s*$/, "");
+  const after = existing.slice(end + INSTRUCTIONS_END.length).replace(/^\s*/, "").replace(/\s*$/, "");
+  const body = [before, after].filter((part) => part !== "").join("\n\n");
+  return body === "" ? "" : `${body}\n`;
+}
+
+/**
  * @param {string} filePath
  * @param {Warn} warn
  * @returns {Promise<Record<string, any> | null>}
@@ -1215,4 +1295,233 @@ export async function registerClaude({
     }
   }
   return summary;
+}
+// ─── Uninstall ───────────────────────────────────────────────────────────────
+
+/**
+ * Result of removing the Claude Code install, returned by uninstallClaude.
+ * @typedef {object} UninstallClaudeResult
+ * @property {string} output
+ * @property {string} marketplaceRoot
+ * @property {string | null} marketplace The marketplace name, when the install could still name it
+ * @property {string | null} plugin
+ * @property {string | null} pluginId
+ * @property {"removed" | "absent" | "incomplete"} status `absent` means neither files
+ *   nor a registration named by the manifest were there; `incomplete` means something
+ *   could not be undone and is reported with the command that finishes the job
+ * @property {boolean} installed Whether the plugin directory existed
+ * @property {boolean | null} registered Whether Claude Code still listed the plugin or its
+ *   marketplace; null when that state was not read (dry run, or no manifest to name them)
+ * @property {string[]} removed Paths and settings entries removed, or planned
+ * @property {string[][]} commands The claude plugin commands that ran, or would run
+ * @property {{ path: string, action: string, removed: string[] } | null} settings
+ * @property {{ path: string, action: string } | null} instructions
+ * @property {string[]} warnings
+ * @property {boolean} dryRun
+ */
+
+/**
+ * Remove the Claude Code install — the inverse of `install claude`.
+ *
+ * Every step undoes one of the install's steps, in reverse:
+ *
+ *   1. deregister through the `claude plugin` CLI (plugin uninstall, then
+ *      marketplace remove), decided by STATE the way registration is, so a
+ *      second run has nothing to send;
+ *   2. remove the settings entries the install declared — only those, so
+ *      personal config and entries the user added survive;
+ *   3. remove the managed section of the user's memory file, leaving the rest;
+ *   4. delete the plugin directory and the marketplace manifest, which together
+ *      are the whole install.
+ *
+ * The names each step addresses come from the marketplace manifest the install
+ * wrote. Without it there is nothing left to deregister and nothing to
+ * attribute, so the run reports `absent` (or warns) rather than guessing at
+ * entries in the user's settings. Nothing that was not installed is touched.
+ *
+ * @param {object} options
+ * @param {string} [options.root]            Package root carrying the claude/settings.json template
+ * @param {string} [options.output]          Plugin dir (default ~/.agent-cortex/claude); its parent is
+ *                                           the marketplace root the install registered
+ * @param {string} [options.settingsPath]    Claude user settings whose declared entries are removed
+ * @param {string} [options.instructionsPath] Claude user memory holding the managed section
+ * @param {string} [options.claudeBin]       The `claude` executable (default: `claude` from PATH)
+ * @param {boolean} [options.dryRun]         Report the plan without writing or spawning
+ * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`
+ * @returns {Promise<UninstallClaudeResult>}
+ */
+export async function uninstallClaude({
+  root = PACKAGE_ROOT,
+  output,
+  settingsPath,
+  instructionsPath,
+  claudeBin = DEFAULT_CLAUDE_BIN,
+  dryRun = false,
+  warn = DEFAULT_WARN,
+} = {}) {
+  const out = output ?? DEFAULT_OUTPUT;
+  if (resolve(out) === resolve(root)) {
+    throw new Error(`refusing to remove the package root ${out} — that is a checkout, not a materialised install`);
+  }
+  // The user's Claude config belongs to the default install only, exactly as on
+  // the install side: `--output` is the generate-only form there, so an explicit
+  // output is treated as the library/test seam and leaves ~/.claude alone unless
+  // a target is passed explicitly.
+  const isDefaultInstall = output === undefined;
+  const marketplaceRoot = dirname(out);
+  const manifestPath = join(marketplaceRoot, ".claude-plugin", "marketplace.json");
+
+  const warnings = /** @type {string[]} */ ([]);
+  const warnSink = (/** @type {string} */ msg) => {
+    warnings.push(msg);
+    warn(msg);
+  };
+
+  const installed = await isDirectory(out);
+  const names = await readInstallNames(manifestPath, warnSink);
+  const pluginId = names === null ? null : `${names.plugin}@${names.marketplace}`;
+
+  const summary = /** @type {UninstallClaudeResult} */ ({
+    output: out,
+    marketplaceRoot,
+    marketplace: names?.marketplace ?? null,
+    plugin: names?.plugin ?? null,
+    pluginId,
+    status: "absent",
+    installed,
+    registered: null,
+    removed: [],
+    commands: [],
+    settings: null,
+    instructions: null,
+    warnings,
+    dryRun,
+  });
+
+  // Names drive every remaining step: without them there is nothing this run can
+  // attribute to the install, so an existing directory is reported and left
+  // rather than deleted without undoing what it registered.
+  const manifestPresent = await isFile(manifestPath);
+  if (names === null) {
+    if (installed || manifestPresent) {
+      const message =
+        `cannot identify the install: no readable marketplace manifest at ${manifestPath} — ` +
+        `nothing was removed. Remove the plugin by hand with "claude plugin uninstall <plugin>@<marketplace>" ` +
+        `and delete ${out}`;
+      warnSink(message);
+      summary.status = "incomplete";
+    }
+    return summary;
+  }
+
+  // The guard above proves the install can name itself.
+  const installId = /** @type {string} */ (pluginId);
+  const declared = { enabledPlugins: [installId], extraKnownMarketplaces: [names.marketplace] };
+
+  if (!dryRun) {
+    const probe = await probePluginSupport(claudeBin);
+    if (!probe.ok) {
+      const message =
+        `Claude Code CLI "${claudeBin}" ${probe.message} — the plugin files and settings entries are left in place. ` +
+        `Deregister by hand with:\n  ${claudeBin} plugin uninstall ${pluginId} -y\n` +
+        `  ${claudeBin} plugin marketplace remove ${names.marketplace}\nthen re-run`;
+      warnSink(message);
+      summary.status = "incomplete";
+      return summary;
+    }
+  }
+
+  // Deregister by state, the inverse order of registration (the plugin lives in
+  // the marketplace, so it goes first). A dry run prints the same sequence
+  // without querying, matching the install's dry-run.
+  let registered = false;
+  if (dryRun) {
+    summary.commands.push(["plugin", "uninstall", installId, "-y"], ["plugin", "marketplace", "remove", names.marketplace]);
+    registered = true;
+  } else {
+    if ((await installedPluginVersion(claudeBin, installId)) !== null) {
+      await runClaudeCommand(claudeBin, ["plugin", "uninstall", installId, "-y"]);
+      summary.commands.push(["plugin", "uninstall", installId, "-y"]);
+      registered = true;
+    }
+    if (await marketplaceRegistered(claudeBin, names.marketplace)) {
+      await runClaudeCommand(claudeBin, ["plugin", "marketplace", "remove", names.marketplace]);
+      summary.commands.push(["plugin", "marketplace", "remove", names.marketplace]);
+      registered = true;
+    }
+    summary.registered = registered;
+  }
+
+  const settings =
+    isDefaultInstall || settingsPath !== undefined
+      ? await uninstallSettings({ root, target: settingsPath ?? DEFAULT_SETTINGS_PATH, declared, dryRun, warn: warnSink })
+      : null;
+  summary.settings = settings;
+  if (settings !== null && settings.removed.length > 0) {
+    summary.removed.push(...settings.removed.map((entry) => `${entry} from ${settings.path}`));
+  }
+
+  const instructions =
+    isDefaultInstall || instructionsPath !== undefined
+      ? await uninstallInstructions({ target: instructionsPath ?? DEFAULT_INSTRUCTIONS_PATH, dryRun })
+      : null;
+  summary.instructions = instructions;
+  if (instructions !== null && instructions.action !== "unchanged" && instructions.action !== "skipped-unmanaged") {
+    summary.removed.push(`the agent-cortex section of ${instructions.path}`);
+  }
+
+  if (installed) summary.removed.push(out);
+  if (manifestPresent) summary.removed.push(manifestPath);
+  if (!dryRun) {
+    if (installed) await rm(out, { recursive: true, force: true });
+    if (manifestPresent) {
+      await rm(manifestPath, { force: true });
+      await removeDirIfEmpty(dirname(manifestPath));
+    }
+  }
+
+  const somethingToUndo = installed || manifestPresent || registered || summary.removed.length > 0;
+  summary.status = somethingToUndo ? "removed" : "absent";
+  return summary;
+}
+
+/**
+ * The marketplace and plugin names the install's manifest declares, or null when
+ * there is no readable manifest. A manifest that exists but cannot be parsed is a
+ * failure to report, never a silent fall back to guessing names.
+ * @param {string} manifestPath
+ * @param {Warn} warn
+ * @returns {Promise<{ marketplace: string, plugin: string } | null>}
+ */
+async function readInstallNames(manifestPath, warn) {
+  const raw = await readFileMaybe(manifestPath);
+  if (raw === null) return null;
+  /** @type {any} */
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch (err) {
+    warn(`${manifestPath} is not valid JSON (${/** @type {Error} */ (err).message})`);
+    return null;
+  }
+  try {
+    return parseMarketplaceManifest(manifest, manifestPath);
+  } catch (err) {
+    warn(/** @type {Error} */ (err).message);
+    return null;
+  }
+}
+
+/**
+ * Remove a directory when the removal left it empty — the marketplace manifest
+ * lives in one, and an empty one is a leftover the user did not create.
+ * @param {string} dir
+ * @returns {Promise<void>}
+ */
+async function removeDirIfEmpty(dir) {
+  try {
+    if ((await readdir(dir)).length === 0) await rm(dir, { recursive: true, force: true });
+  } catch {
+    // Not there, or not readable: either way it is not ours to report.
+  }
 }

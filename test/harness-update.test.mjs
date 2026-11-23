@@ -22,10 +22,10 @@ const tempRoot = createTempRoot("agent-cortex-update-");
 /**
  * One harness status, with the fields the case does not care about defaulted.
  * @param {{ harness: string, installed?: string | null, cli?: string,
- *           staleness?: "current" | "stale" | "ahead" | "unknown" | "missing" }} overrides
+ *           staleness?: "current" | "stale" | "ahead" | "unknown" | "not-installed" }} overrides
  * @returns {import("../lib/harness-versions.mjs").HarnessStatus}
  */
-function createStatus({ harness, installed = null, cli = "2.5.1", staleness = "missing" }) {
+function createStatus({ harness, installed = null, cli = "2.5.1", staleness = "not-installed" }) {
   return { harness, installed, cli, staleness };
 }
 
@@ -161,14 +161,74 @@ describe("selectHarnesses", () => {
     );
   });
 
-  it("targets a missing harness for --all, because it is not at the CLI version", async () => {
+  it("never targets a harness that is not installed for --all", async () => {
     const statuses = [createStatus({ harness: "pi" })];
+
+    const plan = selectHarnesses({ statuses, all: true });
+
+    assert.deepEqual(plan.targets, [], "an absent harness is never a refresh target");
+    assert.deepEqual(
+      plan.absent.map((entry) => entry.harness),
+      ["pi"],
+      "the absent harness is reported as its own state",
+    );
+  });
+
+  it("refreshes the one installed harness for --all and leaves the absent one alone", async () => {
+    const statuses = [
+      createStatus({ harness: "claude", installed: "2.4.0", staleness: "stale" }),
+      createStatus({ harness: "pi" }),
+    ];
 
     const plan = selectHarnesses({ statuses, all: true });
 
     assert.deepEqual(
       plan.targets.map((entry) => entry.harness),
+      ["claude"],
+    );
+    assert.deepEqual(
+      plan.absent.map((entry) => entry.harness),
       ["pi"],
+    );
+  });
+
+  it("never installs a missing harness for --all --force either", async () => {
+    const statuses = [
+      createStatus({ harness: "claude", installed: "2.5.1", staleness: "current" }),
+      createStatus({ harness: "pi" }),
+    ];
+
+    const plan = selectHarnesses({ statuses, all: true, force: true });
+
+    assert.deepEqual(
+      plan.targets.map((entry) => entry.harness),
+      ["claude"],
+      "--force re-runs installed installers, it does not install",
+    );
+    assert.deepEqual(
+      plan.absent.map((entry) => entry.harness),
+      ["pi"],
+    );
+  });
+
+  it("refuses a named harness that is not installed instead of installing it", async () => {
+    const statuses = [
+      createStatus({ harness: "claude", installed: "2.4.0", staleness: "stale" }),
+      createStatus({ harness: "pi" }),
+    ];
+
+    const plan = selectHarnesses({ statuses, harnesses: ["pi"] });
+
+    assert.deepEqual(plan.targets, [], "update never installs, even when the harness is named");
+    assert.deepEqual(
+      plan.refused.map((entry) => entry.harness),
+      ["pi"],
+      "the caller can refuse the command and point at install",
+    );
+    assert.deepEqual(
+      plan.skipped.map((entry) => entry.harness),
+      ["claude"],
+      "an absent harness is not also reported as skipped",
     );
   });
 
@@ -300,9 +360,9 @@ describe("formatHarnessTable", () => {
     const table = formatHarnessTable(statuses);
 
     assert.deepEqual(table.split("\n"), [
-      "harness  installed      cli    status",
-      "claude   2.4.0          2.5.1  stale",
-      "pi       not installed  2.5.1  missing",
+      "harness  installed  cli    status",
+      "claude   2.4.0      2.5.1  stale",
+      "pi       -          2.5.1  not installed",
     ]);
   });
 });
@@ -315,12 +375,17 @@ describe("formatUpdateFlags", () => {
       assert.ok(text.includes(expected), `the flags list documents "${expected}"`);
     }
   });
+
+  it("says that updating never installs a harness", async () => {
+    assert.match(formatUpdateFlags("ctx"), /never installs/);
+  });
 });
 
 describe("formatUpdateReport", () => {
   it("prints one block per refreshed harness with its version change and artifacts", async () => {
     const text = formatUpdateReport({
       cli: "2.5.1",
+      programName: "ctx",
       entries: [
         { harness: "claude", previous: "2.4.0", next: "2.5.1", artifacts: ["agents (4 files)", "skills (30 skills)"] },
         { harness: "pi", previous: "2.5.1", next: "2.5.1", artifacts: ["extensions (14 files)"] },
@@ -339,6 +404,7 @@ describe("formatUpdateReport", () => {
   it("names the harnesses left alone and the CLI version they already match", async () => {
     const text = formatUpdateReport({
       cli: "2.5.1",
+      programName: "ctx",
       entries: [{ harness: "claude", previous: "2.4.0", next: "2.5.1", artifacts: ["agents (4 files)"] }],
       skipped: [createStatus({ harness: "pi", installed: "2.5.1", staleness: "current" })],
     });
@@ -346,9 +412,10 @@ describe("formatUpdateReport", () => {
     assert.equal(text.split("\n").at(-1), "Skipped (already at 2.5.1): pi");
   });
 
-  it("prints a nothing-to-update line when every harness is current", async () => {
+  it("prints a nothing-to-update line when every installed harness is current", async () => {
     const text = formatUpdateReport({
       cli: "2.5.1",
+      programName: "ctx",
       entries: [],
       skipped: [
         createStatus({ harness: "claude", installed: "2.5.1", staleness: "current" }),
@@ -356,7 +423,22 @@ describe("formatUpdateReport", () => {
       ],
     });
 
-    assert.equal(text, "Nothing to update — every harness is at 2.5.1.");
+    assert.equal(text, "Nothing to update — every installed harness is at 2.5.1.");
+  });
+
+  it("reports a harness that was never installed as its own state, with the command that installs it", async () => {
+    const text = formatUpdateReport({
+      cli: "2.5.1",
+      programName: "ctx",
+      entries: [],
+      notInstalled: [createStatus({ harness: "pi" })],
+    });
+
+    assert.deepEqual(text.split("\n"), [
+      "Nothing to update — no harness is installed.",
+      "Not installed: pi — update never installs a harness.",
+      '  → run "ctx install pi" to install it',
+    ]);
   });
 });
 
@@ -410,5 +492,26 @@ describe("promptHarnessSelection", () => {
     input.end();
 
     assert.deepEqual(await answer, []);
+  });
+
+  it("offers only installed harnesses, and names the ones update will not install", async () => {
+    const statuses = [
+      createStatus({ harness: "claude", installed: "2.4.0", staleness: "stale" }),
+      createStatus({ harness: "pi" }),
+    ];
+    const input = new PassThrough();
+    const output = new PassThrough();
+
+    const answer = promptHarnessSelection({ statuses, input, output });
+    input.write("a\n");
+    const chosen = await answer;
+
+    assert.deepEqual(chosen, ["claude"], "\"a\" selects the installed harnesses, never the absent one");
+    /** @type {string[]} */
+    const chunks = [];
+    let chunk;
+    while ((chunk = output.read()) !== null) chunks.push(String(chunk));
+    const text = chunks.join("");
+    assert.match(text, /Not installed: pi/, "the prompt says a harness is absent rather than leaving it selectable");
   });
 });

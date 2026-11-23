@@ -134,14 +134,14 @@ describe("collectVersionReport", () => {
 });
 
 describe("collectHarnessStatus", () => {
-  it("lists every harness, marking an absent install as missing", async () => {
+  it("lists every harness, marking an absent install as not installed", async () => {
     const home = await createHome(await tempRoot.createWorkspace());
     await writeFingerprint(home, "pi", JSON.stringify({ version: "2.4.2" }));
 
     const statuses = await collectHarnessStatus({ cli: "2.5.1", home });
 
     assert.deepStrictEqual(statuses, [
-      { harness: "claude", installed: null, cli: "2.5.1", staleness: "missing" },
+      { harness: "claude", installed: null, cli: "2.5.1", staleness: "not-installed" },
       { harness: "pi", installed: "2.4.2", cli: "2.5.1", staleness: "stale" },
     ]);
   });

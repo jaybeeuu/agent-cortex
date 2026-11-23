@@ -262,13 +262,31 @@ async function runUpdateCommand(parsed, programName) {
       );
       return 1;
     }
+    // Updating refreshes an install; it never creates one. A named harness with
+    // no artifact root is refused before any installer runs, so a typo or a
+    // half-remembered install can never materialise a harness here.
+    if (plan.refused.length > 0) {
+      const names = plan.refused.map((status) => `"${status.harness}"`).join(", ");
+      const hint =
+        plan.refused.length === 1 ? `${programName} install ${plan.refused[0].harness}` : `${programName} install <harness>`;
+      process.stderr.write(`Not installed: ${names}. Update never installs a harness — install it with "${hint}".\n`);
+      return 1;
+    }
 
     const entries = await runUpdate({
       cli: cliVersion,
       targets: plan.targets,
       refresh: (harness) => installHarness(/** @type {"pi" | "claude"} */ (harness), {}),
     });
-    process.stdout.write(`${formatUpdateReport({ cli: cliVersion, entries, skipped: plan.skipped })}\n`);
+    process.stdout.write(
+      `${formatUpdateReport({
+        cli: cliVersion,
+        programName,
+        entries,
+        skipped: plan.skipped,
+        notInstalled: plan.absent,
+      })}\n`,
+    );
     return 0;
   } catch (err) {
     process.stderr.write(`Update failed: ${/** @type {Error} */ (err).message}\n`);

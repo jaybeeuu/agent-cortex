@@ -113,11 +113,12 @@ JSON schema for harness-specific metadata:
 - `name` and `description` must be non-empty strings
 - `tools` is required and must be a non-empty array of strings
 - `tools` may be the single sentinel `["*"]`, which means every tool the session has. It is the
-  only value that means "all", and it cannot be combined with tool names: a mixed list would
-  reach a harness's rendered `tools:` scalar as a literal `*`. pi's `--tools` turns any entry
-  containing `*` into an anchored glob, so a lone `*` compiles to `^.*$` and matches every tool
-  name. A literal there would grant full access to pi, not less. Claude Code's `tools:` field
-  takes exact names, so the same literal names no Claude Code tool at all.
+  only value that means "all", and it cannot be combined with tool names: the validator
+  (`scripts/validate-agent-dir.mjs`) and both installers reject a mixed list with an error, so a
+  build fails instead of resolving one. A rendered literal would not be equivalent either: pi's
+  `--tools` compiles a lone `*` to `^.*$`, which matches every tool name, so pi would grant full
+  access rather than less. Claude Code's `tools:` field takes exact names, so the same literal
+  would name none of its tools.
 - Surrounding whitespace is ignored, so `["* "]` is the same sentinel as `["*"]`, in both
   installers and in the `agent-modes` runtime that reads the composed agents
 - Both installers resolve `["*"]` by omitting the rendered `tools:` line, so the harness

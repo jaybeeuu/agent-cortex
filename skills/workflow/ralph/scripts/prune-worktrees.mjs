@@ -58,6 +58,7 @@ const BD_PATH = process.env.BD_PATH || 'bd';
 /**
  * @typedef {object} PruneResult
  * @property {WorktreeEntry[]} entries
+ * @property {string | null} baseRef   Ref the content check compared against; null when none resolved.
  * @property {number} exitCode
  */
 
@@ -181,16 +182,16 @@ async function classifyBead(id, exec) {
  * Resolve the branch a worktree's content must be contained in before its local
  * branch may be dropped. The remote's default branch is the generic answer:
  * `origin/HEAD` is a symbolic ref to whatever the remote calls its default
- * branch, so no branch name is baked in here.
+ * branch, so no branch name is baked in here. The symbolic ref is returned as it
+ * stands, so a report names `origin/HEAD` rather than the branch it points at
+ * today.
  * @param {string} repoRoot
  * @param {(cwd: string, args: string[]) => Promise<{ ok: true, stdout: string } | { ok: false, stderr: string }>} git
  * @returns {Promise<string | null>} the base ref, or null when git cannot name one.
  */
 async function resolveBaseRef(repoRoot, git) {
   const result = await git(repoRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
-  if (!result.ok) return null;
-  const ref = result.stdout.trim();
-  return ref === '' ? null : ref;
+  return result.ok ? 'origin/HEAD' : null;
 }
 
 /**
@@ -465,7 +466,7 @@ export async function pruneWorktrees({ repoRoot, exec = runBd, removeOrphans = f
     entries.push(entry);
   }
 
-  return { entries, exitCode: entries.some((entry) => entry.outcome !== 'removed') ? 1 : 0 };
+  return { entries, baseRef, exitCode: entries.some((entry) => entry.outcome !== 'removed') ? 1 : 0 };
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
@@ -483,10 +484,12 @@ the remote base tracks that base, which a squash merge leaves behind. Such a bra
 is removed only when the base holds the branch's own version of every path the
 branch changed since their merge base. That proves content and never history:
 removal discards every commit the base does not contain, such as a reverted change
-or an empty commit, together with its message. The base defaults to the remote's
-default branch (origin/HEAD); --base names another ref, such as a release branch. A
-base that names the worktree's own branch compares the branch with itself, so it
-proves nothing: the worktree is kept and refused, as it is when no base resolves.
+or an empty commit, together with its message. The report names the ref it tested
+the content against, so a refusal names the ref that decided it. The base defaults
+to the remote's default branch (origin/HEAD); --base names another ref, such as an
+epic or release branch. A base that names the worktree's own branch compares the
+branch with itself, so it proves nothing: the worktree is kept and refused, as it
+is when no base resolves.
 
 An open bead is proven by its upstream instead, and only with --remove-orphans: its
 branch must carry an upstream and no commit unpushed to it. With no upstream it is
@@ -555,9 +558,14 @@ export async function runCli({ argv, cwd = process.cwd(), exec = runBd, git = ru
   const repoRoot = await resolveRepoRoot(cwd);
   if (repoRoot === null) throw new Error('not inside a git repository');
 
-  const { entries, exitCode } = await pruneWorktrees({ repoRoot, exec, removeOrphans, git, base });
+  const { entries, baseRef, exitCode } = await pruneWorktrees({ repoRoot, exec, removeOrphans, git, base });
 
   write(`Scanning ${join(repoRoot, '.agent-cortex', 'worktrees')}\n`);
+  write(
+    baseRef === null
+      ? 'Base: unresolved (no --base given, and origin/HEAD cannot be resolved)\n'
+      : `Base: ${baseRef}\n`,
+  );
   for (const entry of entries) {
     const detail = entry.reasons.length > 0 ? ` — ${entry.reasons.join('; ')}` : '';
     write(`  ${entry.id.padEnd(24)} ${entry.classification.padEnd(13)} ${entry.outcome}${detail}\n`);

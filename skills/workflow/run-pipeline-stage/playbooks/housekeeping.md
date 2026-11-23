@@ -9,18 +9,38 @@ closed beads and changes no files.
    directory that holds `.agent-cortex/worktrees/` — never from a bead worktree. The worktree this
    run removes can be the one you are standing in.
 
-2. **Run the pruner once:**
+2. **Learn which base the bead landed on, then run the pruner once.** A bead runs on
+   `feature/<id>`, cut from the remote default branch, or — inside a multi-feature epic — from
+   `epic/<epic-id>`. Its content reaches the remote default branch only in the first case, so the
+   pruner must be told the second. Decide from the bead graph:
+   - Read this chore's parent feature bead (`bd show <bead-id> --json` prints it as `parent`), then
+     read that bead's labels (`bd show <parent-id> --json`).
+   - **No `epic:<epic-id>` label** — the bead landed on the remote default branch. Pass no `--base`.
+   - **An `epic:<epic-id>` label, and `bd children <epic-id>` lists two or more feature children**
+     (chores do not count; `ralph`'s _Feature Branches and Worktrees_ step 1 draws the same line) —
+     a multi-feature epic, so the bead landed on `epic/<epic-id>`. Pass `--base epic/<epic-id>`.
+   - **An `epic:<epic-id>` label with exactly one feature child** — a single-feature epic, which
+     skips the epic branch. Pass no `--base`.
+   - **`epic/<epic-id>` does not resolve** (`git rev-parse --verify epic/<epic-id>` fails) — the
+     epic has already landed and its branch is gone, so pass no `--base`.
+
    ```bash
+   # a feature of a multi-feature epic
+   node <ralph-scripts>/prune-worktrees.mjs --base epic/<epic-id>
+   # every other bead
    node <ralph-scripts>/prune-worktrees.mjs
    ```
+
    `<ralph-scripts>` is the absolute path to `skills/workflow/ralph/scripts/`, resolved from wherever
-   that skill was loaded. Read the per-worktree report it prints: every scanned worktree, its
-   classification (`closed-bead`, `open-bead`, `orphan`, `unclassified`) and its outcome (`removed`,
-   `kept`, `refused`).
+   that skill was loaded. The report opens with `Base: <ref>`, the ref the content test used, and a
+   refusal names that same ref, so a reader can tell which base decided it. Read the per-worktree
+   report that follows: every scanned worktree, its classification (`closed-bead`, `open-bead`,
+   `orphan`, `unclassified`) and its outcome (`removed`, `kept`, `refused`).
 
 3. **Retry once on a non-zero exit.** Exit status `1` means at least one scanned worktree survived,
    and an open bead counts as survival, so a normal run against a live backlog exits `1`. Run the
-   same command a second time when the first run exits non-zero. One retry, never more.
+   same command a second time — the same `--base` — when the first run exits non-zero. One retry,
+   never more.
 
 4. **Decide from the per-worktree report, not from the exit status.** After the retry:
    - **SUCCESS** — no `closed-bead` worktree is left in `refused` state. Report every worktree the

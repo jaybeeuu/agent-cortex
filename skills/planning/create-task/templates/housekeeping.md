@@ -18,14 +18,18 @@ This stage removes worktrees, so **do not work in the bead worktree**. Run every
 repository's main checkout — the directory that holds `.agent-cortex/worktrees/` — because the
 worktree this run may remove can be your own.
 
-1. **Run the pruner once** from the main checkout:
+1. **Run the pruner once** from the main checkout, with the base the bead landed on:
    ```bash
+   # a feature of a multi-feature epic
+   node <ralph-scripts>/prune-worktrees.mjs --base epic/<epic-id>
+   # every other bead
    node <ralph-scripts>/prune-worktrees.mjs
    ```
    `<ralph-scripts>` is the absolute path to `skills/workflow/ralph/scripts/`, resolved from wherever
-   that skill was loaded. Read the per-worktree report it prints — it lists every scanned worktree,
-   its classification (`closed-bead`, `open-bead`, `orphan`, `unclassified`) and its outcome
-   (`removed`, `kept`, `refused`).
+   that skill was loaded. Step 2 of the stage playbook states how the bead graph tells the two cases
+   apart. The report opens with `Base: <ref>`, the ref the content test used. Read the per-worktree
+   report it prints — it lists every scanned worktree, its classification (`closed-bead`,
+   `open-bead`, `orphan`, `unclassified`) and its outcome (`removed`, `kept`, `refused`).
 
 2. **Retry once on a non-zero exit.** Exit status `1` means at least one scanned worktree survived
    the run, and an open bead counts as survival — a normal run against a live backlog exits `1`. So

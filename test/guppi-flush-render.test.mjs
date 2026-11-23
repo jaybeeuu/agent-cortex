@@ -251,7 +251,22 @@ describe("guppi's flush rule renders the harness's own mechanism", () => {
   it("uses no unresolved token and names no harness outside its own render", async () => {
     const { pi, claude } = await stageBoth();
 
-    for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
+    /** @type {Array<["pi" | "claude", string]>} */
+    const agents = [["pi", pi], ["claude", claude]];
+
+    for (const [harness, doc] of agents) {
+      const { own, other } = MECHANISM[harness];
+
+      // The whole document, not one section: a mechanism name written into the
+      // shared body outside the lifecycle renders into the other harness just
+      // the same, so a section-scoped check would not see it. The lifecycle
+      // keeps its own narrower promise above.
+      assert.ok(doc.includes(own), `${harness} names its own mechanism ${own} in the document`);
+      assert.equal(count(doc, other), 0, `the ${harness} document names no ${other}`);
+
+      // The name of this test claims "no unresolved token", so it checks the
+      // whole token grammar rather than the one key it was written for.
+      assert.doesNotMatch(doc, /\{\{(?:TOOL|PATH|SECTION):/, `${harness} carries no unresolved token`);
       assert.doesNotMatch(doc, /\{\{TOOL:clear_window\}\}/, `${harness} resolves the clear-window token`);
       assert.doesNotMatch(doc, /\bwith\s{2,}/, `${harness} agent has no dropped-name gap`);
     }

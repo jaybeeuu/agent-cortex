@@ -233,7 +233,7 @@ describe("installedHarnesses", () => {
   /** @type {import("../lib/harness-versions.mjs").HarnessStatus[]} */
   const statuses = [
     { harness: "claude", installed: "1.0.0", cli: "1.0.0", staleness: "current" },
-    { harness: "pi", installed: null, cli: "1.0.0", staleness: "missing" },
+    { harness: "pi", installed: null, cli: "1.0.0", staleness: "not-installed" },
   ];
 
   it("keeps only the harnesses with an install root", async () => {
@@ -255,7 +255,7 @@ describe("the selection prompt", () => {
     /** @type {import("../lib/harness-versions.mjs").HarnessStatus[]} */
     const statuses = [
       { harness: "claude", installed: "1.0.0", cli: "1.0.0", staleness: "current" },
-      { harness: "pi", installed: null, cli: "1.0.0", staleness: "missing" },
+      { harness: "pi", installed: null, cli: "1.0.0", staleness: "not-installed" },
     ];
     const input = new PassThrough();
     const output = new PassThrough();

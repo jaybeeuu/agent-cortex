@@ -363,8 +363,9 @@ async function runUninstallCommand(parsed, programName) {
     }
 
     // `--all` is destructive, so a terminal confirms first. Unattended, the flag
-    // itself is the explicit opt-in and no prompt is possible.
-    if (all && process.stdin.isTTY === true && process.stdout.isTTY === true) {
+    // itself is the explicit opt-in and no prompt is possible. A dry run writes
+    // nothing, so it is not confirmed — there is nothing to agree to.
+    if (all && !dryRun && process.stdin.isTTY === true && process.stdout.isTTY === true) {
       const answer = await readLine(
         process.stdin,
         process.stdout,

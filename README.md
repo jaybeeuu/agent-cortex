@@ -554,24 +554,29 @@ into), an npm install under `<prefix>/lib/node_modules/…`, and the manager bin
 `<prefix>` rather than from `PATH`. That matters because two managers can be installed and only one
 of them owns this copy: running the manager on `PATH` would update the wrong store or fail. The
 confirmation asks the inferred manager for its own global listing and matches this package's name
-and version. An owner that cannot be inferred or confirmed prints the exact command and exits
+and version. An owner that cannot be inferred or confirmed prints the command to run and exits
 non-zero — both managers' commands when it cannot even infer the layout, because that choice is
-the user's. The CLI never falls back to a manager found on `PATH`.
+the user's. Neither message prints a tag: each names the version this copy holds and asks for the
+published version in place of `<version>`, because a tag stays inside the range the manager already
+recorded and so cannot cross a major release. The CLI never falls back to a manager found on `PATH`.
 
 The report gives the installed version (read from the manifest beside the entry point, so even a
 stale process reports what is on disk), the published version (from the confirmed manager's `view`),
 the owner, and the command it would run. A registry error is its own failure: it prints the
 manager's error, offers no update, and exits non-zero. A failed install reports the manager's stderr
 and runs nothing after it. Once the install succeeds, the command reports the CLI version before and
-after (`cli        1.2.3 → 1.4.0`, read from the binary the update just installed, because the
-running process is still the old code), then hands the terminal to the new binary's `update -a`. One
-command brings the CLI and the harness installs to the same version, and the exit code is the
-refresh's.
+after (`cli        1.2.3 → 1.4.0`). The version now on disk is read from the prefix the manager wrote
+to, because the running process is still the old code; when that listing answers nothing, the newly
+installed binary is asked instead, and a binary that disagrees with the listing is named as another
+copy. When neither source answers, the update is unverified: the refresh still runs, because the
+install exited 0 and a refresh is repeatable, but the command exits non-zero. One command brings the
+CLI and the harness installs to the same version, and otherwise the exit code is the refresh's.
 
 The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix with an argv array and
-inherits the terminal, so the refresh's own output is what the user reads. It is skipped in three
-cases: `--check`, a failed update, and an install already at the published version (where
-`agent-cortex update -a` is the refresh that is left). A refresh that cannot start — the path is
+inherits the terminal, so the refresh's own output is what the user reads. It is skipped in four
+cases: `--check`, a failed update, an install that exits 0 but leaves the version on disk
+unchanged, and an install already at the published version (where `agent-cortex update -a` is the
+refresh that is left). A refresh that cannot start — the path is
 POSIX-shaped, while native Windows pnpm and npm write `.cmd` shims it does not match, and Node cannot
 start a `.cmd` without a shell — prints the reason and the exact command to run by hand, and exits
 non-zero. The CLI update has already succeeded by then, so `agent-cortex update -a` finishes the job.
@@ -583,11 +588,11 @@ agent-cortex self-update --check
 #   published  1.4.0
 #   owner      pnpm (/opt/pnpm-home/bin/pnpm)
 #   status     update available: 1.2.3 → 1.4.0
-#   command    /opt/pnpm-home/bin/pnpm add -g @jaybeeuu/agent-cortex@latest
+#   command    /opt/pnpm-home/bin/pnpm add -g @jaybeeuu/agent-cortex@1.4.0
 
 # what a bare run adds after that report
 agent-cortex self-update
-#   ✓ /opt/pnpm-home/bin/pnpm add -g @jaybeeuu/agent-cortex@latest
+#   ✓ /opt/pnpm-home/bin/pnpm add -g @jaybeeuu/agent-cortex@1.4.0
 #   cli        1.2.3 → 1.4.0
 #   → refreshing installed harnesses with /opt/pnpm-home/bin/agent-cortex update -a
 #   …the new binary's own update report…
@@ -619,6 +624,11 @@ nothing about which harnesses to touch. An unknown name fails before any install
 A shell that is not a terminal cannot answer the prompt, so a bare `agent-cortex update` there
 prints the same table plus the flags above and exits non-zero — a script can never mistake
 "nothing chosen" for "nothing to do".
+
+`update` exits 0 when every refresh it attempted completed — including a selection that refreshed
+nothing — and 1 when an installer fails, a harness name is unknown, an option cannot be parsed, or a
+bare invocation has no terminal to prompt on. `agent-cortex self-update` hands the refresh's exit
+code back, so a failed refresh fails the whole command.
 
 The report gives each refreshed harness its previous version, its new version, and the artifacts
 the installer wrote; harnesses already at the CLI version are listed as skipped. A harness's new

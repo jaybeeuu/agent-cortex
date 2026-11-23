@@ -17,6 +17,7 @@ import {
   confirmOwner,
   inferOwner,
   parseGlobalListing,
+  readPrefixVersion,
   readPublishedVersion,
   runSelfUpdate,
 } from "../lib/self-update.mjs";
@@ -42,9 +43,14 @@ const FAKE_MANAGER = `#!/usr/bin/env node
     process.stderr.write(text + "\\n");
     process.exitCode = 1;
   };
+  // A marker the install writes, so the listing can carry the version the
+  // prefix holds after the install as well as the one it held before.
+  const afterInstall = process.env.FAKE_INSTALL_MARKER
+    ? await fs.stat(process.env.FAKE_INSTALL_MARKER).then(() => true, () => false)
+    : false;
   if (argv[0] === "ls") {
     if (process.env.FAKE_LIST_FAIL) return fail(process.env.FAKE_LIST_FAIL);
-    print(process.env.FAKE_LIST);
+    print(afterInstall ? process.env.FAKE_LIST_AFTER_INSTALL : process.env.FAKE_LIST);
     return;
   }
   if (argv[0] === "view") {
@@ -54,6 +60,7 @@ const FAKE_MANAGER = `#!/usr/bin/env node
   }
   if (argv[0] === "add" || argv[0] === "install") {
     if (process.env.FAKE_INSTALL_FAIL) return fail(process.env.FAKE_INSTALL_FAIL);
+    if (process.env.FAKE_INSTALL_MARKER) await fs.writeFile(process.env.FAKE_INSTALL_MARKER, "installed\\n");
     print("installed");
     return;
   }
@@ -62,7 +69,7 @@ const FAKE_MANAGER = `#!/usr/bin/env node
 `;
 
 // The binary the update re-runs once the install succeeded. It reports its own
-// version, which is the only source for the version now on disk.
+// version, which is the fallback source when the prefix listing answers nothing.
 const FAKE_REEXEC = `#!/usr/bin/env node
 (async () => {
   const fs = require("node:fs/promises");
@@ -233,21 +240,38 @@ function npmListing(version) {
 }
 
 /**
+ * The answer one stubbed command gives.
+ * @typedef {object} StubAnswer
+ * @property {number} [code]
+ * @property {string} [stdout]
+ * @property {string} [stderr]
+ */
+
+/**
  * A stubbed `run` that records every argv array it is given and answers by the
- * command word. `version` answers the probe of the newly installed binary.
- * @param {{ list?: { code?: number, stdout?: string, stderr?: string }, view?: { code?: number, stdout?: string, stderr?: string }, install?: { code?: number, stdout?: string, stderr?: string }, version?: { code?: number, stdout?: string, stderr?: string } }} answers
+ * command word. `version` answers the probe of the newly installed binary, and
+ * `list` takes one answer per call when the prefix holds a different version
+ * after the install from the one it held before.
+ * @param {{ list?: StubAnswer | StubAnswer[], view?: StubAnswer, install?: StubAnswer, version?: StubAnswer }} answers
  * @returns {{ run: (command: string, args: string[]) => Promise<{ code: number, stdout: string, stderr: string }>, calls: string[][] }}
  */
 function stubRun(answers) {
   /** @type {string[][]} */
   const calls = [];
+  const listings = Array.isArray(answers.list) ? [...answers.list] : [answers.list];
+  /**
+   * @param {string} word The command word, which decides the answer
+   * @returns {StubAnswer | undefined}
+   */
+  const answerFor = (word) => {
+    if (word === "ls") return listings.length > 1 ? listings.shift() : listings[0];
+    return word === "view" ? answers.view : word === "--version" ? answers.version : answers.install;
+  };
   return {
     calls,
     run: async (command, args) => {
       calls.push([command, ...args]);
-      const word = args[0];
-      const answer =
-        word === "ls" ? answers.list : word === "view" ? answers.view : word === "--version" ? answers.version : answers.install;
+      const answer = answerFor(args[0]);
       return { code: answer?.code ?? 0, stdout: answer?.stdout ?? "", stderr: answer?.stderr ?? "" };
     },
   };
@@ -370,6 +394,31 @@ describe("readPublishedVersion", () => {
   });
 });
 
+describe("readPrefixVersion", () => {
+  const owner = { manager: /** @type {const} */ ("pnpm"), prefix: "/opt/pnpm-home", command: "/opt/pnpm-home/bin/pnpm" };
+
+  it("reads the version the prefix now holds from the manager's own listing", async () => {
+    const { run, calls } = stubRun({ list: { stdout: pnpmListing("2.0.0") } });
+    assert.equal(await readPrefixVersion({ owner, run }), "2.0.0");
+    assert.deepEqual(calls, [[owner.command, "ls", "-g", "--depth", "0", "--json"]]);
+  });
+
+  it("answers null when the listing fails, leaving the binary probe to decide", async () => {
+    const { run } = stubRun({ list: { code: 1, stderr: "ERR_PNPM_NO_GLOBAL_DIR" } });
+    assert.equal(await readPrefixVersion({ owner, run }), null);
+  });
+
+  it("answers null when the listing names no version for this package", async () => {
+    const { run } = stubRun({ list: { stdout: JSON.stringify([{ dependencies: {} }]) } });
+    assert.equal(await readPrefixVersion({ owner, run }), null);
+  });
+
+  it("answers null when the listing is not JSON", async () => {
+    const { run } = stubRun({ list: { stdout: "not json" } });
+    assert.equal(await readPrefixVersion({ owner, run }), null);
+  });
+});
+
 describe("runSelfUpdate", () => {
   const entryPoint = UNIT_PNPM.entryPoint;
   const pnpmPrefix = UNIT_PNPM.prefix;
@@ -423,13 +472,17 @@ describe("runSelfUpdate", () => {
     assert.match(report, /^ {2}installed {2}1\.4\.0$/m);
     assert.match(report, /^ {2}published {2}9\.9\.9$/m);
     assert.match(report, new RegExp(`^ {2}owner {6}pnpm \\(${pnpmPrefix}/bin/pnpm\\)$`, "m"));
-    assert.match(report, new RegExp(`^ {2}command {4}${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@latest$`, "m"));
+    assert.match(report, new RegExp(`^ {2}command {4}${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@9\.9\.9$`, "m"));
     assert.match(report, /Check only/);
     assert.deepEqual(output.err, []);
   });
 
   it("updates through pnpm with an argv array, then re-runs the new binary", async () => {
-    const { run, calls } = stubRun({ list: { stdout: pnpmListing("1.4.0") }, view: { stdout: "9.9.9" }, install: {} });
+    const { run, calls } = stubRun({
+      list: [{ stdout: pnpmListing("1.4.0") }, { stdout: pnpmListing("9.9.9") }],
+      view: { stdout: "9.9.9" },
+      install: {},
+    });
     const output = sink();
     /** @type {string[][]} */
     const spawned = [];
@@ -446,9 +499,9 @@ describe("runSelfUpdate", () => {
     });
     // The re-run's exit code is the command's exit code.
     assert.equal(code, 7);
-    assert.deepEqual(calls[2], [`${pnpmPrefix}/bin/pnpm`, "add", "-g", `${PACKAGE_NAME}@latest`]);
+    assert.deepEqual(calls[2], [`${pnpmPrefix}/bin/pnpm`, "add", "-g", `${PACKAGE_NAME}@9.9.9`]);
     assert.deepEqual(spawned, [[`${pnpmPrefix}/bin/agent-cortex`, "update", "-a"]]);
-    assert.match(output.out.join("\n"), new RegExp(`^ {2}✓ ${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@latest$`, "m"));
+    assert.match(output.out.join("\n"), new RegExp(`^ {2}✓ ${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@9\.9\.9$`, "m"));
   });
 
   it("installs nothing and spawns nothing when the install is already at the published version", async () => {
@@ -483,7 +536,7 @@ describe("runSelfUpdate", () => {
 
   it("reports the version the new binary prints before it hands the terminal over", async () => {
     const { run, calls } = stubRun({
-      list: { stdout: pnpmListing("1.4.0") },
+      list: [{ stdout: pnpmListing("1.4.0") }, { stdout: pnpmListing("2.0.0") }],
       view: { stdout: "2.0.0" },
       install: {},
       version: { stdout: "2.0.0\n" },
@@ -498,16 +551,56 @@ describe("runSelfUpdate", () => {
       writeError: output.writeError,
     });
     assert.equal(code, 0);
-    // The boundary is read from the installed binary, not from this process.
-    assert.deepEqual(calls[3], [`${pnpmPrefix}/bin/agent-cortex`, "--version"]);
+    // The prefix is listed again after the install, then the binary is probed.
+    assert.deepEqual(calls[3], [`${pnpmPrefix}/bin/pnpm`, "ls", "-g", "--depth", "0", "--json"]);
+    assert.deepEqual(calls[4], [`${pnpmPrefix}/bin/agent-cortex`, "--version"]);
     const report = output.out.join("\n");
     assert.match(report, /^ {2}cli {8}1\.4\.0 → 2\.0\.0$/m);
     assert.ok(report.indexOf("1.4.0 → 2.0.0") < report.indexOf("refreshing installed harnesses"));
     assert.deepEqual(output.err, []);
   });
 
-  it("still refreshes when the new binary cannot report its version", async () => {
-    const { run } = stubRun({ list: { stdout: pnpmListing("1.4.0") }, view: { stdout: "2.0.0" }, install: {}, version: { code: 1 } });
+  it("reports the version the prefix now holds when the binary still answers with the old one", async () => {
+    // The install moved the package, but the binary on the prefix's path was not
+    // replaced with it. The prefix is the truth; the binary's answer is stale.
+    const { run } = stubRun({
+      list: [{ stdout: pnpmListing("1.4.0") }, { stdout: pnpmListing("2.0.0") }],
+      view: { stdout: "2.0.0" },
+      install: {},
+      version: { stdout: "1.4.0\n" },
+    });
+    const output = sink();
+    /** @type {string[][]} */
+    const spawned = [];
+    const code = await runSelfUpdate({
+      entryPoint,
+      programName: "agent-cortex",
+      run,
+      spawn: async (command, args) => {
+        spawned.push([command, ...args]);
+        return { code: 0 };
+      },
+      write: output.write,
+      writeError: output.writeError,
+    });
+    assert.equal(code, 0);
+    assert.match(output.out.join("\n"), /^ {2}cli {8}1\.4\.0 → 2\.0\.0$/m);
+    assert.match(
+      output.err.join("\n"),
+      new RegExp(`${pnpmPrefix}/bin/agent-cortex --version still reports 1\.4\.0, though the prefix holds 2\.0\.0`),
+    );
+    assert.deepEqual(spawned, [[`${pnpmPrefix}/bin/agent-cortex`, "update", "-a"]]);
+  });
+
+  it("fails when the install exits 0 but the prefix still holds the old version", async () => {
+    // A manager resolves the version it installs from the range it recorded, so
+    // an install can exit 0 and install the version that was already there.
+    const { run } = stubRun({
+      list: { stdout: pnpmListing("1.4.0") },
+      view: { stdout: "2.0.0" },
+      install: {},
+      version: { stdout: "1.4.0" },
+    });
     const output = sink();
     /** @type {string[][]} */
     const spawned = [];
@@ -522,13 +615,57 @@ describe("runSelfUpdate", () => {
       write: output.write,
       writeError: output.writeError,
     });
-    assert.equal(code, 0);
+    assert.equal(code, 1);
+    assert.deepEqual(spawned, []);
+    const message = output.err.join("\n");
+    assert.match(message, /The update did not take effect/);
+    assert.match(message, new RegExp(`${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@2\.0\.0`));
+    assert.match(message, /exited 0/);
+    assert.match(message, /still holds @jaybeeuu\/agent-cortex at 1\.4\.0/);
+    assert.match(message, /Nothing was run after it/);
+    assert.doesNotMatch(output.out.join("\n"), /cli {8}/);
+  });
+
+  it("still refreshes, but fails, when neither the prefix nor the new binary reports a version", async () => {
+    // Both sources of the version after the install are unusable, so the update
+    // cannot be verified: the refresh still runs, because the install exited 0
+    // and the refresh is repeatable, but the exit code must not report success.
+    const { run } = stubRun({
+      list: [{ stdout: pnpmListing("1.4.0") }, { code: 1, stderr: "ERR_PNPM_NO_GLOBAL_DIR" }],
+      view: { stdout: "2.0.0" },
+      install: {},
+      version: { code: 1 },
+    });
+    const output = sink();
+    /** @type {string[][]} */
+    const spawned = [];
+    const code = await runSelfUpdate({
+      entryPoint,
+      programName: "ctx",
+      run,
+      spawn: async (command, args) => {
+        spawned.push([command, ...args]);
+        return { code: 0 };
+      },
+      write: output.write,
+      writeError: output.writeError,
+    });
+    assert.equal(code, 1);
     assert.deepEqual(spawned, [[`${pnpmPrefix}/bin/agent-cortex`, "update", "-a"]]);
-    assert.match(output.err.join("\n"), /Cannot read the version the newly installed binary reports/);
+    const message = output.err.join("\n");
+    assert.match(message, /Cannot verify the update/);
+    assert.match(message, /The refresh below still runs/);
+    assert.match(message, /the update itself is unverified/);
+    assert.doesNotMatch(output.out.join("\n"), /cli {8}/);
   });
 
   it("names a refresh that could not start, and returns its code", async () => {
-    const { run } = stubRun({ list: { stdout: pnpmListing("1.4.0") }, view: { stdout: "2.0.0" }, install: {}, version: { stdout: "2.0.0" } });
+    const { run } = stubRun({
+      list: [{ stdout: pnpmListing("1.4.0") }, { stdout: pnpmListing("2.0.0") }],
+      view: { stdout: "2.0.0" },
+      install: {},
+      version: { stdout: "2.0.0" },
+    });
     const output = sink();
     const code = await runSelfUpdate({
       entryPoint,
@@ -546,7 +683,11 @@ describe("runSelfUpdate", () => {
   });
 
   it("updates through npm with npm's own install invocation", async () => {
-    const { run, calls } = stubRun({ list: { stdout: npmListing("1.4.0") }, view: { stdout: "9.9.9" }, install: {} });
+    const { run, calls } = stubRun({
+      list: [{ stdout: npmListing("1.4.0") }, { stdout: npmListing("9.9.9") }],
+      view: { stdout: "9.9.9" },
+      install: {},
+    });
     const output = sink();
     const code = await runSelfUpdate({
       entryPoint: UNIT_NPM.entryPoint,
@@ -557,10 +698,10 @@ describe("runSelfUpdate", () => {
       writeError: output.writeError,
     });
     assert.equal(code, 0);
-    assert.deepEqual(calls[2], [`${UNIT_NPM.prefix}/bin/npm`, "install", "-g", `${PACKAGE_NAME}@latest`]);
+    assert.deepEqual(calls[2], [`${UNIT_NPM.prefix}/bin/npm`, "install", "-g", `${PACKAGE_NAME}@9.9.9`]);
   });
 
-  it("reports an unidentified owner, prints both exact commands, and runs nothing", async () => {
+  it("reports an unidentified owner with both command forms, and runs nothing", async () => {
     const { run, calls } = stubRun({});
     const output = sink();
     const code = await runSelfUpdate({
@@ -575,11 +716,15 @@ describe("runSelfUpdate", () => {
     assert.deepEqual(calls, []);
     const message = output.err.join("\n");
     assert.match(message, /Cannot identify the package manager that owns this install/);
-    assert.match(message, /pnpm add -g @jaybeeuu\/agent-cortex@latest/);
-    assert.match(message, /npm install -g @jaybeeuu\/agent-cortex@latest/);
+    // A tag is not a version: the message asks for one instead of printing a
+    // command the release documents as a no-op.
+    assert.match(message, /pnpm add -g @jaybeeuu\/agent-cortex@<version>/);
+    assert.match(message, /npm install -g @jaybeeuu\/agent-cortex@<version>/);
+    assert.match(message, /Put the published version in place of <version>/);
+    assert.doesNotMatch(message, /@latest/);
   });
 
-  it("reports an unconfirmed owner with the exact command, and updates nothing", async () => {
+  it("reports an unconfirmed owner with the command form, and updates nothing", async () => {
     const { run, calls } = stubRun({ list: { stdout: pnpmListing("1.3.0") }, view: { stdout: "9.9.9" } });
     const output = sink();
     const code = await runSelfUpdate({
@@ -594,7 +739,10 @@ describe("runSelfUpdate", () => {
     assert.equal(calls.length, 1);
     const message = output.err.join("\n");
     assert.match(message, /Cannot confirm that pnpm owns this install/);
-    assert.match(message, new RegExp(`${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@latest`));
+    assert.match(message, new RegExp(`${pnpmPrefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@<version>`));
+    assert.match(message, /1\.4\.0/);
+    assert.match(message, /published version in place of <version>/);
+    assert.doesNotMatch(message, /@latest/);
   });
 
   it("treats a registry error as its own failure, and offers no update", async () => {
@@ -621,7 +769,7 @@ describe("runSelfUpdate", () => {
     const { run } = stubRun({
       list: { stdout: pnpmListing("1.4.0") },
       view: { stdout: "9.9.9" },
-      install: { code: 1, stderr: "ERR_PNPM_FETCH_404 @jaybeeuu/agent-cortex@latest" },
+      install: { code: 1, stderr: "ERR_PNPM_FETCH_404 @jaybeeuu/agent-cortex@9.9.9" },
     });
     const output = sink();
     /** @type {string[][]} */
@@ -641,7 +789,7 @@ describe("runSelfUpdate", () => {
     assert.deepEqual(spawned, []);
     const message = output.err.join("\n");
     assert.match(message, /The update failed/);
-    assert.match(message, /ERR_PNPM_FETCH_404 @jaybeeuu\/agent-cortex@latest/);
+    assert.match(message, /ERR_PNPM_FETCH_404 @jaybeeuu\/agent-cortex@9\.9\.9/);
     assert.match(message, /Nothing was run after it/);
   });
 
@@ -678,7 +826,7 @@ describe("self-update through the CLI", () => {
     assert.match(result.stdout, /^ {2}installed {2}1\.4\.0$/m);
     assert.match(result.stdout, /^ {2}published {2}9\.9\.9$/m);
     assert.match(result.stdout, new RegExp(`^ {2}owner {6}pnpm \\(${install.prefix}/bin/pnpm\\)$`, "m"));
-    assert.match(result.stdout, new RegExp(`^ {2}command {4}${install.prefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@latest$`, "m"));
+    assert.match(result.stdout, new RegExp(`^ {2}command {4}${install.prefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@9\.9\.9$`, "m"));
     // Only the two read-only calls ran: the report wrote nothing.
     assert.deepEqual(await readCalls(install.calls), ["pnpm ls -g --depth 0 --json", "pnpm view @jaybeeuu/agent-cortex version"]);
     await assertPathUnused(decoys.used);
@@ -691,6 +839,8 @@ describe("self-update through the CLI", () => {
     const result = await runCli(install.entryPoint, ["self-update"], {
       FAKE_CALLS: install.calls,
       FAKE_LIST: npmListing("1.4.0"),
+      FAKE_LIST_AFTER_INSTALL: npmListing("9.9.9"),
+      FAKE_INSTALL_MARKER: join(workspace, "installed.marker"),
       FAKE_VIEW: "9.9.9",
       FAKE_REEXEC_VERSION: "9.9.9",
       PATH: `${decoys.pathDir}:${process.env.PATH ?? ""}`,
@@ -699,7 +849,8 @@ describe("self-update through the CLI", () => {
     assert.deepEqual(await readCalls(install.calls), [
       "npm ls -g --depth 0 --json",
       "npm view @jaybeeuu/agent-cortex version",
-      "npm install -g @jaybeeuu/agent-cortex@latest",
+      "npm install -g @jaybeeuu/agent-cortex@9.9.9",
+      "npm ls -g --depth 0 --json",
       "agent-cortex --version",
       "agent-cortex update -a",
     ]);
@@ -732,6 +883,8 @@ describe("self-update through the CLI", () => {
     const result = await runCli(install.entryPoint, ["self-update"], {
       FAKE_CALLS: install.calls,
       FAKE_LIST: pnpmListing("1.4.0"),
+      FAKE_LIST_AFTER_INSTALL: pnpmListing("9.9.9"),
+      FAKE_INSTALL_MARKER: join(workspace, "installed.marker"),
       FAKE_VIEW: "9.9.9",
       FAKE_REEXEC_VERSION: "9.9.9",
       FAKE_REFRESH_CODE: "3",
@@ -760,7 +913,7 @@ describe("self-update through the CLI", () => {
     await assertPathUnused(decoys.used);
   });
 
-  it("exits non-zero with the exact command when the owner is unconfirmed", async () => {
+  it("exits non-zero with the command form when the owner is unconfirmed", async () => {
     const workspace = await tempRoot.createWorkspace();
     const install = await stageInstall({ manager: "pnpm", version: "1.4.0", workspace });
     const decoys = await stageDecoys(workspace);
@@ -772,11 +925,12 @@ describe("self-update through the CLI", () => {
     });
     assert.equal(result.exitCode, 1);
     assert.match(result.stderr, /Cannot confirm that pnpm owns this install/);
-    assert.match(result.stderr, new RegExp(`${install.prefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@latest`));
+    assert.match(result.stderr, new RegExp(`${install.prefix}/bin/pnpm add -g @jaybeeuu/agent-cortex@<version>`));
+    assert.doesNotMatch(result.stderr, /@latest/);
     await assertPathUnused(decoys.used);
   });
 
-  it("exits non-zero with both commands when the layout is unknown", async () => {
+  it("exits non-zero with both command forms when the layout is unknown", async () => {
     const workspace = await tempRoot.createWorkspace();
     const decoys = await stageDecoys(workspace);
     const result = await runCli(REPO_CLI, ["self-update", "--check"], {
@@ -784,8 +938,9 @@ describe("self-update through the CLI", () => {
     });
     assert.equal(result.exitCode, 1);
     assert.match(result.stderr, /Cannot identify the package manager that owns this install/);
-    assert.match(result.stderr, /pnpm add -g @jaybeeuu\/agent-cortex@latest/);
-    assert.match(result.stderr, /npm install -g @jaybeeuu\/agent-cortex@latest/);
+    assert.match(result.stderr, /pnpm add -g @jaybeeuu\/agent-cortex@<version>/);
+    assert.match(result.stderr, /npm install -g @jaybeeuu\/agent-cortex@<version>/);
+    assert.doesNotMatch(result.stderr, /@latest/);
     await assertPathUnused(decoys.used);
   });
 });

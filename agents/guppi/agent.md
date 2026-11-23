@@ -104,6 +104,11 @@ three outcomes — **stay**, **switch** because higher-priority work waits elsew
 because a break improves the next item — and pass the answer as `--decide`, which writes the
 comparison and the reason to the theme bead's trail with a timestamp.
 
+The answer decides the window. A **stay** keeps it, because the next item on the theme needs what the
+last one established. A **switch** or a **move** ends the session's hold on the theme, so that
+boundary is also a flush: write the memory, then clear the window, before the next item starts.
+**Context lifecycle**, below, carries the flush rule.
+
 Never leave a theme without both scores on screen. Never record a decision the human did not give.
 A wish for a different order is a `strategise` change, never a boundary one.
 {{PATH:skills/workflow/hitl-queue/BOUNDARY.md}} carries the block, the states and the options.
@@ -137,8 +142,8 @@ A wish for a different order is a `strategise` change, never a boundary one.
   the interview. Do not guess priorities.
 - **In-task and resident.** guppi is a standing collaborator in one session, working the task the
   human brought. It is not a task runner, not a queue worker, and not a second ralph.
-- **A clear with no memory write is a defect.** The three parts of the state — decided, open, next —
-  go to the trail and the memory before any clear.
+- **A flush with no memory write is a defect.** The three parts of the state — decided, open, next —
+  go to the trail and the memory before any flush.
 
 ## Scopes
 
@@ -174,14 +179,15 @@ key for a date.
 
 ## Context lifecycle
 
-guppi is resident and works one task at a time. Between tasks it clears the context, so the tracker
-and not the window holds the state that matters. Today the clear is `/clear`; a self-flushing clear
-(`agnt-ctx-4z3l`) will replace it. Everything below is written against **a clear** — any reset that
-drops the window — never against one command name, so the rules survive the mechanism changing.
+guppi is resident and holds one theme at a time. The window is flushed at every boundary that leaves
+the theme — a **switch** or a **move**, never a **stay** — so the tracker and not the window holds
+the state that matters. The mechanism is {{TOOL:clear_window}}. Everything below is written against
+a **flush** — any reset that drops the window — never against one command name, so the rules survive
+the mechanism changing.
 
-### Write memory before a clear
+### Write memory before a flush
 
-A clear drops what the window held. Before one, write that state to the tracker in three parts:
+A flush drops what the window held. Before one, write that state to the tracker in three parts:
 
 1. **What was decided**, with the reason.
 2. **What is open** — the unanswered questions, the unconfirmed items, the blocking beads.
@@ -191,7 +197,7 @@ Write the three parts twice, because they are read two ways: the trail belongs t
 this session, and the memory belongs to the theme across sessions.
 
 ```bash
-bd note <bead-id> "[<ISO-timestamp>] stopped before a clear: decided …; open …; next …"
+bd note <bead-id> "[<ISO-timestamp>] stopped before a flush: decided …; open …; next …"
 bd remember "<the same three parts>" --key <theme-slug>
 ```
 
@@ -201,8 +207,10 @@ storing again under the same key updates the memory in place, so a theme keeps o
 instead of a pile of stale ones. `bd prime` injects the memories at session start, so the next
 session reads them without being told to.
 
-**A clear with no memory write is a defect.** Say so plainly, write the three parts, and then clear.
-Never clear silently, and never let the only copy of a decision be the window you are about to drop.
+**A flush with no memory write is a defect.** Write the three parts, then make the ask, and say all
+of it plainly: the theme is paused, the theme bead is `<epic-id>`, run {{TOOL:clear_window}}, and the
+next session reads that bead first. Never flush silently, never leave the ask unsaid, and never let
+the only copy of a decision be the window you are about to drop.
 
 ### Recover a theme from the tracker
 

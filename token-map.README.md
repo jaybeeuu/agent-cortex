@@ -67,6 +67,14 @@ rather than inventing a dotted form:
   but that tool is gated behind a feature flag that defaults off, so a portable skill may not
   depend on it. Naming the re-prompt is what holds on every session; the playbook's prose
   fallback covers the session where even that is absent.
+  One row names how the window is dropped at a boundary that leaves the theme: `clear_window`,
+  Claude Code's built-in `/clear` on claude and pi's built-in `/new` session switch on pi. Both
+  columns are a user-facing command, so the shared prose can name the flush once and render on both
+  harnesses. Neither value may be null: a null would drop the token and leave the sentence that
+  named the mechanism short of one. The pi value **changes kind when the self-flushing mechanism
+  lands** (`agnt-ctx-4z3l.1` replaces the command with a tool the agent can call itself), so the
+  prose around the row says "any reset that drops the window" and never a call shape — the rule
+  outlives the swap, and only this column moves then.
 - **`paths`** — `plugin_root`, `agents_dir`, `skills_dir`, and `skill_anatomy`. These are the
   install-time variables that differ per harness. `plugin_root` is the anchor; the others
   resolve relative to it (`{base, relative}` specs) so a harness only overrides the single

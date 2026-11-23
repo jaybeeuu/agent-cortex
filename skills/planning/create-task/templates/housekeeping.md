@@ -32,7 +32,9 @@ worktree this run may remove can be your own.
    branch once and never fast-forwards it, so it never holds the features' landed content. The second
    line of the report is `Base: <ref>`, the ref the content test used. Read the per-worktree report it
    prints — it lists every scanned worktree, its classification (`closed-bead`, `open-bead`,
-   `orphan`, `unclassified`) and its outcome (`removed`, `kept`, `refused`).
+   `orphan`, `unclassified`) and its outcome (`removed`, `kept`, `refused`). A `removed` entry also
+   prints `proven: <rule> at <sha>` — the commit that proved its content landed — and a `refused`
+   entry prints the reasons it stayed. Report whichever line the pruner printed.
 
 2. **Retry once on a non-zero exit.** Exit status `1` means at least one scanned worktree survived
    the run, and an open bead counts as survival — a normal run against a live backlog exits `1`. So
@@ -40,7 +42,7 @@ worktree this run may remove can be your own.
 
 3. **Decide the outcome from the report, not the exit status.** After the retry:
    - **SUCCESS** — no worktree classified `closed-bead` is left in `refused` state. Report every
-     worktree the run removed and every one it kept, with the printed reason.
+     worktree the run removed and every one it kept, with the printed proof or reason.
    - **BLOCKED** — a `closed-bead` worktree is still `refused`, or the pruner could not run at all
      (missing node, unreadable directory). A refused closed-bead worktree is a worktree this run did
      not remove, whatever the reason printed.

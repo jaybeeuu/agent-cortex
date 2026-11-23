@@ -26,7 +26,8 @@
 // `summary` is what the skill prints before it asks anything, and it exists so the digest
 // is read off the file rather than re-derived by an agent: it validates first, then reports
 // the version, the newest change-log entry, the themes, the two admissibility lists and the
-// deadline factors — each one read from the file, none restated from elsewhere.
+// deadline factors and impact levels when the file states them — each one read from the file,
+// none restated from elsewhere.
 //
 // Exit codes: 0 the file is valid or summarised, 1 the file is invalid or the operation
 // refused, 2 the caller asked for something malformed, 3 `summary` found no strategy file —
@@ -79,6 +80,15 @@ export const CHANGE_LOG_SECTION = 'Change log';
 export const DEADLINE_TIERS_SECTION = 'Deadline tiers';
 
 /**
+ * The section that fixes the impact scale: one labelled value per level, so two scorers
+ * put the same bead on the same figure. Optional in a hand-written file, and — unlike the
+ * deadline tiers — with no documented default: a default factor only changes a rank, while
+ * a default level set would reject a number the owner never ruled on. `init` copies a table
+ * the owner can edit, and a file with none accepts any impact of zero or more.
+ */
+export const IMPACT_LEVELS_SECTION = 'Impact levels';
+
+/**
  * The deadline tiers the queue uses when the strategy carries none. The numbers live here
  * once, as the documented default, so a caller that never opens the strategy still ranks
  * predictably; a strategy overrides them, so the rise tunes without a code change.
@@ -110,14 +120,17 @@ const FIELD_PREFIX = /^([ \t]*[-*][ \t]*\*\*[A-Za-z]+:\*\*[ \t]*)\S.*?[ \t]*$/;
 /** One change-log line: the date it landed, the version it produced, and the reason. */
 const CHANGE_LOG_ENTRY = /^[ \t]*[-*][ \t]+(\d{4}-\d{2}-\d{2})[ \t]+v(\d+):[ \t]*(.+?)[ \t]*$/;
 
-/** One row of the deadline-tier table, with the cells the pipes delimit. */
-const TIER_ROW = /^[ \t]*\|(.*)\|[ \t]*$/;
+/** One row of a two-column table, with the cells the pipes delimit. */
+const TABLE_ROW = /^[ \t]*\|(.*)\|[ \t]*$/;
 
-/** The table's header row, skipped as a label rather than read as a tier. */
+/** The deadline table's header row, skipped as a label rather than read as a tier. */
 const TIER_HEADER = /^(remaining|time|when|deadline)$/i;
 
-/** The table's `|---|:--:|` rule, which carries no value. */
-const TIER_RULE = /^:?-{2,}:?$/;
+/** The impact table's header row, skipped as a label rather than read as a level. */
+const LEVEL_HEADER = /^(level|impact|impact level)$/i;
+
+/** A table's `|---|:--:|` rule, which carries no value. */
+const TABLE_RULE = /^:?-{2,}:?$/;
 
 /** `within 7d` and `<= 7d`: the factor earned at or inside this much time left. */
 const TIER_WITHIN = /^(?:within|<=)\s+(\d+)\s*([mhd])$/i;
@@ -128,8 +141,8 @@ const TIER_BEYOND = /^(?:more than|>)\s+(\d+)\s*([mhd])$/i;
 /** `overdue`: the factor for a deadline already passed. */
 const TIER_OVERDUE = /^overdue$/i;
 
-/** A factor: a positive number, in the plain form a reader can check. */
-const TIER_FACTOR = /^\d+(?:\.\d+)?$/;
+/** A table's number: a positive value, in the plain form a reader can check. */
+const TABLE_NUMBER = /^\d+(?:\.\d+)?$/;
 
 /** How long each unit in a tier row lasts. */
 const TIER_UNIT_MINUTES = Object.freeze(/** @type {const} */ ({ m: 1, h: 60, d: 1440 }));
@@ -151,6 +164,21 @@ const MS_PER_MINUTE = 60_000;
  * @property {DeadlineTier[]} tiers  The parsed tiers, or the documented default when absent.
  * @property {string[]} errors       One line per defect in the table.
  * @property {'file' | 'default'} source  Whether the tiers were read from the file.
+ */
+
+/**
+ * One impact level: the label the strategy gives a step on the scale, and the figure it is
+ * worth. The label is the word a rationale cites, so it is the reader-facing name.
+ * @typedef {{ label: string, value: number }} ImpactLevel
+ */
+
+/**
+ * What `parseImpactLevels` found.
+ * @typedef {object} ImpactLevelsReport
+ * @property {boolean} ok
+ * @property {ImpactLevel[]} levels  The parsed levels, in the order the table writes them.
+ * @property {string[]} errors       One line per defect in the table.
+ * @property {'file' | 'none'} source  Whether the file states levels at all.
  */
 
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */
@@ -253,7 +281,7 @@ function tierMinutes(count, unit) {
  * @returns {{ tier: DeadlineTier } | { error: string }}
  */
 function parseTierRow(when, factorText) {
-  const factor = TIER_FACTOR.test(factorText) ? Number(factorText) : 0;
+  const factor = TABLE_NUMBER.test(factorText) ? Number(factorText) : 0;
   if (factor <= 0) return { error: `factor "${factorText}" is not a positive number` };
 
   if (TIER_OVERDUE.test(when)) return { tier: { kind: 'overdue', factor } };
@@ -285,14 +313,14 @@ export function parseDeadlineTiers(text) {
   let firstTableLine = true;
 
   for (const line of body) {
-    const cells = TIER_ROW.exec(line)?.[1].split('|');
+    const cells = TABLE_ROW.exec(line)?.[1].split('|');
     if (cells === undefined || cells.length !== 2) continue;
     const when = cells[0].trim();
     const factorText = cells[1].trim();
     const isFirst = firstTableLine;
     firstTableLine = false;
     if (isFirst && TIER_HEADER.test(when)) continue;
-    if (TIER_RULE.test(when) || TIER_RULE.test(factorText)) continue;
+    if (TABLE_RULE.test(when) || TABLE_RULE.test(factorText)) continue;
 
     const parsed = parseTierRow(when, factorText);
     if ('error' in parsed) {
@@ -323,6 +351,76 @@ export function parseDeadlineTiers(text) {
   const beyond = rows.filter((tier) => tier.kind === 'beyond');
   const overdue = rows.filter((tier) => tier.kind === 'overdue');
   return { ok: true, tiers: [...within, ...beyond, ...overdue], errors: [], source: 'file' };
+}
+
+/**
+ * Read the impact levels out of a strategy: the `## Impact levels` table, in the order the
+ * rows are written.
+ *
+ * There is no default level set. A missing section leaves impact unconstrained, and `score`
+ * says so when it prints the record, because a restriction the owner never wrote must not
+ * decide whether a score is accepted. A section that is present but unreadable is a
+ * different matter: it is an error rather than a fallback, because a rule the reader cannot
+ * see must not decide the outcome either. Every defect is reported, so one run fixes the
+ * whole table.
+ * @param {string} text @returns {ImpactLevelsReport}
+ */
+export function parseImpactLevels(text) {
+  const body = sectionBody(text.split('\n'), IMPACT_LEVELS_SECTION);
+  if (body === null) return { ok: true, levels: [], errors: [], source: 'none' };
+
+  /** @type {ImpactLevel[]} */
+  const levels = [];
+  /** @type {string[]} */
+  const errors = [];
+  /** @type {Set<string>} */
+  const labels = new Set();
+  /** @type {Set<number>} */
+  const values = new Set();
+  let firstTableLine = true;
+
+  for (const line of body) {
+    const cells = TABLE_ROW.exec(line)?.[1].split('|');
+    if (cells === undefined || cells.length !== 2) continue;
+    const label = cells[0].trim();
+    const valueText = cells[1].trim();
+    const isFirst = firstTableLine;
+    firstTableLine = false;
+    if (isFirst && LEVEL_HEADER.test(label)) continue;
+    if (TABLE_RULE.test(label) || TABLE_RULE.test(valueText)) continue;
+
+    const row = `${IMPACT_LEVELS_SECTION}: row "| ${label} | ${valueText} |"`;
+    if (label === '') {
+      errors.push(`${row} — every level needs a label a rationale can cite`);
+      continue;
+    }
+    const value = TABLE_NUMBER.test(valueText) ? Number(valueText) : 0;
+    if (value <= 0) {
+      errors.push(`${row} — value "${valueText}" is not a positive number`);
+      continue;
+    }
+    if (labels.has(label)) {
+      errors.push(`${row} — label "${label}" is already on the table, so it names two levels`);
+      continue;
+    }
+    if (values.has(value)) {
+      errors.push(`${row} — value ${value} is already on the table, so two labels are one level`);
+      continue;
+    }
+    labels.add(label);
+    values.add(value);
+    levels.push({ label, value });
+  }
+
+  if (levels.length === 0 && errors.length === 0) {
+    errors.push(
+      `${IMPACT_LEVELS_SECTION}: carries no "| Level | Value |" row — write one row per level, or remove the section`,
+    );
+  }
+
+  return errors.length > 0
+    ? { ok: false, levels, errors, source: 'file' }
+    : { ok: true, levels, errors, source: 'file' };
 }
 
 /**
@@ -437,6 +535,8 @@ export function validateStrategy(text) {
   const lines = text.split('\n');
   const tiers = parseDeadlineTiers(text);
   if (!tiers.ok) errors.push(...tiers.errors);
+  const levels = parseImpactLevels(text);
+  if (!levels.ok) errors.push(...levels.errors);
 
   for (const title of REQUIRED_SECTIONS) {
     const body = sectionBody(lines, title);
@@ -631,6 +731,16 @@ function deadlineLine(tiers) {
 }
 
 /**
+ * The impact levels as one digest line, in the order the table writes them. The order is the
+ * owner's scale and the line is short, so the whole table prints: a label plus the figure a
+ * scorer must match, which is exactly what a refusal names.
+ * @param {ImpactLevel[]} levels @returns {string}
+ */
+function impactLine(levels) {
+  return levels.map((level) => `${level.label} ${level.value}`).join(' · ');
+}
+
+/**
  * When the rubric last changed and why: the newest change-log entry, because the log is
  * written oldest first and `validate` already proves it names the version the file carries.
  * A file with no entry says so rather than borrowing the header date as a reason.
@@ -653,9 +763,10 @@ function lastChange(lines, updated) {
  * Nothing here is a ranking order, and the labels must not suggest one. `## What counts as
  * value` and `## Explicitly out of scope` are admissibility: the test a bead passes to earn
  * work, and the work the month rules out. What orders the beads that pass them is the
- * scoring rubric — RICE with its multipliers — not this file. The one ordered rule set the
- * file does state is `## Deadline tiers`, printed in its own order and omitted entirely when
- * the section is absent, because the documented default then applies and the file is silent.
+ * scoring rubric — RICE with its multipliers — not this file. The rule sets the file may
+ * state are `## Deadline tiers`, printed in its own order, and `## Impact levels`, printed
+ * as the scale a score must land on; each is omitted entirely when the section is absent,
+ * because the file is then silent on it and the documented default or no restriction applies.
  *
  * None of these is a section of its own and none must become one. `validate` gates every
  * strategy already committed, so a new required section would fail all of them.
@@ -673,6 +784,8 @@ export function summariseStrategy(text, file, report) {
   ];
   const tiers = parseDeadlineTiers(text);
   if (tiers.source === 'file') digest.push(`  deadline factors: ${deadlineLine(tiers.tiers)}`);
+  const levels = parseImpactLevels(text);
+  if (levels.source === 'file') digest.push(`  impact levels: ${impactLine(levels.levels)}`);
   return `${digest.join('\n')}\n`;
 }
 
@@ -687,8 +800,8 @@ const USAGE = `Usage: node strategy.mjs <${COMMANDS.join('|')}> [options]
   validate   Check the shape and print the file to stdout only when it passes.
   bump       Raise the version by one, record today's date and append the reason.
   summary    Print the digest to open a run with: path, version, last change, admissibility,
-             deadline factors. Exits 3 when no strategy file exists, so a first run is told
-             apart from a strategy that is present but invalid.
+             deadline factors, impact levels. Exits 3 when no strategy file exists, so a first
+             run is told apart from a strategy that is present but invalid.
 
 Options:
   --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)

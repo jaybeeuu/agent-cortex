@@ -37,13 +37,20 @@ const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  * @param {object} [options]
  * @param {string} [options.version]
  * @param {string[]} [options.omit]
+ * @param {[string, string][]} [options.impactLevels]  Rows for a `## Impact levels` table.
  * @returns {string}
  */
-function strategyText({ version = '2', omit = [] } = {}) {
+function strategyText({ version = '2', omit = [], impactLevels } = {}) {
   const sections = REQUIRED_SECTIONS.filter((title) => !omit.includes(title)).map(
     (title) => `## ${title}\n\n- the answer for ${title}.\n`,
   );
-  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** 2026-11-14\n\n${sections.join('\n')}`;
+  const levels =
+    impactLevels === undefined
+      ? ''
+      : `\n## Impact levels\n\n| Level | Value |\n|---|---|\n${impactLevels
+          .map(([label, value]) => `| ${label} | ${value} |`)
+          .join('\n')}\n`;
+  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** 2026-11-14\n\n${sections.join('\n')}${levels}`;
 }
 
 /**
@@ -302,6 +309,96 @@ describe('refusal', () => {
     assert.equal(effort.code, 2);
     assert.match(effort.stderr, /--effort must be greater than zero \(got 0\)/);
     assert.deepEqual(await calls(stub.log), []);
+  });
+});
+
+describe('the impact levels', () => {
+  /** The shipped example scale, as rows. @type {[string, string][]} */
+  const LEVELS = [
+    ['minor', '0.25'],
+    ['small', '0.5'],
+    ['normal', '1'],
+    ['large', '2'],
+    ['major', '3'],
+  ];
+
+  it('refuses an impact value the strategy does not list, names every level, and reaches no tracker', async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const stub = await makeStubBd(workspace);
+    const file = await writeStrategy(workspace, { impactLevels: LEVELS });
+
+    const result = await runWithBead({
+      workspace,
+      stub,
+      bead: { id: 'tst-9', priority: 2, metadata: { rice: { score: 9.9 } } },
+      argv: [
+        'score', 'tst-9',
+        '--reach', '4', '--impact', '1.5', '--confidence', '0.7', '--effort', '2',
+        '--rationale', 'x',
+        '--file', file,
+      ],
+    });
+
+    assert.equal(result.code, 1, 'a value the rubric refuses is a refusal, not a malformed call');
+    assert.match(result.stderr, /--impact 1\.5 is not on the "## Impact levels" table/);
+    for (const [label, value] of LEVELS) {
+      assert.ok(
+        result.stderr.includes(`${label} ${value}`),
+        `the refusal must name the level ${label} and its value: ${result.stderr}`,
+      );
+    }
+    assert.deepEqual(await calls(stub.log), [], 'a refusal must not reach bd at all, so nothing is written');
+  });
+
+  it('accepts every value on the table and prints the level it matched', async () => {
+    for (const [label, value] of LEVELS) {
+      const workspace = await tempRoot.createWorkspace();
+      const stub = await makeStubBd(workspace);
+      const file = await writeStrategy(workspace, { impactLevels: LEVELS });
+
+      const result = await runWithBead({
+        workspace,
+        stub,
+        bead: { id: 'tst-10', priority: 2 },
+        argv: [
+          'score', 'tst-10',
+          '--reach', '4', '--impact', value, '--confidence', '0.7', '--effort', '2',
+          '--rationale', `impact ${label} — Impact levels`,
+          '--file', file,
+        ],
+      });
+
+      assert.equal(result.code, 0, `${label}: ${result.stderr}`);
+      assert.match(result.stdout, new RegExp(`impact level: ${label} ${value}`));
+      const { rice } = writtenMetadata(await calls(stub.log));
+      assert.equal(rice.impact, Number(value));
+    }
+  });
+
+  it('accepts any value of zero or more, and says so, when the strategy states no table', async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const stub = await makeStubBd(workspace);
+    const file = await writeStrategy(workspace);
+
+    const result = await runWithBead({
+      workspace,
+      stub,
+      bead: { id: 'tst-11', priority: 2 },
+      argv: [
+        'score', 'tst-11',
+        '--reach', '4', '--impact', '1.5', '--confidence', '0.7', '--effort', '2',
+        '--rationale', 'x',
+        '--file', file,
+      ],
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /impact unconstrained: the strategy states no "## Impact levels" table, so any number of zero or more is accepted/,
+    );
+    const { rice } = writtenMetadata(await calls(stub.log));
+    assert.equal(rice.impact, 1.5);
   });
 });
 

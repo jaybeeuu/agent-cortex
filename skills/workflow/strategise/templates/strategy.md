@@ -6,8 +6,9 @@ confidence and effort. Keep it short enough that you actually maintain it.
 
 It lives in the repository as a committed file, never in the tracker, so a reviewer can
 diff how the judgement changed. Every `##` section below is required: leave one empty and
-the validator names it. `## Deadline tiers` is the one exception — omit it and the queue
-ranks on its documented default. Set the version and the date with
+the validator names it. `## Deadline tiers` and `## Impact levels` are the two exceptions —
+omit either and the queue ranks on its documented deadline default, or `score` accepts any
+impact value of zero or more. Set the version and the date with
 `node <strategise-scripts>/strategy.mjs bump` after you edit the content.
 
 `<strategise-scripts>` is the absolute path to the `scripts/` directory of the `strategise`
@@ -56,6 +57,39 @@ Anchor the effort scale to work you have recently completed here, so two scorers
 For example: 1 = half a day, one file; 3 = two to three days, one module with its tests;
 5 = a week or more, several modules or a migration.
 -->
+
+## Impact levels
+
+<!--
+The scale an impact judgement lands on: one row per level, a label a rationale can cite and
+the figure it is worth. `score` refuses an impact value that is not on this table and names
+the rows it allows, so two scorers put the same bead on the same figure. Write each value
+as a positive number, and keep every label and every value distinct: `validate` names a row
+it cannot read, a zero or negative value, a repeated label and a repeated value.
+
+The steps roughly double, so a `major` gain counts for much more than a `minor` one. A bead
+that sits between two rows has to round, and the rationale should say which neighbouring
+level it rejected and why.
+
+Reach, confidence and effort get no table here, and that is deliberate: reach is a count
+over a stated population, `## How to judge confidence` already bands the probability, and
+`## How to calibrate effort` already anchors the cost. Impact is the one component the
+rubric would otherwise leave to taste.
+
+A strategy with no table accepts any impact value of zero or more, and `score` prints a line
+saying so. There is no shipped default level set: unlike a deadline factor, a level set
+decides whether a score is accepted at all, so a value the owner never named must not be
+refused by one they never saw. Delete the table to lift the restriction; edit or add a row
+to move it.
+-->
+
+| Level | Value |
+|---|---|
+| minor | 0.25 |
+| small | 0.5 |
+| normal | 1 |
+| large | 2 |
+| major | 3 |
 
 ## Deadline tiers
 

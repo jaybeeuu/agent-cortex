@@ -50,6 +50,8 @@ A missing or malformed strategy stops here. `score` refuses in that state and wr
 |---|---|---|
 | `reach` | How much work this changes — how many workflows, beads or users | Counting the author once, not the repeated cost |
 | `impact` | How much each unit of reach gains, on the rubric's own scale | A number the rubric does not define |
+
+When the strategy carries a `## Impact levels` table, `--impact` must be one of its values. `score` refuses any other figure with exit 1, before it reads the bead and before the first `bd` call, and names every level the table allows with its value — so nothing is written on a refusal. Cite the level's label in the rationale: it is the word that ties the figure to the rubric. A strategy with no table accepts any impact of zero or more, and `score` prints one line saying impact is unconstrained.
 | `confidence` | How sure the estimate is, as a probability `0..1` | A guess presented as a figure |
 | `effort` | Cost, on the effort calibration the rubric anchors | An effort that is a wish |
 
@@ -62,7 +64,7 @@ node <skill-scripts>/rice.mjs score <bead-id> --reach 4 --impact 3 --confidence 
   --effort 2 --rationale "unblocks the messaging epic — Current themes"
 ```
 
-It computes `reach × impact × confidence ÷ effort` to one decimal, records the strategy version it validated, and writes the record with `bd update <id> --metadata`. It writes nothing when the strategy is missing or invalid, and nothing when a component falls outside its range.
+It computes `reach × impact × confidence ÷ effort` to one decimal, records the strategy version it validated, and writes the record with `bd update <id> --metadata`. It writes nothing when the strategy is missing or invalid, when `--impact` is not on the strategy's `## Impact levels` table, and when a component falls outside its range.
 
 5. **Read back what landed.** `bd show <bead-id>` renders the `METADATA` block: the components, the total, the version and the rationale. Confirm the arithmetic before you trust the score.
 
@@ -93,12 +95,14 @@ So a re-score never needs a note to explain the change. Write the new rationale,
 - Red flag: writing a confidence number with no evidence behind it, because the field needs a value.
 - Red flag: applying a band yourself, in the same breath as proposing it, so no review happens.
 - Red flag: scoring against a strategy whose `validate` was never run — the record then cites a version nobody checked.
+- Red flag: picking an impact figure between two levels to make a score look exact, then arguing for it.
 - Red flag: re-scoring and dropping the `[prior]` trail, so the priority change has no recorded reason.
 - Red flag: raising a P0 bead to make a queue look tidy.
 
 ## Verification checklist
 
 - [ ] `strategy.mjs validate` exited 0 before the score ran.
+- [ ] The `--impact` figure is a value on the strategy's `## Impact levels` table when the strategy states one, and the rationale cites its label.
 - [ ] `bd show <id>` shows a `rice` key whose components reproduce the total: `reach × impact × confidence ÷ effort`, one decimal.
 - [ ] The recorded `strategyVersion` equals the file's version after validation.
 - [ ] The rationale names the strategy section each component rests on, and the confidence is a figure the evidence supports.

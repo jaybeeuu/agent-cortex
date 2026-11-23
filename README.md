@@ -573,9 +573,10 @@ install exited 0 and a refresh is repeatable, but the command exits non-zero. On
 CLI and the harness installs to the same version, and otherwise the exit code is the refresh's.
 
 The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix with an argv array and
-inherits the terminal, so the refresh's own output is what the user reads. It is skipped in three
-cases: `--check`, a failed update, and an install already at the published version (where
-`agent-cortex update -a` is the refresh that is left). A refresh that cannot start — the path is
+inherits the terminal, so the refresh's own output is what the user reads. It is skipped in four
+cases: `--check`, a failed update, an install that exits 0 but leaves the version on disk
+unchanged, and an install already at the published version (where `agent-cortex update -a` is the
+refresh that is left). A refresh that cannot start — the path is
 POSIX-shaped, while native Windows pnpm and npm write `.cmd` shims it does not match, and Node cannot
 start a `.cmd` without a shell — prints the reason and the exact command to run by hand, and exits
 non-zero. The CLI update has already succeeded by then, so `agent-cortex update -a` finishes the job.

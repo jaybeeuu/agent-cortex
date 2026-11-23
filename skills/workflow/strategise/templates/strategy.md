@@ -65,7 +65,11 @@ The scale an impact judgement lands on: one row per level, a label a rationale c
 the figure it is worth. `score` refuses an impact value that is not on this table and names
 the rows it allows, so two scorers put the same bead on the same figure. Write each value
 as a positive number, and keep every label and every value distinct: `validate` names a row
-it cannot read, a zero or negative value, a repeated label and a repeated value.
+it cannot read, a zero or negative value, a repeated label and a repeated value. A line here
+that opens with a pipe must divide into exactly two cells, and `validate` names the one that
+does not rather than skipping it, because a dropped row would narrow the allowed set in
+silence. A defective row makes the whole file invalid, so no bead is scored against it until
+you fix it.
 
 The steps roughly double, so a `major` gain counts for much more than a `minor` one. A bead
 that sits between two rows has to round, and the rationale should say which neighbouring
@@ -81,6 +85,10 @@ saying so. There is no shipped default level set: unlike a deadline factor, a le
 decides whether a score is accepted at all, so a value the owner never named must not be
 refused by one they never saw. Delete the table to lift the restriction; edit or add a row
 to move it.
+
+The five rows below are a starting point, written so a first table parses. Replace them with
+the scale you actually judge on: they are an example of the shape, not a recommendation the
+tool prefers.
 -->
 
 | Level | Value |

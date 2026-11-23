@@ -98,7 +98,7 @@ JSON schema for harness-specific metadata:
 |-------|------|-------------|
 | `name` | `string` | Agent identifier (e.g., `agent-cortex:ralph`) |
 | `description` | `string` | What the agent does (used in agent selection) |
-| `tools` | `string[]` | Tool names the agent can use (non-empty) |
+| `tools` | `string[]` | Tool names the agent can use (non-empty), or `["*"]` for every tool the session has |
 
 #### Optional Fields
 
@@ -111,7 +111,28 @@ JSON schema for harness-specific metadata:
 
 - No unknown fields allowed (strict schema)
 - `name` and `description` must be non-empty strings
-- `tools` must be a non-empty array of strings
+- `tools` is required and must be a non-empty array of strings
+- `tools` may be the single sentinel `["*"]`, which means every tool the session has. It is the
+  only value that means "all", and it cannot be combined with tool names: a mixed list would
+  reach a harness's rendered `tools:` scalar as a literal `*`, which neither harness understands
+- Both installers resolve `["*"]` by omitting the rendered `tools:` line, so the harness
+  inherits its own full tool set. An authored list never renders a literal `*`
+
+#### Example with the all-tools sentinel
+
+```json
+{
+  "name": "agent-cortex:guppi",
+  "description": "Resident prioritising collaborator",
+  "tools": ["*"]
+}
+```
+
+`"*"` is an authored form only. The harness reads the resulting agent as having no tool
+restriction at all, which is how an agent reaches tools that cannot be named at authoring time —
+MCP connector tools carry a per-machine name (`mcp__<server>__<tool>`), so no fixed list can
+include them. An absent `tools` key is never the authored form: the schema requires the key, so a
+forgotten list is a validation error rather than a silent grant of every tool.
 
 ### Section Files
 
@@ -171,6 +192,11 @@ parser is comma-separated too. Generated pi agents therefore render
 leaves the agent with an allowlist matching no tool. Both parsers
 (`extensions/subagent/agents.ts`, `extensions/agent-modes/discover.ts`) accept whitespace
 as well, so either form round-trips safely.
+
+A resolved list of exactly `["*"]` renders no `tools:` line at all, on either harness: a
+literal `*` in that scalar has no meaning to `pi --tools` or to Claude Code. An agent whose
+rendered frontmatter has no `tools:` key therefore runs with every tool (see
+`extensions/agent-modes/discover.ts`).
 
 ## Composition Rules
 

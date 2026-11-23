@@ -121,7 +121,7 @@ import { createRequire } from "node:module";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { composeAgent, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
+import { composeAgent, isAllTools, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
 import { installDocs } from "../../scripts/lib/docs.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 import { normaliseRepository } from "../../scripts/lib/manifest.mjs";
@@ -373,13 +373,19 @@ function renderPiAgent(name, fm, tools) {
     `# GENERATED from agents/${name}/ by bin/installers/pi.mjs — DO NOT EDIT.`,
     `name: ${JSON.stringify(fm.name)}`,
     `description: ${JSON.stringify(fm.description)}`,
+  ];
+  // `["*"]` means every tool the session has. pi takes that as an absent key, so
+  // the line is omitted: the value must never reach the scalar below, whose
+  // consumers (the subagent extension's `pi --tools`) give a literal `*` no
+  // meaning. agent-modes reads the absent key on the flat path as all tools.
+  if (!isAllTools(tools)) {
     // pi's parseFrontmatter hands back the scalar as one string, so the tool
     // list must use the separator its consumers split on. The subagent extension
     // (extensions/subagent/agents.ts) turns this into `pi --tools`, whose
     // parser is comma-separated — a space-separated list collapsed to a single
     // bogus name and produced an allowlist matching no tool at all.
-    `tools: ${JSON.stringify(tools.join(", "))}`,
-  ];
+    lines.push(`tools: ${JSON.stringify(tools.join(", "))}`);
+  }
   if (fm.model) lines.push(`model: ${JSON.stringify(fm.model)}`);
   if (fm.argumentHint) lines.push(`argument-hint: ${JSON.stringify(fm.argumentHint)}`);
   lines.push("---");

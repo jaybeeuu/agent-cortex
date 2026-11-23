@@ -223,6 +223,40 @@ describe("installPi — agent composition", () => {
     }
   });
 
+  it("omits the tools line for the all-tools sentinel so no literal * reaches pi --tools", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: {
+          guppi: {
+            frontmatter: {
+              name: "agent-cortex:guppi",
+              description: "Collaborator.",
+              tools: ["*"],
+            },
+          },
+          plan: {
+            frontmatter: { name: "agent-cortex:plan", description: "Planner.", tools: ["bash", "view"] },
+          },
+        },
+      });
+
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      // ["*"] renders as an absent key: the subagent extension forwards the
+      // scalar to `pi --tools`, which gives a literal `*` no meaning.
+      const guppi = await readFile(join(fx.output, "agents", "guppi.agent.md"), "utf-8");
+      assert.doesNotMatch(guppi, /^tools:/m, "no tools line for the all-tools sentinel");
+      assert.doesNotMatch(guppi, /\*/, "no literal * anywhere in the rendered agent");
+
+      // Every other agent keeps its explicit list.
+      const plan = await readFile(join(fx.output, "agents", "plan.agent.md"), "utf-8");
+      assert.match(plan, /^tools: "bash, read"$/m);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
   it("renders the tool list with the separator its consumers split on (round trip)", async () => {
     const fx = await makeFixture();
     try {
@@ -788,6 +822,14 @@ describe("installPi — real repo integration", () => {
       // ask_questions, web_fetch→fetch_content, skill→read, edit, create)
       const strategy = await readFile(join(fx.output, "agents", "strategy.agent.md"), "utf-8");
       assert.match(strategy, /tools: "bash, read, grep, find, ask_questions, fetch_content, read, edit, write"/);
+
+      // guppi authors the all-tools sentinel, so its render carries no tools line.
+      const guppi = await readFile(join(fx.output, "agents", "guppi.agent.md"), "utf-8");
+      assert.doesNotMatch(guppi, /^tools:/m, "guppi inherits every tool — no tools line");
+      for (const name of names) {
+        const content = await readFile(join(fx.output, "agents", `${name}.agent.md`), "utf-8");
+        assert.doesNotMatch(content, /^tools: .*\*/m, `no literal * in ${name}'s tools scalar`);
+      }
     } finally {
       await fx.cleanup();
     }

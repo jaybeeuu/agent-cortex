@@ -88,6 +88,22 @@ async function pathExists(p) {
   }
 }
 
+/**
+ * The one sentinel an authored tool list may carry instead of tool names: it
+ * means every tool the session has (agents/README.md). The installers resolve it
+ * by omitting the `tools:` line, so a literal `*` never reaches a harness.
+ */
+export const ALL_TOOLS = "*";
+
+/**
+ * True when a resolved tool list is the all-tools sentinel.
+ * @param {readonly string[]} tools
+ * @returns {boolean}
+ */
+export function isAllTools(tools) {
+  return tools.length === 1 && tools[0] === ALL_TOOLS;
+}
+
 // ─── Token substitution ──────────────────────────────────────────────────────
 
 const TOOL_RE = /\{\{TOOL:([^}]+)\}\}/g;
@@ -221,6 +237,12 @@ async function parseFrontmatter(path, name, harness) {
   if (!Array.isArray(fm.tools) || fm.tools.length === 0 || !fm.tools.every((t) => typeof t === "string")) {
     throw new Error(`agent "${name}": ${path} tools must be a non-empty array of strings`);
   }
+  // `"*"` means every tool the session has, and it cannot be combined with tool
+  // names: a mixed list would reach a renderer's `tools:` scalar as a literal
+  // `*`, which has no meaning to either harness.
+  if (fm.tools.includes(ALL_TOOLS) && !isAllTools(fm.tools)) {
+    throw new Error(`agent "${name}": ${path} tools must be ["*"] or a list of tool names — "*" cannot be combined`);
+  }
   for (const key of Object.keys(fm)) {
     if (![...REQUIRED_FIELDS, ...KNOWN_OPTIONAL_FIELDS].includes(key)) {
       throw new Error(`agent "${name}": ${path} unknown field "${key}" — strict schema per agents/README.md`);
@@ -306,9 +328,10 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
  *
  * Canonical keys resolve through token-map.json's tools table; a null mapping
  * means the harness has no equivalent and the entry is omitted (the contract's
- * tool-list rule); a name that is not a canonical key passes through untouched
- * (it may be a native tool, e.g. pi's fetch_content). Mirrors the runtime
- * translation in extensions/agent-modes/discover.ts.
+ * tool-list rule); the all-tools sentinel `"*"` passes through untouched for
+ * the renderer to resolve; a name that is not a canonical key passes through
+ * untouched (it may be a native tool, e.g. pi's fetch_content). Mirrors the
+ * runtime translation in extensions/agent-modes/discover.ts.
  *
  * @param {string[]} tools  Canonical tool names from a harness frontmatter.json
  * @param {TokenMap} tokenMap Parsed token-map.json (from loadTokenMap)
@@ -319,6 +342,10 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
 export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}) {
   const out = [];
   for (const tool of tools) {
+    if (tool === ALL_TOOLS) {
+      out.push(tool);
+      continue;
+    }
     const mapping = tokenMap.tools[tool];
     if (mapping === undefined) {
       out.push(tool);

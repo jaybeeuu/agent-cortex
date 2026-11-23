@@ -42,6 +42,13 @@ const REQUIRED_FIELDS = ["name", "description", "tools"];
 /** @type {readonly string[]} */
 const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
 
+/**
+ * The one sentinel a `tools` list may carry instead of tool names: it means
+ * every tool the session has (agents/README.md). It cannot be combined with
+ * tool names, because each installer resolves it by omitting the `tools:` line.
+ */
+const ALL_TOOLS = "*";
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 /**
@@ -83,6 +90,8 @@ export function validateFrontmatter(fm) {
       errors.push("tools must not be empty");
     } else if (!record.tools.every((t) => typeof t === "string")) {
       errors.push("tools must be an array of strings");
+    } else if (record.tools.includes(ALL_TOOLS) && record.tools.length > 1) {
+      errors.push(`tools must be ["${ALL_TOOLS}"] or a list of tool names — "${ALL_TOOLS}" cannot be combined`);
     }
   }
 

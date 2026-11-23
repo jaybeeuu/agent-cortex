@@ -49,6 +49,18 @@ const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
  */
 const ALL_TOOLS = "*";
 
+/**
+ * True when one authored entry names the all-tools sentinel. Padding is ignored
+ * (`"* "` is the sentinel), matching `isAllTools` in
+ * scripts/lib/compose-agent.mjs and extensions/agent-modes/discover.ts: one
+ * authored value must mean one thing at every layer.
+ * @param {string} tool
+ * @returns {boolean}
+ */
+function isAllToolsEntry(tool) {
+  return tool.trim() === ALL_TOOLS;
+}
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 /**
@@ -90,7 +102,7 @@ export function validateFrontmatter(fm) {
       errors.push("tools must not be empty");
     } else if (!record.tools.every((t) => typeof t === "string")) {
       errors.push("tools must be an array of strings");
-    } else if (record.tools.includes(ALL_TOOLS) && record.tools.length > 1) {
+    } else if (record.tools.length > 1 && record.tools.some(isAllToolsEntry)) {
       errors.push(`tools must be ["${ALL_TOOLS}"] or a list of tool names — "${ALL_TOOLS}" cannot be combined`);
     }
   }

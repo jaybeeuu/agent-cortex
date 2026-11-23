@@ -374,10 +374,12 @@ function renderPiAgent(name, fm, tools) {
     `name: ${JSON.stringify(fm.name)}`,
     `description: ${JSON.stringify(fm.description)}`,
   ];
-  // `["*"]` means every tool the session has. pi takes that as an absent key, so
-  // the line is omitted: the value must never reach the scalar below, whose
-  // consumers (the subagent extension's `pi --tools`) give a literal `*` no
-  // meaning. agent-modes reads the absent key on the flat path as all tools.
+  // `["*"]` means every tool the session has. Omission is how both harnesses
+  // carry that meaning, so the value must never reach the scalar below: pi's
+  // `--tools` compiles an entry containing `*` to a glob matching every tool
+  // name, while Claude Code's `tools:` field takes exact tool names, so the same
+  // literal would mean a different thing to each consumer. agent-modes reads the
+  // absent key on the flat path as all tools.
   if (!isAllTools(tools)) {
     // pi's parseFrontmatter hands back the scalar as one string, so the tool
     // list must use the separator its consumers split on. The subagent extension

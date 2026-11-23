@@ -243,8 +243,11 @@ describe("installPi — agent composition", () => {
 
       await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
 
-      // ["*"] renders as an absent key: the subagent extension forwards the
-      // scalar to `pi --tools`, which gives a literal `*` no meaning.
+      // ["*"] renders as an absent key: pi's `--tools` compiles an entry
+      // containing `*` to a glob matching every tool name (checked against pi
+      // 1.6.0, dist/core/mcp-servers.js:14 toolPatternRegExp, used by
+      // createToolNameMatcher at :22), and Claude Code's `tools:` field takes
+      // exact names. The omission is the form both harnesses read the same way.
       const guppi = await readFile(join(fx.output, "agents", "guppi.agent.md"), "utf-8");
       assert.doesNotMatch(guppi, /^tools:/m, "no tools line for the all-tools sentinel");
       assert.doesNotMatch(guppi, /\*/, "no literal * anywhere in the rendered agent");
@@ -252,6 +255,31 @@ describe("installPi — agent composition", () => {
       // Every other agent keeps its explicit list.
       const plan = await readFile(join(fx.output, "agents", "plan.agent.md"), "utf-8");
       assert.match(plan, /^tools: "bash, read"$/m);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("treats a whitespace-padded all-tools sentinel as the sentinel, not a tool name", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: {
+          guppi: {
+            frontmatter: { name: "agent-cortex:guppi", description: "Collaborator.", tools: ["* "] },
+          },
+        },
+      });
+
+      await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      // The installer trims before it compares, exactly as agent-modes does, so
+      // `"* "` is the sentinel and the line is omitted. Reading it as a tool
+      // name would put a literal `*` in the scalar, which pi --tools compiles to
+      // a glob matching every tool: the same authored value would then mean
+      // "every tool" here and something else to the runtime.
+      const guppi = await readFile(join(fx.output, "agents", "guppi.agent.md"), "utf-8");
+      assert.doesNotMatch(guppi, /^tools:/m);
     } finally {
       await fx.cleanup();
     }

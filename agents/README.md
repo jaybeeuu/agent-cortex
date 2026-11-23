@@ -114,7 +114,9 @@ JSON schema for harness-specific metadata:
 - `tools` is required and must be a non-empty array of strings
 - `tools` may be the single sentinel `["*"]`, which means every tool the session has. It is the
   only value that means "all", and it cannot be combined with tool names: a mixed list would
-  reach a harness's rendered `tools:` scalar as a literal `*`, which neither harness understands
+  reach a harness's rendered `tools:` scalar as a literal `*`, which `pi --tools` reads as a
+  glob matching every tool name and Claude Code reads as a tool name no Claude Code tool has
+- Surrounding whitespace is ignored, so `["* "]` is the same sentinel as `["*"]`
 - Both installers resolve `["*"]` by omitting the rendered `tools:` line, so the harness
   inherits its own full tool set. An authored list never renders a literal `*`
 
@@ -193,10 +195,11 @@ leaves the agent with an allowlist matching no tool. Both parsers
 (`extensions/subagent/agents.ts`, `extensions/agent-modes/discover.ts`) accept whitespace
 as well, so either form round-trips safely.
 
-A resolved list of exactly `["*"]` renders no `tools:` line at all, on either harness: a
-literal `*` in that scalar has no meaning to `pi --tools` or to Claude Code. An agent whose
-rendered frontmatter has no `tools:` key therefore runs with every tool (see
-`extensions/agent-modes/discover.ts`).
+A resolved list of exactly `["*"]` renders no `tools:` line at all, on either harness, so
+neither consumer reads a value it has to interpret: pi enables every tool, exactly as it does
+when `--tools` is absent, and Claude Code's `tools:` field, which takes exact names, never sees
+a `*` that names none of its tools. An agent whose rendered frontmatter has no `tools:` key
+therefore runs with every tool (see `extensions/agent-modes/discover.ts`).
 
 ## Composition Rules
 

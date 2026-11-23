@@ -201,6 +201,21 @@ describe("discoverAgents (composable source format)", () => {
     assert.deepEqual(agents[0].tools, ["*"]);
   });
 
+  it("normalises a whitespace-padded all-tools sentinel to the sentinel", () => {
+    const fx = track(makeFixture());
+    writeComposableAgent(fx, "guppi", {
+      frontmatter: { name: "agent-cortex:guppi", description: "Collaborator", tools: ["* "] },
+    });
+
+    const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+
+    assert.equal(agents.length, 1);
+    // Padding carries no meaning in a YAML scalar, and the installers trim the
+    // same authored value before they compare, so the padded form must not
+    // survive as a tool name: it resolves to the sentinel at activation.
+    assert.deepEqual(agents[0].tools, ["*"]);
+  });
+
   it("uses the built-in fallback map when token-map.json is unavailable", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "legacy", {

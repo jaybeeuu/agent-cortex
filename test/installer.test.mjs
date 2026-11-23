@@ -633,6 +633,32 @@ describe("install claude", () => {
     }
   });
 
+  it("omits the tools line for a whitespace-padded all-tools sentinel", async () => {
+    const fixture = await makeTmp();
+    try {
+      await mkdir(join(fixture, "agents", "padded", "claude"), { recursive: true });
+      await mkdir(join(fixture, "skills"), { recursive: true });
+      await writeFile(join(fixture, "package.json"), JSON.stringify({ name: "agent-cortex", version: "1.2.3" }));
+      await writeFile(join(fixture, "token-map.json"), JSON.stringify({ tools: {}, paths: {} }));
+      await writeFile(join(fixture, "agents", "padded", "agent.md"), "Body.\n");
+      await writeFile(
+        join(fixture, "agents", "padded", "claude", "frontmatter.json"),
+        JSON.stringify({ name: "agent-cortex:padded", description: "Padded.", tools: ["* "] }),
+      );
+
+      await installClaude({ root: fixture, output: join(fixture, "out") });
+
+      // Claude Code's tools field takes exact names, so the padded sentinel must
+      // not survive as one: the installer trims it to the sentinel and omits the
+      // line, the same way it does for ["*"] and the same way agent-modes reads
+      // it at runtime.
+      const rendered = await readFile(join(fixture, "out", "agents", "padded.md"), "utf-8");
+      assert.doesNotMatch(rendered, /^tools:/m);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+
   it("rejects token-map.json versions newer than the implemented contract", async () => {
     const fixture = await makeTmp();
     try {

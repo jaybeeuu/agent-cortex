@@ -155,10 +155,19 @@ describe("validateFrontmatter", () => {
 
   it("rejects the all-tools sentinel combined with a tool name", () => {
     // Both installers resolve ["*"] by omitting the rendered tools line, so a
-    // mixed list would put a literal `*` where neither harness expects one.
+    // mixed list would put a literal `*` where pi's --tools reads a glob and
+    // Claude Code expects a name.
     const fm = makeFrontmatter({ tools: ["*", "bash"] });
     const result = validateFrontmatter(fm);
     assert.equal(result.ok, false);
+    assert.ok(result.errors.some((e) => e.includes("cannot be combined")));
+  });
+
+  it("rejects a whitespace-padded all-tools sentinel combined with a tool name", () => {
+    // Padding carries no meaning in a YAML scalar, and every layer trims before
+    // it compares, so the padded form obeys the same rule as the bare form.
+    const fm = makeFrontmatter({ tools: [" *", "bash"] });
+    const result = validateFrontmatter(fm);
     assert.ok(result.errors.some((e) => e.includes("cannot be combined")));
   });
 

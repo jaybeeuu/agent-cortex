@@ -78,9 +78,20 @@ const DEFAULT_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
  */
 export const ALL_TOOLS = "*";
 
+/**
+ * True when one authored entry names the all-tools sentinel.
+ *
+ * Padding is ignored: `"* "` and `" *"` are the sentinel. The installers
+ * (scripts/lib/compose-agent.mjs) compare the same authored value the same way,
+ * so one value cannot be a padded tool name here and the sentinel there.
+ */
+function isAllToolsEntry(tool: string): boolean {
+  return tool.trim() === ALL_TOOLS;
+}
+
 /** True when a resolved tool list is the all-tools sentinel. */
 export function isAllTools(tools: readonly string[]): boolean {
-  return tools.length === 1 && tools[0] === ALL_TOOLS;
+  return tools.length === 1 && isAllToolsEntry(tools[0]);
 }
 
 /**
@@ -151,9 +162,10 @@ function translateTools(raw: unknown, tokenMap: TokenMap | null): string[] {
     // The all-tools sentinel is not a tool name and has no per-harness
     // equivalent, so it passes through untouched for the activation step to
     // resolve. Without this branch the fallback map would still pass it through,
-    // but only by accident of it not being a canonical key.
-    if (t === ALL_TOOLS) {
-      out.add(t);
+    // but only by accident of it not being a canonical key. The entry is
+    // normalised, so a padded sentinel cannot survive as a tool name.
+    if (isAllToolsEntry(t)) {
+      out.add(ALL_TOOLS);
       continue;
     }
 

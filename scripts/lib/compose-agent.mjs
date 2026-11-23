@@ -96,12 +96,37 @@ async function pathExists(p) {
 export const ALL_TOOLS = "*";
 
 /**
+ * True when one authored entry names the all-tools sentinel.
+ *
+ * Padding is ignored: `"* "` and `" *"` are the sentinel. Whitespace carries no
+ * meaning in a JSON or YAML scalar, and the runtime side
+ * (extensions/agent-modes/discover.ts) trims the same authored value — reading
+ * the padded form as a tool name here would render a literal `*` that a harness
+ * treats as every tool, so one authored value would mean two things.
+ *
+ * @param {string} tool
+ * @returns {boolean}
+ */
+function isAllToolsEntry(tool) {
+  return tool.trim() === ALL_TOOLS;
+}
+
+/**
  * True when a resolved tool list is the all-tools sentinel.
  * @param {readonly string[]} tools
  * @returns {boolean}
  */
 export function isAllTools(tools) {
-  return tools.length === 1 && tools[0] === ALL_TOOLS;
+  return tools.length === 1 && isAllToolsEntry(tools[0]);
+}
+
+/**
+ * True when any entry names the sentinel, alone or beside tool names.
+ * @param {readonly string[]} tools
+ * @returns {boolean}
+ */
+function mentionsAllTools(tools) {
+  return tools.some(isAllToolsEntry);
 }
 
 // ─── Token substitution ──────────────────────────────────────────────────────
@@ -238,9 +263,11 @@ async function parseFrontmatter(path, name, harness) {
     throw new Error(`agent "${name}": ${path} tools must be a non-empty array of strings`);
   }
   // `"*"` means every tool the session has, and it cannot be combined with tool
-  // names: a mixed list would reach a renderer's `tools:` scalar as a literal
-  // `*`, which has no meaning to either harness.
-  if (fm.tools.includes(ALL_TOOLS) && !isAllTools(fm.tools)) {
+  // names. Both installers carry the meaning by omitting the `tools:` line, so a
+  // mixed list would put a literal `*` in the scalar instead: pi's `--tools`
+  // compiles any entry containing `*` to a glob, so the same text means "every
+  // tool" to one consumer and nothing to a consumer that takes exact names.
+  if (mentionsAllTools(fm.tools) && !isAllTools(fm.tools)) {
     throw new Error(`agent "${name}": ${path} tools must be ["*"] or a list of tool names — "*" cannot be combined`);
   }
   for (const key of Object.keys(fm)) {
@@ -342,8 +369,9 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
 export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}) {
   const out = [];
   for (const tool of tools) {
-    if (tool === ALL_TOOLS) {
-      out.push(tool);
+    if (isAllToolsEntry(tool)) {
+      // Normalised, so a padded sentinel cannot survive as a tool name.
+      out.push(ALL_TOOLS);
       continue;
     }
     const mapping = tokenMap.tools[tool];

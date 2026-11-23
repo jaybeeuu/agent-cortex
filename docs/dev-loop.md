@@ -48,6 +48,10 @@ Verify registration, not files: `pi list` lists one agent-cortex source pointing
 `~/.agent-cortex/pi`, and `claude plugin list` shows `agent-cortex@jaybeeuu`, read from
 `~/.agent-cortex/claude`.
 
+`agent-cortex uninstall <harness>` is the inverse: it removes an install and its registration.
+README's *Removing a harness install* records the selection rules and what the command leaves in
+place.
+
 ## What the installer writes
 
 | Path | What it is |

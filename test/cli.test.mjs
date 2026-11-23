@@ -766,6 +766,19 @@ describe("update command", () => {
     assert.match(stdout, /Not installed: pi — update never installs a harness\./);
   });
 
+  it("reports a refreshed harness with an unreadable manifest as unknown instead of not installed", async () => {
+    const home = await createHome();
+    await writeFingerprint(home, "claude", "not json");
+    const emptyPath = join(await tempRoot.createWorkspace(), "empty-path");
+    await mkdir(emptyPath, { recursive: true });
+
+    const { exitCode, stdout } = await runCli(["update", "-a"], { env: { HOME: home, PATH: emptyPath } });
+
+    assert.equal(exitCode, 0);
+    assert.match(stdout, /^claude unknown → \d+\.\d+\.\d+$/m, "an unreadable install has its own previous state");
+    assert.doesNotMatch(stdout, /claude not installed/, "update refreshed claude, so it is never reported absent");
+  });
+
   it("refuses to install a named harness that is not installed, and writes nothing", async () => {
     const home = await createHome();
 

@@ -282,21 +282,22 @@ describe("runUpdate", () => {
     ]);
   });
 
-  it("reports a harness with no artifact root as not installed", async () => {
+  it("reports an installed harness whose manifest cannot be read as unknown, not as not installed", async () => {
     const home = await createHome();
+    await writeFingerprint(home, "claude", "not json");
 
     const entries = await runUpdate({
       cli: "2.5.1",
       home,
-      targets: [createStatus({ harness: "pi" })],
+      targets: [createStatus({ harness: "claude", installed: null, staleness: "unknown" })],
       refresh: async () => {
-        await writeFingerprint(home, "pi", JSON.stringify({ version: "2.5.1" }));
-        return ["package manifest (version 2.5.1)"];
+        await writeFingerprint(home, "claude", JSON.stringify({ version: "2.5.1" }));
+        return ["plugin manifest (version 2.5.1)"];
       },
     });
 
     assert.deepEqual(entries, [
-      { harness: "pi", previous: "not installed", next: "2.5.1", artifacts: ["package manifest (version 2.5.1)"] },
+      { harness: "claude", previous: "unknown", next: "2.5.1", artifacts: ["plugin manifest (version 2.5.1)"] },
     ]);
   });
 

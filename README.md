@@ -638,7 +638,9 @@ installed, an option cannot be parsed, or a bare invocation has no terminal to p
 command.
 
 The report gives each refreshed harness its previous version, its new version, and the artifacts
-the installer wrote; installed harnesses already at the CLI version are listed as skipped, and
+the installer wrote. A previous version it cannot read is reported as `unknown` — the same state
+the table uses — because the refresh touched the harness, so `not installed` stays reserved for
+one update left alone. Installed harnesses already at the CLI version are listed as skipped, and
 each harness that was never installed is reported as `not installed` with the command that
 installs it. A harness's new
 version is read back from the manifest its installer wrote, so a refresh that failed to

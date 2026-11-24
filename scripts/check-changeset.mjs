@@ -1,12 +1,13 @@
 // PR gate: a pull request must add a changeset (.changeset/*.md) unless it is
 // the changesets bot's Version Packages PR or carries the `no-publish` label —
-// and every package that changeset names must exist in the workspace.
-// Reads `git diff --name-status <base>...HEAD` on stdin and the PR metadata
-// from the environment (CI supplies all three).
+// and every package that a changeset the PR adds or modifies names must exist in
+// the workspace. Reads `git diff --name-status <base>...HEAD` on stdin and the PR
+// metadata from the environment (CI supplies all three).
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   addedChangesetPaths,
+  changedChangesetPaths,
   evaluateChangesetGate,
   evaluateChangesetPackages,
   parseChangesetPackages,
@@ -38,7 +39,8 @@ function readLabels(raw) {
 }
 
 /**
- * Read each added changeset and the package names its frontmatter bumps.
+ * Read each changeset the PR adds or modifies, and the package names its
+ * frontmatter bumps.
  * @param {string[]} paths
  * @returns {Promise<{ changesets: { file: string, packageNames: string[] }[], unreadable: string[] }>}
  */
@@ -86,6 +88,7 @@ const result = evaluateChangesetGate({
 });
 
 const addedChangesets = addedChangesetPaths(changes);
+const changedChangesets = changedChangesetPaths(changes);
 
 if (!result.ok) {
   console.error(
@@ -96,8 +99,8 @@ if (!result.ok) {
     ].join("\n"),
   );
   process.exitCode = 1;
-} else if (addedChangesets.length > 0) {
-  const { changesets, unreadable } = await readChangesets(addedChangesets);
+} else if (changedChangesets.length > 0) {
+  const { changesets, unreadable } = await readChangesets(changedChangesets);
   const packages = evaluateChangesetPackages({
     changesets,
     workspacePackages: await readWorkspacePackageNames(ROOT),

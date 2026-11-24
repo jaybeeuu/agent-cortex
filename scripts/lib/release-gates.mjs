@@ -6,10 +6,10 @@
 // explicit `no-publish` label on the merged PR — skipping is never implicit.
 //
 // The changeset gate has two halves. The first decides whether the PR added a
-// changeset at all; the second resolves the package names that changeset's
-// frontmatter bumps against the workspace, because `changeset version` refuses a
-// name the workspace does not declare and fails the Release job on `main`, where
-// nothing can fix it forward.
+// changeset at all; the second resolves the package names that the changesets the
+// PR adds or modifies bump against the workspace, because `changeset version`
+// reads the whole directory and refuses a name the workspace does not declare —
+// failing the Release job on `main`, where nothing can fix it forward.
 
 import { unquoteScalar } from "./yaml-scalar.mjs";
 
@@ -56,16 +56,25 @@ export function parseNameStatus(output) {
 }
 
 /**
- * The changesets a diff adds — the files whose package names the gate must
- * resolve. One predicate decides what counts as a changeset for both the
- * "was one added" verdict and the package check, so the two cannot drift.
+ * The changesets a diff leaves in the tree: every changeset path that exists
+ * after the diff, which is every status but a deletion. `changeset version`
+ * reads the whole `.changeset` directory, so a changeset the PR only modified
+ * breaks the Release job on `main` exactly as a new one does.
+ * @param {NameStatusEntry[]} changes
+ * @returns {string[]}
+ */
+export function changedChangesetPaths(changes) {
+  return changesetPaths(changes.filter((change) => change.status !== "D"));
+}
+
+/**
+ * The changesets a diff adds — the files whose presence answers the "was one
+ * added" verdict.
  * @param {NameStatusEntry[]} changes
  * @returns {string[]}
  */
 export function addedChangesetPaths(changes) {
-  return changes
-    .filter((change) => change.status === "A" && isChangeset(change.path))
-    .map((change) => change.path);
+  return changesetPaths(changes.filter((change) => change.status === "A"));
 }
 
 /**
@@ -151,6 +160,17 @@ function readFrontmatter(content) {
   return lines
     .slice(opening + 1, closing)
     .filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
+}
+
+/**
+ * The paths among `changes` that count as changesets. One predicate answers
+ * "what is a changeset" for the added verdict and the package check, so the two
+ * cannot drift.
+ * @param {NameStatusEntry[]} changes
+ * @returns {string[]}
+ */
+function changesetPaths(changes) {
+  return changes.filter((change) => isChangeset(change.path)).map((change) => change.path);
 }
 
 /**

@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import {
   PUBLISH_COMMAND,
   NO_PUBLISH_COMMAND,
+  changedChangesetPaths,
   evaluateChangesetGate,
   evaluateChangesetPackages,
   parseChangesetPackages,
@@ -72,6 +73,26 @@ describe("parseNameStatus", () => {
 
   it("returns no changes for empty output", () => {
     assert.deepEqual(parseNameStatus(""), []);
+  });
+});
+
+describe("changedChangesetPaths", () => {
+  it("counts a changeset the PR adds, modifies or renames, and skips a deleted one", () => {
+    const changes = parseNameStatus(
+      [
+        "A\t.changeset/added.md",
+        "M\t.changeset/edited.md",
+        "R087\t.changeset/old.md\t.changeset/renamed.md",
+        "D\t.changeset/gone.md",
+        "M\tpackage.json",
+      ].join("\n"),
+    );
+
+    assert.deepEqual(changedChangesetPaths(changes), [
+      ".changeset/added.md",
+      ".changeset/edited.md",
+      ".changeset/renamed.md",
+    ]);
   });
 });
 
@@ -249,6 +270,15 @@ describe("evaluateChangesetPackages", () => {
     });
   });
 
+  it("rejects a name that only shares a prefix with a workspace package", () => {
+    const result = evaluateChangesetPackages({
+      changesets: [{ file: ".changeset/path.md", packageNames: ["@jaybeeuu/agent-cortex-app"] }],
+      workspacePackages: ["@jaybeeuu/agent-cortex"],
+    });
+
+    assert.equal(result.ok, false);
+  });
+
   it("accepts every package a changeset names when all are in the workspace", () => {
     const result = evaluateChangesetPackages({
       changesets: [
@@ -291,6 +321,35 @@ describe("check-changeset CLI", () => {
     });
 
     const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/member-bump.md\n");
+
+    assert.equal(code, 0, stderr);
+  });
+
+  it("exits 1 when the PR modifies a changeset that names a package outside the workspace", async () => {
+    const workspace = await createChangesetWorkspace({
+      "added.md": '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nNew change.\n',
+      "edited.md": '---\n"@other/pkg": patch\n---\n\nRepaired change.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(
+      workspace,
+      "A\t.changeset/added.md\nM\t.changeset/edited.md\n",
+    );
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/edited\.md/);
+    assert.match(stderr, /@other\/pkg/);
+  });
+
+  it("exits 0 when the PR adds a changeset and deletes another", async () => {
+    const workspace = await createChangesetWorkspace({
+      "added.md": '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nNew change.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(
+      workspace,
+      "A\t.changeset/added.md\nD\t.changeset/gone.md\n",
+    );
 
     assert.equal(code, 0, stderr);
   });

@@ -18,9 +18,13 @@ import { promisify } from 'node:util';
 import { createTempRoot } from './helpers/temp-root.mjs';
 import {
   DEFAULT_DEADLINE_TIERS,
+  LEVEL_TABLES,
   REQUIRED_SECTIONS,
+  parseConfidenceLevels,
   parseDeadlineTiers,
+  parseEffortLevels,
   parseImpactLevels,
+  parseReachLevels,
   runCli,
 } from '../skills/workflow/strategise/scripts/strategy.mjs';
 
@@ -41,6 +45,9 @@ const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  * @param {string[]} [options.omit]                   Sections to leave out of the file.
  * @param {[string, string][]} [options.deadlineTiers]  Rows for a `## Deadline tiers` table.
  * @param {[string, string][]} [options.impactLevels]   Rows for a `## Impact levels` table.
+ * @param {[string, string][]} [options.reachLevels]    Rows for a `## Reach levels` table.
+ * @param {[string, string][]} [options.confidenceLevels]  Rows for a `## Confidence levels` table.
+ * @param {[string, string][]} [options.effortLevels]   Rows for a `## Effort levels` table.
  * @param {string} [options.changeLog]                A change-log entry; omit for no section.
  * @returns {string}
  */
@@ -51,6 +58,9 @@ function createStrategy({
   omit = [],
   deadlineTiers,
   impactLevels,
+  reachLevels,
+  confidenceLevels,
+  effortLevels,
   changeLog,
 } = {}) {
   const sections = REQUIRED_SECTIONS.filter((title) => !omit.includes(title)).map((title) => {
@@ -63,14 +73,25 @@ function createStrategy({
       : `\n## Deadline tiers\n\n| Remaining | Factor |\n|---|---|\n${deadlineTiers
           .map(([when, factor]) => `| ${when} | ${factor} |`)
           .join('\n')}\n`;
-  const levels =
-    impactLevels === undefined
-      ? ''
-      : `\n## Impact levels\n\n| Level | Value |\n|---|---|\n${impactLevels
-          .map(([label, value]) => `| ${label} | ${value} |`)
-          .join('\n')}\n`;
+  const levels = /** @type {const} */ ([
+    ['Impact levels', impactLevels],
+    ['Reach levels', reachLevels],
+    ['Confidence levels', confidenceLevels],
+    ['Effort levels', effortLevels],
+  ])
+    .filter(([, rows]) => rows !== undefined)
+    .map(([title, rows]) => levelTable(title, rows ?? []))
+    .join('');
   const log = changeLog === undefined ? '' : `\n## Change log\n\n${changeLog}\n`;
   return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${levels}${tiers}${log}`;
+}
+
+/**
+ * One level table, written as a strategy carries it: a header row, a rule row, then the rows.
+ * @param {string} section @param {[string, string][]} rows @returns {string}
+ */
+function levelTable(section, rows) {
+  return `\n## ${section}\n\n| Level | Value |\n|---|---|\n${rows.map(([label, value]) => `| ${label} | ${value} |`).join('\n')}\n`;
 }
 
 /**
@@ -779,6 +800,168 @@ describe('the impact levels', () => {
 
     assert.equal(parsed.ok, true, parsed.errors.join('; '));
     assert.deepEqual(parsed.levels, EXAMPLE_LEVELS);
+  });
+});
+
+describe('the component level tables', () => {
+  /**
+   * The four tables, in the order a score names the components: the component, its section,
+   * its parser, and rows its own rule accepts.
+   * @type {[string, string, (text: string) => import('../skills/workflow/strategise/scripts/strategy.mjs').LevelsReport, [string, string][]][]}
+   */
+  const TABLES = [
+    ['reach', 'Reach levels', parseReachLevels, [['one', '1'], ['five', '5']]],
+    ['impact', 'Impact levels', parseImpactLevels, [['minor', '0.25'], ['normal', '1']]],
+    ['confidence', 'Confidence levels', parseConfidenceLevels, [['low', '0.3'], ['high', '1']]],
+    ['effort', 'Effort levels', parseEffortLevels, [['half-day', '1'], ['week', '5']]],
+  ];
+
+  /**
+   * A filled strategy carrying every table, or every table but one component's. Written from
+   * one list, so a table added above is carried here without a second edit.
+   * @param {string} [except] @returns {string}
+   */
+  function strategies(except) {
+    return TABLES.filter(([component]) => component !== except)
+      .map(([, section, , rows]) => levelTable(section, rows))
+      .reduce((text, table) => text + table, createStrategy());
+  }
+
+  it('reads each component table into one level per row, in file order', () => {
+    for (const [component, , parse, rows] of TABLES) {
+      const parsed = parse(strategies());
+
+      assert.equal(parsed.ok, true, `${component}: ${parsed.errors.join('; ')}`);
+      assert.equal(parsed.source, 'file');
+      assert.deepEqual(
+        parsed.levels,
+        rows.map(([label, value]) => ({ label, value: Number(value) })),
+        `${component}: the rows are read in the order the table writes them`,
+      );
+    }
+  });
+
+  it('rejects a reach level that is not a whole number of zero or more', () => {
+    const parsed = parseReachLevels(
+      createStrategy({ reachLevels: [['half', '2.7'], ['negative', '-1'], ['zero', '0']] }),
+    );
+
+    assert.equal(parsed.ok, false);
+    assert.deepEqual(parsed.levels, [{ label: 'zero', value: 0 }], 'zero is a whole number, so it is a level');
+    const errors = parsed.errors.join('\n');
+    assert.match(errors, /Reach levels: row "\| half \| 2\.7 \|" — value "2\.7" is not a whole number of zero or more/);
+    assert.match(errors, /Reach levels: row "\| negative \| -1 \|" — value "-1" is not a whole number of zero or more/);
+  });
+
+  it('rejects a confidence level outside (0, 1]', () => {
+    const parsed = parseConfidenceLevels(
+      createStrategy({ confidenceLevels: [['certain', '1'], ['none', '0'], ['over', '1.5'], ['likely', '0.8']] }),
+    );
+
+    assert.equal(parsed.ok, false);
+    assert.deepEqual(parsed.levels, [{ label: 'certain', value: 1 }, { label: 'likely', value: 0.8 }]);
+    const errors = parsed.errors.join('\n');
+    assert.match(errors, /Confidence levels: row "\| none \| 0 \|" — value "0" is not more than 0 and at most 1/);
+    assert.match(errors, /Confidence levels: row "\| over \| 1\.5 \|" — value "1\.5" is not more than 0 and at most 1/);
+  });
+
+  it('rejects an effort level of zero or less', () => {
+    const parsed = parseEffortLevels(
+      createStrategy({ effortLevels: [['zero', '0'], ['negative', '-1'], ['week', '5']] }),
+    );
+
+    assert.equal(parsed.ok, false);
+    assert.deepEqual(parsed.levels, [{ label: 'week', value: 5 }]);
+    const errors = parsed.errors.join('\n');
+    assert.match(errors, /Effort levels: row "\| zero \| 0 \|" — value "0" is not a positive number/);
+    assert.match(errors, /Effort levels: row "\| negative \| -1 \|" — value "-1" is not a positive number/);
+  });
+
+  it('reads every table through one implementation, so one defect reads the same in all four', () => {
+    // Rows every component's rule accepts, so only the defects the shared reader owns fire:
+    // a repeated label, a repeated value, an empty label, three cells, an unclosed pipe.
+    const rows = /** @type {[string, string][]} */ ([
+      ['same', '1'],
+      ['same', '1'],
+      ['repeat', '1'],
+      ['', '3'],
+      ['wide', '1 | 2'],
+    ]);
+
+    const stripped = TABLES.map(([component, section, parse]) => {
+      const parsed = parse(`${strategies(component)}${levelTable(section, rows)}| unclosed | 1\n`);
+      assert.equal(parsed.ok, false, `${component}: a defect must never leave the table unannounced`);
+      return parsed.errors.map((error) => {
+        assert.ok(error.startsWith(`${section}: `), `${component}: every line names its section: ${error}`);
+        return error.slice(section.length + 2);
+      });
+    });
+
+    assert.equal(stripped[0]?.length, 5, `one line per defect: ${stripped[0]?.join(' | ')}`);
+    for (const [index, errors] of stripped.entries()) {
+      assert.deepEqual(errors, stripped[0], `${TABLES[index]?.[0]}: the same rows must read the same way`);
+    }
+  });
+
+  it('reports a defect in every present table in one validate run', async () => {
+    const file = await writeStrategy(
+      createStrategy({
+        reachLevels: [['half', '2.7']],
+        impactLevels: [['zero', '0']],
+        confidenceLevels: [['over', '1.5']],
+        effortLevels: [['none', '0']],
+      }),
+    );
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 1);
+    assert.equal(check.stdout, '');
+    for (const [section, value] of [['Reach levels', '2.7'], ['Impact levels', '0'], ['Confidence levels', '1.5'], ['Effort levels', '0']]) {
+      assert.match(check.stderr, new RegExp(`${section}: row "\\| \\w+ \\| ${value.replace('.', '\\.')} \\|"`), `${section} must be named`);
+    }
+  });
+
+  it('prints every table in the digest, beside the impact levels', async () => {
+    const file = await writeStrategy(strategies());
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /reach levels: one 1 · five 5/);
+    assert.match(result.stdout, /impact levels: minor 0\.25 · normal 1/);
+    assert.match(result.stdout, /confidence levels: low 0\.3 · high 1/);
+    assert.match(result.stdout, /effort levels: half-day 1 · week 5/);
+    assert.equal(result.stdout.trimEnd().split('\n').length, 9, 'the four level lines join the five');
+  });
+
+  it('states nothing about a component whose table is absent, and leaves the others alone', async () => {
+    for (const [component, , parse] of TABLES) {
+      const text = strategies(component);
+
+      assert.deepEqual(parse(text), { ok: true, levels: [], errors: [], source: 'none' }, `${component}: absent is not a defect`);
+
+      const file = await writeStrategy(text);
+      const result = await run(['summary', '--file', file]);
+      assert.equal(result.code, 0, result.stderr);
+      assert.doesNotMatch(result.stdout, new RegExp(`^  ${component} levels:`, 'm'), `${component} must print no line`);
+      assert.equal(result.stdout.trimEnd().split('\n').length, 8, 'the other three tables still print');
+    }
+  });
+
+  it('ships a template carrying the three new tables', async () => {
+    const template = await readFile(
+      join(REPO_ROOT, 'skills', 'workflow', 'strategise', 'templates', 'strategy.md'),
+      'utf8',
+    );
+
+    for (const [component, , parse] of TABLES) {
+      const parsed = parse(template);
+
+      assert.equal(parsed.ok, true, `${component}: ${parsed.errors.join('; ')}`);
+      assert.equal(parsed.source, 'file', `${component}: the template must carry the section`);
+      assert.ok(parsed.levels.length >= 3, `${component}: the template shows a scale, not one row`);
+    }
   });
 });
 

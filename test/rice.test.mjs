@@ -37,19 +37,21 @@ const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  * @param {object} [options]
  * @param {string} [options.version]
  * @param {string[]} [options.omit]
- * @param {[string, string][]} [options.impactLevels]  Rows for a `## Impact levels` table.
+ * @param {[string, [string, string][]][]} [options.levelTables]  One `[section, rows]` per table.
  * @returns {string}
  */
-function strategyText({ version = '2', omit = [], impactLevels } = {}) {
+function strategyText({ version = '2', omit = [], levelTables = [] } = {}) {
   const sections = REQUIRED_SECTIONS.filter((title) => !omit.includes(title)).map(
     (title) => `## ${title}\n\n- the answer for ${title}.\n`,
   );
-  const levels =
-    impactLevels === undefined
-      ? ''
-      : `\n## Impact levels\n\n| Level | Value |\n|---|---|\n${impactLevels
+  const levels = levelTables
+    .map(
+      ([section, rows]) =>
+        `\n## ${section}\n\n| Level | Value |\n|---|---|\n${rows
           .map(([label, value]) => `| ${label} | ${value} |`)
-          .join('\n')}\n`;
+          .join('\n')}\n`,
+    )
+    .join('');
   return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** 2026-11-14\n\n${sections.join('\n')}${levels}`;
 }
 
@@ -140,6 +142,25 @@ function run({ workspace, stub, argv }) {
 async function runWithBead({ workspace, stub, argv, bead }) {
   if (bead !== undefined) await writeFile(stub.showFile, JSON.stringify([bead]), 'utf8');
   return run({ workspace, stub, argv });
+}
+
+/**
+ * A score argv with one component set to `value` and the rest at 1, so a case breaks only the
+ * component it names.
+ * @param {string} flag @param {string} value @param {string} file @returns {string[]}
+ */
+function scoreArgv(flag, value, file) {
+  /** @type {Record<string, string>} */
+  const components = { '--reach': '1', '--impact': '1', '--confidence': '1', '--effort': '1', [flag]: value };
+  return [
+    'score', 'tst-12',
+    '--reach', components['--reach'],
+    '--impact', components['--impact'],
+    '--confidence', components['--confidence'],
+    '--effort', components['--effort'],
+    '--rationale', 'x',
+    '--file', file,
+  ];
 }
 
 /** A valid strategy written into the workspace, returning its path. @param {string} workspace
@@ -325,7 +346,7 @@ describe('the impact levels', () => {
   it('refuses an impact value the strategy does not list, names every level, and reaches no tracker', async () => {
     const workspace = await tempRoot.createWorkspace();
     const stub = await makeStubBd(workspace);
-    const file = await writeStrategy(workspace, { impactLevels: LEVELS });
+    const file = await writeStrategy(workspace, { levelTables: [['Impact levels', LEVELS]] });
 
     const result = await runWithBead({
       workspace,
@@ -354,7 +375,7 @@ describe('the impact levels', () => {
     for (const [label, value] of LEVELS) {
       const workspace = await tempRoot.createWorkspace();
       const stub = await makeStubBd(workspace);
-      const file = await writeStrategy(workspace, { impactLevels: LEVELS });
+      const file = await writeStrategy(workspace, { levelTables: [['Impact levels', LEVELS]] });
 
       const result = await runWithBead({
         workspace,
@@ -395,10 +416,149 @@ describe('the impact levels', () => {
     assert.equal(result.code, 0, result.stderr);
     assert.match(
       result.stdout,
-      /impact unconstrained: the strategy states no "## Impact levels" table, so any number of zero or more is accepted/,
+      /unconstrained: reach, impact, confidence, effort — the strategy states no level table for them/,
     );
     const { rice } = writtenMetadata(await calls(stub.log));
     assert.equal(rice.impact, 1.5);
+  });
+});
+
+describe('the component level tables', () => {
+  /**
+   * The four tables, in the order a score names the components: the flag, the section, the
+   * rows each one allows, and a value it does not.
+   * @type {{ component: string, flag: string, section: string, rows: [string, string][], off: string }[]}
+   */
+  const TABLES = [
+    { component: 'reach', flag: '--reach', section: 'Reach levels', rows: [['one', '1'], ['several', '5']], off: '2.7' },
+    { component: 'impact', flag: '--impact', section: 'Impact levels', rows: [['minor', '0.25'], ['normal', '1']], off: '1.5' },
+    { component: 'confidence', flag: '--confidence', section: 'Confidence levels', rows: [['likely', '0.8'], ['certain', '1']], off: '0.73' },
+    { component: 'effort', flag: '--effort', section: 'Effort levels', rows: [['half a day', '1'], ['a week', '5']], off: '2' },
+  ];
+
+  it('refuses an off-list value for each component, names every level, and reaches no tracker', async () => {
+    for (const { component, flag, section, rows, off } of TABLES) {
+      const workspace = await tempRoot.createWorkspace();
+      const stub = await makeStubBd(workspace);
+      const file = join(workspace, 'strategy.md');
+      await writeFile(file, strategyText({ levelTables: [[section, rows]] }), 'utf8');
+
+      const result = await runWithBead({
+        workspace,
+        stub,
+        bead: { id: 'tst-12', priority: 2, metadata: { rice: { score: 9.9 } } },
+        argv: scoreArgv(flag, off, file),
+      });
+
+      assert.equal(result.code, 1, `${component}: a value the rubric refuses is a refusal, not a malformed call`);
+      assert.match(
+        result.stderr,
+        new RegExp(`${flag} ${off} is not on the "## ${section}" table`),
+        `${component}: the refusal must name the table: ${result.stderr}`,
+      );
+      for (const [label, value] of rows) {
+        assert.ok(
+          result.stderr.includes(`${label} ${value}`),
+          `${component}: the refusal must name the level ${label} and its value: ${result.stderr}`,
+        );
+      }
+      assert.deepEqual(await calls(stub.log), [], `${component}: a refusal must not reach bd at all, so nothing is written`);
+    }
+  });
+
+  it('refuses every off-list component in one run, naming each table', async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const stub = await makeStubBd(workspace);
+    const file = join(workspace, 'strategy.md');
+    await writeFile(
+      file,
+      strategyText({ levelTables: TABLES.map(({ section, rows }) => [section, rows]) }),
+      'utf8',
+    );
+
+    const result = await runWithBead({
+      workspace,
+      stub,
+      bead: { id: 'tst-13', priority: 2 },
+      argv: [
+        'score', 'tst-13',
+        '--reach', '2.7', '--impact', '1.5', '--confidence', '0.73', '--effort', '2',
+        '--rationale', 'x',
+        '--file', file,
+      ],
+    });
+
+    assert.equal(result.code, 1);
+    for (const { component, flag, section, off } of TABLES) {
+      assert.match(result.stderr, new RegExp(`${flag} ${off} is not on the "## ${section}" table`), `${component} must be named`);
+    }
+    assert.deepEqual(await calls(stub.log), [], 'one refusal, so nothing is written');
+  });
+
+  it('accepts a value on each component table and prints the level it matched', async () => {
+    for (const { component, flag, section, rows } of TABLES) {
+      const [label, value] = rows[0] ?? ['', ''];
+      const workspace = await tempRoot.createWorkspace();
+      const stub = await makeStubBd(workspace);
+      const file = join(workspace, 'strategy.md');
+      await writeFile(file, strategyText({ levelTables: [[section, rows]] }), 'utf8');
+
+      const result = await runWithBead({
+        workspace,
+        stub,
+        bead: { id: 'tst-14', priority: 2 },
+        argv: scoreArgv(flag, value, file),
+      });
+
+      assert.equal(result.code, 0, `${component}: ${result.stderr}`);
+      assert.match(result.stdout, new RegExp(`${component} level: ${label} ${value}`));
+      const { rice } = writtenMetadata(await calls(stub.log));
+      assert.equal(rice[component], Number(value));
+    }
+  });
+
+  it('names the unconstrained components in one line when the strategy states no table', async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const stub = await makeStubBd(workspace);
+    const file = await writeStrategy(workspace);
+
+    const result = await runWithBead({
+      workspace,
+      stub,
+      bead: { id: 'tst-15', priority: 2 },
+      argv: scoreArgv('--reach', '4', file),
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /^ {2}unconstrained: reach, impact, confidence, effort — /m);
+  });
+
+  it('leaves a bead whose stored value is off the table alone', async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const stub = await makeStubBd(workspace);
+    const file = join(workspace, 'strategy.md');
+    await writeFile(file, strategyText({ levelTables: [['Reach levels', [['one', '1'], ['several', '5']]]] }), 'utf8');
+
+    // A stored reach of 2.7 predates the table. `band` reads it and proposes from it; no
+    // command rewrites a value the rubric now refuses, so the old score stays describable.
+    const result = await runWithBead({
+      workspace,
+      stub,
+      bead: {
+        id: 'tst-16',
+        priority: 3,
+        metadata: { rice: { score: 9.9, reach: 2.7, impact: 1, confidence: 1, effort: 1, strategyVersion: 2 } },
+      },
+      argv: ['band', 'tst-16'],
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /score 9\.9 → P1/);
+    assert.deepEqual(
+      (await calls(stub.log)).map((argv) => argv[0]),
+      ['show'],
+      'band reads the record and writes nothing',
+    );
   });
 });
 

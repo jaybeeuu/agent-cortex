@@ -15,10 +15,10 @@ METADATA
 
 | Field | Type | Meaning |
 |---|---|---|
-| `reach` | number ≥ 0 | How much work the bead changes |
+| `reach` | number ≥ 0 | How much work the bead changes — a value from its `## Reach levels` table when it states one |
 | `impact` | number ≥ 0 | How much each unit of reach gains, on the rubric's scale — a value from its `## Impact levels` table when it states one |
-| `confidence` | number `0..1` | Probability that the reach, impact and effort estimates hold |
-| `effort` | number > 0 | Cost, on the rubric's effort calibration |
+| `confidence` | number `0..1` | Probability that the reach, impact and effort estimates hold — a value from its `## Confidence levels` table when it states one |
+| `effort` | number > 0 | Cost, on the rubric's effort calibration — a value from its `## Effort levels` table when it states one |
 | `score` | number, one decimal | `reach × impact × confidence ÷ effort` |
 | `strategyVersion` | integer | The strategy file's own version, read after it validated |
 | `assessedAt` | string | When the judgement was made — now in UTC, or `--at` copied verbatim |
@@ -31,11 +31,13 @@ The total is rounded once, at the end: `Math.round(value * 10) / 10`. Rounding a
 `score` refuses, writing nothing, when:
 
 - the strategy file is missing, or `validate` rejects it — exit 1, with the reason;
-- `--impact` is a value the strategy's `## Impact levels` table does not list — exit 1, naming every level the table allows; with no table, any value of zero or more is accepted and the run prints a line saying impact is unconstrained;
+- a component is not on that component's level table — `## Reach levels`, `## Impact levels`, `## Confidence levels` or `## Effort levels` — exit 1, naming every level the table allows; a component with no table accepts any value its range allows, and the run prints one line naming the components that are unconstrained;
 - a component is not a number, `confidence` falls outside `0..1`, or `effort` is zero or less — exit 2;
 - the rationale is empty — exit 2.
 
 Exit 1 means the run reached a judgement and refused it; exit 2 means the call was malformed and never got that far. Neither reaches the tracker: the components, the rationale and the strategy are all checked before the first `bd` call, so a refused score leaves no metadata, no note and no tag behind.
+
+A stored value is never retro-invalidated. The tables gate a new score, so a bead already carrying a figure the rubric no longer lists keeps it — its record still names the `strategyVersion` it was judged against, and `band` reads it unchanged.
 
 ## The band table
 

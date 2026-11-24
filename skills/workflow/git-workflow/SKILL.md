@@ -113,6 +113,9 @@ One exception: an **integration branch** that other branches are based on
 the base in — under squash-merge that merge never reaches the landing diff, and
 the branches based on it stay linear by rebasing onto it.
 
+A rebase that conflicts is a stop, not a repair: report the conflicting files and hand the branch
+back. Resolving it by merging the base in reintroduces the merge this rule exists to avoid.
+
 Rewritten commits are re-signed automatically when `commit.gpgsign` is set. Pass
 no `--gpg-sign`, and do not set `rebase.gpgSign` — both are redundant.
 

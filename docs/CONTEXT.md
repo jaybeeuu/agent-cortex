@@ -13,7 +13,8 @@ a review given. Items belong to a theme. See boundary.
 
 The completion of one item. The moment guppi re-ranks: it runs `boundary` in `hitl-queue`, says the
 block, and asks for one of two outcomes — stay or switch — which `--decide` writes to the theme
-bead's trail.
+bead's trail. A leave that is not about priority — stepping out for one item and coming back — is
+an interrupt, not an outcome: the guppi agent's `## Interrupts` owns that route.
 
 A completed task is one kind of item, so every completed task is a boundary. The reverse does not
 hold: recording a decision is a boundary at which no task has completed. See item, theme, task.

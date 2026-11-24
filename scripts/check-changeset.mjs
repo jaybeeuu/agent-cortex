@@ -1,8 +1,22 @@
 // PR gate: a pull request must add a changeset (.changeset/*.md) unless it is
-// the changesets bot's Version Packages PR or carries the `no-publish` label.
+// the changesets bot's Version Packages PR or carries the `no-publish` label —
+// and every package that changeset names must exist in the workspace.
 // Reads `git diff --name-status <base>...HEAD` on stdin and the PR metadata
 // from the environment (CI supplies all three).
-import { evaluateChangesetGate, parseNameStatus } from "./lib/release-gates.mjs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  addedChangesetPaths,
+  evaluateChangesetGate,
+  evaluateChangesetPackages,
+  parseChangesetPackages,
+  parseNameStatus,
+} from "./lib/release-gates.mjs";
+import { readWorkspacePackageNames } from "./lib/workspace-packages.mjs";
+
+// The checkout the gate runs against: the working directory, which is the
+// repository root in CI and for every documented invocation.
+const ROOT = process.cwd();
 
 async function readStdin() {
   const chunks = [];
@@ -23,6 +37,45 @@ function readLabels(raw) {
   }
 }
 
+/**
+ * Read each added changeset and the package names its frontmatter bumps.
+ * @param {string[]} paths
+ * @returns {Promise<{ changesets: { file: string, packageNames: string[] }[], unreadable: string[] }>}
+ */
+async function readChangesets(paths) {
+  const changesets = [];
+  const unreadable = [];
+  for (const path of paths) {
+    try {
+      const content = await readFile(join(ROOT, path), "utf8");
+      changesets.push({ file: path, packageNames: parseChangesetPackages(content) });
+    } catch {
+      unreadable.push(path);
+    }
+  }
+  return { changesets, unreadable };
+}
+
+/**
+ * @param {{ file: string, packageName: string }[]} unknown
+ * @param {string[]} unreadable
+ */
+function reportUnknownPackages(unknown, unreadable) {
+  for (const path of unreadable) {
+    console.error(`::error::Cannot read the changeset ${path}, so its packages cannot be checked.`);
+  }
+  for (const { file, packageName } of unknown) {
+    console.error(`::error::${file} names package ${packageName}, which is not in the workspace.`);
+  }
+  console.error(
+    [
+      "Every package a changeset names must be a `name` in a workspace package.json.",
+      "`changeset version` refuses an unknown package, so the Release job fails on main",
+      "where nothing can fix it forward — use the exact name, scope included.",
+    ].join("\n"),
+  );
+}
+
 const labels = readLabels(process.env.PR_LABELS ?? "[]");
 const changes = parseNameStatus(await readStdin());
 const result = evaluateChangesetGate({
@@ -32,9 +85,9 @@ const result = evaluateChangesetGate({
   actor: process.env.PR_ACTOR ?? "",
 });
 
-if (result.ok) {
-  console.log(`✓ Changeset gate passed (${result.reason}).`);
-} else {
+const addedChangesets = addedChangesetPaths(changes);
+
+if (!result.ok) {
   console.error(
     [
       "::error::This PR adds no changeset (.changeset/*.md).",
@@ -43,4 +96,19 @@ if (result.ok) {
     ].join("\n"),
   );
   process.exitCode = 1;
+} else if (addedChangesets.length > 0) {
+  const { changesets, unreadable } = await readChangesets(addedChangesets);
+  const packages = evaluateChangesetPackages({
+    changesets,
+    workspacePackages: await readWorkspacePackageNames(ROOT),
+  });
+
+  if (packages.ok && unreadable.length === 0) {
+    console.log(`✓ Changeset gate passed (${result.reason}).`);
+  } else {
+    reportUnknownPackages(packages.unknown, unreadable);
+    process.exitCode = 1;
+  }
+} else {
+  console.log(`✓ Changeset gate passed (${result.reason}).`);
 }

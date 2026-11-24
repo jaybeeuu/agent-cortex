@@ -48,6 +48,8 @@ const tempRoot = createTempRoot("create-chores-");
  * @property {string[]} deleted   Every deleted bead id, in order
  * @property {{id: string, text: string}[]} notes  Every `bd note` call, in order
  * @property {{formula: string, vars: Record<string, string>, rootId: string}[]} pours
+ * @property {import("./helpers/fake-bd.mjs").FakeFailure[]} failures  Calls the fake was told to refuse
+ * @property {Record<string, number>} failuresSeen  How often each command was called
  */
 
 /**
@@ -122,11 +124,13 @@ function runScript(args, env, cwd) {
  * installer's copy and the script's lookup agree on id and filename.
  * @param {SeedBead[]} beads
  * @param {(tools: FakeBdTools) => Promise<void>} body
- * @param {{ formula?: boolean }} [options]
+ * @param {{ formula?: boolean, failures?: import("./helpers/fake-bd.mjs").FakeFailure[] }} [options]
+ *        `failures` names the `bd` calls this run must refuse, so a test can drive a
+ *        failure after any step
  * @returns {Promise<void>} */
-async function withFakeBd(beads, body, { formula = false } = {}) {
+async function withFakeBd(beads, body, { formula = false, failures = [] } = {}) {
   const dir = await tempRoot.createWorkspace();
-  const { bin, state } = await makeFakeBd(dir, { beads });
+  const { bin, state } = await makeFakeBd(dir, { beads, failures });
   if (formula) {
     // A bd-initialised project: the installer writes into an existing `.beads/`, and
     // creates its `formulas/` child.
@@ -508,17 +512,24 @@ describe("create-chores through the shipped formula", () => {
       const mapping = JSON.parse(stdout);
       const state = await readState();
 
-      const codeChore = state.beads.find((bead) => bead.id === mapping.code);
-      assert.ok(codeChore, "the poured code chore is in the tree");
-      assert.deepEqual([...codeChore.labels].sort(), ["execution:afk", "stage:code"]);
-      assert.equal(codeChore.priority, 0);
+      // Every poured step, never a sample: one reparent that withholds the inherited
+      // label leaves a chore ralph cannot route, and the sample would not say so.
+      /** @type {Record<string, string[]>} */
+      const expectedLabels = {
+        code: ["execution:afk", "stage:code"],
+        verify: ["execution:afk", "stage:verify"],
+        review: ["execution:afk", "stage:review"],
+        document: ["execution:afk", "stage:document"],
+        "post-merge": ["execution:afk", "lifecycle:post-merge", "stage:post-merge"],
+        housekeeping: ["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"],
+      };
 
-      const housekeeping = state.beads.find((bead) => bead.id === mapping.housekeeping);
-      assert.ok(housekeeping, "the poured housekeeping chore is in the tree");
-      assert.deepEqual(
-        [...housekeeping.labels].sort(),
-        ["execution:afk", "lifecycle:housekeeping", "stage:housekeeping"],
-      );
+      for (const [stage, labels] of Object.entries(expectedLabels)) {
+        const step = state.beads.find((bead) => bead.id === mapping[stage]);
+        assert.ok(step, `the poured ${stage} chore is in the tree`);
+        assert.deepEqual([...step.labels].sort(), labels, `${stage} does not carry its role and inherited labels`);
+        assert.equal(step.priority, 0, `${stage} did not take the requested priority`);
+      }
     }, { formula: true });
   });
 
@@ -573,6 +584,55 @@ describe("create-chores through the shipped formula", () => {
     }, { formula: true });
   });
 
+  it("deletes the molecule root on a second attempt when the first delete fails", async () => {
+    await withFakeBd([parentBead()], async ({ run, readState }) => {
+      const { exitCode, stderr } = await run();
+      assert.equal(exitCode, 0, stderr);
+
+      const state = await readState();
+      const rootId = state.pours[0].rootId;
+      assert.deepEqual(state.deleted, [rootId], "the retry deleted the molecule root");
+      assert.ok(!state.beads.some((bead) => bead.id === rootId), "the molecule root is gone");
+      assert.equal(state.beads.filter((bead) => bead.parent === "parent-1").length, 7);
+      assert.match(stderr, new RegExp(`deleted molecule root ${rootId} on retry`));
+      assert.doesNotMatch(stderr, /the per-stage path completes the tree/, "a cleanup failure is not a pour failure");
+    }, { formula: true, failures: [{ command: "delete", occurrence: 1 }] });
+  });
+
+  it("keeps the complete tree, and pours nothing twice, when the molecule root cannot be deleted", async () => {
+    await withFakeBd([parentBead()], async ({ run, readState }) => {
+      const first = await run();
+      assert.equal(first.exitCode, 0, first.stderr);
+
+      const afterFirst = await readState();
+      const rootId = afterFirst.pours[0].rootId;
+      assert.ok(afterFirst.beads.some((bead) => bead.id === rootId), "the root delete was driven to fail");
+      assert.deepEqual(countRoles(afterFirst.beads), {
+        "stage:code": 1,
+        "stage:verify": 1,
+        "stage:review": 1,
+        "stage:document": 1,
+        "stage:post-merge": 1,
+        "stage:housekeeping": 1,
+        "lifecycle:feature-pr": 1,
+      });
+      assert.doesNotMatch(first.stderr, /the per-stage path completes the tree/, "the committed tree is not reported as reverted");
+      // The surviving root is the molecule's, not the feature's: bd children <feature>
+      // lists the seven chores and nothing else.
+      assert.equal(afterFirst.beads.filter((bead) => bead.parent === "parent-1").length, 7);
+      assert.match(first.stderr, new RegExp(`could not delete molecule root ${rootId}`));
+      assert.match(first.stderr, new RegExp(`bd delete ${rootId} --force`), "the operator is told how to finish it");
+
+      const second = await run();
+      assert.equal(second.exitCode, 0, second.stderr);
+
+      const afterSecond = await readState();
+      assert.equal(afterSecond.pours.length, 1, "the re-run does not pour a second molecule");
+      assert.deepEqual(countRoles(afterSecond.beads), countRoles(afterFirst.beads), "no chore is duplicated");
+      assert.equal(afterSecond.beads.filter((bead) => bead.parent === "parent-1").length, 7);
+    }, { formula: true, failures: [{ command: "delete" }] });
+  });
+
   it("falls back to the per-stage path when the formula is absent, and says so once", async () => {
     await withFakeBd([parentBead()], async ({ run, readState }) => {
       const { exitCode, stderr } = await run();
@@ -610,7 +670,7 @@ describe("create-chores through the shipped formula", () => {
         const state = await readState();
         assert.equal(state.pours.length, 0);
         assert.equal(state.beads.filter((bead) => bead.parent === "parent-1").length, 7);
-        assert.match(stderr, /pour of 'pipeline' failed .*reverted it and used the per-stage path/);
+        assert.match(stderr, /pour of 'pipeline' failed .*the per-stage path completes the tree/);
       } finally {
         await unlink(formulaPath);
       }

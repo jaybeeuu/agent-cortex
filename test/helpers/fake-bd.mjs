@@ -44,8 +44,17 @@ const FAKE_BD_SCRIPT = [
   "  state.notes ??= [];",
   "  state.pours ??= [];",
   "  state.calls.push(argv.join(' '));",
-  "",
   "  const save = () => fs.writeFile(stateFile, JSON.stringify(state));",
+  "",
+  "  state.failuresSeen ??= {};",
+  "  const occurrence = (state.failuresSeen[argv[0]] = (state.failuresSeen[argv[0]] ?? 0) + 1);",
+  "  if ((state.failures ?? []).some((rule) => rule.command === argv[0] && (rule.occurrence === undefined || rule.occurrence === occurrence))) {",
+  "    // A failure rule the test asked for: the command refuses the way a real bd refuses",
+  "    // — a non-zero exit with its reason on stderr, and no state written by this call.",
+  "    await save();",
+  "    console.error('bd ' + argv[0] + ' failed: the fake is configured to fail call ' + occurrence);",
+  "    process.exit(1);",
+  "  }",
   "",
   "  if (argv[0] === 'list') {",
   "    // `bd list -l <label> --json`: every bead carrying all the given labels.",
@@ -236,6 +245,14 @@ const FAKE_BD_SCRIPT = [
 ].join("\n");
 
 /**
+ * A `bd` subcommand the fake refuses, so a test can drive a failure at a chosen
+ * point in a run.
+ * @typedef {object} FakeFailure
+ * @property {string} command  `argv[0]`: `delete`, `note`, `update`, …
+ * @property {number} [occurrence]  1-based call number of that command; every call when omitted
+ */
+
+/**
  * A bead seeded into the fake's state before the script runs.
  * @typedef {object} SeedBead
  * @property {string} id
@@ -247,10 +264,11 @@ const FAKE_BD_SCRIPT = [
 
 /** Create a stateful fake `bd` binary in `dir`.
  * @param {string} dir  Directory to hold the binary and its state.json
- * @param {{ beads: SeedBead[] }} seed  Pre-existing beads (the parent, plus any
- *        partial chore tree the test wants the script to repair)
+ * @param {{ beads: SeedBead[], failures?: FakeFailure[] }} seed  Pre-existing beads
+ *        (the parent, plus any partial chore tree the test wants the script to
+ *        repair), and the calls the fake must refuse
  * @returns {Promise<{ bin: string, state: string }>} */
-export async function makeFakeBd(dir, { beads }) {
+export async function makeFakeBd(dir, { beads, failures = [] }) {
   const bin = join(dir, "bd");
   const state = join(dir, "state.json");
 
@@ -266,7 +284,7 @@ export async function makeFakeBd(dir, { beads }) {
   await chmod(bin, 0o755);
   await writeFile(
     state,
-    JSON.stringify({ beads: beads.map(({ dependsOn, ...bead }) => bead), deps, nextId: nextIdAfter(beads) }),
+    JSON.stringify({ beads: beads.map(({ dependsOn, ...bead }) => bead), deps, failures, nextId: nextIdAfter(beads) }),
   );
   return { bin, state };
 }

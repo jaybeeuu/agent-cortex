@@ -20,10 +20,12 @@
 //
 // Convergence is not inherited from the pour: a second pour silently duplicates
 // the whole tree, so the formula is poured only into a parent with no stage chore
-// yet. Both paths read the parent's children once (`bd children <parent-id>
-// --json`) and adopt an existing child by its role label — `stage:<id>` for a
-// stage chore, `lifecycle:feature-pr` for the gate — creating only what is
-// missing, so re-running after a failed expansion is the recovery path.
+// yet. Both paths read the parent's children (`bd children <parent-id> --json`)
+// and adopt an existing child by its role label — `stage:<id>` for a stage chore,
+// `lifecycle:feature-pr` for the gate — creating only what is missing, so
+// re-running after a failed expansion is the recovery path. The children are read
+// again before the loop takes over from a failed pour, so a step a partly failed
+// rollback left behind is adopted rather than created a second time.
 //
 // Adoption ignores bead status and reads only labels: a chore a later stage
 // already closed is still adopted and reprinted in the mapping, which keeps a
@@ -250,23 +252,81 @@ async function wireBlocks(beadId, dependsOnId, blocks) {
 const GATE_ROLE = 'featurePrReview';
 
 /**
+ * The most useful line out of a failed `run`: `bd`'s stderr, else the error's own
+ * message. Never a stack trace, because these lines are reported to the operator.
+ * @param {unknown} err
+ * @returns {string}
+ */
+function describeError(err) {
+  const detail = /** @type {{ stderr?: string, message?: string }} */ (err);
+  return detail.stderr?.trim() || detail.message || String(err);
+}
+
+/**
+ * True when a delete refused because the bead is already gone — bd exits 1 with
+ * `issue <id> not found`. The caller wanted the bead absent and it is, so this is
+ * the delete succeeding late rather than a bead left behind.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isNotFound(err) {
+  return /not found/i.test(describeError(err));
+}
+
+/**
  * Delete a molecule the pour created, best effort. A step that was already
  * reparented left the root's child list, so each known step is deleted first and
- * the root last. Failures are swallowed: this runs on the error path, where the
- * caller is about to report the original cause.
+ * the root last. A failure is not thrown — this runs on the error path, where the
+ * caller is about to report the original cause — but it is never swallowed either:
+ * the surviving ids are named, and the loop adopts whatever reached the parent.
  * @param {string} rootId
  * @param {string[]} [stepIds]
  * @returns {Promise<void>}
  */
 async function discardPour(rootId, stepIds = []) {
+  /** @type {string[]} */
+  const survivors = [];
   for (const id of [...stepIds, rootId]) {
     if (!id) { continue; }
     try {
       await run(['bd', 'delete', id, '--force']);
-    } catch {
-      // Best effort — the tree the loop leaves behind is what matters.
+    } catch (err) {
+      // Already absent is the outcome the delete wanted; only a bead that is
+      // still there can be adopted by the loop, so only that is reported.
+      if (!isNotFound(err)) { survivors.push(id); }
     }
   }
+  if (survivors.length > 0) {
+    say(`could not delete ${survivors.join(', ')} while rolling the pour back; a step that reached the parent bead is adopted by its stage label, not created again`);
+  }
+}
+
+/**
+ * Delete the molecule root the pour left behind, retrying once. The root is
+ * scaffolding only — every step is already reparented when this runs — so the tree
+ * is complete whether or not the delete succeeds. A root that truly survives is
+ * inert: `bd ready` does not list a molecule root (checked against bd 1.3.1), so
+ * it is never addressable, and it is reported by id instead of being silently
+ * dropped. A delete that reports the root already gone counts as success — the
+ * caller wanted it absent and it is.
+ * @param {string} rootId
+ * @returns {Promise<boolean>} True when the root is gone
+ */
+async function deleteMoleculeRoot(rootId) {
+  /** @type {unknown} */
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await run(['bd', 'delete', rootId, '--force']);
+      if (attempt > 1) { say(`deleted molecule root ${rootId} on retry`); }
+      return true;
+    } catch (err) {
+      if (isNotFound(err)) { return true; }
+      lastError = err;
+    }
+  }
+  say(`could not delete molecule root ${rootId} (${describeError(lastError)}); the stage chores are complete and the root is inert — 'bd ready' does not list it — so remove it by hand with 'bd delete ${rootId} --force'`);
+  return false;
 }
 
 /**
@@ -312,17 +372,27 @@ async function pourStages({ parentId, priority }) {
     throw err;
   }
 
-  await run(['bd', 'delete', rootId, '--force']);
+  // Past this point the expansion has succeeded — the parent owns one chore per
+  // stage — so nothing here may be reported as a rollback: the root delete and the
+  // audit note are cleanup, and a failure in either leaves a tree the next run
+  // adopts by its stage labels instead of pouring a second time.
+  const rootDeleted = await deleteMoleculeRoot(rootId);
 
   // What was poured, on the bead the caller reads. Convergence itself is decided
   // from the children's role labels, not from this note; the note is the audit
   // trail that says a molecule ever existed here, and which steps it became.
-  await run([
-    'bd', 'note', parentId,
-    `[${new Date().toISOString()}] create-chores poured formula '${FORMULA_ID}': ` +
-      `${pipeline.stages.map((stage, index) => `${stage.id}=${stepIds[index]}`).join(', ')}; ` +
-      `molecule root ${rootId} deleted`,
-  ]);
+  try {
+    await run([
+      'bd', 'note', parentId,
+      `[${new Date().toISOString()}] create-chores poured formula '${FORMULA_ID}': ` +
+        `${pipeline.stages.map((stage, index) => `${stage.id}=${stepIds[index]}`).join(', ')}; ` +
+        (rootDeleted
+          ? `molecule root ${rootId} deleted`
+          : `molecule root ${rootId} left in place after a failed delete`),
+    ]);
+  } catch (err) {
+    say(`could not record the pour on ${parentId} (${describeError(err)}); adoption reads the step labels, so a re-run still converges`);
+  }
 
   /** @type {Map<string, StageBead>} */
   const stages = new Map();
@@ -413,7 +483,7 @@ const pipelinePath = resolve(__dirname, '..', 'pipeline.json');
 /** @type {Pipeline} */
 const pipeline = JSON.parse(await readFile(pipelinePath, 'utf-8'));
 
-const adoptable = await readAdoptable(parentId);
+let adoptable = await readAdoptable(parentId);
 const formulaPath = await findFormulaPath(process.cwd());
 const alreadyExpanded = [...adoptable.keys()].some((role) => role.startsWith('stage:'));
 
@@ -429,12 +499,12 @@ if (formulaPath === null) {
     stageBeads = await pourStages({ parentId, priority });
     say(`poured formula '${FORMULA_ID}': 1 pour, ${pipeline.stages.length} reparent(s), 1 molecule-root delete`);
   } catch (err) {
-    // A pour that cannot finish leaves nothing behind, so the loop is always a safe
-    // fallback — and an expansion never fails because the formula could not be used.
-    const detail = /** @type {{ stderr?: string, message?: string }} */ (err).stderr?.trim()
-      || /** @type {{ message?: string }} */ (err).message
-      || String(err);
-    say(`pour of '${FORMULA_ID}' failed (${detail}); reverted it and used the per-stage path`);
+    // The rollback is best effort, so read the children again before the loop
+    // takes over: a step that survived it is adopted by its stage label instead of
+    // being created a second time under the same parent. The wording claims no
+    // revert — whatever the rollback left is finished by the loop, not undone.
+    adoptable = await readAdoptable(parentId);
+    say(`pour of '${FORMULA_ID}' failed (${describeError(err)}); the per-stage path completes the tree`);
   }
 }
 

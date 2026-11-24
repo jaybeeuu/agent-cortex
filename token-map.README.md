@@ -67,17 +67,19 @@ rather than inventing a dotted form:
   but that tool is gated behind a feature flag that defaults off, so a portable skill may not
   depend on it. Naming the re-prompt is what holds on every session; the playbook's prose
   fallback covers the session where even that is absent.
-  One row names how the window is dropped at a boundary that leaves the theme: `clear_window`,
-  Claude Code's built-in `/clear` on claude and pi's built-in `/new` session switch on pi. Both
-  columns are a user-facing command, so the shared prose can name the flush once and render on both
-  harnesses. Neither value may be null: a null would drop the token and leave the sentence that
-  named the mechanism short of one. The pi value is `/new` and not `/clear` because `/clear` is not
-  a pi built-in: the `/clear` a pi session does offer comes from this package's `session-clear`
-  extension, which keeps the session identity — display name, model, thinking level — across the
-  reset. The row names what the harness itself supplies. The pi value **changes kind when the
-  self-flushing mechanism lands** (`agnt-ctx-4z3l.1` replaces the command with a tool the agent can
-  call itself), so the prose around the row says "any reset that drops the window" and never a call
-  shape — the rule outlives the swap, and only this column moves then.
+  Two rows name what a boundary's decision does to the window, and both are mixed-kind like
+  `post_merge_watch`: the values differ because that is what each harness supplies. `compact_window`
+  is the transition a **stay** makes — Claude Code's built-in `/compact` command on claude, this
+  package's own `session-transition` extension's `request_compact` tool on pi — and it summarises the
+  window while keeping its recent tail, so the next item on the theme continues from what the last
+  one established. `flush_window` is the transition a **switch** makes — Claude Code's built-in
+  `/clear` command on claude, the same extension's `request_flush` tool on pi — and it drops the
+  window, carrying nothing into the replacement session. Neither row may be null: a null would drop
+  the token and leave the sentence that named the mechanism short of a name. The prose around each
+  row describes only what both values do — a summary that keeps a tail, and a reset that carries
+  nothing — and never a call shape, so the rule outlives the mechanism changing. `flush_window`
+  replaced `clear_window`, whose pi column named a session switch the model could not call; the rule
+  it stated could not be acted on where it was stated.
 - **`paths`** — `plugin_root`, `agents_dir`, `skills_dir`, and `skill_anatomy`. These are the
   install-time variables that differ per harness. `plugin_root` is the anchor; the others
   resolve relative to it (`{base, relative}` specs) so a harness only overrides the single

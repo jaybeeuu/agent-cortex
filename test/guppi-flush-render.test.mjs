@@ -1,12 +1,11 @@
-// guppi's flush rule is forked at install time, not in two agent files: one
-// authored body renders Claude Code's `/clear` on claude and pi's `/new`
-// session switch on pi. These tests stage both installs and read the rendered
-// agent, so a harness that loses its mechanism — or a null column that drops the
-// token and leaves the sentence short of a name — fails here instead of shipping
-// a rule the session cannot act on. Both stages go to workspaces under a
-// per-process temp root that a file-level after() hook removes, and the
-// checkout's own sources are never read as the artefact under test except for
-// the token map row itself.
+// guppi's window transitions are forked at install time, not in two agent files:
+// one authored body renders each harness's own mechanism for a staying window and
+// for a leaving one. These tests stage both installs and read the rendered agent,
+// so a harness that loses a mechanism — or a null column that drops a token and
+// leaves the sentence short of a name — fails here instead of shipping a rule the
+// session cannot act on. Both stages go to workspaces under a per-process temp
+// root that a file-level after() hook removes, and the checkout's own sources are
+// never read as the artefact under test except for the token map rows themselves.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +21,6 @@ const CLI_PATH = join(ROOT, "bin", "agent-cortex.mjs");
 
 const WORK_UNIT = "## The work unit";
 const LIFECYCLE = "## Context lifecycle";
-const PLACEHOLDER = "<CLEAR-WINDOW>";
 
 /** Where each harness materialises the composed agent.
  * @type {Record<"pi" | "claude", string[]>} */
@@ -31,14 +29,25 @@ const AGENT_PATH = {
   claude: ["agents", "guppi.md"],
 };
 
-/** The flush mechanism each harness must name, and the other's name it must
- * not. Neither column may be null: a dropped token would leave the sentence
- * that named the mechanism short of one.
- * @type {Record<"pi" | "claude", { own: string, other: string }>} */
+/** The mechanism each harness must name for each transition, and the other
+ * harness's names it must not. Neither column may be null: a dropped token would
+ * leave the sentence that named the mechanism short of one.
+ * @type {Record<"pi" | "claude", { compact: string, flush: string }>} */
 const MECHANISM = {
-  pi: { own: "/new", other: "/clear" },
-  claude: { own: "/clear", other: "/new" },
+  pi: { compact: "request_compact", flush: "request_flush" },
+  claude: { compact: "/compact", flush: "/clear" },
 };
+
+/** Placeholders that stand in for a harness's own mechanism names, so the two
+ * renders can be compared word for word.
+ * @type {Record<"compact" | "flush", string>} */
+const PLACEHOLDER = {
+  compact: "<COMPACT-WINDOW>",
+  flush: "<FLUSH-WINDOW>",
+};
+
+/** The mechanisms the old rule named, which no render may mention again. */
+const RETIRED = ["/new", "clear_window"];
 
 /** @type {ReturnType<typeof createTempRoot>} */
 const tempRoot = createTempRoot("agent-cortex-guppi-flush-");
@@ -102,18 +111,33 @@ function count(haystack, needle) {
   return haystack.split(needle).length - 1;
 }
 
-describe("guppi's flush rule renders the harness's own mechanism", () => {
-  it("maps the clear window to a command on both harnesses, never null", async () => {
+describe("guppi's window transitions render each harness's own mechanism", () => {
+  it("maps a stay to a compaction and a switch to a flush, on both harnesses, never null", async () => {
     const map = JSON.parse(await readFile(join(ROOT, "token-map.json"), "utf-8"));
 
     assert.deepEqual(
-      map.tools.clear_window,
-      { claude: "/clear", pi: "/new" },
-      "clear_window maps a command on both harnesses",
+      map.tools.compact_window,
+      { claude: "/compact", pi: "request_compact" },
+      "a stay names a compaction on both harnesses",
+    );
+    assert.deepEqual(
+      map.tools.flush_window,
+      { claude: "/clear", pi: "request_flush" },
+      "a switch names a flush on both harnesses",
+    );
+    assert.equal(
+      "clear_window" in map.tools,
+      false,
+      "the row the old rule named is gone, so no rendered text can resolve it",
+    );
+    assert.equal(
+      JSON.stringify(map).includes("/new"),
+      false,
+      "the map names no session switch as a transition mechanism",
     );
   });
 
-  it("names the harness's own mechanism in the lifecycle, and never the other's", async () => {
+  it("names the harness's own mechanism for each transition, and never the other's", async () => {
     const { pi, claude } = await stageBoth();
 
     /** @type {Record<"pi" | "claude", string>} */
@@ -121,154 +145,192 @@ describe("guppi's flush rule renders the harness's own mechanism", () => {
 
     for (const harness of /** @type {const} */ (["pi", "claude"])) {
       const lifecycle = section(agents[harness], LIFECYCLE);
-      const { own, other } = MECHANISM[harness];
+      const own = MECHANISM[harness];
+      const other = MECHANISM[harness === "pi" ? "claude" : "pi"];
 
-      assert.ok(
-        lifecycle.includes(own),
-        `${harness} names its flush mechanism as ${own}`,
-      );
-      assert.equal(count(lifecycle, other), 0, `the ${harness} lifecycle names no ${other}`);
-      // The mechanism is named in the rule and again in the ask, so a flush
-      // cannot be described once and left unnamed where it is requested.
-      assert.equal(count(lifecycle, own), 2, `${harness} names ${own} in the rule and in the ask`);
-      assert.doesNotMatch(
-        agents[harness],
-        /\{\{(?:TOOL|PATH|SECTION):/,
-        `${harness} agent carries no literal token`,
-      );
-      assert.doesNotMatch(agents[harness], /agnt-ctx-/, `the ${harness} agent names no internal bead`);
+      for (const transition of /** @type {const} */ (["compact", "flush"])) {
+        assert.ok(
+          lifecycle.includes(own[transition]),
+          `${harness} names its ${transition} mechanism as ${own[transition]}`,
+        );
+        assert.equal(
+          count(lifecycle, other[transition]),
+          0,
+          `the ${harness} lifecycle names no ${other[transition]}`,
+        );
+      }
     }
   });
 
-  it("keeps the lifecycle identical once the mechanism name is set aside", async () => {
+  it("keeps the lifecycle identical once the two mechanism names are set aside", async () => {
     const { pi, claude } = await stageBoth();
 
-    // Replacing the harness's own name with one placeholder means a dropped
-    // token — a null column, or a renamed key — leaves the two renders
-    // different instead of both quietly losing a word.
-    const normalise = (/** @type {string} */ doc) => {
-      const harness = doc === pi ? "pi" : "claude";
-      const { own } = MECHANISM[/** @type {"pi" | "claude"} */ (harness)];
-      const lifecycle = section(doc, LIFECYCLE);
-      assert.ok(lifecycle.includes(own), `the lifecycle names ${own} before it is normalised`);
-      return lifecycle.split(own).join(PLACEHOLDER);
+    // Replacing each harness's own names with one placeholder means a dropped
+    // token — a null column, or a renamed key — leaves the two renders different
+    // instead of both quietly losing a word.
+    /** @param {"pi" | "claude"} harness @param {string} doc */
+    const normalise = (harness, doc) => {
+      const own = MECHANISM[harness];
+      let lifecycle = section(doc, LIFECYCLE);
+      for (const transition of /** @type {const} */ (["compact", "flush"])) {
+        assert.ok(lifecycle.includes(own[transition]), `the lifecycle names ${own[transition]}`);
+        lifecycle = lifecycle.split(own[transition]).join(PLACEHOLDER[transition]);
+      }
+      return lifecycle;
     };
 
     assert.equal(
-      normalise(pi),
-      normalise(claude),
-      "the flush rule is the same text apart from the mechanism name",
+      normalise("pi", pi),
+      normalise("claude", claude),
+      "the two transitions are the same text apart from the mechanism names",
     );
   });
 
-  it("states the flush rule against any reset that drops the window", async () => {
+  it("states what each outcome does to the window, and the timing each names", async () => {
     const { pi, claude } = await stageBoth();
 
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
       const lifecycle = flat(section(doc, LIFECYCLE));
 
-      // The rule is written against the effect, not the command, so a later
-      // mechanism swap does not rewrite it.
       assert.match(
         lifecycle,
-        /any reset that drops the window/i,
-        `${harness} writes the rule against any reset that drops the window`,
+        /a \*\*stay\*\* compacts the window: it summaris\w+ what the item established and keeps the recent tail/i,
+        `${harness} compacts on a stay, and says why`,
       );
       assert.match(
         lifecycle,
-        /flushed at every boundary that leaves the theme/i,
-        `${harness} states the trigger`,
+        /a \*\*switch\*\* flushes the window: it drops the window and carries nothing across/i,
+        `${harness} flushes on a switch, and carries nothing`,
       );
-      assert.match(lifecycle, /a \*\*switch\*\* or a \*\*move\*\*, never a \*\*stay\*\*/i, `${harness} names which boundary flushes`);
+      assert.match(
+        lifecycle,
+        /the next item on the theme continues from it without the raw turns that produced it/i,
+        `${harness} says what a stay buys the next item`,
+      );
+      assert.match(
+        lifecycle,
+        /a summary of the theme just left is the noise the flush exists to remove/i,
+        `${harness} says why a switch keeps no summary`,
+      );
     }
   });
 
-  it("triggers the flush from the boundary decision, and keeps the window on a stay", async () => {
+  it("cross-references the interrupts section instead of rebuilding the rewind", async () => {
     const { pi, claude } = await stageBoth();
 
-    // The trigger is one paragraph of the work unit; the rest of the section
-    // names a skill path, which legitimately differs per harness.
-    const trigger = (/** @type {string} */ doc) => {
+    for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
+      const lifecycle = flat(section(doc, LIFECYCLE));
+
+      assert.match(
+        lifecycle,
+        /an \*\*interrupt\*\* rewinds — \*\*Interrupts\*\*, below, owns that protocol/i,
+        `${harness} points at the interrupts section that owns the rewind`,
+      );
+      assert.match(
+        lifecycle,
+        /it is not a third outcome at a boundary/i,
+        `${harness} keeps the rewind out of the boundary vocabulary`,
+      );
+      // The rewind lives in one place. Its mechanism belongs to that section.
+      for (const rewind of ["interrupt_rewind", "/rewind", "interrupt_resume"]) {
+        assert.equal(count(lifecycle, rewind), 0, `${harness} leaves the rewind mechanism to its own section`);
+      }
+    }
+  });
+
+  it("carries no handoff into the replacement session", async () => {
+    const { pi, claude } = await stageBoth();
+
+    for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
+      const lifecycle = flat(section(doc, LIFECYCLE));
+
+      assert.match(
+        lifecycle,
+        /\*\*A flush carries no handoff\.\*\* The replacement session is seeded with nothing/i,
+        `${harness} states that a flush seeds nothing`,
+      );
+      assert.match(
+        lifecycle,
+        /no summary of the session that ended, and no theme id/i,
+        `${harness} names both things a flush must not carry`,
+      );
+      assert.match(
+        lifecycle,
+        /its own \*\*Session start\*\* re-establishes the rubric and the queue/i,
+        `${harness} says where the next session gets its bearings`,
+      );
+      // A memory keyed by theme is a handoff by another name: the tracker trail is
+      // the whole record, and the next session reads it under its own rules.
+      assert.equal(
+        count(lifecycle, "bd remember"),
+        0,
+        `${harness} seeds no theme memory across a flush`,
+      );
+    }
+  });
+
+  it("asks for two outcomes, and counts a theme's second item as a stay", async () => {
+    const { pi, claude } = await stageBoth();
+
+    /** The decision paragraph, which is a property of the boundary and therefore
+     * carries no path or mechanism token that could legitimately differ.
+     * @param {string} doc */
+    const decision = (doc) => {
       const workUnit = flat(section(doc, WORK_UNIT));
-      const start = workUnit.indexOf("The answer decides the window.");
-      assert.notEqual(start, -1, "the work unit states what the boundary decision does to the window");
-      return workUnit.slice(start, workUnit.indexOf("carries the flush rule.") + "carries the flush rule.".length);
+      const start = workUnit.indexOf("At each boundary,");
+      assert.notEqual(start, -1, "the work unit states the boundary decision");
+      const end = workUnit.indexOf("states both.") + "states both.".length;
+      return workUnit.slice(start, end);
     };
 
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
-      const response = trigger(doc);
+      const trigger = decision(doc);
 
       assert.match(
-        response,
-        /a \*\*stay\*\* keeps it, because the next item on the theme needs what the last one established/i,
-        `${harness} keeps the window on a stay, and says why`,
+        trigger,
+        /ask for one of \*\*two\*\* outcomes — \*\*stay\*\*, or \*\*switch\*\* because higher-priority work waits elsewhere/i,
+        `${harness} asks for two outcomes`,
       );
       assert.match(
-        response,
-        /a \*\*switch\*\* or a \*\*move\*\* ends the session's hold on the theme/i,
-        `${harness} ends the theme on a switch or a move`,
+        trigger,
+        /the decision is about the next \*\*theme\*\*, never the next item/i,
+        `${harness} anchors the decision on the theme`,
       );
       assert.match(
-        response,
-        /boundary is also a flush: write the memory, then clear the window, before the next item starts/i,
-        `${harness} flushes memory-first before the next item`,
+        trigger,
+        /taking a theme's second item because its first is blocked is an ordinary \*\*stay\*\*/i,
+        `${harness} makes a blocked first item an ordinary stay`,
       );
+      assert.match(
+        trigger,
+        /a \*\*stay\*\* compacts it[\s\S]*?a \*\*switch\*\* flushes it/i,
+        `${harness} gives each outcome its transition`,
+      );
+
+      // The mechanism is named once, in the lifecycle. The decision states the
+      // effect, so the two harness names appear nowhere in it.
+      for (const mechanism of [MECHANISM.pi.compact, MECHANISM.pi.flush]) {
+        assert.equal(count(trigger, mechanism), 0, `${harness} names no mechanism in the decision`);
+      }
     }
 
-    // The trigger is a property of the boundary, not of a harness, so both
-    // renders carry the same words.
-    assert.equal(trigger(pi), trigger(claude), "both harnesses state the trigger the same way");
+    assert.equal(decision(pi), decision(claude), "both harnesses state the decision the same way");
   });
 
-  it("keeps the three parts and the double write, and makes the ask mandatory", async () => {
+  it("retires the move outcome and the old mechanism from every render", async () => {
     const { pi, claude } = await stageBoth();
 
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
-      const memory = flat(section(doc, LIFECYCLE));
-
-      for (const part of ["**What was decided**", "**What is open**", "**What the next session needs**"]) {
-        assert.ok(memory.includes(part), `${harness} keeps the "${part}" part`);
+      // Whole document, not one section: a retired word written into the shared
+      // body outside the lifecycle renders into the other harness just the same.
+      assert.equal(count(doc, "**move**"), 0, `the ${harness} render names no move outcome`);
+      assert.equal(count(doc, "a **switch** or a **move**"), 0, `the ${harness} render keeps no move clause`);
+      for (const retired of RETIRED) {
+        assert.equal(count(doc, retired), 0, `the ${harness} render names no ${retired}`);
       }
-      assert.match(memory, /write the three parts twice/i, `${harness} writes the three parts twice`);
-      // One write to the trail, one to the memory: the two reads the same
-      // three parts serve.
-      assert.ok(memory.includes("bd note <bead-id>"), `${harness} writes the three parts to the trail`);
-      assert.ok(
-        memory.includes('bd remember "<the same three parts>" --key <theme-slug>'),
-        `${harness} writes the same three parts to the memory`,
-      );
-
-      // The defect the parent bug recorded was an ask that never happened, so
-      // the ask is mandatory and carries each of its four pieces.
-      assert.match(memory, /a flush with no memory write is a defect/i, `${harness} keeps the defect rule`);
-      assert.match(memory, /the theme is paused/i, `${harness} says the theme is paused`);
-      assert.match(memory, /the theme bead is `<epic-id>`/i, `${harness} names the theme bead`);
-      assert.match(memory, /the theme bead is `<epic-id>`, run [^,]+, and the next session reads that bead first/i, `${harness} names the bead, the command and the first read`);
-      assert.match(memory, /never leave the ask unsaid/i, `${harness} makes the ask mandatory`);
-    }
-  });
-
-  it("uses no unresolved token and names no harness outside its own render", async () => {
-    const { pi, claude } = await stageBoth();
-
-    /** @type {Array<["pi" | "claude", string]>} */
-    const agents = [["pi", pi], ["claude", claude]];
-
-    for (const [harness, doc] of agents) {
-      const { own, other } = MECHANISM[harness];
-
-      // The whole document, not one section: a mechanism name written into the
-      // shared body outside the lifecycle renders into the other harness just
-      // the same, so a section-scoped check would not see it. The lifecycle
-      // keeps its own narrower promise above.
-      assert.ok(doc.includes(own), `${harness} names its own mechanism ${own} in the document`);
-      assert.equal(count(doc, other), 0, `the ${harness} document names no ${other}`);
-
-      // The name of this test claims "no unresolved token", so it checks the
-      // whole token grammar rather than the one key it was written for.
       assert.doesNotMatch(doc, /\{\{(?:TOOL|PATH|SECTION):/, `${harness} carries no unresolved token`);
-      assert.doesNotMatch(doc, /\{\{TOOL:clear_window\}\}/, `${harness} resolves the clear-window token`);
       assert.doesNotMatch(doc, /\bwith\s{2,}/, `${harness} agent has no dropped-name gap`);
+      assert.doesNotMatch(doc, /agnt-ctx-/, `the ${harness} agent names no internal bead`);
     }
   });
 });

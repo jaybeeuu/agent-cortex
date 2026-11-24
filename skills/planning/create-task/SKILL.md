@@ -29,7 +29,12 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
 
 2. **Create the task bead.** The description must contain the task's required section —
    `## Acceptance Criteria` — or `--validate` rejects creation. Fill it from agreed answers, not
-   assumptions (see `bd-tool` → Required sections).
+   assumptions (see `bd-tool` → Required sections). Criteria cover the boundaries the contract
+   has, not only its happy path: a floor and a ceiling, empty versus absent, single-fire versus
+   double-fire, the ordering of two effects, the failure path, and a corrupt input with its
+   conservative default. Write the boundaries this contract actually has — `tdd` forbids testing
+   everything, so a pasted six-row checklist is a defect. Template: `REFERENCE.md` →
+   Acceptance criteria template.
 
    ```bash
    bd create "<title>" --type task --description "<description>" --priority <priority> \

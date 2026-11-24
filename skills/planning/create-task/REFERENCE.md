@@ -87,6 +87,36 @@ The deliverable this feature produces and the problem it solves.
 - [ ] The user confirms planning is sufficient for this feature.
 ```
 
+## Acceptance criteria template
+
+`## Acceptance Criteria` is the whole spec a reviewer checks against, so write one criterion for
+the behaviour the change adds and one for each boundary of the contract it touches. These are the
+kinds of boundary a change can have — cover the ones this contract has, never all six by default:
+
+| Kind | The question it answers |
+|---|---|
+| Floor and ceiling | What does a value at the minimum, past the maximum, or a non-integer where a count is required do? |
+| Empty versus absent | Does an empty collection behave the same as a missing one? |
+| Single-fire versus double-fire | What does a second event, or an action armed twice, do? |
+| Ordering of two effects | Which effect happens first, and what does a partial run leave behind? |
+| Failure path | What happens when the third party refuses, and what state survives? |
+| Corrupt input | What does unparseable input do, and which conservative default does it fall back to? |
+
+```markdown
+## Acceptance Criteria
+
+- [ ] `transferCredits` moves the amount between the two accounts and returns both new balances.
+- [ ] A transfer of `0`, or one above the source balance, is refused and both balances stay unchanged.
+- [ ] An empty transfer list is a no-op; a missing transfer list is an error.
+- [ ] A transfer the ledger rejects leaves both balances unchanged and reports the ledger's reason.
+- [ ] A transfer record with an unparseable amount is refused, so a corrupt input never moves funds.
+```
+
+The first row is the function criterion; the rest are boundaries — a ceiling, empty versus absent,
+the failure path, and a corrupt input. A contract with a single path needs a single criterion:
+`tdd` already states that you cannot test everything, so a table of six pasted into every bead is
+a defect, not thoroughness.
+
 ## Current pipeline stages
 
 | id | title | dependsOn |

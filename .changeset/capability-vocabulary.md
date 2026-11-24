@@ -1,5 +1,5 @@
 ---
-"@cryptolibertus/agent-cortex": patch
+"@jaybeeuu/agent-cortex": patch
 ---
 
 Document the capability vocabulary: a **capability** is a tool or a command resolved per harness, a

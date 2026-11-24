@@ -16,7 +16,7 @@ METADATA
 | Field | Type | Meaning |
 |---|---|---|
 | `reach` | number ≥ 0 | How much work the bead changes |
-| `impact` | number ≥ 0 | How much each unit of reach gains, on the rubric's scale |
+| `impact` | number ≥ 0 | How much each unit of reach gains, on the rubric's scale — a value from its `## Impact levels` table when it states one |
 | `confidence` | number `0..1` | Probability that the reach, impact and effort estimates hold |
 | `effort` | number > 0 | Cost, on the rubric's effort calibration |
 | `score` | number, one decimal | `reach × impact × confidence ÷ effort` |
@@ -31,6 +31,7 @@ The total is rounded once, at the end: `Math.round(value * 10) / 10`. Rounding a
 `score` refuses, writing nothing, when:
 
 - the strategy file is missing, or `validate` rejects it — exit 1, with the reason;
+- `--impact` is a value the strategy's `## Impact levels` table does not list — exit 1, naming every level the table allows; with no table, any value of zero or more is accepted and the run prints a line saying impact is unconstrained;
 - a component is not a number, `confidence` falls outside `0..1`, or `effort` is zero or less — exit 2;
 - the rationale is empty — exit 2.
 

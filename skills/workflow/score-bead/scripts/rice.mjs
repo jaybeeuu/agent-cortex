@@ -18,7 +18,8 @@
 // The rubric is the strategy file owned by the strategise skill. This script reads
 // it through that skill's validator and resolver, so there is one definition of a valid
 // strategy and one way to find it. A missing or invalid strategy refuses the score before
-// the first tracker call, so a refusal writes nothing at all.
+// the first tracker call, so a refusal writes nothing at all; so does an impact value the
+// strategy's `## Impact levels` table does not list.
 //
 // Zero runtime dependencies, async fs only, and every child process runs with an argv
 // array — never a shell string, so a rationale carrying spaces or quotes reaches `bd`
@@ -35,6 +36,8 @@ import { promisify } from 'node:util';
 
 import {
   DEFAULT_FILE,
+  IMPACT_LEVELS_SECTION,
+  parseImpactLevels,
   resolveStrategyPath,
   validateStrategy,
 } from '../../strategise/scripts/strategy.mjs';
@@ -116,6 +119,9 @@ const PRIOR_PREFIX = '[prior]';
  * @property {string} bead
  * @property {RiceRecord} rice
  * @property {{ file: string, version: number }} strategy
+ * @property {{ label: string, value: number } | undefined} impactLevel  The strategy's level
+ *   for this impact value. Absent when the strategy states no `## Impact levels` table, so
+ *   the CLI can say impact is unconstrained rather than imply a rule the file never wrote.
  * @property {StoredRice | undefined} previous
  */
 
@@ -379,8 +385,10 @@ export async function readBead({ beadId, bd }) {
  *
  * The order is the contract. The strategy is read and validated before the first `bd`
  * call, so a missing or malformed rubric refuses the run with nothing written — not a
- * score, not a note, not a metadata key. Reach * impact * confidence / effort is computed
- * once, and the version recorded is the file's own version, read after it validated.
+ * score, not a note, not a metadata key. An impact value the strategy's `## Impact levels`
+ * table does not list is refused at that same point, so a value the rubric never allowed
+ * cannot reach a bead either. Reach * impact * confidence / effort is computed once, and the
+ * version recorded is the file's own version, read after it validated.
  *
  * @param {object} options
  * @param {string} options.beadId
@@ -424,6 +432,21 @@ export async function scoreBead({
   }
   const strategyVersion = strategy.version;
 
+  // The level check belongs here, where the strategy is in scope, and not in
+  // `validateComponents`: that function stays strategy-free, and this runs before the first
+  // `bd` call, so a refusal still writes nothing. A strategy with no table states no levels
+  // and is not checked, because a restriction the owner never wrote must not reject a score.
+  const levels = parseImpactLevels(strategyText);
+  const impactLevel =
+    levels.source === 'file' ? levels.levels.find((level) => level.value === clean.impact) : undefined;
+  if (levels.source === 'file' && impactLevel === undefined) {
+    throw new RiceError(
+      `--impact ${clean.impact} is not on the "## ${IMPACT_LEVELS_SECTION}" table in ${strategyFile}, ` +
+        `which allows: ${levels.levels.map((level) => `${level.label} ${level.value}`).join(', ')} — ` +
+        'score against one of those values, or add the level to the strategy and bump it',
+    );
+  }
+
   const bd = deps.bd ?? makeRunner(BD_PATH, cwd);
   const bead = await readBead({ beadId, bd });
   const previous = bead.rice;
@@ -439,7 +462,7 @@ export async function scoreBead({
 
   await bd(['update', bead.id, '--metadata', JSON.stringify({ [RICE_KEY]: rice })]);
 
-  return { bead: bead.id, rice, strategy: { file: strategyFile, version: strategyVersion }, previous };
+  return { bead: bead.id, rice, strategy: { file: strategyFile, version: strategyVersion }, impactLevel, previous };
 }
 
 // ─── Band ─────────────────────────────────────────────────────────────────────
@@ -502,7 +525,8 @@ const USAGE = `Usage: node rice.mjs score <bead-id> --reach <n> --impact <n> --c
 
 Options:
   --reach <n>        How much work or how many workflows this changes.
-  --impact <n>       How much it matters per unit of reach.
+  --impact <n>       How much it matters per unit of reach. When the strategy states a
+                     "## Impact levels" table, the value must be one of its levels.
   --confidence <0..1>  How sure the estimate is. A real figure, not a guess dressed as one.
   --effort <n>       Cost, on the strategy's calibration scale. Must be greater than zero.
   --rationale <text> Why these numbers, naming the strategy section that justifies them.
@@ -625,6 +649,11 @@ export async function runCli({
           `× confidence ${rice.confidence} ÷ effort ${rice.effort} (strategy v${report.strategy.version})\n`,
       );
       write(`  assessed ${rice.assessedAt}\n`);
+      write(
+        report.impactLevel === undefined
+          ? '  impact unconstrained: the strategy states no "## Impact levels" table, so any number of zero or more is accepted\n'
+          : `  impact level: ${report.impactLevel.label} ${report.impactLevel.value} — cite this label in the rationale\n`,
+      );
       if (report.previous !== undefined) {
         write(
           `  replaced score ${report.previous.score ?? '(none)'} @ strategy ` +

@@ -20,6 +20,7 @@ import {
   DEFAULT_DEADLINE_TIERS,
   REQUIRED_SECTIONS,
   parseDeadlineTiers,
+  parseImpactLevels,
   runCli,
 } from '../skills/workflow/strategise/scripts/strategy.mjs';
 
@@ -39,6 +40,7 @@ const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  * @param {Record<string, string>} [options.answers]  Body text per section title.
  * @param {string[]} [options.omit]                   Sections to leave out of the file.
  * @param {[string, string][]} [options.deadlineTiers]  Rows for a `## Deadline tiers` table.
+ * @param {[string, string][]} [options.impactLevels]   Rows for a `## Impact levels` table.
  * @param {string} [options.changeLog]                A change-log entry; omit for no section.
  * @returns {string}
  */
@@ -48,6 +50,7 @@ function createStrategy({
   answers = {},
   omit = [],
   deadlineTiers,
+  impactLevels,
   changeLog,
 } = {}) {
   const sections = REQUIRED_SECTIONS.filter((title) => !omit.includes(title)).map((title) => {
@@ -60,8 +63,14 @@ function createStrategy({
       : `\n## Deadline tiers\n\n| Remaining | Factor |\n|---|---|\n${deadlineTiers
           .map(([when, factor]) => `| ${when} | ${factor} |`)
           .join('\n')}\n`;
+  const levels =
+    impactLevels === undefined
+      ? ''
+      : `\n## Impact levels\n\n| Level | Value |\n|---|---|\n${impactLevels
+          .map(([label, value]) => `| ${label} | ${value} |`)
+          .join('\n')}\n`;
   const log = changeLog === undefined ? '' : `\n## Change log\n\n${changeLog}\n`;
-  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${tiers}${log}`;
+  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${levels}${tiers}${log}`;
 }
 
 /**
@@ -601,6 +610,175 @@ describe('the deadline tiers', () => {
 
     assert.equal(parsed.ok, true, parsed.errors.join('; '));
     assert.deepEqual(parsed.tiers, DEFAULT_DEADLINE_TIERS);
+  });
+});
+
+describe('the impact levels', () => {
+  /** The shipped example scale, repeated here so a template edit cannot pass unnoticed. */
+  const EXAMPLE_LEVELS = [
+    { label: 'minor', value: 0.25 },
+    { label: 'small', value: 0.5 },
+    { label: 'normal', value: 1 },
+    { label: 'large', value: 2 },
+    { label: 'major', value: 3 },
+  ];
+
+  /** The same scale as table rows. @type {[string, string][]} */
+  const EXAMPLE_ROWS = EXAMPLE_LEVELS.map(({ label, value }) => /** @type {[string, string]} */ ([label, String(value)]));
+
+  it('reads the shipped table into one level per row, in file order', () => {
+    const parsed = parseImpactLevels(createStrategy({ impactLevels: EXAMPLE_ROWS }));
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.equal(parsed.source, 'file');
+    assert.deepEqual(parsed.levels, EXAMPLE_LEVELS);
+  });
+
+  it('skips the header row and the rule row rather than reading them as levels', () => {
+    const parsed = parseImpactLevels(
+      createStrategy({
+        impactLevels: [
+          ['small', '0.5'],
+          ['large', '2'],
+        ],
+      }),
+    );
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.deepEqual(parsed.levels, [
+      { label: 'small', value: 0.5 },
+      { label: 'large', value: 2 },
+    ]);
+  });
+
+  it('is not a fallback to unrestricted: a section with no readable row is a defect', () => {
+    const parsed = parseImpactLevels(createStrategy({ impactLevels: [] }));
+
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.source, 'file', 'the section is present, so it is not the no-table case');
+    assert.match(parsed.errors.join('\n'), /Impact levels: carries no "\| Level \| Value \|" row/);
+  });
+
+  it('names every unusable value in one run: zero, negative, non-numeric, repeated label, repeated value', () => {
+    const parsed = parseImpactLevels(
+      createStrategy({
+        impactLevels: [
+          ['zero', '0'],
+          ['negative', '-1'],
+          ['word', 'lots'],
+          ['normal', '1'],
+          ['normal', '2'],
+          ['large', '1'],
+        ],
+      }),
+    );
+
+    assert.equal(parsed.ok, false);
+    const errors = parsed.errors.join('\n');
+    assert.match(errors, /row "\| zero \| 0 \|" — value "0" is not a positive number/);
+    assert.match(errors, /row "\| negative \| -1 \|" — value "-1" is not a positive number/);
+    assert.match(errors, /row "\| word \| lots \|" — value "lots" is not a positive number/);
+    assert.match(errors, /row "\| normal \| 2 \|" — label "normal" is already on the table/);
+    assert.match(errors, /row "\| large \| 1 \|" — value 1 is already on the table/);
+  });
+
+  it('reports a row that is not two columns instead of dropping the level in silence', () => {
+    const parsed = parseImpactLevels(
+      createStrategy({
+        impactLevels: [
+          ['minor', '0.25 | 9'],
+          ['normal', '1'],
+          ['large', '1 | 2'],
+          ['huge', '0'],
+        ],
+      }),
+    );
+
+    assert.equal(parsed.ok, false, 'a level the parser cannot read must not leave the table unannounced');
+    assert.deepEqual(parsed.levels, [{ label: 'normal', value: 1 }], 'the readable rows are still read');
+    const errors = parsed.errors.join('\n');
+    assert.match(errors, /Impact levels: line "\| minor \| 0\.25 \| 9 \|" is not a/);
+    assert.match(errors, /Impact levels: line "\| large \| 1 \| 2 \|" is not a/, 'every defect lands in one run');
+    assert.match(errors, /row "\| huge \| 0 \|" — value "0" is not a positive number/);
+  });
+
+  it('reports a row that opens with a pipe and never closes it', () => {
+    const text = createStrategy({ impactLevels: [['normal', '1']] }).replace('| normal | 1 |', '| normal | 1');
+
+    const parsed = parseImpactLevels(text);
+
+    assert.equal(parsed.ok, false);
+    assert.deepEqual(parsed.levels, []);
+    assert.match(parsed.errors.join('\n'), /Impact levels: line "\| normal \| 1" is not a/);
+  });
+
+  it('fails validate with the unreadable-row defect, so a scorer never sees a shortened table', async () => {
+    const file = await writeStrategy(
+      createStrategy({
+        impactLevels: [
+          ['minor', '0.25 | 9'],
+          ['normal', '1'],
+        ],
+      }),
+    );
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 1);
+    assert.equal(check.stdout, '');
+    assert.match(check.stderr, /Impact levels: line "\| minor \| 0\.25 \| 9 \|"/);
+  });
+
+  it('reports nothing when the section is absent, and states no levels', () => {
+    const parsed = parseImpactLevels(createStrategy());
+
+    assert.deepEqual(parsed, { ok: true, levels: [], errors: [], source: 'none' });
+  });
+
+  it('fails validate with the level defect, so a scorer never reads a table it cannot parse', async () => {
+    const file = await writeStrategy(createStrategy({ impactLevels: [['zero', '0']] }));
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 1);
+    assert.equal(check.stdout, '');
+    assert.match(check.stderr, /Impact levels: row "\| zero \| 0 \|"/);
+  });
+
+  it('prints the levels in the digest, in the order the table writes them', async () => {
+    const file = await writeStrategy(createStrategy({ impactLevels: EXAMPLE_ROWS }));
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.match(
+      result.stdout,
+      /impact levels: minor 0\.25 · small 0\.5 · normal 1 · large 2 · major 3/,
+      `the levels print as the scale a score must land on: ${result.stdout}`,
+    );
+    assert.equal(result.stdout.trimEnd().split('\n').length, 6, 'the level line joins the five');
+  });
+
+  it('says nothing about impact when the file states no table', async () => {
+    const file = await writeStrategy(createStrategy());
+
+    const result = await run(['summary', '--file', file]);
+
+    assert.equal(result.code, 0);
+    assert.doesNotMatch(result.stdout, /impact/i, 'no table means no line, never an empty one');
+    assert.equal(result.stdout.trimEnd().split('\n').length, 5);
+  });
+
+  it('ships a template whose table is the example scale', async () => {
+    const template = await readFile(
+      join(REPO_ROOT, 'skills', 'workflow', 'strategise', 'templates', 'strategy.md'),
+      'utf8',
+    );
+
+    const parsed = parseImpactLevels(template);
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.deepEqual(parsed.levels, EXAMPLE_LEVELS);
   });
 });
 

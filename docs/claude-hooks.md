@@ -25,6 +25,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `session-clear/` | — | **Reject** — built-in `/clear` |
 | `session-transition/` | — | **Reject** — built-in `/compact` and `/clear` |
 | `post-merge-watch/` | — | **Reject** — no hook surface; Claude watches with its own tools |
+| `idle-watch/` | — | **Reject** — no timer hook; Claude schedules its own resumption |
 | `interrupt-bookmark/` | — | **Reject** — no hook surface; Claude rewinds with its own `/rewind` |
 
 ## `session-start/` → SessionStart (port)
@@ -176,6 +177,18 @@ an idle session. Claude watches the same check through its own tools instead, so
 there is nothing to port and no setting to add. The check script
 (`skills/workflow/ralph/scripts/post-merge-check.mjs`) is shared by both
 harnesses; only the wake mechanism is pi's.
+
+## `idle-watch/` → Reject (no hook surface)
+
+pi has no way to poll a check while the session stays interactive, so the
+extension arms a bounded cadence, digests the check's JSON, and sends one
+message per change — then ends the turn so the session is still usable. Claude
+Code's hook model has no equivalent: a hook fires on a session event, not on a
+timer, and no hook can start a turn on an idle session. A claude session
+schedules its own resumption with its built-in wake mechanism instead, the same
+mechanism the post-merge watch names for that harness. So there is no hook to
+port and no setting to add. The check itself is the caller's own script, shared
+by both harnesses; only the cadence is pi's.
 
 ## `interrupt-bookmark/` → Reject (no hook surface)
 

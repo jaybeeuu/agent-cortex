@@ -4,6 +4,10 @@
 checkout reached 10,563 commits for 1,071 beads (512 KB of JSONL) and 811 MB of Dolt data; every
 command then took 2–3 s, because each invocation opens the whole history.
 
+This is an occasional operator task. **No agent is required to maintain the store**: do not
+squash it at the end of a task, and no pipeline stage depends on it. The store is fine until
+calls get slow, and then one person fixes it once.
+
 Measured on this checkout, 2026-11-24:
 
 | | before | after squash |

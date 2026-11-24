@@ -18,7 +18,7 @@
 // Written async throughout (the fake is a child process and the helper's own
 // I/O is test code) — the repo's check-no-sync lint scans test/ for *Sync.
 
-import { chmod, writeFile } from "node:fs/promises";
+import { chmod, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const FAKE_PI_SCRIPT = [
@@ -129,4 +129,15 @@ export async function makeFakePi(dir, { failWhen = null, packages = [] } = {}) {
   await writeFile(settingsPath, `${JSON.stringify({ packages }, null, 2)}\n`);
   if (failWhen) await writeFile(join(dir, "failWhen.txt"), failWhen);
   return { bin, log, settingsPath };
+}
+
+/** Make every subsequent fake invocation whose argv contains `failWhen` exit 1,
+ * or clear the failure with `null` — the same knob `makeFakePi` sets at creation.
+ * @param {string} dir  The directory passed to `makeFakePi`, also `dirname(bin)`
+ * @param {string|null} failWhen  argv substring to fail on, or null to clear
+ * @returns {Promise<void>} */
+export async function setFakePiFailure(dir, failWhen) {
+  const path = join(dir, "failWhen.txt");
+  if (failWhen) await writeFile(path, failWhen);
+  else await rm(path, { force: true });
 }

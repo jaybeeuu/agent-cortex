@@ -172,6 +172,10 @@ installer rendered there are swept (see below).
 agent-cortex install pi          # stage ~/.agent-cortex/pi + register it with pi
 ```
 
+`agent-cortex uninstall pi` is the inverse: it drops the registration with `pi remove` and then
+deletes the staged directory — see
+[Removing a harness install](#removing-a-harness-install-agent-cortex-uninstall).
+
 Registration is idempotent by state: the staged path is registered once (a
 re-run is a true no-op — a local package source is read from disk on every pi
 start, so nothing needs refreshing), and a source pointing at a raw agent-cortex
@@ -273,7 +277,7 @@ Copilot CLI is no longer a deploy target: `agent-cortex install copilot` and the
 `plugin.json` manifest are gone, and nothing in this package reads or writes `~/.copilot`
 any more. No installer sweeps an existing install, so a machine that used the old target
 keeps a stale plugin, a cached marketplace, and an instruction block until you remove them
-by hand:
+by hand (`agent-cortex uninstall` covers the pi and Claude installs only):
 
 ```sh
 rm -rf ~/.copilot/installed-plugins/_direct/agent-cortex
@@ -417,9 +421,20 @@ preview and never refreshes an installed plugin.)
 
 #### Uninstall
 
+`agent-cortex uninstall claude` is the inverse of the install: it deregisters the plugin and the
+marketplace through the `claude plugin` CLI, removes exactly the settings entries the install
+declared, removes the managed `~/.claude/CLAUDE.md` section, and deletes
+`~/.agent-cortex/claude` plus the marketplace manifest. Personal settings and entries you added
+survive. See
+[Removing a harness install](#removing-a-harness-install-agent-cortex-uninstall) for the selection
+rules, `--all`, and the recovery path when a removal is incomplete.
+
+The equivalent manual commands, for a machine whose `claude` CLI cannot drive the deregistration:
+
 ```sh
-claude plugin uninstall agent-cortex
+claude plugin uninstall agent-cortex@jaybeeuu -y
 claude plugin marketplace remove jaybeeuu
+rm -rf ~/.agent-cortex/claude ~/.agent-cortex/.claude-plugin/marketplace.json
 ```
 
 #### Using the agents
@@ -541,10 +556,10 @@ reaches the network.
 ## Updating the CLI itself (`agent-cortex self-update`)
 
 `agent-cortex self-update` updates the globally installed CLI through the manager that installed it,
-then refreshes the harness installs with the newly installed binary.
+then refreshes the installed harnesses with the newly installed binary.
 
 ```sh
-agent-cortex self-update           # report, update, then refresh the harness installs
+agent-cortex self-update           # report, update, then refresh the installed harnesses
 agent-cortex self-update --check   # report the versions and the command, write nothing
 ```
 
@@ -570,7 +585,7 @@ to, because the running process is still the old code; when that listing answers
 installed binary is asked instead, and a binary that disagrees with the listing is named as another
 copy. When neither source answers, the update is unverified: the refresh still runs, because the
 install exited 0 and a refresh is repeatable, but the command exits non-zero. One command brings the
-CLI and the harness installs to the same version, and otherwise the exit code is the refresh's.
+CLI and the installed harnesses to the same version, and otherwise the exit code is the refresh's.
 
 The refresh spawns `<prefix>/bin/agent-cortex` from that same inferred prefix with an argv array and
 inherits the terminal, so the refresh's own output is what the user reads. It is skipped in four
@@ -607,18 +622,28 @@ install can never disagree about what is out of date.
 ```sh
 agent-cortex update                 # list the harnesses, then ask which to refresh
 agent-cortex update pi claude       # refresh exactly these, no prompt
-agent-cortex update -a              # refresh every harness not at the CLI version
-agent-cortex update -a -f           # re-run every installer regardless of version
+agent-cortex update -a              # refresh every installed harness not at the CLI version
+agent-cortex update -a -f           # re-run every installed harness installer regardless of version
 ```
 
-The prompt lists every supported harness with its installed version, the CLI version, and a status
-marker (`current`, `stale`, `ahead`, `unknown`, or `missing`) — the data `agent-cortex version`
-reports, plus a row for a harness with no install. Answer with row numbers counted from the top
-row, `a` for every harness, or blank to cancel.
+The prompt lists every installed harness with its installed version, the CLI version, and a status
+marker (`current`, `stale`, `ahead`, or `unknown`) — the data `agent-cortex version` reports,
+plus a row for a harness with no install. Answer with row numbers counted from the top row, `a`
+for every installed harness, or blank to cancel.
 
-A harness named on the command line always refreshes, whatever version it reports, and takes
-precedence over `-a`. `-a` refreshes every harness that does not report `current`, so an
-uninstalled, stale, ahead, or unreadable harness is refreshed. `-f` requires `-a`: alone it says
+Updating never installs a harness. One that was never installed is reported `not installed` — its
+own state, not a stale version — and left alone by every path: the prompt, `-a`, `-a -f`, and
+`agent-cortex self-update`, which runs `update -a` itself. Installing is
+`agent-cortex install <harness>`'s job, so naming an absent harness on the command line is an
+error, not an install.
+
+An earlier release installed a harness through `agent-cortex update <harness>`. That no longer
+works. Run `agent-cortex install <harness>` once to install it, then `update` refreshes it as
+before.
+
+An installed harness named on the command line always refreshes, whatever version it reports, and
+takes precedence over `-a`. `-a` refreshes every installed harness that does not report `current`,
+so a stale, ahead, or unreadable harness is refreshed. `-f` requires `-a`: alone it says
 nothing about which harnesses to touch. An unknown name fails before any installer runs.
 
 A shell that is not a terminal cannot answer the prompt, so a bare `agent-cortex update` there
@@ -626,17 +651,92 @@ prints the same table plus the flags above and exits non-zero — a script can n
 "nothing chosen" for "nothing to do".
 
 `update` exits 0 when every refresh it attempted completed — including a selection that refreshed
-nothing — and 1 when an installer fails, a harness name is unknown, an option cannot be parsed, or a
-bare invocation has no terminal to prompt on. `agent-cortex self-update` hands the refresh's exit
-code back, so a failed refresh fails the whole command.
+nothing — and 1 when an installer fails, a harness name is unknown or names a harness that is not
+installed, an option cannot be parsed, or a bare invocation has no terminal to prompt on.
+`agent-cortex self-update` hands the refresh's exit code back, so a failed refresh fails the whole
+command.
 
 The report gives each refreshed harness its previous version, its new version, and the artifacts
-the installer wrote; harnesses already at the CLI version are listed as skipped. A harness's new
+the installer wrote. A previous version it cannot read is reported as `unknown` — the same state
+the table uses — because the refresh touched the harness, so `not installed` stays reserved for
+one update left alone. Installed harnesses already at the CLI version are listed as skipped, and
+each harness that was never installed is reported as `not installed` with the command that
+installs it. A harness's new
 version is read back from the manifest its installer wrote, so a refresh that failed to
 materialise reports `unknown` rather than claiming the CLI version.
 
 This refreshes the installs, not the CLI. `agent-cortex self-update` does both in one step; the
 [`docs/dev-loop.md`](docs/dev-loop.md) page records what a global reinstall has to fix.
+
+## Removing a harness install (`agent-cortex uninstall`)
+
+`agent-cortex uninstall` is the inverse of `agent-cortex install`: it removes a harness install and
+the registration that goes with it. Registration is undone through the harness's own CLI — `pi
+remove` for pi, `claude plugin uninstall` plus `claude plugin marketplace remove` for Claude Code —
+and never by writing the harness's settings file. On the Claude side it also removes exactly the
+`enabledPlugins` + `extraKnownMarketplaces` entries the install declared, the managed section of
+`~/.claude/CLAUDE.md`, the plugin directory and the marketplace manifest, so personal settings and
+entries you added survive.
+
+```sh
+agent-cortex uninstall              # list the installed harnesses, then ask which to remove
+agent-cortex uninstall pi claude    # remove exactly these, no prompt
+agent-cortex uninstall -a           # remove every installed harness, after confirming
+agent-cortex uninstall --dry-run    # print what would be removed and write nothing
+```
+
+The prompt lists the harnesses that have an install, because one that was never installed has
+nothing to uninstall. Answer with row numbers counted from the top row, or blank to cancel. A
+cancel removes nothing and exits 0.
+
+`--all` is destructive, so it asks for confirmation on a terminal. Only `y` or `yes` proceeds:
+every other answer, a blank one and a closed input included, removes nothing. In a shell that is
+not a terminal no prompt can be answered, so `--all` is the explicit opt-in there. A dry run is not
+confirmed, because it writes nothing. `--all` cannot be combined with a harness name, because the
+flag already covers every installed harness.
+
+A shell that is not a terminal cannot answer the selection prompt either. A bare
+`agent-cortex uninstall` there prints the same table plus the flags above and exits non-zero, so a
+script can never mistake "nothing chosen" for "nothing to do".
+
+`uninstall` exits 0 when every removal completed, including a run that found nothing to remove,
+and 1 when a removal is incomplete, a harness name is unknown, an option cannot be parsed, or a
+bare invocation has no terminal to prompt on. A named harness that is not installed is not an
+error: the report says `already absent` and the exit code stays 0, so a second run is safe and a
+script needs no prior check.
+
+### What `--all` leaves
+
+Two decisions bound the removal:
+
+- **Harness installs, not the CLI.** The package manager that installed `agent-cortex` owns its
+  removal, so `--all` never uninstalls the CLI. The shared `~/.agent-cortex` root stays too: it
+  holds records that outlive a harness install (`legacy-sweep.json`, `scopes.json`), so removing it
+  would delete state no installer owns. The report names both.
+- **No worktree is deleted.** A worktree under `.agent-cortex/worktrees/` may hold uncommitted
+  work, and `uninstall` did not create it, so reporting it is the least destructive answer. `--all`
+  lists every one it finds and names `git worktree remove <path>`; it deletes none.
+
+Remove the CLI with the manager that installed it — `pnpm remove -g @jaybeeuu/agent-cortex`, or
+`npm uninstall -g @jaybeeuu/agent-cortex` — and `~/.agent-cortex` by hand, when you want those
+records gone as well.
+
+### When a removal is incomplete
+
+A harness that is registered but cannot be deregistered is reported as `partially removed — the
+harness registration is still outstanding`. The warning names what survived and prints the exact
+commands that finish the job, and the run exits 1. That happens when the harness CLI is missing or
+too old, or when it rejects the command.
+
+The removal stays retryable, so nothing is orphaned. The staged pi directory is deleted only after
+`pi remove` succeeds. The Claude plugin directory, the marketplace manifest and the declared
+settings entries are left in place until the deregistration succeeds, so the next attempt starts
+from the state it finds. Run the printed commands by hand, then run
+`agent-cortex uninstall <harness>` again.
+
+A Claude install whose marketplace manifest is missing or unreadable cannot name itself: nothing is
+removed, the harness is reported incomplete, and the warning gives the
+`claude plugin uninstall <plugin>@<marketplace>` command to use instead.
 
 ## Migrating a beads workspace
 

@@ -202,10 +202,11 @@ describe("guppi's interrupt protocol renders per harness", () => {
   it("grants pi's guppi every interrupt tool the staged extension registers", async () => {
     const { dirs } = await stageBoth();
 
-    // Both sides are read from the same staged pi package: the extension is the
-    // collaborator that registers the tools, the agent's frontmatter is the
-    // wiring that declares them to the model. A rename on either side leaves
-    // guppi unable to run steps 1 and 3, so it fails here.
+    // The extension is the collaborator that registers the tools; guppi's
+    // authored frontmatter is what decides whether the model can call them. A
+    // rename on the extension's side would leave guppi unable to run steps 1 and
+    // 3 if the agent carried an allowlist, so it is checked from the staged
+    // package.
     const extension = await readFile(join(dirs.pi, "extensions", "interrupt-bookmark", "index.ts"), "utf-8");
     const registered = [...extension.matchAll(/^export const (?:CHECKPOINT|RESUME)_TOOL = "([^"]+)";$/gm)].map(
       (match) => match[1],
@@ -216,13 +217,12 @@ describe("guppi's interrupt protocol renders per harness", () => {
       "the staged extension registers both interrupt tools",
     );
 
-    const declared = /** @type {string} */ (
-      (await readFile(join(dirs.pi, ...AGENT_PATH.pi), "utf-8")).match(/^tools: "([^"]+)"$/m)?.[1]
-    ).split(", ");
-
-    for (const tool of registered) {
-      assert.ok(declared.includes(tool), `pi's guppi declares ${tool}`);
-    }
+    // guppi authors the all-tools sentinel ("*"), so its render carries no tools
+    // line at all: the harness inherits every registered tool, and no allowlist
+    // can go stale against a renamed tool. An allowlist reappearing here is the
+    // failure this test exists to catch.
+    const staged = await readFile(join(dirs.pi, ...AGENT_PATH.pi), "utf-8");
+    assert.doesNotMatch(staged, /^tools:/m, "pi's guppi carries no tool allowlist — it inherits every tool");
   });
 
   it("keeps the protocol text identical once the mechanism name is set aside", async () => {

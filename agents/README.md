@@ -98,7 +98,7 @@ JSON schema for harness-specific metadata:
 |-------|------|-------------|
 | `name` | `string` | Agent identifier (e.g., `agent-cortex:ralph`) |
 | `description` | `string` | What the agent does (used in agent selection) |
-| `tools` | `string[]` | Tool names the agent can use (non-empty) |
+| `tools` | `string[]` | Tool names the agent can use (non-empty), or `["*"]` for every tool the session has |
 
 #### Optional Fields
 
@@ -111,7 +111,34 @@ JSON schema for harness-specific metadata:
 
 - No unknown fields allowed (strict schema)
 - `name` and `description` must be non-empty strings
-- `tools` must be a non-empty array of strings
+- `tools` is required and must be a non-empty array of strings
+- `tools` may be the single sentinel `["*"]`, which means every tool the session has. It is the
+  only value that means "all", and it cannot be combined with tool names: the validator
+  (`scripts/validate-agent-dir.mjs`) and both installers reject a mixed list with an error, so a
+  build fails instead of resolving one. A rendered literal would not be equivalent either: pi's
+  `--tools` compiles a lone `*` to `^.*$`, which matches every tool name, so pi would grant full
+  access rather than less. Claude Code's `tools:` field takes exact names, so the same literal
+  would name none of its tools.
+- Surrounding whitespace is ignored, so `["* "]` is the same sentinel as `["*"]`, in both
+  installers and in the `agent-modes` runtime that reads the composed agents
+- Both installers resolve `["*"]` by omitting the rendered `tools:` line, so the harness
+  inherits its own full tool set. An authored list never renders a literal `*`
+
+#### Example with the all-tools sentinel
+
+```json
+{
+  "name": "agent-cortex:guppi",
+  "description": "Resident prioritising collaborator",
+  "tools": ["*"]
+}
+```
+
+`"*"` is an authored form only. The harness reads the resulting agent as having no tool
+restriction at all, which is how an agent reaches tools that cannot be named at authoring time —
+MCP connector tools carry a per-machine name (`mcp__<server>__<tool>`), so no fixed list can
+include them. An absent `tools` key is never the authored form: the schema requires the key, so a
+forgotten list is a validation error rather than a silent grant of every tool.
 
 ### Section Files
 
@@ -171,6 +198,14 @@ parser is comma-separated too. Generated pi agents therefore render
 leaves the agent with an allowlist matching no tool. Both parsers
 (`extensions/subagent/agents.ts`, `extensions/agent-modes/discover.ts`) accept whitespace
 as well, so either form round-trips safely.
+
+A resolved list of exactly `["*"]` renders no `tools:` line at all, on either harness, so
+neither consumer reads a value it has to interpret: pi enables every tool, exactly as it does
+when `--tools` is absent, and Claude Code's `tools:` field, which takes exact names, never sees
+a `*` that names none of its tools. Rendering the literal instead would not be equivalent: pi
+compiles `*` to `^.*$`, while Claude Code would read a name no tool has. An agent whose
+rendered frontmatter has no `tools:` key therefore runs with every tool (see
+`extensions/agent-modes/discover.ts`).
 
 ## Composition Rules
 

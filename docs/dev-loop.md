@@ -11,7 +11,7 @@ agent-cortex self-update
 ```
 
 One command updates the global CLI through the manager that installed it and then runs
-`agent-cortex update -a` with the new binary, so the CLI and both harness installs move together.
+`agent-cortex update -a` with the new binary, so the CLI and the installed harnesses move together.
 The version boundary it prints is read from the prefix listing the manager wrote to, never from this
 process: the running command is the old code and reads the old manifest beside its own entry point.
 When that listing answers nothing, it asks the newly installed binary instead. It passes the
@@ -26,11 +26,13 @@ The step it replaces is not optional. A global CLI whose shim points at a delete
 fails every call with `MODULE_NOT_FOUND`, and re-installing is the fix: the published tarball
 ships `bin/` and `scripts/`, so a global install restores the command.
 
-The second half refreshes both harness installs. `agent-cortex update -a` re-runs the installer
-of every harness whose installed version differs from the new CLI, so it is the same work as
-`agent-cortex install pi` and `agent-cortex install claude` in sequence — update delegates to
-install rather than materialising anything itself. Use `agent-cortex update -a -f` to re-run both
-installers even when the version already matches.
+The second half refreshes the harness installs that exist. `agent-cortex update -a` re-runs the
+installer of every installed harness whose installed version differs from the new CLI, so it is
+the same work as `agent-cortex install pi` and `agent-cortex install claude` for the harnesses you
+have installed — update delegates to install rather than materialising anything itself. It never
+installs a harness that is absent: a machine with only pi installed refreshes pi and leaves
+claude alone. Use `agent-cortex update -a -f` to re-run the installed harness installers even when
+the version already matches.
 
 - `agent-cortex install <harness>` is idempotent and safe to re-run. A re-run at the same version
   rewrites the staged files identically and makes no registration change; a newer version
@@ -45,6 +47,10 @@ installers even when the version already matches.
 Verify registration, not files: `pi list` lists one agent-cortex source pointing at
 `~/.agent-cortex/pi`, and `claude plugin list` shows `agent-cortex@jaybeeuu`, read from
 `~/.agent-cortex/claude`.
+
+`agent-cortex uninstall <harness>` is the inverse: it removes an install and its registration.
+README's *Removing a harness install* records the selection rules and what the command leaves in
+place.
 
 ## What the installer writes
 

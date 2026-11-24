@@ -349,6 +349,12 @@ describe("buildHelpText", () => {
     }
   });
 
+  it("states that update never installs a harness, and what to run instead", async () => {
+    const text = buildHelpText();
+    assert.match(text, /never installs a harness/, "the rule is in the help text, not only the code");
+    assert.match(text, /install <harness>/, "the help names the command that does install");
+  });
+
   it("defaults to the agent-cortex help text", async () => {
     assert.equal(buildHelpText(), buildHelpText("agent-cortex"));
   });
@@ -711,14 +717,15 @@ describe("update command", () => {
 
     assert.equal(exitCode, 1, "a non-interactive update fails instead of blocking");
     assert.match(stdout, /^harness\s+installed\s+cli\s+status$/m, "the table header is printed");
-    assert.match(stdout, /^claude\s+not installed\s+\d+\.\d+\.\d+\s+missing$/m, "the uninstalled harness has a row");
+    assert.match(stdout, /^claude\s+-\s+\d+\.\d+\.\d+\s+not installed$/m, "the uninstalled harness has a row");
     assert.match(stdout, /^pi\s+0\.0\.1\s+\d+\.\d+\.\d+\s+stale$/m, "the stale harness has its two versions");
     assert.match(stdout, /agent-cortex update -a -f/, "the flags are listed so the next run is not a guess");
     assert.equal(stderr, "");
   });
 
-  it("refreshes the named harness only and leaves the other install root untouched", async () => {
+  it("refreshes the named installed harness only and leaves the other install root untouched", async () => {
     const home = await createHome();
+    await writeFingerprint(home, "claude", JSON.stringify({ version: "0.0.1" }));
     // An empty PATH keeps registration from spawning a real Claude Code CLI:
     // the installer warns and prints the manual commands instead.
     const emptyPath = join(await tempRoot.createWorkspace(), "empty-path");
@@ -730,7 +737,7 @@ describe("update command", () => {
     /** @type {{ version: string }} */
     const plugin = JSON.parse(await readFile(join(home, ".agent-cortex", "claude", ".claude-plugin", "plugin.json"), "utf-8"));
     assert.equal(plugin.version, await cliVersion());
-    assert.match(stdout, /claude not installed → \d+\.\d+\.\d+/, "the report shows the version it reached");
+    assert.match(stdout, /claude 0\.0\.1 → \d+\.\d+\.\d+/, "the report shows the version it reached");
     await assert.rejects(
       readFile(join(home, ".agent-cortex", "pi", "package.json"), "utf-8"),
       /ENOENT/,
@@ -738,7 +745,53 @@ describe("update command", () => {
     );
   });
 
-  it("reports nothing to update for -a when every harness is already at the CLI version", async () => {
+  it("refreshes the installed harness for -a and writes nothing for the one that is not installed", async () => {
+    const home = await createHome();
+    await writeFingerprint(home, "claude", JSON.stringify({ version: "0.0.1" }));
+    const emptyPath = join(await tempRoot.createWorkspace(), "empty-path");
+    await mkdir(emptyPath, { recursive: true });
+
+    const { exitCode, stdout } = await runCli(["update", "-a"], { env: { HOME: home, PATH: emptyPath } });
+
+    assert.equal(exitCode, 0);
+    /** @type {{ version: string }} */
+    const plugin = JSON.parse(await readFile(join(home, ".agent-cortex", "claude", ".claude-plugin", "plugin.json"), "utf-8"));
+    assert.equal(plugin.version, await cliVersion(), "the one installed harness is refreshed");
+    await assert.rejects(
+      readFile(join(home, ".agent-cortex", "pi", "package.json"), "utf-8"),
+      /ENOENT/,
+      "the absent harness is never installed",
+    );
+    assert.match(stdout, /^claude 0\.0\.1 → /m);
+    assert.match(stdout, /Not installed: pi — update never installs a harness\./);
+  });
+
+  it("reports a refreshed harness with an unreadable manifest as unknown instead of not installed", async () => {
+    const home = await createHome();
+    await writeFingerprint(home, "claude", "not json");
+    const emptyPath = join(await tempRoot.createWorkspace(), "empty-path");
+    await mkdir(emptyPath, { recursive: true });
+
+    const { exitCode, stdout } = await runCli(["update", "-a"], { env: { HOME: home, PATH: emptyPath } });
+
+    assert.equal(exitCode, 0);
+    assert.match(stdout, /^claude unknown → \d+\.\d+\.\d+$/m, "an unreadable install has its own previous state");
+    assert.doesNotMatch(stdout, /claude not installed/, "update refreshed claude, so it is never reported absent");
+  });
+
+  it("refuses to install a named harness that is not installed, and writes nothing", async () => {
+    const home = await createHome();
+
+    const { exitCode, stderr } = await runCli(["update", "pi"], { env: { HOME: home } });
+
+    assert.equal(exitCode, 1, "naming an absent harness is an error, not an install");
+    assert.match(stderr, /Not installed: "pi"\./);
+    assert.match(stderr, /Update never installs a harness/);
+    assert.match(stderr, /agent-cortex install pi/, "the message names the command that does install");
+    assert.deepEqual(await readdir(home), [], "no install root was written");
+  });
+
+  it("reports nothing to update for -a when every installed harness is at the CLI version", async () => {
     const home = await createHome();
     const version = await cliVersion();
     await writeFingerprint(home, "pi", JSON.stringify({ version }));
@@ -747,7 +800,7 @@ describe("update command", () => {
     const { exitCode, stdout } = await runCli(["update", "-a"], { env: { HOME: home } });
 
     assert.equal(exitCode, 0);
-    assert.equal(stdout.trimEnd(), `Nothing to update — every harness is at ${version}.`);
+    assert.equal(stdout.trimEnd(), `Nothing to update — every installed harness is at ${version}.`);
   });
 });
 

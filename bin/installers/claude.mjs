@@ -72,7 +72,7 @@ import { spawn } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { composeAgent, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
+import { composeAgent, isAllTools, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
 import { installDocs } from "../../scripts/lib/docs.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 import { normaliseRepository } from "../../scripts/lib/manifest.mjs";
@@ -176,12 +176,17 @@ async function buildAgents(root, { pluginRoot, warn }) {
 
     const fm = await composeAgent(root, entry.name, CLAUDE, { pluginRoot, resolveRelativePaths: true, warn });
     const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
+    // `["*"]` means every tool the session has, and Claude Code reads an absent
+    // `tools` key that way, so the line is omitted rather than rendered: a
+    // literal `*` is not a Claude Code tool name. agent-modes reads the absent
+    // key on the flat path as all tools, so both harnesses agree.
+    const toolsLine = isAllTools(fm.tools) ? "" : `tools: ${fm.tools.join(", ")}\n`;
     const header =
       `---\n` +
       `# GENERATED from agents/${entry.name}/ by bin/installers/claude.mjs — DO NOT EDIT.\n` +
       `name: ${slug}\n` +
       `description: ${JSON.stringify(fm.description)}\n` +
-      `tools: ${fm.tools.join(", ")}\n` +
+      toolsLine +
       `---\n`;
     files.push({ file: `${slug}.md`, content: `${header}\n${fm.body}\n` });
   }

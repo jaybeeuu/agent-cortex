@@ -168,6 +168,26 @@ describe("install claude", () => {
     assert.match(ralphPlan, /\nname: ralph-plan\n/);
   });
 
+  it("composes guppi with no tools line, so Claude Code inherits every tool", async () => {
+    const out = await makeTmp();
+    const { exitCode } = await runCli(["install", "claude", "--output", out]);
+    assert.equal(exitCode, 0);
+
+    // agents/guppi/claude/frontmatter.json authors ["*"]. Claude Code reads an
+    // absent tools key as every tool; a literal `*` names no Claude Code tool.
+    const guppi = await readFile(join(out, "agents", "guppi.md"), "utf-8");
+    assert.doesNotMatch(guppi, /^tools:/m, "no tools line for the all-tools sentinel");
+
+    // Every other agent keeps its explicit list, and no render leaks a literal *.
+    const names = (await readdir(join(out, "agents"))).filter((f) => f.endsWith(".md"));
+    assert.ok(names.includes("plan.md"));
+    for (const name of names) {
+      const content = await readFile(join(out, "agents", name), "utf-8");
+      assert.doesNotMatch(content, /^tools: .*\*/m, `no literal * in ${name}'s tools scalar`);
+      if (name !== "guppi.md") assert.match(content, /^tools: \S/m, `${name} keeps its tools line`);
+    }
+  });
+
   it("composes ralph from agents/ralph/ instead of a native copy", async () => {
     const out = await makeTmp();
     const { exitCode } = await runCli(["install", "claude", "--output", out]);
@@ -610,6 +630,32 @@ describe("install claude", () => {
     } finally {
       await rm(fakeHome, { recursive: true, force: true });
       await rm(out, { recursive: true, force: true });
+    }
+  });
+
+  it("omits the tools line for a whitespace-padded all-tools sentinel", async () => {
+    const fixture = await makeTmp();
+    try {
+      await mkdir(join(fixture, "agents", "padded", "claude"), { recursive: true });
+      await mkdir(join(fixture, "skills"), { recursive: true });
+      await writeFile(join(fixture, "package.json"), JSON.stringify({ name: "agent-cortex", version: "1.2.3" }));
+      await writeFile(join(fixture, "token-map.json"), JSON.stringify({ tools: {}, paths: {} }));
+      await writeFile(join(fixture, "agents", "padded", "agent.md"), "Body.\n");
+      await writeFile(
+        join(fixture, "agents", "padded", "claude", "frontmatter.json"),
+        JSON.stringify({ name: "agent-cortex:padded", description: "Padded.", tools: ["* "] }),
+      );
+
+      await installClaude({ root: fixture, output: join(fixture, "out") });
+
+      // Claude Code's tools field takes exact names, so the padded sentinel must
+      // not survive as one: the installer trims it to the sentinel and omits the
+      // line, the same way it does for ["*"] and the same way agent-modes reads
+      // it at runtime.
+      const rendered = await readFile(join(fixture, "out", "agents", "padded.md"), "utf-8");
+      assert.doesNotMatch(rendered, /^tools:/m);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
     }
   });
 

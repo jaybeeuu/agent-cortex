@@ -245,9 +245,6 @@ This project uses **bd (beads)** for task tracking.
 
 Run `bd prime` at the start of each session for context.
 
-**Keep the store small.** `bd`'s Dolt history, not the bead count, drives call latency. Squash
-it and publish the squashed history in that order — see `docs/tracker-maintenance.md`.
-
 **Two axes.** A bead's *type* is its workflow stage — `idea` (a `kind:idea` bead) → `epic` →
 `feature` → `chore`/`task` — and its `execution` label answers who does the work:
 `execution:afk` (agent-routable) or `execution:hitl` (human-required). The label is a query filter

@@ -11,6 +11,7 @@ deliberately, so this extension adds a tool for each.
 ## Usage
 
 | Tool | Description |
+| --- | --- |
 | `request_compact` | Arms a compaction: summarise the window, keep the recent tail |
 | `request_flush` | Arms a flush: drop the window, carry nothing across |
 
@@ -34,6 +35,7 @@ do either job. Each tool records the request, returns a confirmation, and ends t
 The two transitions reach pi through different contexts:
 
 | Transition | Member | Declared on |
+| --- | --- | --- |
 | Compaction | `ctx.compact()` | `ExtensionContext` — every handler and tool |
 | Flush | `ctx.newSession()` | `ExtensionCommandContext` — command handlers only |
 
@@ -48,6 +50,7 @@ and `interrupt-bookmark` in this package uses the same dispatch for its rewind.
 The armed request is one in-memory slot. Taking it empties the slot before anything is acted on, so:
 
 | Case | Behaviour |
+| --- | --- |
 | No transition armed | A settle acts on nothing |
 | One arming, two settles | The first acts, the second finds the slot empty |
 | Armed twice before a settle | The newest arming is the one acted on, once |
@@ -63,6 +66,7 @@ what the flush exists to remove.
 ## Failure modes
 
 | Case | Behaviour |
+| --- | --- |
 | Compaction refused by the provider | Reported as an error; the window is unchanged and the session continues in it |
 | Flush cancelled by pi or an extension | Reported as a warning; the window is unchanged |
 | `session-flush` run with nothing pending | Warns and replaces nothing |

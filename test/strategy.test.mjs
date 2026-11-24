@@ -866,11 +866,15 @@ describe('the component level tables', () => {
   });
 
   it('rejects an effort level of zero or less', () => {
-    const parsed = parseEffortLevels(createStrategy({ effortLevels: [['zero', '0'], ['week', '5']] }));
+    const parsed = parseEffortLevels(
+      createStrategy({ effortLevels: [['zero', '0'], ['negative', '-1'], ['week', '5']] }),
+    );
 
     assert.equal(parsed.ok, false);
     assert.deepEqual(parsed.levels, [{ label: 'week', value: 5 }]);
-    assert.match(parsed.errors.join('\n'), /Effort levels: row "\| zero \| 0 \|" — value "0" is not a positive number/);
+    const errors = parsed.errors.join('\n');
+    assert.match(errors, /Effort levels: row "\| zero \| 0 \|" — value "0" is not a positive number/);
+    assert.match(errors, /Effort levels: row "\| negative \| -1 \|" — value "-1" is not a positive number/);
   });
 
   it('reads every table through one implementation, so one defect reads the same in all four', () => {

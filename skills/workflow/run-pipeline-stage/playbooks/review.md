@@ -8,7 +8,10 @@
    - include each finding under `BLOCKING_ISSUES`,
    - stop further review.
 3. Invoke `style-code` and `style-tests` for code and test review criteria.
-4. Review for correctness, requirement alignment, and material quality issues.
+4. Review for correctness, requirement alignment, and material quality issues. Derive your
+   adversarial cases from the changed contract — its public surface, its boundaries, and its
+   failure paths — and choose them yourself. A list of cases in the dispatch brief is a hint about
+   where to look, never the set you owe: the brief supplies none.
 5. Read the name of every changed test, then find the assertion that proves each clause of it. A
    count in the name needs a count assertion, a state needs that state, and a "not" needs the
    absence. Reject the test when any clause has no assertion, and name the missing clause under

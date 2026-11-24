@@ -148,7 +148,64 @@ async function listFiles(dir) {
   return out;
 }
 
+/** A minimal install root whose token-map.json holds `capabilities` and whose
+ * single agent authors `tools` in its claude frontmatter — the fixture seam for
+ * the installer's translation of an authored tool list through the claude
+ * column.
+ * @param {{ capabilities: Record<string, unknown>, tools: string[] }} spec
+ * @returns {Promise<{ root: string, output: string }>} */
+async function claudeToolFixture({ capabilities, tools }) {
+  const root = await makeTmp();
+  await mkdir(join(root, "agents", "translator", "claude"), { recursive: true });
+  await mkdir(join(root, "skills"), { recursive: true });
+  await writeFile(join(root, "package.json"), JSON.stringify({ name: "agent-cortex", version: "1.2.3" }));
+  await writeFile(join(root, "token-map.json"), JSON.stringify({ capabilities, paths: {} }));
+  await writeFile(join(root, "agents", "translator", "agent.md"), "Body.\n");
+  await writeFile(
+    join(root, "agents", "translator", "claude", "frontmatter.json"),
+    JSON.stringify({ name: "agent-cortex:translator", description: "Translates.", tools }),
+  );
+  return { root, output: join(root, "out") };
+}
+
 describe("install claude", () => {
+  it("translates an authored tool list through token-map.json's claude column", async () => {
+    const { root, output } = await claudeToolFixture({
+      capabilities: {
+        bash: { claude: { name: "Bash", type: "tool" }, pi: { name: "bash", type: "tool" } },
+        read_agent: { claude: null, pi: { name: "read_agent", type: "tool" } },
+      },
+      tools: ["bash", "read_agent", "SendMessage"],
+    });
+
+    await installClaude({ root, output });
+
+    // "bash" becomes the name the claude column binds (not pi's "bash", and not
+    // the key itself), the null claude binding is omitted, and a name the map
+    // does not key passes through as a native Claude Code tool.
+    const rendered = await readFile(join(output, "agents", "translator.md"), "utf-8");
+    assert.match(rendered, /^tools: Bash, SendMessage$/m);
+  });
+
+  it("refuses an authored capability the harness exposes as a command", async () => {
+    const { root, output } = await claudeToolFixture({
+      capabilities: {
+        flush_window: {
+          claude: { name: "/clear", type: "command" },
+          pi: { name: "request_flush", type: "tool" },
+        },
+      },
+      tools: ["flush_window"],
+    });
+
+    // A command is not model-callable, so translating it into the tool list
+    // would hand Claude Code a name it cannot call.
+    await assert.rejects(
+      installClaude({ root, output }),
+      /capability "flush_window" is a claude command \(\/clear\) and cannot appear in a tool list/,
+    );
+  });
+
   it("composes agents from the composable sources (claude names, no tokens)", async () => {
     const out = await makeTmp();
     const { exitCode } = await runCli(["install", "claude", "--output", out]);

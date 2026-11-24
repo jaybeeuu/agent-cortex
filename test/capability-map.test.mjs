@@ -9,15 +9,30 @@
 // exactly what a mechanical rename may not do.
 
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import { composeAgent, isAllTools, loadTokenMap, translateToolList } from "../scripts/lib/compose-agent.mjs";
+import { createTempRoot } from "./helpers/temp-root.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const HARNESSES = /** @type {const} */ (["claude", "pi"]);
+
+// One temp root per file, removed by the file-level `after()` hook it registers:
+// the shape-refusal tests build malformed maps in a throwaway package root rather
+// than editing the real token-map.json.
+const tempRoot = createTempRoot("agent-cortex-token-map-shape-");
+
+/** Write a package root whose only file is a token-map.json carrying `capabilities`.
+ * @param {Record<string, unknown>} capabilities
+ * @returns {Promise<string>} */
+async function tokenMapFixture(capabilities) {
+  const root = await tempRoot.createWorkspace();
+  await writeFile(join(root, "token-map.json"), JSON.stringify({ capabilities, paths: {} }));
+  return root;
+}
 
 // ─── Goldens: the pre-rename resolved names ──────────────────────────────────
 
@@ -205,6 +220,29 @@ describe("capability rename — rendered output is unchanged", () => {
         assert.doesNotMatch(composed.body, /\{\{(?:CAPABILITY|TOOL|PATH|SECTION):/, `${name} on ${harness}`);
       }
     }
+  });
+});
+
+// ─── The shape the map is allowed to have ────────────────────────────────────
+// Every consumer resolves through the capabilities table, and a binding with no
+// kind cannot be refused in a tool list — the one rule that keeps a command out
+// of one. The refusal therefore has to happen at load, through any entry point.
+
+describe("loadTokenMap shape refusal", () => {
+  it("refuses the bare-string binding shorthand", async () => {
+    const root = await tokenMapFixture({
+      bash: { claude: "Bash", pi: { name: "bash", type: "tool" } },
+    });
+
+    await assert.rejects(loadTokenMap(root), /capability "bash" has an invalid claude binding/);
+  });
+
+  it("refuses a binding that names no kind", async () => {
+    const root = await tokenMapFixture({
+      bash: { claude: { name: "Bash" }, pi: null },
+    });
+
+    await assert.rejects(loadTokenMap(root), /capability "bash" has an invalid claude binding/);
   });
 });
 

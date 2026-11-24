@@ -23,9 +23,9 @@
 // yet. Both paths read the parent's children (`bd children <parent-id> --json`)
 // and adopt an existing child by its role label — `stage:<id>` for a stage chore,
 // `lifecycle:feature-pr` for the gate — creating only what is missing, so
-// re-running after a failed expansion is the recovery path. The children are read
-// again before the loop takes over from a failed pour, so a step a partly failed
-// rollback left behind is adopted rather than created a second time.
+// re-running after a failed expansion is the recovery path. A step a partly failed
+// rollback left behind is adopted by the role the pour itself recorded for it, so no
+// stage ever holds two chores.
 //
 // Adoption ignores bead status and reads only labels: a chore a later stage
 // already closed is still adopted and reprinted in the mapping, which keeps a
@@ -274,31 +274,124 @@ function isNotFound(err) {
 }
 
 /**
- * Delete a molecule the pour created, best effort. A step that was already
- * reparented left the root's child list, so each known step is deleted first and
- * the root last. A failure is not thrown — this runs on the error path, where the
- * caller is about to report the original cause — but it is never swallowed either:
- * the surviving ids are named, and the loop adopts whatever reached the parent.
- * @param {string} rootId
- * @param {string[]} [stepIds]
- * @returns {Promise<void>}
+ * A step a failed pour left in the tree, with the role the pour gave it. The role is
+ * what adoption keys on, so the stage that already holds this chore is not given a
+ * second one.
+ * @typedef {object} SurvivingStep
+ * @property {string} role
+ * @property {string} id
  */
-async function discardPour(rootId, stepIds = []) {
+
+/**
+ * A pour that failed, carrying the steps its best-effort rollback could not delete.
+ * A plain error would leave the caller unable to tell a survivor from a bead this run
+ * never poured, and a survivor created again is a second chore for one stage.
+ */
+class PourFailure extends Error {
+  /**
+   * @param {unknown} cause
+   * @param {SurvivingStep[]} survivingSteps
+   */
+  constructor(cause, survivingSteps) {
+    super(describeError(cause));
+    this.survivingSteps = survivingSteps;
+  }
+}
+
+/**
+ * The steps a pour created that are still children of the molecule root: every step
+ * the pour's `id_mapping` did not name. A step the mapping lost cannot be identified
+ * any other way, and the `stage:` label the formula gave it is the record of the role
+ * it fills.
+ * @param {string} rootId  Empty when the pour reported no root
+ * @param {string[]} knownIds  Step ids already known from the mapping
+ * @returns {Promise<SurvivingStep[]>}
+ */
+async function readUnmappedSteps(rootId, knownIds) {
+  if (!rootId) { return []; }
+  try {
+    const raw = await run(['bd', 'children', rootId, '--json']);
+    /** @type {Array<{ id: string, labels?: string[] }>} */
+    const children = raw === '' ? [] : JSON.parse(raw);
+    return children
+      .filter((child) => !knownIds.includes(child.id))
+      .flatMap((child) => (child.labels ?? [])
+        .filter((label) => label.startsWith('stage:'))
+        .map((role) => ({ role, id: child.id })));
+  } catch (err) {
+    say(`could not read the steps 'bd mol pour' created (${describeError(err)}); a step it left behind that the pour did not name may need removing by hand`);
+    return [];
+  }
+}
+
+/**
+ * Roll a failed pour back as far as bd allows, then say what is left and where.
+ *
+ * The root is deleted last, because a step is only a child of it until it is
+ * reparented. A delete can be refused, so a survivor is possible however the pour
+ * failed, and it is neither deleted twice nor created again: the pour's own
+ * `id_mapping` says which stage each step was poured for, and a step the mapping lost
+ * is read back from the root with the label the formula gave it. A survivor that never
+ * reached the parent bead is moved there now, retrying the `bd update` that failed, so
+ * `bd children <feature>` lists every stage of the tree the loop goes on to complete.
+ * @param {{ rootId: string, pouredIds: Array<string | undefined>, reparented: number, parentId: string, priority: string, inherited: string[] }} options
+ *        `reparented` counts the steps that already reached the parent bead
+ * @returns {Promise<SurvivingStep[]>}
+ */
+async function rollBackPour({ rootId, pouredIds, reparented, parentId, priority, inherited }) {
+  /** @type {string[]} */
+  const knownIds = pouredIds.filter((id) => id !== undefined);
+  const unmapped = await readUnmappedSteps(rootId, knownIds);
+
   /** @type {string[]} */
   const survivors = [];
-  for (const id of [...stepIds, rootId]) {
+  for (const id of [...knownIds, ...unmapped.map((step) => step.id), rootId]) {
     if (!id) { continue; }
     try {
       await run(['bd', 'delete', id, '--force']);
     } catch (err) {
-      // Already absent is the outcome the delete wanted; only a bead that is
-      // still there can be adopted by the loop, so only that is reported.
+      // Already absent is the outcome the delete wanted; only a bead that is still
+      // there has to be accounted for.
       if (!isNotFound(err)) { survivors.push(id); }
     }
   }
-  if (survivors.length > 0) {
-    say(`could not delete ${survivors.join(', ')} while rolling the pour back; a step that reached the parent bead is adopted by its stage label, not created again`);
+
+  /** @type {Map<string, string>} */
+  const roleById = new Map(unmapped.map((step) => [step.id, step.role]));
+  for (const [index, id] of pouredIds.entries()) {
+    if (id) { roleById.set(id, `stage:${pipeline.stages[index].id}`); }
   }
+
+  /** @type {SurvivingStep[]} */
+  const survivingSteps = [];
+  for (const id of survivors) {
+    const role = roleById.get(id);
+    if (role) { survivingSteps.push({ role, id }); }
+  }
+
+  for (const step of survivingSteps) {
+    const index = pipeline.stages.findIndex((stage) => `stage:${stage.id}` === step.role);
+    if (index >= 0 && index < reparented) { continue; }
+    try {
+      await reparentStep(step.id, {
+        parentId,
+        priority,
+        inherited,
+        stage: index >= 0 ? pipeline.stages[index] : undefined,
+      });
+    } catch (err) {
+      say(`could not move surviving step ${step.id} (${step.role}) onto ${parentId} (${describeError(err)}); its role is still taken, so no second chore is created for it, but 'bd update ${step.id} --parent ${parentId}' finishes the tree by hand`);
+    }
+  }
+
+  if (survivingSteps.length > 0) {
+    say(`could not delete ${survivingSteps.map((step) => step.id).join(', ')} while rolling the pour back; a step the pour created keeps the role it was poured for, so the per-stage path adopts it instead of creating a second chore for that stage`);
+  }
+  if (rootId && survivors.includes(rootId)) {
+    say(`could not delete molecule root ${rootId} while rolling the pour back; it is inert — 'bd ready' does not list it — so remove it with 'bd delete ${rootId} --force'`);
+  }
+
+  return survivingSteps;
 }
 
 /**
@@ -347,29 +440,34 @@ async function pourStages({ parentId, priority }) {
     await run(['bd', 'mol', 'pour', FORMULA_ID, '--var', `feature=${parentId}`, '--json']),
   );
 
-  const rootId = poured.new_epic_id ?? poured.id_mapping?.[FORMULA_ID];
+  const rootId = poured.new_epic_id ?? poured.id_mapping?.[FORMULA_ID] ?? '';
+  /** @type {Array<string | undefined>} */
   const pouredIds = pipeline.stages.map((stage) => poured.id_mapping?.[`${FORMULA_ID}.${stage.id}`]);
   const absent = pipeline.stages.filter((_, index) => !pouredIds[index]).map((stage) => stage.id);
 
   if (!rootId || absent.length > 0) {
-    await discardPour(rootId ?? '', pouredIds.filter((id) => id !== undefined));
-    throw new Error(
-      `bd mol pour ${FORMULA_ID} returned no id for ${absent.length > 0 ? `step(s) ${absent.join(', ')}` : 'its molecule root'}`,
+    const survivingSteps = await rollBackPour({ rootId, pouredIds, reparented: 0, parentId, priority, inherited });
+    throw new PourFailure(
+      new Error(`bd mol pour ${FORMULA_ID} returned no id for ${absent.length > 0 ? `step(s) ${absent.join(', ')}` : 'its molecule root'}`),
+      survivingSteps,
     );
   }
 
   // Every step id is present: the check above covers each index of the same array.
   const stepIds = /** @type {string[]} */ (pouredIds);
 
+  let reparented = 0;
   try {
     for (const [index, stage] of pipeline.stages.entries()) {
       await reparentStep(stepIds[index], { parentId, priority, inherited, stage });
+      reparented++;
     }
   } catch (err) {
-    // No half-poured molecule without the reparent: drop what the pour created so
-    // the next run starts from the tree the loop would have left.
-    await discardPour(rootId, stepIds);
-    throw err;
+    // No half-poured molecule without the reparent: drop what the pour created, and
+    // hand the caller every step the rollback could not delete, so the loop adopts it
+    // by the role it was poured for instead of creating a second chore for that stage.
+    const survivingSteps = await rollBackPour({ rootId, pouredIds, reparented, parentId, priority, inherited });
+    throw new PourFailure(err, survivingSteps);
   }
 
   // Past this point the expansion has succeeded — the parent owns one chore per
@@ -409,11 +507,12 @@ async function pourStages({ parentId, priority }) {
  * would have passed to `bd create` and the labels the parent would have been
  * inherited from. One call per step.
  * @param {string} stepId
- * @param {{ parentId: string, priority: string, inherited: string[], stage: Stage }} options
+ * @param {{ parentId: string, priority: string, inherited: string[], stage?: Stage }} options
+ *        `stage` is absent for a step the formula declares but `pipeline.json` does not
  * @returns {Promise<void>}
  */
 async function reparentStep(stepId, { parentId, priority, inherited, stage }) {
-  const declared = new Set([`stage:${stage.id}`, ...(stage.labels ?? [])]);
+  const declared = new Set(stage ? [`stage:${stage.id}`, ...(stage.labels ?? [])] : []);
   const args = ['bd', 'update', stepId, '--parent', parentId, '--priority', priority];
   for (const label of inherited) {
     if (declared.has(label)) { continue; }
@@ -483,7 +582,7 @@ const pipelinePath = resolve(__dirname, '..', 'pipeline.json');
 /** @type {Pipeline} */
 const pipeline = JSON.parse(await readFile(pipelinePath, 'utf-8'));
 
-let adoptable = await readAdoptable(parentId);
+const adoptable = await readAdoptable(parentId);
 const formulaPath = await findFormulaPath(process.cwd());
 const alreadyExpanded = [...adoptable.keys()].some((role) => role.startsWith('stage:'));
 
@@ -499,11 +598,16 @@ if (formulaPath === null) {
     stageBeads = await pourStages({ parentId, priority });
     say(`poured formula '${FORMULA_ID}': 1 pour, ${pipeline.stages.length} reparent(s), 1 molecule-root delete`);
   } catch (err) {
-    // The rollback is best effort, so read the children again before the loop
-    // takes over: a step that survived it is adopted by its stage label instead of
-    // being created a second time under the same parent. The wording claims no
+    // The rollback is best effort, so adopt what it could not delete before the loop
+    // takes over: the role comes from the pour itself, so a stage that already holds
+    // a chore keeps it instead of being created a second time. The wording claims no
     // revert — whatever the rollback left is finished by the loop, not undone.
-    adoptable = await readAdoptable(parentId);
+    for (const step of err instanceof PourFailure ? err.survivingSteps : []) {
+      // The first survivor of a role wins, as in the children read. Empty deps: a
+      // survivor that kept its pour edges is re-wired without effect, because real bd
+      // treats a repeated `bd dep add` as a no-op (probed on 1.3.1).
+      if (!adoptable.has(step.role)) { adoptable.set(step.role, { id: step.id, blocks: new Set() }); }
+    }
     say(`pour of '${FORMULA_ID}' failed (${describeError(err)}); the per-stage path completes the tree`);
   }
 }

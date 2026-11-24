@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -47,7 +47,7 @@ const tempRoot = createTempRoot("create-chores-");
  * @property {string[]} updates   Every `bd update` invocation, in order
  * @property {string[]} deleted   Every deleted bead id, in order
  * @property {{id: string, text: string}[]} notes  Every `bd note` call, in order
- * @property {{formula: string, vars: Record<string, string>, rootId: string}[]} pours
+ * @property {{formula: string, vars: Record<string, string>, rootId: string, idMapping: Record<string, string>}[]} pours
  * @property {import("./helpers/fake-bd.mjs").FakeFailure[]} failures  Calls the fake was told to refuse
  * @property {Record<string, number>} failuresSeen  How often each command was called
  */
@@ -675,5 +675,109 @@ describe("create-chores through the shipped formula", () => {
         await unlink(formulaPath);
       }
     }, { formula: true });
+  });
+});
+
+// The expansion must leave at most one chore per stage however it fails, so these
+// drive a reparent (bd update) and a rollback (bd delete) failure together: the
+// combination that left a duplicate `stage:` chore behind.
+describe("create-chores after the pour fails partway", () => {
+  /** One chore per role, and one PR gate — the invariant every path must reach. */
+  /** @type {Record<string, number>} */
+  const oneChorePerRole = {
+    "stage:code": 1,
+    "stage:verify": 1,
+    "stage:review": 1,
+    "stage:document": 1,
+    "stage:post-merge": 1,
+    "stage:housekeeping": 1,
+    "lifecycle:feature-pr": 1,
+  };
+
+  it("adopts the step a refused reparent and a refused delete left behind, so the stage keeps exactly one chore", async () => {
+    await withFakeBd([parentBead()], async ({ run, readState }) => {
+      const { exitCode, stdout, stderr } = await run();
+      assert.equal(exitCode, 0, stderr);
+
+      const state = await readState();
+      const pouredReview = state.pours[0].idMapping["pipeline.review"];
+
+      assert.deepEqual(countRoles(state.beads), oneChorePerRole);
+      const reviewChores = state.beads.filter((bead) => bead.labels.includes("stage:review"));
+      assert.deepEqual(
+        reviewChores.map((bead) => bead.id),
+        [pouredReview],
+        "the review chore is the poured step, not a second bead created for the same role",
+      );
+      assert.equal(
+        state.beads.filter((bead) => bead.parent === "parent-1").length,
+        7,
+        "every stage chore is a child of the feature bead",
+      );
+      assert.deepEqual(
+        blockedRoles(state, reviewChores[0]),
+        ["stage:verify"],
+        "the adopted chore is wired into the chain in place of the deleted step",
+      );
+      assert.equal(JSON.parse(stdout).review, pouredReview);
+      assert.match(stderr, /pour of 'pipeline' failed .*the per-stage path completes the tree/);
+    }, { formula: true, failures: [{ command: "update", occurrence: 3 }, { command: "delete", occurrence: 3 }] });
+  });
+
+  it("moves every surviving step onto the feature bead when the rollback cannot delete anything", async () => {
+    await withFakeBd([parentBead()], async ({ run, readState }) => {
+      const { exitCode, stderr } = await run();
+      assert.equal(exitCode, 0, stderr);
+
+      const state = await readState();
+      const poured = state.pours[0];
+
+      assert.deepEqual(countRoles(state.beads), oneChorePerRole);
+      for (const [step, stepId] of Object.entries(poured.idMapping)) {
+        if (!step.startsWith("pipeline.")) { continue; }
+        const bead = state.beads.find((candidate) => candidate.id === stepId);
+        assert.ok(bead, `the poured ${step} step is still in the tree`);
+        assert.equal(bead.parent, "parent-1", `${step} was not moved onto the feature bead after the rollback failed`);
+      }
+      assert.equal(state.beads.filter((bead) => bead.parent === "parent-1").length, 7);
+      assert.ok(
+        state.beads.some((bead) => bead.id === poured.rootId),
+        "the root delete was refused, so the root is still there",
+      );
+      assert.ok(stderr.includes(`could not delete molecule root ${poured.rootId}`), stderr);
+      assert.ok(stderr.includes(`bd delete ${poured.rootId} --force`), "the operator is told how to finish it");
+    }, { formula: true, failures: [{ command: "update", occurrence: 3 }, { command: "delete" }] });
+  });
+
+  it("adopts a step the pour's id mapping lost, by the stage label the formula gave it", async () => {
+    await withFakeBd([parentBead()], async ({ dir, run, readState }) => {
+      // One step renamed in the macro, so the pour names every step but `review` and
+      // the failure path has only the label to classify that step by.
+      const formulaPath = join(dir, ".beads", "formulas", "pipeline.formula.json");
+      /** @type {{ steps: Array<{ id: string, depends_on?: string[] }> }} */
+      const formula = JSON.parse(await readFile(formulaPath, "utf8"));
+      formula.steps = formula.steps.map((step) => ({
+        ...step,
+        id: step.id === "review" ? "review2" : step.id,
+        depends_on: (step.depends_on ?? []).map((dep) => (dep === "review" ? "review2" : dep)),
+      }));
+      await writeFile(formulaPath, JSON.stringify(formula, null, 2));
+
+      const { exitCode, stdout, stderr } = await run();
+      assert.equal(exitCode, 0, stderr);
+
+      const state = await readState();
+      const unmapped = state.pours[0].idMapping["pipeline.review2"];
+      assert.equal(state.pours[0].idMapping["pipeline.review"], undefined, "the pour named no step for review");
+
+      assert.deepEqual(countRoles(state.beads), oneChorePerRole);
+      assert.equal(JSON.parse(stdout).review, unmapped, "the review chore is the step the pour created");
+      assert.ok(
+        !state.beads.some((bead) => bead.parent === "parent-1" && bead.labels.includes("stage:review")),
+        "the update that moves the survivor onto the feature bead was refused, so it is still the root's child",
+      );
+      assert.ok(stderr.includes(`could not move surviving step ${unmapped}`), stderr);
+      assert.ok(stderr.includes(`bd update ${unmapped} --parent parent-1`), "the operator is told how to finish it");
+    }, { formula: true, failures: [{ command: "update", occurrence: 1 }, { command: "delete", occurrence: 6 }] });
   });
 });

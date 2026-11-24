@@ -189,7 +189,7 @@ const FAKE_BD_SCRIPT = [
   "        if (dependsOnId) state.deps.push({ issue_id: issueId, depends_on_id: dependsOnId, type: 'blocks' });",
   "      }",
   "    }",
-  "    state.pours.push({ formula: formulaId, vars, rootId });",
+  "    state.pours.push({ formula: formulaId, vars, rootId, idMapping: mapping });",
   "    await save();",
   "    process.stdout.write(JSON.stringify({ created: (formula.steps ?? []).length + 1, id_mapping: mapping, new_epic_id: rootId, phase: 'liquid', schema_version: 1 }, null, 2) + '\\n');",
   "    return;",

@@ -71,3 +71,37 @@ It differs from the other two in kind. A compact and a flush move the window for
 boundary decision; a rewind makes the window match the moment the interrupt interrupted. It is also
 the only one that restores a known state rather than summarising it or discarding it. See interrupt,
 compact, flush.
+
+# capability
+
+A tool or a command that a harness exposes, named once and resolved per harness. An author writes
+`{{CAPABILITY:name}}`, and each harness's row supplies its own name for that capability.
+
+The kind belongs to the harness row, never to the canonical name, because the same capability can be
+one on each side: `interrupt_rewind` is a tool on pi and a command on claude. A capability is
+therefore authored vocabulary, not a runtime handle — a row with no counterpart for a harness is
+`null`, and that harness simply has no name for it. See tool, command.
+
+# tool
+
+A capability the harness offers to the model. It is the only kind a tool list may contain.
+
+A harness row says `{ "name": …, "type": "tool" }`, and an agent's tool set is written in
+capabilities, so the rendered list keeps the tool rows and drops the command rows and the rows that
+harness has no counterpart for. See capability, command, tool set.
+
+# command
+
+A capability the user or the agent invokes directly: a slash command, or an extension's own command.
+It renders into prose and never into a tool list.
+
+Listing one is an authoring error rather than something to correct silently, because a list that
+drops it without a word is a list nobody notices is wrong. See capability, tool.
+
+# tool set
+
+The capabilities one agent may use, authored once for that agent and rendered into every harness.
+
+The set is not harness metadata: it is what the agent can do, and it is what the harness enforces. A
+set authored twice — once per harness — drifts, and the drift is silent, so it is authored once and
+checked against the text that names the tools. See capability, tool.

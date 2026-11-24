@@ -475,9 +475,9 @@ pushes and merges for that task, recording each merge on the bead; it never exec
 a disagreement with a priority opens a strategy review rather than a silent reorder. When that item
 is done it re-ranks at the boundary: the theme's next item against the queue's top item, both
 scores on screen, then one question — stay in the theme, switch to higher-priority work, or move
-for a single item. Between tasks it clears the context with `/clear`, and only after writing what
-was decided, what is open and what comes next to the bead trail and the memory. The tracker, not
-the window, holds the state that matters.
+for a single item. When the answer is a switch or a move, never a stay, it flushes the window — and
+only after writing what was decided, what is open and what comes next to the bead trail and the
+memory. The tracker, not the window, holds the state that matters.
 
 ```sh
 claude --agent agent-cortex:guppi

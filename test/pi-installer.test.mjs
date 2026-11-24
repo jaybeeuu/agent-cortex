@@ -5,6 +5,11 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { installPi } from "../bin/installers/pi.mjs";
+import { createTempRoot } from "./helpers/temp-root.mjs";
+
+// One temp root per file for the workspaces outside a fixture package root
+// (the bd project the formula is copied into).
+const tempRoot = createTempRoot("pi-installer-project-");
 
 // Real repo root — used by the integration smoke test to prove the installer
 // works against the canonical sources (agents/, skills/, extensions/, token-map.json).
@@ -928,6 +933,79 @@ describe("installPi — real repo integration", () => {
         if ((await lstat(join(fx.output, rel))).isSymbolicLink()) links.push(rel);
       }
       assert.deepEqual(links, [], "staged tree contains no symlinks");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+});
+
+// ─── Pipeline formula ────────────────────────────────────────────────────────
+
+describe("installPi — pipeline formula", () => {
+  /** A fixture package root that ships the formula, plus a bd-initialised project. */
+  async function formulaFixture() {
+    const fx = await makeFixture();
+    await mkdir(join(fx.root, "agents"), { recursive: true });
+    await seedPackage(fx);
+    await writeFixture(
+      fx,
+      "skills/planning/create-task/pipeline.formula.json",
+      await readFile(join(REPO_ROOT, "skills", "planning", "create-task", "pipeline.formula.json"), "utf-8"),
+    );
+    const project = await tempRoot.createWorkspace();
+    await mkdir(join(project, ".beads"), { recursive: true });
+    return { fx, project };
+  }
+
+  it("copies the formula into the project's .beads/formulas/ and reports the untracked file", async () => {
+    const { fx, project } = await formulaFixture();
+    try {
+      const result = await installPi({
+        root: fx.root,
+        output: fx.output,
+        projectDir: project,
+        resolvePackage: fakeResolver({}).resolvePackage,
+      });
+
+      const target = join(project, ".beads", "formulas", "pipeline.formula.json");
+      assert.equal(result.formula.action, "written");
+      assert.equal(result.formula.path, target);
+      assert.equal(
+        await readFile(target, "utf-8"),
+        await readFile(join(REPO_ROOT, "skills", "planning", "create-task", "pipeline.formula.json"), "utf-8"),
+      );
+      assert.match(result.formula.message, /untracked file/);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("reports a project with no .beads/ as a warning and still stages the package", async () => {
+    const { fx } = await formulaFixture();
+    const project = await tempRoot.createWorkspace();
+    try {
+      const result = await installPi({
+        root: fx.root,
+        output: fx.output,
+        projectDir: project,
+        resolvePackage: fakeResolver({}).resolvePackage,
+      });
+
+      assert.equal(result.formula.action, "no-beads-dir");
+      assert.ok(result.warnings.some((warning) => /No \.beads\/ directory/.test(warning)));
+      assert.ok(await pathExists(join(fx.output, "package.json")), "the package is staged regardless");
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("writes nothing into the project for a generate-only --output run", async () => {
+    const { fx, project } = await formulaFixture();
+    try {
+      const result = await installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage });
+
+      assert.equal(result.formula.path, null);
+      assert.equal(await pathExists(join(project, ".beads", "formulas")), false);
     } finally {
       await fx.cleanup();
     }

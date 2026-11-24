@@ -78,6 +78,7 @@ import { composeAgent, isAllTools, loadTokenMap, substituteTokens, translateTool
 import { installDocs } from "../../scripts/lib/docs.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 import { normaliseRepository } from "../../scripts/lib/manifest.mjs";
+import { copyPipelineFormula } from "../../scripts/lib/pipeline-formula.mjs";
 import { flattenSkillLinks } from "../../scripts/lib/skill-links.mjs";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -728,6 +729,7 @@ async function isSymlink(filePath) {
  * @property {string[]} agents
  * @property {{ names: string[], md: number, files: number, dir: string }} skills
  * @property {{ files: string[], dir: string }} docs
+ * @property {import("../../scripts/lib/pipeline-formula.mjs").FormulaCopy} formula
  * @property {boolean} hooks
  * @property {string[]} hookFiles
  * @property {string[]} handAuthored
@@ -758,10 +760,13 @@ async function isSymlink(filePath) {
  *                                       (default ~/.claude/CLAUDE.md). Passing it
  *                                       explicitly materialises the section even
  *                                       with --output — the test/CI seam.
+ * @param {string | null} [options.projectDir] Consumer project whose `.beads/formulas/`
+ *                                       receives the pipeline formula. Defaults to the cwd
+ *                                       for a plain install and to null for `--output`.
  * @param {(msg: string) => void} [options.warn] Warning sink, also collected in `warnings`.
  * @returns {Promise<InstallClaudeResult>}
  */
-export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, instructionsPath, warn = DEFAULT_WARN } = {}) {
+export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = false, pluginRoot, settingsPath, instructionsPath, projectDir, warn = DEFAULT_WARN } = {}) {
   const tokenMap = await loadTokenMap(root);
   if (typeof tokenMap.version === "number" && tokenMap.version > CONTRACT_VERSION) {
     throw new Error(
@@ -821,6 +826,14 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
   const skillOut = join(out, "skills");
   const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
   const docs = await installDocs({ root, output: out, dryRun, tokenMap });
+  // A plain install writes the pipeline formula into the project it is run from;
+  // `--output` is generate-only and writes nothing outside its own tree.
+  const formula = await copyPipelineFormula({
+    root,
+    projectDir: projectDir !== undefined ? projectDir : isDefaultInstall ? process.cwd() : null,
+    dryRun,
+  });
+  if (formula.action === "no-beads-dir" || formula.action === "source-missing") warnSink(formula.message);
   const pluginJson = await buildPluginJson(root);
   const hooksSrc = join(root, "hooks", "claude", "hooks.json");
   const hooksJson = (await isFile(hooksSrc)) ? await readFile(hooksSrc, "utf-8") : null;
@@ -836,6 +849,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     agents: agents.files.map((f) => f.file.replace(/\.md$/, "")),
     skills: { names: skills.names, md: skills.md, files: skills.files, dir: skillOut },
     docs,
+    formula,
     hooks: hooksJson !== null,
     hookFiles: hookFiles.map((f) => f.rel),
     handAuthored: handAuthored.map((f) => f.rel),
@@ -850,6 +864,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     console.log(`  agents: ${summary.agents.join(", ")}`);
     console.log(`  skills: ${summary.skills.names.length} copied → ${skillOut}/<name>/ (token-substituted)`);
     if (docs.files.length) console.log(`  docs: ${docs.files.join(", ")} → ${docs.dir}/ (verbatim copies)`);
+    if (formula.path !== null) console.log(`  pipeline formula: ${formula.message}`);
     console.log(`  .claude-plugin/plugin.json (version ${JSON.parse(pluginJson).version})`);
     if (isDefaultInstall && manifestPath) {
       console.log(`  marketplace manifest → ${manifestPath} (plugin agent-cortex @ ./${basename(out)})`);
@@ -881,6 +896,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
     `Copied ${summary.skills.names.length} skill(s) → ${skillOut}/<name>/ (token-substituted, no symlinks)`,
   );
   if (docs.files.length) console.log(`Copied ${docs.files.length} doc(s) → ${docs.dir}/ (verbatim)`);
+  if (formula.path !== null) console.log(formula.message);
 
   await mkdir(join(out, ".claude-plugin"), { recursive: true });
   await writeFile(join(out, ".claude-plugin", "plugin.json"), pluginJson);

@@ -127,6 +127,7 @@ import { composeAgent, isAllTools, loadTokenMap, substituteTokens, translateTool
 import { installDocs } from "../../scripts/lib/docs.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 import { normaliseRepository } from "../../scripts/lib/manifest.mjs";
+import { copyPipelineFormula } from "../../scripts/lib/pipeline-formula.mjs";
 
 const PI = "pi";
 
@@ -153,6 +154,7 @@ const PI = "pi";
  * @property {{ name: string, filePath: string }[]} agents
  * @property {{ skills: number, md: number, files: number, dir: string }} skills
  * @property {{ files: string[], dir: string }} docs
+ * @property {import("../../scripts/lib/pipeline-formula.mjs").FormulaCopy} formula
  * @property {{ files: number, dir: string }} extensions
  * @property {{ dir: string, bundled: string[], staged: string[], resources: PackageResources }} packages
  * @property {{ path: string, manifest: PiManifest }} manifest
@@ -247,6 +249,10 @@ const DEFAULT_LEGACY_SWEEP_RECORD = join(homedir(), ".agent-cortex", "legacy-swe
  * @param {boolean} [options.dryRun]     Report the plan without writing anything
  * @param {string} [options.pluginRoot]  Override plugin_root used for {{PATH:...}}
  *                                       resolution (default: token-map pi value)
+ * @param {string | null} [options.projectDir] Consumer project whose `.beads/formulas/`
+ *                                       receives the pipeline formula. Defaults to the cwd
+ *                                       for a staging install and to null for `--output`,
+ *                                       which writes nothing outside its output tree.
  * @param {(name: string, fromDir?: string) => string | Promise<string>} [options.resolvePackage]
  *                                       Resolve an installed dependency to its
  *                                       directory (default: Node resolution from
@@ -256,6 +262,7 @@ const DEFAULT_LEGACY_SWEEP_RECORD = join(homedir(), ".agent-cortex", "legacy-swe
  *             skills: {skills: number, md: number, files: number, dir: string},
  *             docs: {files: string[], dir: string},
  *             extensions: {files: number, dir: string},
+ *             formula: import("../../scripts/lib/pipeline-formula.mjs").FormulaCopy,
  *             packages: {dir: string, bundled: string[], staged: string[], resources: {extensions: string[], skills: string[]}},
  *             manifest: {path: string, manifest: PiManifest},
  *             tokenMap: string, warnings: string[], dryRun: boolean }>}
@@ -264,6 +271,9 @@ export async function installPi(options = {}) {
   const root = options.root ?? PACKAGE_ROOT;
   const output = options.output ?? DEFAULT_OUTPUT;
   const dryRun = options.dryRun ?? false;
+  // A staging install may write the pipeline formula into the project it is run
+  // from; `--output` is generate-only and writes nothing outside its own tree.
+  const projectDir = options.projectDir !== undefined ? options.projectDir : options.output === undefined ? process.cwd() : null;
   const resolvePackage = options.resolvePackage ?? resolveFromNode;
   /** @type {string[]} */
   const warnings = [];
@@ -300,6 +310,7 @@ export async function installPi(options = {}) {
   const skills = await installSkills({ root, skillsDir: join(output, "skills"), dryRun, pluginRoot, tokenMap, warn });
   const docs = await installDocs({ root, output, dryRun, tokenMap });
   const extensions = await installExtensions({ root, output, dryRun });
+  const formula = await installPipelineFormula({ root, projectDir, dryRun, warn });
   const tokenMapFile = await installTokenMap({ output, tokenMap, dryRun });
   const packages = await stagePiPackages({ dependencies, output, resolvePackage, dryRun, warn });
   const manifestObject = await buildManifest({ root, dependencies });
@@ -317,6 +328,7 @@ export async function installPi(options = {}) {
     skills,
     docs,
     extensions,
+    formula,
     packages,
     manifest,
     tokenMap: tokenMapFile,
@@ -483,6 +495,26 @@ async function installExtensions({ root, output, dryRun }) {
   if (!(await isDirectory(src))) return { files: 0, dir };
   const { files } = await copyTree(src, dir, { dryRun });
   return { files, dir };
+}
+
+// ─── Pipeline formula ─────────────────────────────────────────────────────────
+
+/**
+ * Copy the shipped `pipeline` formula into the consumer project's
+ * `.beads/formulas/`, where `bd mol pour` can find it.
+ *
+ * The copy lands as an untracked file in the consumer's repository, so the
+ * returned message says so and the install output prints it. Nothing about this
+ * is fatal: a project with no `.beads/` (its `bd init` never ran) and a package
+ * whose source file is missing both come back as a reported action, because
+ * `create-chores.mjs` falls back to its per-stage path without a formula.
+ * @param {{ root: string, projectDir: string | null, dryRun: boolean, warn: Warn }} options
+ * @returns {Promise<import("../../scripts/lib/pipeline-formula.mjs").FormulaCopy>}
+ */
+async function installPipelineFormula({ root, projectDir, dryRun, warn }) {
+  const copy = await copyPipelineFormula({ root, projectDir, dryRun });
+  if (copy.action === "no-beads-dir" || copy.action === "source-missing") warn(copy.message);
+  return copy;
 }
 
 // ─── Token map ───────────────────────────────────────────────────────────────

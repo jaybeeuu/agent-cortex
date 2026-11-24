@@ -32,16 +32,13 @@ compact, flush, interrupt.
 
 Summarise the window and carry on: the older turns become a summary and the recent tail is kept.
 The window transition of a **stay**, because the next item on the theme needs what the last one
-established but not its raw turns.
-
-Compact is one of three window transitions. It keeps a summary; a flush drops the window entirely; a
-rewind discards everything after a checkpoint. See flush, rewind, decision.
+established but not its raw turns. Chosen by the decision. See flush, rewind, decision.
 
 # flush
 
 Drop the window and start fresh, keeping nothing but what the tracker already holds. The window
 transition of a **switch**, because a summary of a theme you have just left is the noise the flush
-exists to remove.
+exists to remove. Chosen by the decision.
 
 A flush does not carry a handoff: the next session's own `## Session start` re-establishes the
 rubric and the queue, and `Recover a theme from the tracker` restores any theme on demand. See
@@ -60,11 +57,17 @@ Slack todo. Met in four steps — checkpoint at the last clean boundary, record 
 content implies, rewind to the checkpoint, then resume with one sentence naming the task and the
 record.
 
-An interrupt is distinguished from a decision by where it ends: a decision ends a theme, an interrupt
-ends nothing and returns you to the item you were on. See rewind, decision, boundary.
+The four steps are one movement, not a menu: an interrupt is opened by its checkpoint and closed by
+its rewind. An interrupt that has not rewound has not finished, so the rewind is not chosen — it is
+owed. See rewind, decision, boundary.
 
 # rewind
 
-Drop every turn after a checkpoint, keeping everything before it. The window transition an interrupt
-uses, and the only one that restores a known state rather than summarising it or discarding the
-window. See interrupt, compact, flush.
+Drop every turn after a checkpoint, keeping everything before it. The **completion of an interrupt**:
+once the interrupt's work is recorded, this is the only way back, so it is not one of the transitions
+a decision chooses between.
+
+It differs from the other two in kind. A compact and a flush move the window forward, chosen by a
+boundary decision; a rewind makes the window match the moment the interrupt interrupted. It is also
+the only one that restores a known state rather than summarising it or discarding it. See interrupt,
+compact, flush.

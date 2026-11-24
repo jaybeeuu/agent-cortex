@@ -460,7 +460,7 @@ describe('the command line', () => {
     );
   }
 
-  it('prints the comparison and exits 0, and exits 2 on a decision against the scores', async () => {
+  it('prints the comparison and exits 0', async () => {
     const workspace = await makeWorkspace();
     await writeStrategy(workspace);
     const stub = await makeStubBd(workspace, themeFixture());
@@ -470,11 +470,31 @@ describe('the command line', () => {
     assert.match(compared.stdout, /^recommendation: switch — /m);
     assert.match(compared.stdout, /^theme next {2}tst-a · total 4\.2 · /m);
     assert.match(compared.stdout, /^queue top {3}tst-b · total 8\.0 · /m);
+  });
+
+  it('exits 2 on an outcome that is neither stay nor switch', async () => {
+    const workspace = await makeWorkspace();
+    await writeStrategy(workspace);
+    const stub = await makeStubBd(workspace, themeFixture());
 
     const refused = await run({ workspace, stub, argv: ['--decide', 'move'] });
     assert.equal(refused.exitCode, 2);
     assert.equal(refused.stdout, '');
     assert.match(refused.stderr, /--decide takes stay or switch, not "move"/);
+  });
+
+  it('exits 2 when a decision contradicts the recommendation and names no reason', async () => {
+    const workspace = await makeWorkspace();
+    await writeStrategy(workspace);
+    const stub = await makeStubBd(workspace, themeFixture());
+
+    const refused = await run({ workspace, stub, argv: ['--decide', 'stay'] });
+    assert.equal(refused.exitCode, 2);
+    assert.equal(refused.stdout, '');
+    assert.match(
+      refused.stderr,
+      /--decide stay contradicts the recommendation \(switch\), so it needs --reason/,
+    );
   });
 
   it('requires the theme, because a boundary belongs to one', async () => {

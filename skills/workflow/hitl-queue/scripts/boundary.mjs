@@ -78,7 +78,7 @@ export const BOUNDARY_STATE = /** @type {const} */ ({
  * @property {BoundaryDecision} [decided]            The decision the human made, when one was named.
  */
 
-/** The three outcome names, for reading a caller's argument against them. @type {string[]} */
+/** The two outcome names, for reading a caller's argument against them. @type {string[]} */
 const OUTCOMES = Object.values(BOUNDARY_OUTCOME);
 
 // ─── Numbers the queue already computed ───────────────────────────────────────

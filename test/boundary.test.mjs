@@ -138,7 +138,7 @@ async function harness(beads) {
  * @param {GraphBead[]} options.beads
  * @param {string} [options.theme]
  * @param {string} [options.next]
- * @param {'stay' | 'switch' | 'move'} [options.decide]
+ * @param {'stay' | 'switch'} [options.decide]
  * @param {string} [options.reason]
  * @returns {Promise<BoundaryAnswer>}
  */
@@ -160,7 +160,7 @@ async function boundary({ beads, theme = THEME, next, decide, reason }) {
  * Build one boundary answer together with the tracker it wrote to, so a case can read the trail.
  * @param {object} options
  * @param {GraphBead[]} options.beads
- * @param {'stay' | 'switch' | 'move'} [options.decide]
+ * @param {'stay' | 'switch'} [options.decide]
  * @param {string} [options.reason]
  * @returns {Promise<{ rendered: string, notes: { id: string, text: string }[] }>}
  */
@@ -183,7 +183,7 @@ async function record({ beads, decide, reason }) {
  * case asserts what the refusal left behind and not only the message it carried.
  * @param {object} options
  * @param {GraphBead[]} options.beads
- * @param {'stay' | 'switch' | 'move'} options.decide
+ * @param {'stay' | 'switch'} options.decide
  * @param {string} [options.reason]
  * @returns {Promise<{ error: unknown, notes: { id: string, text: string }[] }>}
  */
@@ -215,7 +215,7 @@ describe('the boundary comparison', () => {
         "recommendation: switch — the queue's top item scores 8.0 against the theme's next 4.2, so higher-priority work waits elsewhere",
         'theme next  tst-a · total 4.2 · Decide the theme question',
         'queue top   tst-b · total 8.0 · Decide the outside question',
-        "next: stay, switch or move is the human's call — nothing is recorded until they answer",
+        "next: stay or switch is the human's call — nothing is recorded until they answer",
         '',
       ].join('\n'),
     );
@@ -240,23 +240,23 @@ describe('the boundary comparison', () => {
         "recommendation: stay — the theme's next item is the queue's top item at 8.0, so higher-priority work waits nowhere else",
         'theme next  tst-a · total 8.0 · Decide the theme question',
         'queue top   tst-a · total 8.0 · Decide the theme question',
-        "next: stay, switch or move is the human's call — nothing is recorded until they answer",
+        "next: stay or switch is the human's call — nothing is recorded until they answer",
         '',
       ].join('\n'),
     );
   });
 
-  it('renders a move with both scores and the reason the contributor gave', async () => {
+  it('renders a switch that contradicts the recommendation with both scores and the reason the human gave', async () => {
     const { rendered } = await record({
-      beads: themeFixture(),
-      decide: 'move',
-      reason: 'a break from the theme improves the next item',
+      beads: themeFixture({ inside: 8.0, outside: 4.2 }),
+      decide: 'switch',
+      reason: 'the outside question unblocks ralph this week',
     });
 
-    assert.match(rendered, /^recommendation: switch — /m);
-    assert.match(rendered, /^theme next {2}tst-a · total 4\.2 · /m);
-    assert.match(rendered, /^queue top {3}tst-b · total 8\.0 · /m);
-    assert.match(rendered, /^decision: move — a break from the theme improves the next item$/m);
+    assert.match(rendered, /^recommendation: stay — /m);
+    assert.match(rendered, /^theme next {2}tst-a · total 8\.0 · /m);
+    assert.match(rendered, /^queue top {3}tst-a · total 8\.0 · /m);
+    assert.match(rendered, /^decision: switch — the outside question unblocks ralph this week$/m);
   });
 
   it('prints the stored total instead of computing one from the components', async () => {
@@ -294,12 +294,12 @@ describe('the recorded decision', () => {
   it('shows the trail entry in the block, so the decision and its record are read together', async () => {
     const { rendered, notes } = await record({
       beads: themeFixture(),
-      decide: 'move',
+      decide: 'switch',
       reason: 'the next item reads better after a break',
     });
 
     assert.equal(notes.length, 1);
-    assert.match(rendered, new RegExp(`^trail: ${THEME} · \\[2026-11-15T09:30:00\\.000Z\\] boundary: move · .*total 4\\.2 vs queue top tst-b total 8\\.0.*reason: the next item reads better after a break$`, 'm'));
+    assert.match(rendered, new RegExp(`^trail: ${THEME} · \\[2026-11-15T09:30:00\\.000Z\\] boundary: switch · .*total 4\\.2 vs queue top tst-b total 8\\.0.*reason: the next item reads better after a break$`, 'm'));
   });
 
   it('records the reason given for a stay that agrees with the recommendation', async () => {
@@ -314,14 +314,26 @@ describe('the recorded decision', () => {
   });
 
   it('refuses a decision against the recommendation with no reason, and writes no trail entry', async () => {
-    const { error, notes } = await refuse({ beads: themeFixture(), decide: 'move' });
+    const { error, notes } = await refuse({ beads: themeFixture(), decide: 'stay' });
 
     assert.ok(error instanceof UsageError);
-    assert.match(error.message, /--decide move contradicts the recommendation \(switch\), so it needs --reason/);
+    assert.match(error.message, /--decide stay contradicts the recommendation \(switch\), so it needs --reason/);
     assert.deepEqual(notes, []);
   });
 
-  it('refuses a decision outside the three outcomes, and writes no trail entry', async () => {
+  it('refuses move, naming the two outcomes that are left, and writes no trail entry', async () => {
+    const { error, notes } = await refuse({
+      beads: themeFixture(),
+      // @ts-expect-error — 'move' is outside the union; the builder's runtime check refuses it for a caller that reaches the builder directly.
+      decide: 'move',
+    });
+
+    assert.ok(error instanceof UsageError);
+    assert.match(error.message, /--decide takes stay or switch, not "move"/);
+    assert.deepEqual(notes, []);
+  });
+
+  it('refuses a decision outside the two outcomes, and writes no trail entry', async () => {
     const { error, notes } = await refuse({
       beads: themeFixture(),
       // @ts-expect-error — 'wander' is outside the union; this case calls the builder directly, so the builder's runtime check refuses it.
@@ -329,7 +341,7 @@ describe('the recorded decision', () => {
     });
 
     assert.ok(error instanceof UsageError);
-    assert.match(error.message, /--decide takes stay, switch, move/);
+    assert.match(error.message, /--decide takes stay or switch/);
     assert.deepEqual(notes, []);
   });
 });
@@ -462,7 +474,7 @@ describe('the command line', () => {
     const refused = await run({ workspace, stub, argv: ['--decide', 'move'] });
     assert.equal(refused.exitCode, 2);
     assert.equal(refused.stdout, '');
-    assert.match(refused.stderr, /--decide move contradicts the recommendation \(switch\)/);
+    assert.match(refused.stderr, /--decide takes stay or switch, not "move"/);
   });
 
   it('requires the theme, because a boundary belongs to one', async () => {

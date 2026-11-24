@@ -18,16 +18,17 @@ one-item session start; this file carries what happens after that item is done.
 
 ## The decision at every boundary
 
-One trade-off, three outcomes, and no fourth:
+One trade-off, two outcomes, and no third:
 
 | Outcome | When it is right | Read from the scores? |
 |---|---|---|
 | `stay` | Continue in the theme. The theme's next item still leads the queue. | Yes |
 | `switch` | Leave the theme, because higher-priority work waits elsewhere. | Yes |
-| `move` | Leave the theme for one item, because a break improves the next item. | No — a judgement, so it carries its own reason |
 
-The first two are readable from the two totals. A `move` is not: it is about what the next item
-needs, so it is always the human's reason and never the queue's.
+Both are read from the two totals, so the boundary records one of these two and nothing else. A
+leave that is not about priority — stepping out for one item and coming back — is an
+**interrupt**, not an outcome: the guppi agent's `## Interrupts` section owns that route, with the
+checkpoint, the record, the rewind and the resume it needs.
 
 ## The block
 
@@ -36,7 +37,7 @@ Boundary · theme tst-t · strategy v2
 recommendation: switch — the queue's top item scores 8.0 against the theme's next 4.2, so higher-priority work waits elsewhere
 theme next  tst-a · total 4.2 · Decide the theme question
 queue top   tst-b · total 8.0 · Decide the outside question
-next: stay, switch or move is the human's call — nothing is recorded until they answer
+next: stay or switch is the human's call — nothing is recorded until they answer
 ```
 
 **Both scores are always printed**, and the reason names both. That is the whole rule: an agent
@@ -52,7 +53,7 @@ a reader checks is the number the queue ranked by. [SKILL.md](SKILL.md) owns tha
 ```bash
 node <skill-scripts>/boundary.mjs boundary --theme <epic-id>
 node <skill-scripts>/boundary.mjs boundary --theme <epic-id> --decide switch
-node <skill-scripts>/boundary.mjs boundary --theme <epic-id> --decide move --reason "<what the break buys>"
+node <skill-scripts>/boundary.mjs boundary --theme <epic-id> --decide stay --reason "<what the decision buys>"
 ```
 
 A run with no `--decide` prints the comparison and writes nothing. A run that names a decision
@@ -72,9 +73,9 @@ no reason says nothing about intent.
 
 - **The human decides.** `--decide` is the recording step, and it is passed after an answer, never
   instead of asking for one. Nothing switches on its own.
-- **A decision against the recommendation needs `--reason`.** A `move` always does, and so does a
-  `stay` or `switch` that contradicts the two scores. The refusal is the point: an unexplained
-  override is the case the trail exists to catch.
+- **A decision against the recommendation needs `--reason`.** A `switch` that the scores do not
+  point to needs one, and so does a `stay` that skips higher-scoring work elsewhere. The refusal
+  is the point: an unexplained override is the case the trail exists to catch.
 - **The boundary changes what to do next, never what outranks what.** The order is the queue's and
   the rubric is the strategy's. A wish for a different order is a `strategise` change, not a
   boundary decision.
@@ -100,7 +101,7 @@ printed, whichever answer it was.
 |---|---|
 | `--theme <epic-id>` | The theme; required, because a boundary belongs to one |
 | `--next <id>` | The theme's next item, when the session names it instead |
-| `--decide <outcome>` | `stay`, `switch` or `move` — record the human's decision |
+| `--decide <outcome>` | `stay` or `switch` — record the human's decision |
 | `--reason "<text>"` | Why that decision; required when it contradicts the recommendation |
 | `--file <path>` | Strategy file (default `.agent-cortex/working-docs/strategy.md`, relative to the repository root) |
 | `--include-ideas` | Rank `kind:idea` beads too, as the queue does |
@@ -108,7 +109,7 @@ printed, whichever answer it was.
 | `--json` | Print the answer as JSON, including the decision and the trail entry |
 
 Exit `1` means a `bd` call failed and exit `2` means a malformed call — a missing `--theme`, an
-outcome outside the three, or a decision against the scores with no reason. `BD_PATH` pins the `bd`
+outcome outside the two, or a decision against the scores with no reason. `BD_PATH` pins the `bd`
 binary.
 
 ## Red Flags

@@ -1,18 +1,23 @@
 # Tracker maintenance
 
 `bd`'s Dolt store grows with **commit history**, not with the amount of data you track. This
-checkout reached 10,563 commits for 1,071 beads (512 KB of JSONL) and a 990 MB store; every
+checkout reached 10,563 commits for 1,071 beads (512 KB of JSONL) and 811 MB of Dolt data; every
 command then took 2–3 s, because each invocation opens the whole history.
 
 Measured on this checkout, 2026-11-24:
 
 | | before | after squash |
 |---|---|---|
-| Dolt store | 990.6 MB | 8.7 MB |
-| commits | 10,563 | 1 |
+| Dolt data (`noms`) | 811 MB | 8.9 MB |
+| commit count | 10,563 | 1 |
 | `bd ready` | 1928 ms | 39 ms |
 | `bd list` | 2209 ms | 38 ms |
-| 4 concurrent `bd count` | 3339 ms wall | — |
+
+The **data** is `noms`; that is the figure to compare across a squash. bd also reports a larger
+"Store" size — `.dolt` is 127 MB here — because the directory carries `git-remote-cache`
+(118 MB), a bare clone of the project git repo kept for the `git+https://` Dolt remote. Flatten
+does not shrink that cache, so a store total barely moves while the data falls by two orders of
+magnitude.
 
 Treat those numbers as a sample, not a target. The rule below is what generalises.
 
@@ -46,17 +51,18 @@ Three checks, all fast:
 ```bash
 bd compact --dry-run | sed -n '3p'                  # a small commit count, not thousands
 bd dolt pull                                        # must not grow that count
-du -sh .beads/embeddeddolt/agent_nexus/.dolt/noms   # ~9 MB when squashed
-```
+du -sh .beads/embeddeddolt/agent_nexus/.dolt/noms   # ~9 MB when squashed```
 
 If `bd dolt pull` grows the count, the remote was not rewritten — go back to the rule and push
 the squashed state.
 
 ## Do not
 
-- **Delete `.dolt/git-remote-cache` to save disk.** It forces a full re-fetch, which restores
-  the old chain (measured: 8.7 MB back to 205 MB within minutes). It costs disk, not latency;
-  removing it changed call time by noise only.
+- **Delete `.dolt/git-remote-cache` to save disk.** It is a bare clone of the project git repo
+  (118 MB here), the local end of the `git+https://` Dolt remote. Removing it forces a full
+  re-fetch: the next command restores the old Dolt chain (measured: 8.7 MB of data back to
+  205 MB within minutes) and the cache is rebuilt at the same size, so the disk comes back
+  anyway. It costs disk, not latency; removing it changed call time by noise only.
 - **Delete individual `.darc` files in `.beads/backup`.** It is one rolling chunked backup — a
   `manifest` listing the chunks — not a set of independent snapshots. Deleting a chunk corrupts
   it. To reclaim space, point a fresh destination at it with `bd backup init <path>` and sync.

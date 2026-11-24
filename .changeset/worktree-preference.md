@@ -1,5 +1,5 @@
 ---
-"@cryptolibertus/agent-cortex": patch
+"@jaybeeuu/agent-cortex": patch
 ---
 
 Record the worktree preference: the primary checkout stays on `main`, every branch lives in its own

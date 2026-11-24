@@ -64,6 +64,8 @@ node <skill-scripts>/rice.mjs score <bead-id> --reach 4 --impact 3 --confidence 
   --effort 2 --rationale "unblocks the messaging epic — Current themes"
 ```
 
+The example's figures are illustrative: score with the values your strategy's level tables list.
+
 It computes `reach × impact × confidence ÷ effort` to one decimal, records the strategy version it validated, and writes the record with `bd update <id> --metadata`. It writes nothing when the strategy is missing or invalid, when a component is not on that component's level table, and when a component falls outside its range.
 
 5. **Read back what landed.** `bd show <bead-id>` renders the `METADATA` block: the components, the total, the version and the rationale. Confirm the arithmetic before you trust the score.

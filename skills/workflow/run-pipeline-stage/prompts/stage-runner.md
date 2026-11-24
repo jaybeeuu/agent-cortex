@@ -138,7 +138,8 @@ dirty worktree counts as a failed stage whatever the outcome line claims.
 1. Commit on the current branch: `git add -A && git commit -m "<stage>(<parent-id>): <summary>"`.
 2. Push the branch: `git push -u origin HEAD`.
 3. Report `COMMIT`, `PUSHED`, and `PR`. The `document` stage also opens or updates the feature PR
-   and reports its URL; every earlier stage reports `PR: none`.
+   and reports its URL, after proving it ready as that stage's playbook states; every earlier stage
+   reports `PR: none`.
 
 **Exception — `housekeeping`.** It changes no files, so it commits and pushes nothing. Report
 `COMMIT: none` and `PUSHED: no` with `OUTCOME: SUCCESS`; never create an empty commit.

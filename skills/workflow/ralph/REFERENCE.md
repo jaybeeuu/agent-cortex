@@ -275,7 +275,13 @@ When the `document` chore for a parent task completes:
    gh pr create --base <base> --head feature/<parent-id> --title "[<parent-id>] <task-title>" --body "<summary>"
    ```
    If an open PR already exists, update it instead of creating a duplicate.
-3. Report the PR URL in chat as soon as it is created.
+   Opening the PR is half the gate. A PR is ready to report only when its branch contains its base
+   (`git merge-base --is-ancestor origin/<base> HEAD` exits 0), every check is green on that head,
+   and `gh pr view <n> --json mergeStateStatus` reads `CLEAN`. The `run-pipeline-stage` document
+   playbook's _PR readiness_ section states the check, the rebase that brings a behind branch
+   current, and the stop a conflicted rebase is.
+3. Report the PR URL in chat as soon as it is created, with the `mergeStateStatus` and the head SHA
+   read after any rebase. A `BEHIND` PR is not reported as ready.
 4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` and `execution:hitl` (created by `create-task`).
 5. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
 6. Do not schedule new parent features while this gate is **unblocked** — an unblocked gate is a feature genuinely awaiting a human merge (see _Gate predicate_ below).

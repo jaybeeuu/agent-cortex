@@ -1,12 +1,12 @@
 ---
 name: review-defects
-description: The closed vocabulary of `defect:<class>` labels a reviewer applies to a rejected bead, so rejections become countable data. Use when rejecting a change, when deciding which class names a finding, or when querying which defects recur.
+description: The closed vocabulary of `defect:<class>` labels a reviewer applies to a rejected bead, and the lens each class names, so rejections become countable per question asked. Use when rejecting a change, when deciding which class names a finding, when deciding which lens may raise a finding, or when querying which defects or which lens recur.
 ---
 
 # Review defects
 
-A rejection says what is wrong. The class says *which kind* of wrong, in one word, so rejections can
-be counted, compared and trended across tasks instead of re-read one at a time.
+A rejection says what is wrong. The class says *which kind* of wrong, in one word, and names the lens
+that may raise it, so rejections can be counted per question instead of re-read one at a time.
 
 ## One closed list, one label per rejection
 
@@ -15,23 +15,53 @@ Apply exactly one class from this table. Never invent one.
 The **Distinct from** column is part of the definition: two classes that sound alike are separated
 there, and a finding that matches the neighbour belongs to the neighbour.
 
-| Class | The defect | Distinct from | Evidence the rejection must show |
-|---|---|---|---|
-| `test-unproven` | A test's name claims a requirement its assertions never check. | `test-cannot-fail`: there the assertion is genuine and the case is absent. | The named clause, and the assertion that is missing. |
-| `test-cannot-fail` | An assertion passes against a broken implementation. | `test-unproven`: a name that outruns its body, not an assertion that cannot bite. | The case that should fail and does not. |
-| `criteria-unmet` | A criterion from the bead is not delivered. | `scope-creep`: too little work, not more than was asked. | The criterion, quoted, and what is absent. |
-| `scope-creep` | The change does more than the criteria ask. | `criteria-unmet`: the change is wider than its reason. | The touched behaviour that no criterion names. |
-| `style-violation` | A `style-*` rule is broken. | `unsafe-instruction`: a convention broken, not a machine put at risk. | The rule, quoted, and the line that breaks it. |
-| `missing-proof` | A report claims success with no evidence. | `silent-degradation`: evidence absent, not evidence that cannot be wrong. | The claim, and the command output that is absent. |
-| `regression` | Behaviour that worked before now breaks. | `criteria-unmet`: it breaks something nobody asked to change. | The old behaviour, and the check that now fails. |
-| `docs-drift` | Shipped text no longer matches what ships. | `ambiguous-rule`: drift is **stale**; ambiguity is **readable two ways**. | The text, and the behaviour that contradicts it. |
-| `unsafe-instruction` | Shipped text that, followed on an arbitrary machine, could destroy data or run something dangerous — destructive commands, force-pushes, credential handling, overwriting user config. | `docs-drift`: the text is still true, and the hazard is the point. `style-violation`: a convention, not a consequence. | The text, quoted, the state it endangers, and a safe form to use instead. |
-| `ambiguous-rule` | Wording a reasonable agent reads two ways, especially a phrase true of one context that reads as true of another. | `docs-drift`: true yesterday, false today. `criteria-unmet`: behaviour delivered, not wording. | Both readings, quoted, and the one the author intended. |
-| `silent-degradation` | A path that fails quietly or passes vacuously: a skipped check reported as success, a null mapping silently dropping a token, a guard that cannot fail. | `test-cannot-fail`: one assertion that cannot bite; this is any path that cannot report. | The quiet path, what it should have reported, and the run that shows it. |
-| `unclassified` | The defect matches no class. It exists so a reviewer never force-fits. | Everything: it is the honest answer when none of the others is true. | The finding, the classes considered and why each fails, and the gap bead filed for the missing class. |
+| Class | The defect | Distinct from | Evidence the rejection must show | Lens |
+|---|---|---|---|---|
+| `test-unproven` | A test's name claims a requirement its assertions never check. | `test-cannot-fail`: there the assertion is genuine and the case is absent. | The named clause, and the assertion that is missing. | tests |
+| `test-cannot-fail` | An assertion passes against a broken implementation. | `test-unproven`: a name that outruns its body, not an assertion that cannot bite. | The case that should fail and does not. | tests |
+| `criteria-unmet` | A criterion from the bead is not delivered. | `scope-creep`: too little work, not more than was asked. | The criterion, quoted, and what is absent. | tests |
+| `scope-creep` | The change does more than the criteria ask. | `criteria-unmet`: the change is wider than its reason. | The touched behaviour that no criterion names. | tests |
+| `style-violation` | A `style-*` rule is broken. | `unsafe-instruction`: a convention broken, not a machine put at risk. | The rule, quoted, and the line that breaks it. | quality |
+| `missing-proof` | A report claims success with no evidence. | `silent-degradation`: evidence absent, not evidence that cannot be wrong. | The claim, and the command output that is absent. | tests |
+| `regression` | Behaviour that worked before now breaks. | `criteria-unmet`: it breaks something nobody asked to change. | The old behaviour, and the check that now fails. | behaviour |
+| `docs-drift` | Shipped text no longer matches what ships. | `ambiguous-rule`: drift is **stale**; ambiguity is **readable two ways**. | The text, and the behaviour that contradicts it. | quality |
+| `unsafe-instruction` | Shipped text that, followed on an arbitrary machine, could destroy data or run something dangerous — destructive commands, force-pushes, credential handling, overwriting user config. | `docs-drift`: the text is still true, and the hazard is the point. `style-violation`: a convention, not a consequence. | The text, quoted, the state it endangers, and a safe form to use instead. | security |
+| `ambiguous-rule` | Wording a reasonable agent reads two ways, especially a phrase true of one context that reads as true of another. | `docs-drift`: true yesterday, false today. `criteria-unmet`: behaviour delivered, not wording. | Both readings, quoted, and the one the author intended. | quality |
+| `silent-degradation` | A path that fails quietly or passes vacuously: a skipped check reported as success, a null mapping silently dropping a token, a guard that cannot fail. | `test-cannot-fail`: one assertion that cannot bite; this is any path that cannot report. | The quiet path, what it should have reported, and the run that shows it. | behaviour |
+| `unclassified` | The defect matches no class. It exists so a reviewer never force-fits. | Everything: it is the honest answer when none of the others is true. | The finding, the classes considered and why each fails, and the gap bead filed for the missing class. | any |
 
 Two findings of different kinds are two entries in the rejection text and one label: the class of
-the finding that must be fixed first.
+the finding that must be fixed first. Four lenses review a change independently, so one bead may
+carry four labels — one per rejecting lens — and each label is the class that lens found.
+
+## Each class names a lens
+
+The class is the question that failed, so it is also the lens that may raise it. The `Lens` column is
+the whole map: a lens raises the classes in its column and no others.
+
+| Lens | The question it owns |
+|---|---|
+| `behaviour` | Does the code do what it says: bugs, missed edge cases, unhappy paths? |
+| `quality` | Do the code and the tests meet the style guides? |
+| `tests` | Do the tests prove the acceptance criteria, and is the suite the size the risk earns? |
+| `security` | Is the change safe: secrets, credentials, dangerous input handling, the repository's own scan? |
+
+`unclassified` carries `any`, because it says a lens found something this vocabulary cannot name, and
+no lens owns that. A finding that answers none of these questions is the same gap as a class the
+table lacks: apply `defect:unclassified` and file the change to the vocabulary.
+
+### A lens with nothing to review still closes
+
+A lens with nothing to review closes with its verdict and one line of evidence — `security: no
+secrets, no credentials and no input handling in this change; the scan found nothing`. It never skips
+silently, and it never invents a finding to look useful. A documentation-only change under the
+security lens is the routine case, not an exception.
+
+### The coordinator consolidates; it does not judge
+
+The coordinator merges duplicate findings into one entry, cites the lens behind each of them, and
+reports the lenses' verdicts as they stand. It may not overrule a lens to let a bead through, and it
+raises no class of its own: the class on a rejection belongs to the lens that found it.
 
 ## A class is a classification, not a state
 
@@ -106,8 +136,9 @@ bd list --label-pattern 'defect:*' --all     # every defect, any class
 the bead carrying one is usually closed: drop the flag and the query reports "No issues found" on
 a label that is set.
 
-Count the pattern output per class to see what recurs, and fix the process that produces it — a
-class that keeps appearing is a gap in the stage before this one.
+Count the pattern output per class to see what recurs, and group the classes by the `Lens` column to
+see which question keeps failing. Fix the process that produces it: a class that keeps appearing is a
+gap in the stage before this one, and a lens that keeps appearing is a gap in the brief it applies.
 
 ## Worked examples
 

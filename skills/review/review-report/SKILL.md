@@ -1,6 +1,6 @@
 ---
 name: review-report
-description: Reports the defect classes a project's reviews recorded, with the pipeline's first-pass review rate, fix rounds per stage and the change since the previous report, and files that report upstream. Use when you ask "what keeps failing", "defect report", "which skill should change", or "file this as package feedback".
+description: Reports the defect classes a project's reviews recorded and the lens behind each, with the pipeline's first-pass review rate, fix rounds per stage and the change since the previous report, and files that report upstream. Use when you ask "what keeps failing", "which lens keeps rejecting", "defect report", "which skill should change", or "file this as package feedback".
 ---
 
 # Review report
@@ -13,6 +13,8 @@ pipeline's own rate — then, as a separate step, files that report upstream.
 
 - "What keeps failing?" — which defect class recurs across this project's changes.
 - Deciding which shipped skill to change, because a class keeps appearing.
+- Seeing which review lens keeps rejecting, because a lens that dominates points at its brief rather
+  than at the beads it rejected.
 - Filing package feedback against the tool the project runs on.
 - Checking whether the review gate is improving, without reading closed beads one at a time.
 
@@ -27,6 +29,7 @@ pipeline's own rate — then, as a separate step, files that report upstream.
 | Metric | Derived from the tracker |
 |---|---|
 | Defects by class | every `defect:<class>` label on any bead, closed beads included |
+| Rejections by lens | the same labels, grouped by the lens each class names in `review-defects` |
 | First-pass review rate | parents holding exactly one `stage:review` chore |
 | Fix rounds per stage | `stage:fix` chores, attributed to the stage the fresh chore re-runs |
 | Change since the previous report | this report against the report kept at `--baseline` |
@@ -35,6 +38,15 @@ The class vocabulary is not defined here. `review-defects` owns the closed list 
 the script parses that table at run time, so the words a reviewer applies and the words this report
 counts cannot drift apart. A class that appears as a label but not in the table is printed as
 vocabulary drift and is never counted as a class of its own.
+
+The same file maps each class to the lens that may raise it, and the report groups its counts by that
+map. A class mapped to a lens the skill does not document fails the run, so no class leaves a per-lens
+count without a word. `defect:unclassified` names no lens: it is printed apart from the lenses,
+because a gap in the vocabulary is a change to make in the skill, not a lens result.
+Read a lens that dominates as a statement about the process, not about the beads: it is the brief that
+lens applies, or the skill its classes name, that needs changing. The counts are classes, not lens
+runs — a lens that ran and closed with nothing to review and a lens that never ran both add nothing —
+so read the chore tree when that distinction is the one you need.
 
 A fix round is attributed by chore state, not by prose: a rejected stage always creates a `stage:fix`
 chore plus a fresh instance of that stage, and the fresh instance declares a `blocks` dependency on
@@ -48,7 +60,7 @@ vocabulary has no owner.
 
 ## Honest by construction
 
-The report never dresses an absent measurement as a number. The four degradation cases are:
+The report never dresses an absent measurement as a number. The five degradation cases are:
 
 - **No defect label.** It says no label is set and prints no zeros, because zero labels is an absence,
   not a measurement of zero defects.
@@ -56,6 +68,9 @@ The report never dresses an absent measurement as a number. The four degradation
   trend yet.
 - **No review chore.** It says no rate is reported, because absent is not zero.
 - **No baseline.** It prints the snapshot and says there is no previous report to compare against.
+- **Only `unclassified`.** The lens section says no class names a lens, rather than picking the
+  nearest one, and a baseline written before the per-lens counts existed is named as not comparable
+  rather than read as a row of zeros.
 
 One further rule governs what a count means rather than what it measures. A label is removed when the
 review that confirms its fix runs, so every count describes the unconfirmed defect set at that
@@ -128,6 +143,8 @@ so the measurement is never lost.
 - [ ] The report printed counts that you can reproduce with the same queries by hand.
 - [ ] Every top class named an owning skill, and one example bead id.
 - [ ] The report was read before `--file` ran, and `--file` ran only if filing was wanted.
+- [ ] Every lens count was the sum of the classes its column names, and `unclassified` was printed
+      apart from the lenses.
 - [ ] With no labels or no baseline, the report said so instead of printing a trend.
 - [ ] Nothing was pushed and no pull request was opened against the feedback repository.
 

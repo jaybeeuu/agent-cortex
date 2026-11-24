@@ -1,6 +1,6 @@
 # Review report — worked examples
 
-Five real runs. Each prints the same five sections; what changes is what the tracker held, and a
+Five real runs. Each prints the same six sections; what changes is what the tracker held, and a
 section with nothing to measure says so instead of printing a zero. The project names and bead ids
 are fixtures, the output is verbatim.
 
@@ -15,6 +15,9 @@ Reported 2026-05-01T10:00:00Z. Read 4 beads from the tracker.
 Defects by class — `bd list --label-pattern 'defect:*' --all`
   No defect label is set on any bead, closed beads included. There is nothing to count,
   so no zero is printed as if it were a measurement.
+
+Rejections by lens — the lens each class names in `review-defects`
+  No defect label is set on any bead, so no lens is counted. Absent is not zero.
 
 First-pass review rate
   1 of 1 review cohorts passed with no fix round — 100%
@@ -44,6 +47,9 @@ Defects by class — `bd list --label-pattern 'defect:*' --all`
   1. criteria-unmet  1 defect in 1 change · owners: implement-task/SKILL.md, create-task/SKILL.md
      example: acme-2q.3
   1 unconfirmed defect across 1 change.
+
+Rejections by lens — the lens each class names in `review-defects`
+  tests 1
 
 First-pass review rate
   0 of 1 review cohorts passed with no fix round — 0%
@@ -88,6 +94,13 @@ Defects by class — `bd list --label-pattern 'defect:*' --all`
   3. docs-drift      1 defect in 1 change · owners: maintain-agent-docs/SKILL.md, style-documentation/SKILL.md
      example: acme-5q.3
   12 unconfirmed defects across 4 changes. Top 3 of 12 classes.
+
+Rejections by lens — the lens each class names in `review-defects`
+  tests 5 · quality 3 · behaviour 2 · security 1
+  tests accounts for 5 of 11: a lens that keeps rejecting points at the
+  brief it applies or the skill its classes name, not at the beads it rejected.
+  No lens: 1 `defect:unclassified` finding.
+  A gap in the vocabulary is filed as a change to it, never counted under a lens.
 ```
 
 This is the owning-skill mapping in use. Each class maps to at least one shipped skill, the report
@@ -105,6 +118,7 @@ The same project, recorded as a baseline one month earlier and re-run after eigh
 Change since the previous report
   Against /tmp/rr-example/trend/.agent-cortex-docs/defect-report.json, reported 2026-04-01T09:00:00Z
   criteria-unmet 1 (+1), docs-drift 1 (+1), missing-proof 1 (+1), and 5 more
+  Rejections by lens quality 9 (+5), tests 8 (+3)
   First-pass review rate 33% (from 33%, no change)
   Fix rounds review 12 (+8)
 ```

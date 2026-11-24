@@ -57,7 +57,7 @@ The worker built anything this stage needed; routing picks up whatever `bd ready
 | `verify` | `OUTCOME: SUCCESS` | Dispatch the ready `stage:review` chore |
 | `review` | `OUTCOME: SUCCESS` | Dispatch the ready `stage:document` chore |
 | `fix` | `OUTCOME: SUCCESS` | Dispatch the ready re-run chore that was blocked on the fix |
-| `document` | `OUTCOME: SUCCESS` | Open/update the feature PR and the HITL gate bead |
+| `document` | `OUTCOME: SUCCESS` | Update the HITL gate bead — the worker already opened/updated the feature PR and proved it current with its base |
 | `post-merge` | `OUTCOME: SUCCESS` | Create nothing — the merge commit's CI run is green; the closed chore is the record |
 | `housekeeping` | `OUTCOME: SUCCESS` | Create nothing — this is the last stage; its closed chore ends the pipeline |
 | `code` / `verify` / `review` / `fix` / `document` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh instance of its own stage; dispatch the ready fix chore |
@@ -177,7 +177,7 @@ Each playbook delegates to a stage skill: `tdd`/`style-code`/`style-tests` (code
 ## Examples
 
 - Input: a `stage:verify` runner reporting `OUTCOME: BLOCKED` with two failing tests → Output: a `Fix (round 1)` chore plus a fresh `Verify (re-run 1)` chore blocked on it, `review` re-blocked behind the fresh verify, verify's own bead closed, and one `---REPORT---` block.
-- Input: a `stage:document` runner reporting `OUTCOME: SUCCESS` → Output: document's bead already closed by the runner; the orchestrator opens the feature PR and updates the HITL gate bead.
+- Input: a `stage:document` runner reporting `OUTCOME: SUCCESS` → Output: document's bead already closed by the runner; the worker opened or updated the feature PR, rebased it onto its base if behind, and reported the post-rebase `mergeStateStatus` and head SHA; the orchestrator updates the HITL gate bead.
 
 ## Philosophy / rationale
 

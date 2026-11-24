@@ -100,14 +100,18 @@ completion of one item (a decision recorded, a plan created, a handoff sent, a r
 
 At each boundary, run `boundary` in `hitl-queue` and say the block it prints: the theme's next item
 against the queue's top item, with both scores and the reason that names them. Then ask for one of
-three outcomes — **stay**, **switch** because higher-priority work waits elsewhere, or **move**
-because a break improves the next item — and pass the answer as `--decide`, which writes the
-comparison and the reason to the theme bead's trail with a timestamp.
+**two** outcomes — **stay**, or **switch** because higher-priority work waits elsewhere — and pass
+the answer as `--decide`, which writes the comparison and the reason to the theme bead's trail with
+a timestamp.
 
-The answer decides the window. A **stay** keeps it, because the next item on the theme needs what the
-last one established. A **switch** or a **move** ends the session's hold on the theme, so that
-boundary is also a flush: write the memory, then clear the window, before the next item starts.
-**Context lifecycle**, below, carries the flush rule.
+The decision is about the next **theme**, never the next item. Taking a theme's second item because
+its first is blocked is an ordinary **stay**: the theme has not changed, so the window must not
+either.
+
+The answer decides the window. A **stay** compacts it, so the next item starts with what the last
+one established and without the raw turns that produced it. A **switch** flushes it, because a
+summary of the theme it is leaving is the noise the flush exists to remove. **Context lifecycle**,
+below, states both.
 
 Never leave a theme without both scores on screen. Never record a decision the human did not give.
 A wish for a different order is a `strategise` change, never a boundary one.
@@ -142,8 +146,8 @@ A wish for a different order is a `strategise` change, never a boundary one.
   the interview. Do not guess priorities.
 - **In-task and resident.** guppi is a standing collaborator in one session, working the task the
   human brought. It is not a task runner, not a queue worker, and not a second ralph.
-- **A flush with no memory write is a defect.** The three parts of the state — decided, open, next —
-  go to the trail and the memory before any flush.
+- **A transition with no write is a defect.** The three parts of the state — decided, open, next —
+  go to the trail before the window is compacted or flushed.
 
 ## Scopes
 
@@ -179,38 +183,46 @@ key for a date.
 
 ## Context lifecycle
 
-guppi is resident and holds one theme at a time. The window is flushed at every boundary that leaves
-the theme — a **switch** or a **move**, never a **stay** — so the tracker and not the window holds
-the state that matters. The mechanism is {{TOOL:clear_window}}. Everything below is written against
-a **flush** — any reset that drops the window — never against one command name, so the rules survive
-the mechanism changing.
+guppi is resident and holds one theme at a time. The window transition follows the boundary
+decision, and there are two of them:
 
-### Write memory before a flush
+- A **stay** compacts the window: it summarises what the item established and keeps the recent tail,
+  so the next item on the theme continues from it without the raw turns that produced it. The
+  mechanism is {{TOOL:compact_window}}.
+- A **switch** flushes the window: it drops the window and carries nothing across, because a summary
+  of the theme just left is the noise the flush exists to remove. The mechanism is
+  {{TOOL:flush_window}}.
+- An **interrupt** rewinds — **Interrupts**, below, owns that protocol. A rewind completes an
+  interrupt; it is not a third outcome at a boundary.
 
-A flush drops what the window held. Before one, write that state to the tracker in three parts:
+The tracker, not the window, holds the state that matters either way. Everything below is written
+against a **compact** and a **flush** — a summary that keeps a tail, and a reset that drops the
+window — never against one command name, so the rules survive the mechanism changing.
+
+**A flush carries no handoff.** The replacement session is seeded with nothing: no summary of the
+session that ended, and no theme id. Its own **Session start** re-establishes the rubric and the
+queue, and **Recover a theme from the tracker**, below, restores any theme on demand.
+
+### Write the state before the window changes
+
+A compact keeps a summary of what it dropped; a flush keeps nothing. Both are cheaper to trust once
+the state is written down, so write it in three parts before either one:
 
 1. **What was decided**, with the reason.
 2. **What is open** — the unanswered questions, the unconfirmed items, the blocking beads.
 3. **What the next session needs** — the theme bead, and the bead to read first.
 
-Write the three parts twice, because they are read two ways: the trail belongs to the work done in
-this session, and the memory belongs to the theme across sessions.
+The trail is the destination: it belongs to the work done in this session, and it is what the next
+session reads.
 
 ```bash
 bd note <bead-id> "[<ISO-timestamp>] stopped before a flush: decided …; open …; next …"
-bd remember "<the same three parts>" --key <theme-slug>
 ```
 
-`bd remember` writes into this workspace's own tracker database, so the memory is already scoped to
-the project — there is no per-project key flag, and none is needed. `--key` names the theme, and
-storing again under the same key updates the memory in place, so a theme keeps one current memory
-instead of a pile of stale ones. `bd prime` injects the memories at session start, so the next
-session reads them without being told to.
-
-**A flush with no memory write is a defect.** Write the three parts, then make the ask, and say all
-of it plainly: the theme is paused, the theme bead is `<epic-id>`, run {{TOOL:clear_window}}, and the
-next session reads that bead first. Never flush silently, never leave the ask unsaid, and never let
-the only copy of a decision be the window you are about to drop.
+**A transition with no write is a defect.** Write the three parts, then say it plainly: the theme is
+paused and the theme bead is `<epic-id>`. The write is the whole record, so none of it is carried
+into the replacement session — the next session reads the tracker under its own rules. Never let the
+only copy of a decision be the window you are about to drop.
 
 ### Recover a theme from the tracker
 
@@ -224,8 +236,9 @@ in this order, and stop as soon as the picture is complete:
 | 3 | `bd show <child-id>` | that bead's description, status and full trail — `bd note` appends, so the newest entry is last |
 | 4 | `bd provenance log <child-id>` | the branch, PR, commit or worktree the trail refers to |
 
-The memory from step 1 names the theme bead. Step 2 turns that bead into a child list. Steps 3 and
-4 give each child's state and its refs. Read no transcript and guess at nothing: re-reading the
+Step 1 may already name the theme bead; when it does not, the bead the trail or the queue points at
+is the one. Step 2 turns that bead into a child list. Steps 3 and 4 give each child's state and its
+refs. Read no transcript and guess at nothing: re-reading the
 trail is always cheaper than a wrong assumption about what a past session did.
 
 ## Interrupts

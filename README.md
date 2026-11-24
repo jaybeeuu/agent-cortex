@@ -83,7 +83,7 @@ temp-dir install plus structural checks:
   extras — `.mcp.json` and `scripts/` — are copied into every install from the `claude-extras/`
   dir, which is their canonical store. See `docs/claude-hooks.md` for the
   extension→hook mapping and the rejections (auto-name, agent-guardrails, skill-stats, subagent, agent-modes,
-  session-clear, post-merge-watch).
+  session-clear, session-transition, post-merge-watch).
 
 Edit the sources (`agents/<name>/` composable dirs, `skills/**`,
 `hooks/claude/`, `claude-extras/`, `package.json`), never anything under the materialised

@@ -1,5 +1,52 @@
 # Changelog
 
+## 3.1.0
+
+### Minor Changes
+
+- a1e0604: An agent's `tools` list gains one sentinel, `"*"`, meaning every tool the session has. The
+  composable schema keeps `tools` required and non-empty, so a forgotten list is still a validation
+  error rather than a silent grant; `"*"` must be alone, and both installers resolve it by omitting
+  the rendered `tools:` line, so a literal `*` never reaches `pi --tools` or Claude Code. The
+  harness then inherits its own full tool set, connectors included.
+
+  `guppi` now uses `"*"`, so it can read the tools that carry per-machine names — Confluence, Jira,
+  Slack, Datadog — instead of stopping mid-task to ask the human for a link. `agent-modes` resolves
+  the sentinel at activation from `pi.getAllTools()`, and reads an absent `tools` key in a flat agent
+  file as every tool; a file whose frontmatter cannot be parsed keeps the conservative default set.
+
+- 7bca946: Add `ctx uninstall`, the inverse of `ctx install`. It removes a harness install and
+  the registration that goes with it: pi is deregistered through the pi CLI (pi's own
+  `settings.json` is read, never written), and claude through the `claude plugin` CLI
+  plus removal of exactly the `enabledPlugins` + `extraKnownMarketplaces` entries the
+  install declared, so personal config and entries the user added survive. With no
+  argument it prompts from a table of installed harnesses, and a non-interactive shell
+  prints that table plus the flags and exits non-zero; a named harness that is not
+  installed is a no-op, running it twice reports "already absent", and `--dry-run`
+  writes nothing. `--all` confirms on a terminal and is the explicit opt-in when
+  unattended; it removes harness installs only — the CLI and the shared
+  `~/.agent-cortex` root stay, any ralph worktree is reported and left, and the report
+  says which.
+
+### Patch Changes
+
+- e6d8357: guppi's context lifecycle now states a trigger and names a mechanism. A boundary that leaves the
+  theme — a **switch** or a **move**, never a **stay** — flushes the window, and the mechanism is
+  named through the new `clear_window` token row: Claude Code's `/clear` on claude, pi's `/new` on pi.
+  The mandatory ask now says the theme is paused, names the theme bead and the command to run, and
+  says the next session reads that bead first. No shipped guppi text states one harness's command or
+  names an internal bead id any more, and a staged-render test proves both sides.
+- 2f3e41a: The prioritisation strategy gains an optional `## Impact levels` table: a two-column list of
+  labelled values, written by `init` and printed by `summary`. `score-bead`'s `score` refuses an
+  `--impact` figure the table does not list, naming every allowed level with its value and writing
+  nothing, so two scorers put the same bead on the same number. A strategy with no table is
+  unchanged: any impact of zero or more is accepted and the run says impact is unconstrained.
+- 87c5b72: `agent-cortex update --all` and `agent-cortex self-update` now refresh only the harnesses that are
+  installed. A harness that was never installed is reported as `not installed` — its own state, not a
+  stale version — and left alone, so neither command materialises an install nobody asked for.
+  Naming an absent harness on the command line is an error that points at
+  `agent-cortex install <harness>`, because update never installs anything.
+
 ## 3.0.1
 
 ### Patch Changes

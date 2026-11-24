@@ -1,7 +1,7 @@
 // @ts-check
 // A boundary re-rank: the theme's next item against the queue's top item, both scores on screen.
 //
-//   node boundary.mjs boundary --theme <epic-id> [--next <id>] [--decide <stay|switch|move>]
+//   node boundary.mjs boundary --theme <epic-id> [--next <id>] [--decide <stay|switch>]
 //                               [--reason "<what the decision buys>"] [--file <path>]
 //                               [--include-ideas] [--cwd <dir>] [--json]
 //
@@ -13,8 +13,9 @@
 // It recommends; it does not switch. A run with no `--decide` writes nothing, and a run that
 // names a decision writes exactly one trail entry on the theme bead, carrying the timestamp,
 // both scores and the reason, so a later session reads the comparison rather than a claim.
-// A decision that contradicts the recommendation needs `--reason`: a move is a judgement about
-// what the break buys, and a switch against the scores is a Strategy change, not a queue result.
+// A decision that contradicts the recommendation needs `--reason`: a stay that skips higher-scoring
+// work elsewhere, or a switch against the scores, is a judgement about what the decision buys, not
+// a queue result. Leaving the theme for one item and coming back is an interrupt, not a boundary.
 //
 // Zero runtime dependencies, async fs only, every child process with an argv array.
 //
@@ -33,15 +34,14 @@ import { HITL_LABEL, IDEA_LABEL, UsageError, buildQueue } from './queue.mjs';
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
 /**
- * The three outcomes of one boundary decision, and no fourth. `stay` continues in the theme,
- * `switch` leaves it because higher-priority work waits elsewhere, and `move` leaves it because
- * a break improves the next item. Only the first two can be read off the scores; `move` is a
- * judgement the contributor makes, so it always carries a reason of its own.
+ * The two outcomes of one boundary decision, and no third. `stay` continues in the theme, and
+ * `switch` leaves it because higher-priority work waits elsewhere. Both are read off the two
+ * scores, so a decision against those scores carries a reason of its own. Leaving the theme for
+ * one item and coming back is an interrupt, whose checkpoint and rewind live elsewhere.
  */
 export const BOUNDARY_OUTCOME = /** @type {const} */ ({
   stay: 'stay',
   switch: 'switch',
-  move: 'move',
 });
 
 /**
@@ -58,7 +58,7 @@ export const BOUNDARY_STATE = /** @type {const} */ ({
 /**
  * The whole answer.
  * @typedef {object} BoundaryDecision
- * @property {'stay' | 'switch' | 'move'} outcome
+ * @property {'stay' | 'switch'} outcome
  * @property {string} reason
  * @property {string} note       The trail entry as it was written.
  * @property {string} at         The timestamp the entry carries, ISO 8601 UTC.
@@ -78,7 +78,7 @@ export const BOUNDARY_STATE = /** @type {const} */ ({
  * @property {BoundaryDecision} [decided]            The decision the human made, when one was named.
  */
 
-/** The three outcome names, for reading a caller's argument against them. @type {string[]} */
+/** The two outcome names, for reading a caller's argument against them. @type {string[]} */
 const OUTCOMES = Object.values(BOUNDARY_OUTCOME);
 
 // ─── Numbers the queue already computed ───────────────────────────────────────
@@ -162,7 +162,7 @@ async function readThemeItems(bd, theme) {
  * @param {(args: string[], scope?: { name: string }) => Promise<string>} options.bd
  * @param {string} options.theme                The epic the session is working in.
  * @param {string | undefined} [options.next]   The next item, when the caller names it.
- * @param {'stay' | 'switch' | 'move' | undefined} [options.decide]
+ * @param {'stay' | 'switch' | undefined} [options.decide]
  * @param {string | undefined} [options.reason]
  * @param {string | undefined} [options.file]   Strategy path; defaults to the documented default.
  * @param {string} [options.cwd]
@@ -223,7 +223,7 @@ export async function buildBoundary({
   }
 
   if (!OUTCOMES.includes(decide)) {
-    throw new UsageError(`--decide takes ${OUTCOMES.join(', ')}, not "${decide}"`);
+    throw new UsageError(`--decide takes ${OUTCOMES.join(' or ')}, not "${decide}"`);
   }
 
   const given = reason === undefined ? '' : collapse(reason);
@@ -284,7 +284,7 @@ export function renderBoundary(answer) {
       side('queue top  ', top),
     ];
     if (answer.decided === undefined) {
-      lines.push("next: stay, switch or move is the human's call — nothing is recorded until they answer");
+      lines.push("next: stay or switch is the human's call — nothing is recorded until they answer");
     } else {
       lines.push(
         `decision: ${answer.decided.outcome} — ${answer.decided.reason}`,
@@ -359,7 +359,7 @@ Environment:
 /**
  * Parse the CLI's argv.
  * @param {string[]} argv
- * @returns {{ command: string, theme: string, next?: string, decide?: 'stay' | 'switch' | 'move', reason?: string, file?: string, includeIdeas: boolean, cwd: string, json: boolean }}
+ * @returns {{ command: string, theme: string, next?: string, decide?: 'stay' | 'switch', reason?: string, file?: string, includeIdeas: boolean, cwd: string, json: boolean }}
  */
 export function parseArgs(argv) {
   /** @type {string | undefined} */
@@ -411,14 +411,14 @@ export function parseArgs(argv) {
   if (command === undefined) throw new UsageError(`a command is required: ${COMMANDS.join(', ')}`);
   if (theme === undefined) throw new UsageError('--theme is required: the epic the session is working in');
   if (decide !== undefined && !OUTCOMES.includes(decide)) {
-    throw new UsageError(`--decide takes ${Object.values(BOUNDARY_OUTCOME).join(', ')}, not "${decide}"`);
+    throw new UsageError(`--decide takes ${Object.values(BOUNDARY_OUTCOME).join(' or ')}, not "${decide}"`);
   }
 
   return {
     command,
     theme,
     ...(next === undefined ? {} : { next }),
-    ...(decide === undefined ? {} : { decide: /** @type {'stay' | 'switch' | 'move'} */ (decide) }),
+    ...(decide === undefined ? {} : { decide: /** @type {'stay' | 'switch'} */ (decide) }),
     ...(reason === undefined ? {} : { reason }),
     ...(file === undefined ? {} : { file }),
     includeIdeas,

@@ -14,14 +14,18 @@ import {
   formatUpdateFlags,
   formatUpdateReport,
   promptHarnessSelection,
+  readLine,
   runUpdate,
   selectHarnesses,
 } from "../lib/harness-update.mjs";
+import { findWorktrees, formatUninstallFlags, formatUninstallReport, installedHarnesses, parseConfirmation } from "../lib/harness-uninstall.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isDirectory } from "../scripts/lib/fs.mjs";
 import { runSelfUpdate } from "../lib/self-update.mjs";
-import { installPi, registerPi, sweepLegacyPiUserDirs } from "./installers/pi.mjs";
+import { installPi, registerPi, sweepLegacyPiUserDirs, uninstallPi } from "./installers/pi.mjs";
 
 /** @typedef {import("./installers/pi.mjs").InstallPiResult} InstallPiResult */
 /** @typedef {import("./installers/pi.mjs").RegisterPiResult} RegisterPiResult */
@@ -118,6 +122,10 @@ if (parsed.command === "install") {
 
 if (parsed.command === "update") {
   process.exitCode = await runUpdateCommand(parsed, programName);
+}
+
+if (parsed.command === "uninstall") {
+  process.exitCode = await runUninstallCommand(parsed, programName);
 }
 
 if (parsed.command === "scope") {
@@ -292,6 +300,138 @@ async function runUpdateCommand(parsed, programName) {
     process.stderr.write(`Update failed: ${/** @type {Error} */ (err).message}\n`);
     return 1;
   }
+}
+
+/**
+ * `ctx uninstall`: choose the installs to remove, run each harness's uninstall
+ * path, and report what went and what stayed. Every removal happens inside
+ * `uninstallHarness`'s call into that harness's installer — this command adds
+ * selection, confirmation, and reporting only.
+ * @param {import("../lib/cli.mjs").ParsedArgs} parsed
+ * @param {string} programName
+ * @returns {Promise<number>} The exit code
+ */
+async function runUninstallCommand(parsed, programName) {
+  if (parsed.optionError) {
+    process.stderr.write(`${parsed.optionError}\n`);
+    return 1;
+  }
+  try {
+    const cliVersion = await readPackageVersion();
+    const statuses = await collectHarnessStatus({ cli: cliVersion });
+    // Only an existing artifact root is offered: a harness that was never
+    // installed cannot be uninstalled, so listing it would only produce a no-op.
+    const installed = installedHarnesses(statuses);
+    const all = parsed.all ?? false;
+    const dryRun = parsed.dryRun ?? false;
+    let harnesses = parsed.harnesses ?? [];
+
+    // Bare `ctx uninstall` asks; a non-interactive shell gets the same table plus
+    // the flags that select without a prompt, and a non-zero exit so a script
+    // never mistakes "nothing chosen" for "nothing to do". A blank answer
+    // cancels and changes nothing.
+    if (harnesses.length === 0 && !all) {
+      if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+        const table = installed.length > 0 ? formatHarnessTable(installed) : "No harness installs found.";
+        process.stdout.write(`${table}\n\n${formatUninstallFlags(programName)}\n`);
+        return 1;
+      }
+      harnesses = await promptHarnessSelection({ statuses: installed });
+      if (harnesses.length === 0) {
+        process.stdout.write("No harness selected; nothing removed.\n");
+        return 0;
+      }
+    }
+
+    // A named harness always goes through its installer, installed or not: the
+    // installer reports "already absent" for a second run and for a name that
+    // was never installed, and it can tell a leftover registration apart from a
+    // leftover directory. `--all` covers the installed harnesses only. The
+    // shared root and any worktrees are decided below, never by the installer.
+    const targets = [...new Set(all ? installed.map((status) => status.harness) : harnesses)];
+    const unknown = targets.filter((name) => !SUPPORTED_HARNESSES.includes(name));
+    if (unknown.length > 0) {
+      const names = unknown.map((name) => `"${name}"`).join(", ");
+      process.stderr.write(
+        `Unknown harness ${names}. Supported harnesses: ${SUPPORTED_HARNESSES.join(", ")}\nRun "${programName} --help" for usage.\n`,
+      );
+      return 1;
+    }
+    if (targets.length === 0) {
+      process.stdout.write("No harness installs found; nothing removed.\n");
+      return 0;
+    }
+
+    // `--all` is destructive, so a terminal confirms first. Unattended, the flag
+    // itself is the explicit opt-in and no prompt is possible. A dry run writes
+    // nothing, so it is not confirmed — there is nothing to agree to.
+    if (all && !dryRun && process.stdin.isTTY === true && process.stdout.isTTY === true) {
+      const answer = await readLine(
+        process.stdin,
+        process.stdout,
+        `Remove every harness install (${targets.join(", ")})? [y/N]: `,
+      );
+      if (!parseConfirmation(answer)) {
+        process.stdout.write("Nothing removed.\n");
+        return 0;
+      }
+    }
+
+    /** @type {import("../lib/harness-uninstall.mjs").UninstallEntry[]} */
+    const entries = [];
+    let exitCode = 0;
+    for (const harness of targets) {
+      const entry = await uninstallHarness(/** @type {"pi" | "claude"} */ (harness), { dryRun });
+      entries.push(entry);
+      if (entry.status === "incomplete") exitCode = 1;
+    }
+
+    // The shared root outlives a harness install, so it is reported rather than
+    // removed; a worktree a ralph run created is never ours to delete.
+    const sharedRoot = join(homedir(), ".agent-cortex");
+    process.stdout.write(
+      `${formatUninstallReport({
+        entries,
+        dryRun,
+        sharedRoot: (await isDirectory(sharedRoot)) ? sharedRoot : null,
+        worktrees: all ? await findWorktrees({ cwd: process.cwd() }) : null,
+      })}\n`,
+    );
+    return exitCode;
+  } catch (err) {
+    process.stderr.write(`Uninstall failed: ${/** @type {Error} */ (err).message}\n`);
+    return 1;
+  }
+}
+
+/**
+ * Run one harness's uninstall path and shape its result for the report.
+ * @param {"pi" | "claude"} harness
+ * @param {{ dryRun?: boolean }} [options]
+ * @returns {Promise<import("../lib/harness-uninstall.mjs").UninstallEntry>}
+ */
+async function uninstallHarness(harness, { dryRun = false } = {}) {
+  if (harness === "pi") {
+    const result = await uninstallPi({ dryRun, warn: () => {} });
+    return {
+      harness,
+      status: result.status,
+      actions: result.removed,
+      commands: result.commands.map((args) => `pi ${args.join(" ")}`),
+      warnings: result.warnings,
+    };
+  }
+
+  // Loaded lazily: only the claude path needs it, as on the install side.
+  const { uninstallClaude } = await import("./installers/claude.mjs");
+  const result = await uninstallClaude({ dryRun, warn: () => {} });
+  return {
+    harness,
+    status: result.status,
+    actions: result.removed,
+    commands: result.commands.map((args) => `claude ${args.join(" ")}`),
+    warnings: result.warnings,
+  };
 }
 
 /** @param {{ removed: string[] }} result */

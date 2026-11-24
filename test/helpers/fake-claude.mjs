@@ -26,7 +26,7 @@
 // Written async throughout (the fake is a child process and the helper's own
 // I/O is test code) — the repo's check-no-sync lint scans test/ for *Sync.
 
-import { chmod, writeFile } from "node:fs/promises";
+import { chmod, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const FAKE_CLAUDE_SCRIPT = [
@@ -97,6 +97,17 @@ const FAKE_CLAUDE_SCRIPT = [
   "      process.exit(0);",
   "    }",
   "    if (op === 'update') process.exit(0);",
+  "    if (op === 'remove' || op === 'rm') {",
+  "      const name = opArgs[0];",
+  "      const before = state.markets.length;",
+  "      const next = state.markets.filter((m) => m.name !== name);",
+  "      if (next.length === before) {",
+  "        console.error('No marketplace named ' + name);",
+  "        process.exit(1);",
+  "      }",
+  "      await writeState({ ...state, markets: next });",
+  "      process.exit(0);",
+  "    }",
   "    process.exit(0);",
   "  }",
   "",
@@ -132,6 +143,17 @@ const FAKE_CLAUDE_SCRIPT = [
   "    process.exit(0);",
   "  }",
   "",
+  "  if (sub === 'uninstall' || sub === 'remove') {",
+  "    const id = rest[0];",
+  "    const next = state.installed.filter((i) => i.id !== id);",
+  "    if (next.length === state.installed.length) {",
+  "      console.error('Plugin is not installed: ' + id);",
+  "      process.exit(1);",
+  "    }",
+  "    await writeState({ ...state, installed: next });",
+  "    process.exit(0);",
+  "  }",
+  "",
   "  process.exit(0);",
   "})().catch((err) => {",
   "  console.error(err);",
@@ -159,6 +181,17 @@ export async function makeFakeClaude(dir, { failWhen = null, failLoad = null, si
   if (failLoad) await writeFile(join(dir, "failLoad.txt"), failLoad);
   if (silentInstall) await writeFile(join(dir, "silentInstall.txt"), "1");
   return { bin, log, state };
+}
+
+/** Make every subsequent fake invocation whose argv contains `failWhen` exit 1,
+ * or clear the failure with `null` — the same knob `makeFakeClaude` sets at creation.
+ * @param {string} dir  The directory passed to `makeFakeClaude`, also `dirname(bin)`
+ * @param {string|null} failWhen  argv substring to fail on, or null to clear
+ * @returns {Promise<void>} */
+export async function setFakeClaudeFailure(dir, failWhen) {
+  const path = join(dir, "failWhen.txt");
+  if (failWhen) await writeFile(path, failWhen);
+  else await rm(path, { force: true });
 }
 
 /** Registration actions from a fake call log: probes and state queries dropped.

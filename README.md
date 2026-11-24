@@ -172,6 +172,10 @@ installer rendered there are swept (see below).
 agent-cortex install pi          # stage ~/.agent-cortex/pi + register it with pi
 ```
 
+`agent-cortex uninstall pi` is the inverse: it drops the registration with `pi remove` and then
+deletes the staged directory — see
+[Removing a harness install](#removing-a-harness-install-agent-cortex-uninstall).
+
 Registration is idempotent by state: the staged path is registered once (a
 re-run is a true no-op — a local package source is read from disk on every pi
 start, so nothing needs refreshing), and a source pointing at a raw agent-cortex
@@ -273,7 +277,7 @@ Copilot CLI is no longer a deploy target: `agent-cortex install copilot` and the
 `plugin.json` manifest are gone, and nothing in this package reads or writes `~/.copilot`
 any more. No installer sweeps an existing install, so a machine that used the old target
 keeps a stale plugin, a cached marketplace, and an instruction block until you remove them
-by hand:
+by hand (`agent-cortex uninstall` covers the pi and Claude installs only):
 
 ```sh
 rm -rf ~/.copilot/installed-plugins/_direct/agent-cortex
@@ -417,9 +421,20 @@ preview and never refreshes an installed plugin.)
 
 #### Uninstall
 
+`agent-cortex uninstall claude` is the inverse of the install: it deregisters the plugin and the
+marketplace through the `claude plugin` CLI, removes exactly the settings entries the install
+declared, removes the managed `~/.claude/CLAUDE.md` section, and deletes
+`~/.agent-cortex/claude` plus the marketplace manifest. Personal settings and entries you added
+survive. See
+[Removing a harness install](#removing-a-harness-install-agent-cortex-uninstall) for the selection
+rules, `--all`, and the recovery path when a removal is incomplete.
+
+The equivalent manual commands, for a machine whose `claude` CLI cannot drive the deregistration:
+
 ```sh
-claude plugin uninstall agent-cortex
+claude plugin uninstall agent-cortex@jaybeeuu -y
 claude plugin marketplace remove jaybeeuu
+rm -rf ~/.agent-cortex/claude ~/.agent-cortex/.claude-plugin/marketplace.json
 ```
 
 #### Using the agents
@@ -652,6 +667,76 @@ materialise reports `unknown` rather than claiming the CLI version.
 
 This refreshes the installs, not the CLI. `agent-cortex self-update` does both in one step; the
 [`docs/dev-loop.md`](docs/dev-loop.md) page records what a global reinstall has to fix.
+
+## Removing a harness install (`agent-cortex uninstall`)
+
+`agent-cortex uninstall` is the inverse of `agent-cortex install`: it removes a harness install and
+the registration that goes with it. Registration is undone through the harness's own CLI — `pi
+remove` for pi, `claude plugin uninstall` plus `claude plugin marketplace remove` for Claude Code —
+and never by writing the harness's settings file. On the Claude side it also removes exactly the
+`enabledPlugins` + `extraKnownMarketplaces` entries the install declared, the managed section of
+`~/.claude/CLAUDE.md`, the plugin directory and the marketplace manifest, so personal settings and
+entries you added survive.
+
+```sh
+agent-cortex uninstall              # list the installed harnesses, then ask which to remove
+agent-cortex uninstall pi claude    # remove exactly these, no prompt
+agent-cortex uninstall -a           # remove every installed harness, after confirming
+agent-cortex uninstall --dry-run    # print what would be removed and write nothing
+```
+
+The prompt lists the harnesses that have an install, because one that was never installed has
+nothing to uninstall. Answer with row numbers counted from the top row, or blank to cancel. A
+cancel removes nothing and exits 0.
+
+`--all` is destructive, so it asks for confirmation on a terminal. Only `y` or `yes` proceeds:
+every other answer, a blank one and a closed input included, removes nothing. In a shell that is
+not a terminal no prompt can be answered, so `--all` is the explicit opt-in there. A dry run is not
+confirmed, because it writes nothing. `--all` cannot be combined with a harness name, because the
+flag already covers every installed harness.
+
+A shell that is not a terminal cannot answer the selection prompt either. A bare
+`agent-cortex uninstall` there prints the same table plus the flags above and exits non-zero, so a
+script can never mistake "nothing chosen" for "nothing to do".
+
+`uninstall` exits 0 when every removal completed, including a run that found nothing to remove,
+and 1 when a removal is incomplete, a harness name is unknown, an option cannot be parsed, or a
+bare invocation has no terminal to prompt on. A named harness that is not installed is not an
+error: the report says `already absent` and the exit code stays 0, so a second run is safe and a
+script needs no prior check.
+
+### What `--all` leaves
+
+Two decisions bound the removal:
+
+- **Harness installs, not the CLI.** The package manager that installed `agent-cortex` owns its
+  removal, so `--all` never uninstalls the CLI. The shared `~/.agent-cortex` root stays too: it
+  holds records that outlive a harness install (`legacy-sweep.json`, `scopes.json`), so removing it
+  would delete state no installer owns. The report names both.
+- **No worktree is deleted.** A worktree under `.agent-cortex/worktrees/` may hold uncommitted
+  work, and `uninstall` did not create it, so reporting it is the least destructive answer. `--all`
+  lists every one it finds and names `git worktree remove <path>`; it deletes none.
+
+Remove the CLI with the manager that installed it — `pnpm remove -g @jaybeeuu/agent-cortex`, or
+`npm uninstall -g @jaybeeuu/agent-cortex` — and `~/.agent-cortex` by hand, when you want those
+records gone as well.
+
+### When a removal is incomplete
+
+A harness that is registered but cannot be deregistered is reported as `partially removed — the
+harness registration is still outstanding`. The warning names what survived and prints the exact
+commands that finish the job, and the run exits 1. That happens when the harness CLI is missing or
+too old, or when it rejects the command.
+
+The removal stays retryable, so nothing is orphaned. The staged pi directory is deleted only after
+`pi remove` succeeds. The Claude plugin directory, the marketplace manifest and the declared
+settings entries are left in place until the deregistration succeeds, so the next attempt starts
+from the state it finds. Run the printed commands by hand, then run
+`agent-cortex uninstall <harness>` again.
+
+A Claude install whose marketplace manifest is missing or unreadable cannot name itself: nothing is
+removed, the harness is reported incomplete, and the warning gives the
+`claude plugin uninstall <plugin>@<marketplace>` command to use instead.
 
 ## Migrating a beads workspace
 

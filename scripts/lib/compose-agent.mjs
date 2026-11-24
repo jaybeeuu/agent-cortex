@@ -6,21 +6,21 @@
 //
 // Composition per the agents/README.md contract:
 //   1. {{SECTION:name}} is replaced with <dir>/<harness>/<name>.md content.
-//   2. {{TOOL:key}} is replaced with the harness column of token-map.json.
+//   2. {{CAPABILITY:key}} is replaced with the harness column of token-map.json.
 //   3. {{PATH:arg}} with a named key resolves through token-map.json's paths
 //      table; anything else is a relative path and stays verbatim, except that
 //      installers resolve it against the plugin root and map a `skills/…` row
 //      onto the tree that harness stages skills in (token-map.json `layouts`).
-// Substitution order is SECTION → TOOL → PATH (matches extensions/agent-modes).
-// Missing sections, unknown tool keys, or schema-invalid frontmatter are hard
-// errors: a committed generated file must never ship a literal token or a
+// Substitution order is SECTION → CAPABILITY → PATH (matches extensions/agent-modes).
+// Missing sections, unknown capability keys, or schema-invalid frontmatter are
+// hard errors: a committed generated file must never ship a literal token or a
 // silently dropped section.
 //
 // Options (both installers pass `pluginRoot` and `resolveRelativePaths`; pi also
 // passes `dropNullTools`):
-//   dropNullTools          replace null-mapped tool tokens with an empty string and
-//                          warn instead of throwing (pi's prose rule per the
-//                          token-map contract)
+//   dropNullTools          replace null-mapped capability tokens with an empty
+//                          string and warn instead of throwing (pi's prose rule
+//                          per the token-map contract)
 //   pluginRoot             override the plugin_root used for resolved paths
 //                          (installers compute it from the actual install layout)
 //   resolveRelativePaths   non-keyed {{PATH:...}} args resolve to pluginRoot/arg
@@ -38,13 +38,20 @@ import { join } from "node:path";
 /** @typedef {{ base: string, relative: string }} PathSpec */
 
 /**
- * Parsed token-map.json. `tools` maps a canonical tool key to its per-harness
- * name (null = the harness has no equivalent); `paths` maps a path key to its
- * per-harness spec (a literal string, or a {base, relative} pair resolved
- * recursively through the same table).
+ * One harness's binding for a capability: its name there, and what the harness
+ * actually exposes (`tool` — model-callable, legal in a tool list; `command` —
+ * invoked directly by the user or agent, prose only).
+ * @typedef {{ name: string, type: "tool" | "command" }} CapabilityBinding
+ */
+
+/**
+ * Parsed token-map.json. `capabilities` maps a canonical capability key to its
+ * per-harness binding (null = the harness has no equivalent); `paths` maps a
+ * path key to its per-harness spec (a literal string, or a {base, relative} pair
+ * resolved recursively through the same table).
  * @typedef {object} TokenMap
  * @property {number} [version]
- * @property {Record<string, Record<string, string | null>>} tools
+ * @property {Record<string, Record<string, CapabilityBinding | null>>} capabilities
  * @property {Record<string, Record<string, string | PathSpec>>} paths
  * @property {Record<string, Record<string, string>>} [layouts]
  */
@@ -135,18 +142,19 @@ function mentionsAllTools(tools) {
 
 // ─── Token substitution ──────────────────────────────────────────────────────
 
-const TOOL_RE = /\{\{TOOL:([^}]+)\}\}/g;
+const CAPABILITY_RE = /\{\{CAPABILITY:([^}]+)\}\}/g;
 const PATH_RE = /\{\{PATH:([^}]+)\}\}/g;
 
 /** @returns {void} */
 function noop() {}
 
 /**
- * Substitute {{TOOL:...}} and {{PATH:...}} tokens in arbitrary content (agent
- * bodies, skill files) against one harness column of token-map.json.
+ * Substitute {{CAPABILITY:...}} and {{PATH:...}} tokens in arbitrary content
+ * (agent bodies, skill files) against one harness column of token-map.json.
  *
- * - TOOL: unknown key → throw (the map must stay complete); null mapping → drop
- *   with a warning when `dropNullTools`, otherwise throw.
+ * - CAPABILITY: unknown key → throw (the map must stay complete); null mapping →
+ *   drop with a warning when `dropNullTools`, otherwise throw. Prose never
+ *   consults the binding's kind: a command is named in prose exactly as a tool is.
  * - PATH: named key → resolve through the paths table (plugin_root overridable);
  *   non-keyed → join(pluginRoot, arg) when `resolveRelativePaths`, else verbatim.
  *   A non-keyed `skills/…` arg is mapped onto the harness's staged shape first
@@ -154,7 +162,7 @@ function noop() {}
  * - SECTION tokens are *not* handled here — the agent composer resolves them from
  *   the harness's section files before calling this.
  *
- * @param {string} content  Source text containing {{TOOL:...}}/{{PATH:...}} tokens
+ * @param {string} content  Source text containing {{CAPABILITY:...}}/{{PATH:...}} tokens
  * @param {string} harness  Harness id: "claude" | "pi"
  * @param {TokenMap} tokenMap Parsed token-map.json (from loadTokenMap)
  * @param {ComposeOptions} [options]  { dropNullTools, pluginRoot, resolveRelativePaths, warn, context }
@@ -164,19 +172,19 @@ export function substituteTokens(content, harness, tokenMap, options = {}) {
   const { dropNullTools = false, pluginRoot, resolveRelativePaths = false, warn = noop, context = "" } = options;
   const ctx = context ? `${context}: ` : "";
 
-  // 2. {{TOOL:key}} → token-map.json tools.<key>.<harness>
-  content = content.replace(TOOL_RE, (_token, key) => {
-    const entry = tokenMap.tools[key];
-    if (!entry) throw new Error(`${ctx}unknown tool token {{TOOL:${key}}} — extend token-map.json`);
-    const mapped = entry[harness];
-    if (mapped == null) {
+  // 2. {{CAPABILITY:key}} → token-map.json capabilities.<key>.<harness>.name
+  content = content.replace(CAPABILITY_RE, (_token, key) => {
+    const entry = tokenMap.capabilities[key];
+    if (!entry) throw new Error(`${ctx}unknown capability token {{CAPABILITY:${key}}} — extend token-map.json`);
+    const binding = entry[harness];
+    if (binding == null) {
       if (dropNullTools) {
-        warn(`tool token {{TOOL:${key}}} has no ${harness} mapping — dropped`);
+        warn(`capability token {{CAPABILITY:${key}}} has no ${harness} mapping — dropped`);
         return "";
       }
-      throw new Error(`${ctx}tool token {{TOOL:${key}}} has no ${harness} mapping (null) — drop the token in agent.md first`);
+      throw new Error(`${ctx}capability token {{CAPABILITY:${key}}} has no ${harness} mapping (null) — drop the token in agent.md first`);
     }
-    return mapped;
+    return binding.name;
   });
 
   // 3. {{PATH:arg}} → named keys via token-map.json paths; relative paths verbatim
@@ -205,7 +213,7 @@ export async function composeAgent(root, name, harness, options = {}) {
 
   let body = await readFile(join(agentDir, "agent.md"), "utf-8");
 
-  // 1. {{SECTION:name}} → <harness>/<name>.md (may itself contain TOOL/PATH
+  // 1. {{SECTION:name}} → <harness>/<name>.md (may itself contain CAPABILITY/PATH
   //    tokens). Single pass over the original body — inserted section content
   //    is never rescanned (same semantics as the sync replace()).
   const sectionRe = /\{\{SECTION:([^}]+)\}\}/g;
@@ -222,7 +230,7 @@ export async function composeAgent(root, name, harness, options = {}) {
   }
   body = out + body.slice(last);
 
-  // 2. + 3. TOOL/PATH substitution (contextualised for error messages)
+  // 2. + 3. CAPABILITY/PATH substitution (contextualised for error messages)
   body = substituteTokens(body, harness, tokenMap, {
     dropNullTools,
     pluginRoot,
@@ -357,14 +365,20 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
 /**
  * Translate a frontmatter tool list into one harness's tool names.
  *
- * Canonical keys resolve through token-map.json's tools table; a null mapping
- * means the harness has no equivalent and the entry is omitted (the contract's
- * tool-list rule); the all-tools sentinel `"*"` passes through untouched for
- * the renderer to resolve; a name that is not a canonical key passes through
- * untouched (it may be a native tool, e.g. pi's fetch_content). Mirrors the
- * runtime translation in extensions/agent-modes/discover.ts.
+ * Canonical keys resolve through token-map.json's capabilities table; a null
+ * mapping means the harness has no equivalent and the entry is omitted (the
+ * contract's tool-list rule); the all-tools sentinel `"*"` passes through
+ * untouched for the renderer to resolve; a name that is not a canonical key
+ * passes through untouched (it may be a native tool, e.g. pi's fetch_content).
+ * Mirrors the runtime translation in extensions/agent-modes/discover.ts.
  *
- * @param {string[]} tools  Canonical tool names from a harness frontmatter.json
+ * A capability whose binding is a `command` throws instead of resolving: a
+ * command is not model-callable, so rendering `request_flush` into a tool list
+ * would hand the harness a name it cannot call. Omitting it silently would hide
+ * the defect the same way an absent tool hides it, so the error names the
+ * canonical key the map is keyed by.
+ *
+ * @param {string[]} tools  Capability keys from a harness frontmatter.json
  * @param {TokenMap} tokenMap Parsed token-map.json (from loadTokenMap)
  * @param {string} harness  Harness id: "claude" | "pi"
  * @param {ComposeOptions} [options]  { warn }
@@ -378,17 +392,22 @@ export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}
       out.push(ALL_TOOLS);
       continue;
     }
-    const mapping = tokenMap.tools[tool];
+    const mapping = tokenMap.capabilities[tool];
     if (mapping === undefined) {
       out.push(tool);
       continue;
     }
-    const mapped = mapping[harness];
-    if (mapped == null) {
-      warn(`tool "${tool}" has no ${harness} mapping — omitted from the tool list`);
+    const binding = mapping[harness];
+    if (binding == null) {
+      warn(`capability "${tool}" has no ${harness} mapping — omitted from the tool list`);
       continue;
     }
-    out.push(mapped);
+    if (binding.type === "command") {
+      throw new Error(
+        `capability "${tool}" is a ${harness} command (${binding.name}) and cannot appear in a tool list — a command is not model-callable`,
+      );
+    }
+    out.push(binding.name);
   }
   return out;
 }
@@ -397,6 +416,13 @@ export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}
 
 /**
  * Load token-map.json from the package root; missing/incomplete maps hard-fail.
+ *
+ * The capabilities table is shape-checked here because every consumer resolves
+ * through it: a row's harness value is either null or {name, type}, with no
+ * string shorthand. A bare string would resolve to a name with no kind, and a
+ * capability of unknown kind cannot be refused in a tool list — the one rule
+ * that keeps a command out of one. Failing at load keeps the shorthand from
+ * coming back through any entry point.
  * @param {string} root
  * @returns {Promise<TokenMap>}
  */
@@ -409,8 +435,27 @@ export async function loadTokenMap(root) {
     throw new Error(`missing ${path} — the composer requires token-map.json`);
   }
   const parsed = JSON.parse(raw);
-  if (!parsed.tools || !parsed.paths) {
-    throw new Error(`${path}: expected "tools" and "paths" tables`);
+  if (!parsed.capabilities || !parsed.paths) {
+    throw new Error(`${path}: expected "capabilities" and "paths" tables`);
   }
-  return parsed;
+  for (const [key, row] of Object.entries(parsed.capabilities)) {
+    if (typeof row !== "object" || row === null) {
+      throw new Error(`${path}: capability "${key}" must be an object of per-harness bindings or null`);
+    }
+    for (const [harness, binding] of Object.entries(row)) {
+      if (binding === null) continue;
+      const b = /** @type {Record<string, unknown>} */ (binding);
+      if (
+        typeof b !== "object" ||
+        typeof b.name !== "string" ||
+        b.name === "" ||
+        (b.type !== "tool" && b.type !== "command")
+      ) {
+        throw new Error(
+          `${path}: capability "${key}" has an invalid ${harness} binding — expected null or { name, type: "tool" | "command" }`,
+        );
+      }
+    }
+  }
+  return /** @type {TokenMap} */ (/** @type {unknown} */ (parsed));
 }

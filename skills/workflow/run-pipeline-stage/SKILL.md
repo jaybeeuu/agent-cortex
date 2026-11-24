@@ -42,7 +42,7 @@ A leaf bead is the worker's record of what happened. The orchestrator reads it; 
 bd tag <id> stage:<stage>
 ```
 
-7. Dispatch one subagent per stage with the composed prompt — spawn it with {{TOOL:task}}. The prompt already ends with the REPORT contract; never compose one without it. A session with no subagent tool cannot dispatch: stop and say so rather than substituting a backgrounded CLI run, which has no completion signal.
+7. Dispatch one subagent per stage with the composed prompt — spawn it with {{CAPABILITY:task}}. The prompt already ends with the REPORT contract; never compose one without it. A session with no subagent tool cannot dispatch: stop and say so rather than substituting a backgrounded CLI run, which has no completion signal.
 8. Verify the delivery against the worktree — `node scripts/lib/verify-worker-tree.mjs --worktree <abs-worktree> --base <base>` exits 0 only for a clean tree with a commit ahead of base. A worker whose REPORT claims `OUTCOME: SUCCESS` over a dirty tree has not delivered; re-dispatch it instead of advancing. `post-merge` and `housekeeping` change no files and deliver no commit, so skip this check for those two stages.
 9. On the REPORT: route forward per _Routing_ below. Do **not** close the leaf bead — the worker closed it before reporting.
 

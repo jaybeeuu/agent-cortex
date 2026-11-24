@@ -29,7 +29,7 @@ agent-cortex/
 ├── pi/                       # Committed pi config templates (see below)
 │   ├── settings.json
 │   └── keybindings.json
-├── token-map.json            # canonical tool/path/agent names per harness (install-time token substitution)
+├── token-map.json            # canonical capability/path/agent names per harness (install-time token substitution)
 ├── token-map.README.md       # design decisions behind token-map.json
 ├── bin/
 │   ├── agent-cortex.mjs      # CLI entrypoint
@@ -46,9 +46,11 @@ The same `agents/` and `skills/` power two harnesses (pi and Claude Code). The c
 `agents/<name>/` directories are the single source of truth, and no flat agent file is
 committed: `agent-cortex install claude` and `agent-cortex install pi` each render their own
 from the canonical directories, so install-time output can never drift from the sources.
-The `{{TOOL:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
+The `{{CAPABILITY:...}}` / `{{PATH:...}}` tokens written in agent and skill files are resolved
 per harness at install time from `token-map.json`, the single source of truth for
-canonical tool/path/agent names (see `token-map.README.md` and the `contract` section).
+canonical capability/path/agent names (see `token-map.README.md` and the `contract` section).
+Each capability row carries a kind per harness — `tool` or `command` — because the same
+capability can be one on one harness and the other on the next.
 The Claude plugin is **materialised** at install time by `bin/installers/claude.mjs`. A
 plain `agent-cortex install claude` copies the plugin into the home install root
 (`~/.agent-cortex/claude`), writes a marketplace manifest at
@@ -63,7 +65,7 @@ temp-dir install plus structural checks:
 
 - **Skills** stay single-source — the installer copies each `skills/<group>/<name>/` dir
   flat into `skills/<name>/` (Claude discovers skills only one level deep) with
-  `{{TOOL:...}}` / `{{PATH:...}}` tokens substituted against token-map.json's claude
+  `{{CAPABILITY:...}}` / `{{PATH:...}}` tokens substituted against token-map.json's claude
   column — no symlinks, so literal tokens never reach Claude.
 - **Agents** can't be shared files (the frontmatter formats differ), so the materialised
   plugin's `agents/*.md` are composed from the canonical `agents/<name>/` directories' `claude/`
@@ -108,7 +110,7 @@ The repo commits no generated `claude/` plugin output, so the `claude-plugin-che
 validates the Claude plugin **materialiser** instead of diffing a committed mirror:
 it runs `node bin/agent-cortex.mjs install claude --output <tmp dir>` and checks the
 result structurally — `plugin.json` version tracks `package.json`, every generated and
-hand-authored piece is present, no literal `{{TOOL:...}}`/`{{PATH:...}}` tokens survive,
+hand-authored piece is present, no literal `{{CAPABILITY:...}}`/`{{PATH:...}}` tokens survive,
 and no symlinks leak into the copied tree. There is no committed agent file to drift-check:
 the `agents/` tree holds the composable sources only, and both installers render from them.
 
@@ -234,7 +236,7 @@ The staged package contains:
 | Path | Contents |
 | --- | --- |
 | `package.json` | pi manifest — `keywords: ["pi-package"]`, `pi.extensions` + `pi.skills`, and `repository` (this package's origin, so a shipped skill can resolve it without a checkout); the version tracks the package |
-| `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy, guppi) with `{{TOOL:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
+| `agents/` | composed flat agents (ralph, plan, ralph-plan, strategy, guppi) with `{{CAPABILITY:...}}` / `{{PATH:...}}` substituted — the shipped `agent-modes` extension resolves them from the package root |
 | `skills/` | token-substituted skill copies (real files, never symlinks) |
 | `docs/` | the repository documents those skills read (currently `docs/skills/skill-anatomy.md`), copied verbatim once per install so the reference resolves on a machine without the checkout |
 | `extensions/` | copy of the repo `extensions/` tree — imports nothing from pi's runtime except the host-aliased `typebox`, so pi loads it from any directory |
@@ -315,7 +317,7 @@ instructions file, leaving the rest of that file — and a `.bak` copy — intac
 
 A plain `agent-cortex install claude` **materialises** the plugin into the home install
 root `~/.agent-cortex/claude` — **5 agents** (`strategy`, `plan`, `ralph-plan`, `ralph`, `guppi`),
-**41 skills** (copied flat per skill, `{{TOOL:...}}` / `{{PATH:...}}` token-substituted — no
+**41 skills** (copied flat per skill, `{{CAPABILITY:...}}` / `{{PATH:...}}` token-substituted — no
 symlinks), `SessionStart` + `Notification` hooks, and 2 MCP servers — writes a marketplace
 manifest at `~/.agent-cortex/.claude-plugin/marketplace.json` exposing `./claude`, and
 registers it with Claude Code, and merges the committed `claude/settings.json` template into

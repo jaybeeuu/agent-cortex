@@ -144,7 +144,7 @@ data loss and code execution on a machine the author never sees.
 conventions" and said the persona behaves the same in every scope, so a reader could take "rigs" as
 true of personal work too; the real rule is that rigs are code-project containers and personal work
 is a town-level scope with no rig. Separately, a shipped doc printed a live substitution token of
-the `TOOL` kind — a full token, colon and key included — to illustrate the token grammar, and the
+the `CAPABILITY` kind — a full token, colon and key included — to illustrate the token grammar, and the
 token guard necessarily rejects a literal token in a shipped doc: the line read both as an example
 and as a token that must resolve.
 
@@ -153,7 +153,7 @@ and as a token that must resolve.
 **Rejection text.** "Two readings are possible and the text picks neither. 'Mail, rigs and pane
 conventions' reads as true of personal work; state that rigs are code-project containers and that
 personal work is a town-level scope with no rig. The doc prints a literal substitution token of the
-`TOOL` kind, which the guard reads as unresolved; show the grammar without a literal token, or mark
+`CAPABILITY` kind, which the guard reads as unresolved; show the grammar without a literal token, or mark
 the line as an example the guard must skip."
 
 **Why this class.** Not `docs-drift`: nothing was stale — each statement was true of the code

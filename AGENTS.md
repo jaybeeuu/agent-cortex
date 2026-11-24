@@ -27,7 +27,7 @@ consumer's environment, never against what happens to work here.
 - A check that only passes because this checkout is present is not a check. Stage an install and
   exercise the artefact outside the repo (`--output <dir>`, `test/pi-extensions-load.test.mjs`).
 - When a behaviour cannot be made generic, fork it explicitly at install time through the
-  `{{TOOL:...}}` / `{{PATH:...}}` token grammar, and record why the fork exists.
+  `{{CAPABILITY:...}}` / `{{PATH:...}}` token grammar, and record why the fork exists.
 - Evidence from this repository is a sample, not the specification. A one-off instruction for this
   checkout — "merge these PRs now", "rebase that branch" — never becomes shipped policy unless the
   owner says the policy itself should change.
@@ -144,7 +144,7 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   composable layout, and no flat agent file is committed — each harness renders its own at install
   time. The Claude plugin is materialised by the install-time generator
   `bin/installers/claude.mjs`: a plain `agent-cortex install claude` copies it into
-  `~/.agent-cortex/claude` (skills copied flat with `{{TOOL:...}}`/`{{PATH:...}}` substituted,
+  `~/.agent-cortex/claude` (skills copied flat with `{{CAPABILITY:...}}`/`{{PATH:...}}` substituted,
   never symlinked, plus the bundled docs that skills read — one copy per install, verbatim), writes the
   marketplace manifest at
   `~/.agent-cortex/.claude-plugin/marketplace.json`, merges the committed `claude/settings.json`
@@ -174,7 +174,7 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 - Keep orchestration logic in the agent file; extract shared per-task workflow into a skill
   so it can be reused (e.g. ralph delegates per-task stage execution to `run-pipeline-stage`).
 - The planner ↔ ralph peer channel ships as skill text alone, forked at install time through
-  token-map.json: `{{TOOL:peer_send}}` and `{{TOOL:peer_list}}` render as the `pi-peer` package's
+  token-map.json: `{{CAPABILITY:peer_send}}` and `{{CAPABILITY:peer_list}}` render as the `pi-peer` package's
   tools on pi and as Claude Code's built-in `SendMessage` and `ListAgents` on claude. A consuming
   repository installs `@cryptolibertus/pi-peer` itself; it is never a `package.json` dependency of
   this package and never part of the bundled `pi.packages` closure. The convention lives once in
@@ -193,7 +193,7 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   The pi runbook states the installed package's own behaviour — `await` defaults true, and a send
   returns a `messageId` — so read the installed `@cryptolibertus/pi-peer` when you touch that text.
   The drift this convention was corrected for came from quoting an earlier version.
-- The post-merge watch forks the same way, through the single row `{{TOOL:post_merge_watch}}`:
+- The post-merge watch forks the same way, through the single row `{{CAPABILITY:post_merge_watch}}`:
   `post-merge-watch` (this package's own extension, on pi) and Claude Code's built-in
   `ScheduleWakeup` (on claude). The values differ in kind — an extension on one side, a tool on the
   other — so the surrounding prose describes only what both do (the session resumes, the check runs

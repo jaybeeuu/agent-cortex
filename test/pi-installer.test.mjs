@@ -27,14 +27,17 @@ async function pathExists(p) {
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const TOOL_MAP = {
-  bash: { pi: "bash" },
-  view: { pi: "read" },
-  create: { pi: "write" },
-  glob: { pi: "find" },
+const CAPABILITY_MAP = {
+  bash: { pi: { name: "bash", type: "tool" } },
+  view: { pi: { name: "read", type: "tool" } },
+  create: { pi: { name: "write", type: "tool" } },
+  glob: { pi: { name: "find", type: "tool" } },
   ask_user: { pi: null },
   skill: { pi: null },
-  task: { pi: "task" },
+  task: { pi: { name: "task", type: "tool" } },
+  post_merge_watch: { pi: { name: "post-merge-watch", type: "command" } },
+  flush_window: { pi: { name: "request_flush", type: "tool" } },
+  interrupt_rewind: { pi: { name: "interrupt_resume", type: "tool" } },
 };
 
 function tokenMap(extra = {}) {
@@ -42,7 +45,7 @@ function tokenMap(extra = {}) {
     name: "fixture token map",
     version: 1,
     harnesses: ["pi"],
-    tools: { ...TOOL_MAP },
+    capabilities: { ...CAPABILITY_MAP },
     paths: {
       plugin_root: { pi: "~/.agent-cortex/pi" },
       skills_dir: { pi: { base: "plugin_root", relative: "skills" } },
@@ -191,8 +194,8 @@ describe("installPi — agent composition", () => {
       await seedPackage(fx, {
         agents: {
           alpha: {
-            body: "# alpha\nUse {{TOOL:view}} to read.\n{{SECTION:wake}}\nRead {{PATH:skills_dir}}.",
-            sections: { wake: "Spawn with {{TOOL:task}}." },
+            body: "# alpha\nUse {{CAPABILITY:view}} to read.\n{{SECTION:wake}}\nRead {{PATH:skills_dir}}.",
+            sections: { wake: "Spawn with {{CAPABILITY:task}}." },
             frontmatter: {
               name: "agent-cortex:alpha",
               description: "Reads things.",
@@ -213,7 +216,7 @@ describe("installPi — agent composition", () => {
       assert.match(content, /description: "Reads things\."/);
       assert.match(content, /tools: "bash, read, find"/, "tools translated to pi names, ask_user omitted");
       assert.match(content, /argument-hint: "Read something"/);
-      assert.ok(content.includes("Use read to read."), "{{TOOL:view}} substituted");
+      assert.ok(content.includes("Use read to read."), "{{CAPABILITY:view}} substituted");
       assert.ok(content.includes("Spawn with task."), "{{SECTION:wake}} composed from pi/wake.md");
       assert.ok(!/{{/.test(content), "no literal tokens remain");
       assert.equal(result.agents.length, 1);
@@ -327,7 +330,7 @@ describe("installPi — agent composition", () => {
     try {
       await seedPackage(fx, {
         agents: {
-          alpha: { body: "# alpha\nAsk the user with {{TOOL:ask_user}}, then use {{TOOL:bash}}." },
+          alpha: { body: "# alpha\nAsk the user with {{CAPABILITY:ask_user}}, then use {{CAPABILITY:bash}}." },
         },
       });
 
@@ -337,7 +340,7 @@ describe("installPi — agent composition", () => {
       assert.ok(!content.includes("ask_user"), "null-mapped token dropped from prose");
       assert.ok(content.includes("use bash"), "mapped token substituted");
       assert.ok(!/{{/.test(content));
-      assert.ok(result.warnings.some((w) => w.includes("{{TOOL:ask_user}}")), "drop reported as warning");
+      assert.ok(result.warnings.some((w) => w.includes("{{CAPABILITY:ask_user}}")), "drop reported as warning");
     } finally {
       await fx.cleanup();
     }
@@ -346,10 +349,25 @@ describe("installPi — agent composition", () => {
   it("throws on an unknown tool token", async () => {
     const fx = await makeFixture();
     try {
-      await seedPackage(fx, { agents: { alpha: { body: "# alpha\nUse {{TOOL:nope}} now." } } });
+      await seedPackage(fx, { agents: { alpha: { body: "# alpha\nUse {{CAPABILITY:nope}} now." } } });
       await assert.rejects(
         installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
-        /unknown tool token {{TOOL:nope}}/,
+        /unknown capability token {{CAPABILITY:nope}}/,
+      );
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  it("refuses a command in an authored tool list, naming the canonical key", async () => {
+    const fx = await makeFixture();
+    try {
+      await seedPackage(fx, {
+        agents: { alpha: { frontmatter: { name: "agent-cortex:alpha", description: "Flushes.", tools: ["bash", "post_merge_watch"] } } },
+      });
+      await assert.rejects(
+        installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
+        /capability "post_merge_watch" is a pi command/,
       );
     } finally {
       await fx.cleanup();
@@ -446,7 +464,7 @@ describe("installPi — skills", () => {
       await writeFixture(
         fx,
         "skills/engineering/echo/SKILL.md",
-        "---\nname: echo\ndescription: Echoes {{TOOL:view}}.\n---\n\nUse {{TOOL:view}} to read and {{TOOL:skill}} for help.\nOpen {{PATH:skills/echo/SKILL.md}}.",
+        "---\nname: echo\ndescription: Echoes {{CAPABILITY:view}}.\n---\n\nUse {{CAPABILITY:view}} to read and {{CAPABILITY:skill}} for help.\nOpen {{PATH:skills/echo/SKILL.md}}.",
       );
       await writeFixture(fx, "skills/engineering/echo/scripts/run.sh", "#!/bin/sh\necho hi\n");
 
@@ -456,7 +474,7 @@ describe("installPi — skills", () => {
       assert.ok(await pathExists(skillFile), "skill copied");
       const content = await readFile(skillFile, "utf-8");
       assert.ok(content.includes("description: Echoes read."), "token substituted in skill frontmatter");
-      assert.ok(content.includes("Use read to read and  for help."), "null-mapped {{TOOL:skill}} dropped");
+      assert.ok(content.includes("Use read to read and  for help."), "null-mapped {{CAPABILITY:skill}} dropped");
       assert.ok(
         content.includes("Open ~/.agent-cortex/pi/skills/echo/SKILL.md."),
         "relative path resolved against plugin root",
@@ -836,10 +854,10 @@ describe("installPi — real repo integration", () => {
         "plan PATH token resolved against token-map plugin root",
       );
 
-      // ralph-plan prose {{TOOL:ask_user}} now substitutes to ask_questions
+      // ralph-plan prose {{CAPABILITY:ask_user}} now substitutes to ask_questions
       const ralphPlan = await readFile(join(fx.output, "agents", "ralph-plan.agent.md"), "utf-8");
       assert.ok(!ralphPlan.includes("ask_user"), "ask_user never appears in ralph-plan body");
-      assert.ok(ralphPlan.includes("ask_questions"), "{{TOOL:ask_user}} substituted to ask_questions");
+      assert.ok(ralphPlan.includes("ask_questions"), "{{CAPABILITY:ask_user}} substituted to ask_questions");
       assert.ok(
         !result.warnings.some((w) => w.includes("ask_user")),
         "no null-tool warning for ralph-plan (ask_user now maps to ask_questions)",

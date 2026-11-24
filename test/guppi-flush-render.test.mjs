@@ -116,17 +116,17 @@ describe("guppi's window transitions render each harness's own mechanism", () =>
     const map = JSON.parse(await readFile(join(ROOT, "token-map.json"), "utf-8"));
 
     assert.deepEqual(
-      map.tools.compact_window,
-      { claude: "/compact", pi: "request_compact" },
+      map.capabilities.compact_window,
+      { claude: { name: "/compact", type: "command" }, pi: { name: "request_compact", type: "tool" } },
       "a stay names a compaction on both harnesses",
     );
     assert.deepEqual(
-      map.tools.flush_window,
-      { claude: "/clear", pi: "request_flush" },
+      map.capabilities.flush_window,
+      { claude: { name: "/clear", type: "command" }, pi: { name: "request_flush", type: "tool" } },
       "a switch names a flush on both harnesses",
     );
     assert.equal(
-      "clear_window" in map.tools,
+      "clear_window" in map.capabilities,
       false,
       "the row the old rule named is gone, so no rendered text can resolve it",
     );
@@ -328,7 +328,7 @@ describe("guppi's window transitions render each harness's own mechanism", () =>
       for (const retired of RETIRED) {
         assert.equal(count(doc, retired), 0, `the ${harness} render names no ${retired}`);
       }
-      assert.doesNotMatch(doc, /\{\{(?:TOOL|PATH|SECTION):/, `${harness} carries no unresolved token`);
+      assert.doesNotMatch(doc, /\{\{(?:CAPABILITY|PATH|SECTION):/, `${harness} carries no unresolved token`);
       assert.doesNotMatch(doc, /\bwith\s{2,}/, `${harness} agent has no dropped-name gap`);
       assert.doesNotMatch(doc, /agnt-ctx-/, `the ${harness} agent names no internal bead`);
     }

@@ -26,7 +26,7 @@ window is exit `2` with a still-running reason: a report, not a verdict, and nev
 a human for.
 
 The wait past that window belongs to the harness, so never write a poll loop of your own — no
-`sleep` and re-run. Poll with {{TOOL:post_merge_watch}} and end the turn. The session resumes when a
+`sleep` and re-run. Poll with {{CAPABILITY:post_merge_watch}} and end the turn. The session resumes when a
 verdict may exist; run the check again then, and apply step 3 unchanged.
 
 Running the check again on a resume is the watch continuing, not the retry step 4 forbids: you read

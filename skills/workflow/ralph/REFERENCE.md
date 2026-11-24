@@ -150,7 +150,7 @@ Chores already exist, so dispatch never creates one:
 2. **Read its `stage:*` label** from `bd show <id>`.
 3. **Load the universal stage runner prompt** from `skills/workflow/run-pipeline-stage/prompts/stage-runner.md`.
 4. **Read the parent task context**: follow the `parent-child` dependency to the parent task bead, run `bd show <parent-id>` to get the full task description.
-5. **Ensure branch + worktree exist for this parent task** (see _Feature branches and worktrees_ below), then note the worktree path — you'll pass it as `cwd` to {{TOOL:task}}.
+5. **Ensure branch + worktree exist for this parent task** (see _Feature branches and worktrees_ below), then note the worktree path — you'll pass it as `cwd` to {{CAPABILITY:task}}.
 6. **Fill in the prompt** — replace placeholders with:
    - Stage from bead label (`stage:<stage>`) for `<stage>`
    - The leaf execution bead ID and its `bd show` output for the bead specification. Do **not** inject `bd prime` output — the stage runner runs `bd prime` itself if it needs project context
@@ -158,7 +158,7 @@ Chores already exist, so dispatch never creates one:
    - For `fix` stage: `FILES_CHANGED` from the preceding stage's report (the required changes come from the fix bead's own description — read via `bd show <fix-id>`)
    - For `verify`, `review`, `document` stages: `SUMMARY` and `FILES_CHANGED` from the preceding stage's report
    - The trail pointer: the worker records its own entries with `<run-pipeline-stage-scripts>/trail-entry.mjs`, so the prompt names that script rather than a log file (see _Reading the Trail_ below)
-7. **Call the {{TOOL:task}} tool** with the filled prompt as `prompt` and the worktree path as `cwd`. Store the returned agentId — you need it for step 8 and for correlating the completion to its bead.
+7. **Call the {{CAPABILITY:task}} tool** with the filled prompt as `prompt` and the worktree path as `cwd`. Store the returned agentId — you need it for step 8 and for correlating the completion to its bead.
 
    If this session has no subagent tool, **stop and say so**. Do not substitute a backgrounded CLI run (`pi -p … &`): that launch has no completion signal, so a finished worker and a killed one look identical, which is how stages came to be reported complete over uncommitted trees. Record the bead for the shutdown summary and tell the human the session needs restarting with the subagent extension loaded.
 8. **Record the base commit** before the worker starts — you verify delivery against it (_Verified Completion_ below):
@@ -438,7 +438,7 @@ The planner session (`plan` skill) and ralph are separate sessions with no share
 
 ### Transport
 
-Send with {{TOOL:peer_send}}; list the peers you can reach with {{TOOL:peer_list}}, and address a peer only by the name or address that list reports. Where the mechanism provides a per-message intent, an idle subscription or a reply wait, use it — but never make a send depend on one.
+Send with {{CAPABILITY:peer_send}}; list the peers you can reach with {{CAPABILITY:peer_list}}, and address a peer only by the name or address that list reports. Where the mechanism provides a per-message intent, an idle subscription or a reply wait, use it — but never make a send depend on one.
 
 Set the intent from this table and from nowhere else. A kind is a word in the message text, so the intent is the only part of the classification the transport itself carries:
 

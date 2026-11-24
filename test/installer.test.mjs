@@ -91,7 +91,7 @@ async function makePackageRoot(pkg = {}) {
   );
   await writeFile(
     join(root, "token-map.json"),
-    JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+    JSON.stringify({ capabilities: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
   );
   await mkdir(join(root, "agents"));
   await mkdir(join(root, "skills"));
@@ -161,7 +161,7 @@ describe("install claude", () => {
     assert.match(plan, /bin\/installers\/claude\.mjs/);
     assert.doesNotMatch(plan, /build-claude-agents/);
     assert.match(plan, /\nname: plan\n/);
-    assert.doesNotMatch(plan, /\{\{(TOOL|PATH|SECTION):/);
+    assert.doesNotMatch(plan, /\{\{(CAPABILITY|PATH|SECTION):/);
 
     const ralphPlan = await readFile(join(out, "agents", "ralph-plan.md"), "utf-8");
     assert.match(ralphPlan, /^---\n# GENERATED from agents\/ralph-plan\//);
@@ -200,7 +200,7 @@ describe("install claude", () => {
     assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, TaskList, TaskGet, TaskStop\n/);
     // the harness-neutral body arrives with its wake section resolved
     assert.match(ralph, /^## Wake mechanism \(Claude Code — event-driven\)$/m);
-    assert.doesNotMatch(ralph, /\{\{(TOOL|PATH|SECTION):/);
+    assert.doesNotMatch(ralph, /\{\{(CAPABILITY|PATH|SECTION):/);
   });
 
   it("composes one ralph body for both harnesses (modulo frontmatter and the wake section)", async () => {
@@ -237,9 +237,9 @@ describe("install claude", () => {
     // the chore machinery ships with substituted tokens, not literal ones
     const ralphSkill = await readFile(join(skills, "ralph", "SKILL.md"), "utf-8");
     assert.match(ralphSkill, /run-pipeline-stage/);
-    assert.doesNotMatch(ralphSkill, /\{\{TOOL:|\{\{PATH:/);
+    assert.doesNotMatch(ralphSkill, /\{\{CAPABILITY:|\{\{PATH:/);
     const stageSkill = await readFile(join(skills, "run-pipeline-stage", "SKILL.md"), "utf-8");
-    assert.doesNotMatch(stageSkill, /\{\{TOOL:|\{\{PATH:/);
+    assert.doesNotMatch(stageSkill, /\{\{CAPABILITY:|\{\{PATH:/);
 
     // skills are real directories (copies), not symlinks
     assert.ok((await stat(join(skills, "tdd"))).isDirectory());
@@ -255,7 +255,7 @@ describe("install claude", () => {
     const techDir = await readFile(join(skills, "technical-direction", "SKILL.md"), "utf-8");
     assert.ok(techDir.includes("using Grep, Read, and Glob"), "rg/view/glob mapped to Grep/Read/Glob");
     assert.ok(techDir.includes("via WebFetch"), "web_fetch mapped to WebFetch");
-    assert.doesNotMatch(techDir, /\{\{TOOL:/);
+    assert.doesNotMatch(techDir, /\{\{CAPABILITY:/);
 
     // Skills avoid null-mapped tool tokens: a null mapping is dropped, which
     // leaves the sentence that named it broken (claude reports subagent results
@@ -263,7 +263,7 @@ describe("install claude", () => {
     // shipped sources must therefore stay harness-neutral in those spots.
     const design = await readFile(join(skills, "design-an-interface", "SKILL.md"), "utf-8");
     assert.ok(design.includes("with Task,"), "task mapped to Task");
-    assert.doesNotMatch(design, /\{\{TOOL:|read_agent/);
+    assert.doesNotMatch(design, /\{\{CAPABILITY:|read_agent/);
     assert.doesNotMatch(stdout, /has no claude mapping/, "no shipped skill uses a tool the claude column cannot map");
   });
 
@@ -274,7 +274,7 @@ describe("install claude", () => {
     assert.ok(files.length > 0);
     for (const f of files) {
       const content = await readFile(join(out, "skills", f), "utf-8");
-      assert.doesNotMatch(content, /\{\{TOOL:|\{\{PATH:/, `no literal tokens in skill ${f}`);
+      assert.doesNotMatch(content, /\{\{CAPABILITY:|\{\{PATH:/, `no literal tokens in skill ${f}`);
     }
   });
 
@@ -321,7 +321,7 @@ describe("install claude", () => {
     );
     await writeFile(
       join(root, "token-map.json"),
-      JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+      JSON.stringify({ capabilities: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
     );
     await mkdir(join(root, "agents"));
     await mkdir(join(root, "skills"));
@@ -639,7 +639,7 @@ describe("install claude", () => {
       await mkdir(join(fixture, "agents", "padded", "claude"), { recursive: true });
       await mkdir(join(fixture, "skills"), { recursive: true });
       await writeFile(join(fixture, "package.json"), JSON.stringify({ name: "agent-cortex", version: "1.2.3" }));
-      await writeFile(join(fixture, "token-map.json"), JSON.stringify({ tools: {}, paths: {} }));
+      await writeFile(join(fixture, "token-map.json"), JSON.stringify({ capabilities: {}, paths: {} }));
       await writeFile(join(fixture, "agents", "padded", "agent.md"), "Body.\n");
       await writeFile(
         join(fixture, "agents", "padded", "claude", "frontmatter.json"),
@@ -665,7 +665,7 @@ describe("install claude", () => {
       await mkdir(join(fixture, "agents"), { recursive: true });
       await writeFile(
         join(fixture, "token-map.json"),
-        JSON.stringify({ name: "fixture", version: 99, tools: {}, paths: {} }),
+        JSON.stringify({ name: "fixture", version: 99, capabilities: {}, paths: {} }),
       );
       await assert.rejects(
         installClaude({ root: fixture, output: join(fixture, "out") }),
@@ -712,7 +712,7 @@ async function makeSettingsFixture({ template = settingsTemplate(), settings } =
   );
   await writeFile(
     join(root, "token-map.json"),
-    JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+    JSON.stringify({ capabilities: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
   );
   await mkdir(join(root, "agents"));
   await mkdir(join(root, "skills"));
@@ -937,7 +937,7 @@ async function makeInstructionsFixture({ source = OUTPUT_SOURCE, memory } = {}) 
   );
   await writeFile(
     join(root, "token-map.json"),
-    JSON.stringify({ tools: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
+    JSON.stringify({ capabilities: {}, paths: { plugin_root: { claude: "PLUGIN_ROOT" } } }),
   );
   await mkdir(join(root, "agents"));
   await mkdir(join(root, "skills"));

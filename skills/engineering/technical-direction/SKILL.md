@@ -24,10 +24,10 @@ Act as a pragmatic, challenging staff engineer: constructive, direct, and eviden
 ## Workflow
 
 1. **Anchor on problem context.** Start from the PRD or user brief. Confirm goals, non-goals, and the decision horizon (how long this choice must hold).
-2. **Discover constraints from the codebase first.** Investigate architecture, existing interfaces, deployment and runtime constraints, data-model boundaries, and team conventions using {{TOOL:rg}}, {{TOOL:view}}, and {{TOOL:glob}}. Record unknowns and risks explicitly.
+2. **Discover constraints from the codebase first.** Investigate architecture, existing interfaces, deployment and runtime constraints, data-model boundaries, and team conventions using {{CAPABILITY:rg}}, {{CAPABILITY:view}}, and {{CAPABILITY:glob}}. Record unknowns and risks explicitly.
 3. **Run the challenge loop, one question at a time.** Ask focused, high-leverage questions. Challenge vague claims and hidden assumptions; require explicit justification for each major decision. Keep drilling until constraints and tradeoffs are concrete. If an answer exists in the codebase, find it before asking.
 4. **Generate options.** Always include Option A (extend the current approach), Option B (moderate architectural shift), and Option C (a stronger alternative using new tech or patterns). Evaluate each on feasibility, complexity, migration cost, operational impact, testability, performance, and failure modes.
-5. **Use web research when the codebase is insufficient.** Do this autonomously for high-impact decisions needing external comparison. Prefer authoritative sources (official docs, maintainers, widely adopted production guidance) via {{TOOL:web_fetch}}; bring findings back as tradeoffs with source links.
+5. **Use web research when the codebase is insufficient.** Do this autonomously for high-impact decisions needing external comparison. Prefer authoritative sources (official docs, maintainers, widely adopted production guidance) via {{CAPABILITY:web_fetch}}; bring findings back as tradeoffs with source links.
 6. **Converge on a recommendation.** Select the best-fit option under current constraints. Explain explicitly why each alternative was not chosen. List decision triggers that would justify revisiting.
 7. **Write the decision memo.** Ensure `docs/technical-direction/` exists and save `docs/technical-direction/<feature-slug>.md` using the template in [FORMAT.md](FORMAT.md).
 

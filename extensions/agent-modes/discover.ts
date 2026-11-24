@@ -11,8 +11,8 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
  * contract:
  *
  *   1. `{{SECTION:name}}` is resolved from the agent's `pi/<name>.md` section file.
- *   2. `{{TOOL:key}}` and `{{PATH:key}}` are substituted against the pi column of
- *      token-map.json, with the plugin root resolved from the actual extension
+ *   2. `{{CAPABILITY:key}}` and `{{PATH:key}}` are substituted against the pi column
+ *      of token-map.json, with the plugin root resolved from the actual extension
  *      location (installers must compute it from the real resolution, per the
  *      token-map notes — a hardcoded `~/.pi/...` literal would break checkout
  *      and symlinked installs).
@@ -51,9 +51,19 @@ export interface PathSpec {
   relative: string;
 }
 
+/**
+ * One harness's binding for a capability: its name there, and what the harness
+ * actually exposes. A `tool` is model-callable and may appear in a tool list; a
+ * `command` is invoked directly by the user or agent and may not.
+ */
+export interface CapabilityBinding {
+  name: string;
+  type: "tool" | "command";
+}
+
 /** Shape of token-map.json (see the file at the package root). */
 export interface TokenMap {
-  tools: Record<string, Record<HarnessId, string | null>>;
+  capabilities: Record<string, Record<HarnessId, CapabilityBinding | null>>;
   paths: Record<string, Record<HarnessId, string | PathSpec>>;
 }
 
@@ -128,7 +138,7 @@ export function loadTokenMap(agentsDir: string): TokenMap | null {
   try {
     const raw = readFileSync(join(agentsDir, "..", "token-map.json"), "utf-8");
     const parsed = JSON.parse(raw) as Partial<TokenMap>;
-    return parsed.tools && parsed.paths ? (parsed as TokenMap) : null;
+    return parsed.capabilities && parsed.paths ? (parsed as TokenMap) : null;
   } catch {
     return null;
   }
@@ -146,13 +156,17 @@ function prettifyId(id: string): string {
 /**
  * Translate a frontmatter tool list into PI tool names.
  *
- * With token-map.json: canonical keys are translated via the pi column; a null
- * mapping means PI has no equivalent for that tool and the entry is omitted;
- * a name that is not a canonical key passes through untouched (it may be a
- * native PI tool such as `fetch_content`). Without the map, the built-in
- * COPILOT_TO_PI fallback applies and unknown names pass through.
+ * With token-map.json: capability keys are translated via the pi column; a null
+ * binding means PI has no equivalent for that capability and the entry is
+ * omitted; a name that is not a capability key passes through untouched (it may
+ * be a native PI tool such as `fetch_content`). A binding whose type is
+ * `command` is a hard error naming the canonical key — a command is not
+ * model-callable, so resolving one into the list would enable a tool pi never
+ * offers, and dropping it silently is the omission this map exists to catch.
+ * Without the map, the built-in COPILOT_TO_PI fallback applies and unknown names
+ * pass through.
  */
-function translateTools(raw: unknown, tokenMap: TokenMap | null): string[] {
+function translateTools(raw: unknown, tokenMap: TokenMap | null, agentId: string): string[] {
   if (!Array.isArray(raw)) return [];
 
   const out = new Set<string>();
@@ -170,13 +184,17 @@ function translateTools(raw: unknown, tokenMap: TokenMap | null): string[] {
     }
 
     if (tokenMap) {
-      const mapping = tokenMap.tools[t];
+      const mapping = tokenMap.capabilities[t];
       if (mapping === undefined) {
-        out.add(t); // not a canonical key — pass through (may be a native PI tool)
+        out.add(t); // not a capability key — pass through (may be a native PI tool)
       } else if (mapping[PI] === null) {
-        console.warn(`[agent-modes] Tool "${t}" has no PI equivalent — omitted from the tool set`);
+        console.warn(`[agent-modes] Capability "${t}" has no PI equivalent — omitted from the tool set`);
+      } else if (mapping[PI]!.type === "command") {
+        throw new Error(
+          `capability "${t}" is a pi command (${mapping[PI]!.name}) and cannot appear in agent "${agentId}"'s tool list — a command is not model-callable`,
+        );
       } else {
-        out.add(mapping[PI] as string);
+        out.add(mapping[PI]!.name);
       }
     } else {
       const fallback = COPILOT_TO_PI[t];
@@ -222,10 +240,10 @@ function resolvePathToken(arg: string, tokenMap: TokenMap | null, pluginRoot: st
 /**
  * Compose the PI system prompt for a composable agent directory.
  *
- * Substitution order follows the token-map contract: SECTION, then TOOL, then
- * PATH. Section files resolve from `<agentDir>/pi/<name>.md`; missing sections
- * and null-mapped tools drop the token with a warning so the prompt never ships
- * literal token syntax.
+ * Substitution order follows the token-map contract: SECTION, then CAPABILITY,
+ * then PATH. Section files resolve from `<agentDir>/pi/<name>.md`; missing sections
+ * and null-mapped capabilities drop the token with a warning so the prompt never
+ * ships literal token syntax.
  */
 function composePiPrompt(
   agentDir: string,
@@ -245,18 +263,19 @@ function composePiPrompt(
     return readFileSync(sectionPath, "utf-8").trim();
   });
 
-  // 2. {{TOOL:key}} → tools[key].pi (null mapping drops the token)
-  body = body.replace(/\{\{TOOL:([^}]+)\}\}/g, (_token, key: string) => {
-    const mapping = tokenMap?.tools?.[key];
+  // 2. {{CAPABILITY:key}} → capabilities[key].pi.name (null mapping drops the token)
+  body = body.replace(/\{\{CAPABILITY:([^}]+)\}\}/g, (_token, key: string) => {
+    const mapping = tokenMap?.capabilities?.[key];
     if (mapping === undefined) {
-      console.warn(`[agent-modes] Unknown tool token {{TOOL:${key}}} in agent "${id}" — token dropped`);
+      console.warn(`[agent-modes] Unknown capability token {{CAPABILITY:${key}}} in agent "${id}" — token dropped`);
       return "";
     }
-    if (mapping[PI] === null) {
-      console.warn(`[agent-modes] Tool token {{TOOL:${key}}} has no PI equivalent in agent "${id}" — token dropped`);
+    const binding = mapping[PI];
+    if (binding === null) {
+      console.warn(`[agent-modes] Capability token {{CAPABILITY:${key}}} has no PI equivalent in agent "${id}" — token dropped`);
       return "";
     }
-    return mapping[PI] as string;
+    return binding.name;
   });
 
   // 3. {{PATH:key-or-relative}} → resolved against the actual plugin root
@@ -303,7 +322,7 @@ function readComposableAgent(
 ): AgentDef | null {
   try {
     const fm = parseFrontmatterJson(readFileSync(join(agentDir, "pi", "frontmatter.json"), "utf-8"), id);
-    const tools = translateTools(fm.tools, tokenMap);
+    const tools = translateTools(fm.tools, tokenMap, id);
     // The composable schema requires a non-empty list, so `ALL_TOOLS` survives
     // translation as `["*"]` and is resolved at activation. An unparseable
     // frontmatter yields an empty list here and keeps the conservative
@@ -467,11 +486,21 @@ function readFlatAgent(filePath: string, tokenMap: TokenMap | null): AgentDef | 
   // requires the key. A file whose frontmatter cannot be parsed, or whose list
   // is present but empty, keeps the conservative DEFAULT_TOOLS so a corrupt file
   // never becomes "everything".
-  const tools = parsed.frontmatterParsed
-    ? parsed.tools === undefined
-      ? [ALL_TOOLS]
-      : translateTools(parsed.tools, tokenMap)
-    : [...DEFAULT_TOOLS];
+  //
+  // A capability bound to a command is a defect in the file, not a reason to
+  // disable every mode in the session, so the error is reported and the one
+  // agent is skipped — never the entry dropped, which would hide it.
+  let tools: string[];
+  try {
+    tools = parsed.frontmatterParsed
+      ? parsed.tools === undefined
+        ? [ALL_TOOLS]
+        : translateTools(parsed.tools, tokenMap, id)
+      : [...DEFAULT_TOOLS];
+  } catch (err) {
+    console.warn(`[agent-modes] Skipping agent "${id}": ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
 
   return {
     id,

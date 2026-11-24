@@ -1,39 +1,39 @@
 {
   "name": "agent-cortex token map",
-  "description": "Central mapping of tool names, paths, and agent naming conventions across the claude and pi harnesses. Single source of truth for install-time token substitution. See token-map.README.md for the design rationale.",
+  "description": "Central mapping of capability names and kinds, paths, and agent naming conventions across the claude and pi harnesses. Single source of truth for install-time token substitution. See token-map.README.md for the design rationale.",
   "version": 1,
   "harnesses": ["claude", "pi"],
   "token_format": {
     "convention": "{{TYPE:NAME}}",
-    "decision": "Adopt the {{TOOL:name}} / {{PATH:name}} / {{SECTION:name}} grammar already standardised by ADR #63 (agents/README.md) rather than a dotted {{tool.name}} form. The uppercase type prefix disambiguates token kinds at a glance, keeps tool/path/section names in one namespace collision-free, and matches the token grammar skills are already written against.",
+    "decision": "Adopt the {{CAPABILITY:name}} / {{PATH:name}} / {{SECTION:name}} grammar already standardised by ADR #63 (agents/README.md) rather than a dotted {{capability.name}} form. The uppercase type prefix disambiguates token kinds at a glance, keeps capability/path/section names in one namespace collision-free, and matches the token grammar skills are already written against. The type is CAPABILITY and not TOOL because a row may name a command: a token is not a promise that its argument is a model-callable tool.",
     "types": {
-      "TOOL": "{{TOOL:<canonical tool key>}} — replaced at install time with the bound harness's tool name (see tools).",
+      "CAPABILITY": "{{CAPABILITY:<canonical capability key>}} — replaced at install time with the bound harness's name for that capability (see capabilities). Its kind is per harness: a `tool` may appear in a tool list, a `command` may not.",
       "PATH": "{{PATH:<path key or relative path>}} — replaced at install time with the harness-resolved path (see paths; a relative arg under skills/ is mapped onto the harness's staged shape first — see layouts).",
       "SECTION": "{{SECTION:<name>}} — replaced by the agent composer with <harness>/<name>.md section content. Not a global substitution; out of scope for token-map.json (see contract)."
     }
   },
-  "tools": {
-    "bash": { "claude": "Bash", "pi": "bash" },
-    "view": { "claude": "Read", "pi": "read" },
-    "edit": { "claude": "Edit", "pi": "edit" },
-    "create": { "claude": "Write", "pi": "write" },
-    "grep": { "claude": "Grep", "pi": "grep" },
-    "rg": { "claude": "Grep", "pi": "grep" },
-    "glob": { "claude": "Glob", "pi": "find" },
-    "ask_user": { "claude": "AskUserQuestion", "pi": "ask_questions" },
-    "web_fetch": { "claude": "WebFetch", "pi": "fetch_content" },
-    "skill": { "claude": "Skill", "pi": "read" },
-    "task": { "claude": "Task", "pi": "task" },
-    "read_agent": { "claude": null, "pi": "read_agent" },
-    "wait_for_agents": { "claude": null, "pi": "wait_for_agents" },
-    "peer_send": { "claude": "SendMessage", "pi": "peer_send" },
-    "peer_list": { "claude": "ListAgents", "pi": "peer_list" },
-    "post_merge_watch": { "claude": "ScheduleWakeup", "pi": "post-merge-watch" },
-    "interrupt_rewind": { "claude": "/rewind", "pi": "interrupt_resume" },
-    "interrupt_checkpoint": { "claude": null, "pi": "interrupt_checkpoint" },
-    "interrupt_resume": { "claude": null, "pi": "interrupt_resume" },
-    "compact_window": { "claude": "/compact", "pi": "request_compact" },
-    "flush_window": { "claude": "/clear", "pi": "request_flush" }
+  "capabilities": {
+    "bash": { "claude": { "name": "Bash", "type": "tool" }, "pi": { "name": "bash", "type": "tool" } },
+    "view": { "claude": { "name": "Read", "type": "tool" }, "pi": { "name": "read", "type": "tool" } },
+    "edit": { "claude": { "name": "Edit", "type": "tool" }, "pi": { "name": "edit", "type": "tool" } },
+    "create": { "claude": { "name": "Write", "type": "tool" }, "pi": { "name": "write", "type": "tool" } },
+    "grep": { "claude": { "name": "Grep", "type": "tool" }, "pi": { "name": "grep", "type": "tool" } },
+    "rg": { "claude": { "name": "Grep", "type": "tool" }, "pi": { "name": "grep", "type": "tool" } },
+    "glob": { "claude": { "name": "Glob", "type": "tool" }, "pi": { "name": "find", "type": "tool" } },
+    "ask_user": { "claude": { "name": "AskUserQuestion", "type": "tool" }, "pi": { "name": "ask_questions", "type": "tool" } },
+    "web_fetch": { "claude": { "name": "WebFetch", "type": "tool" }, "pi": { "name": "fetch_content", "type": "tool" } },
+    "skill": { "claude": { "name": "Skill", "type": "tool" }, "pi": { "name": "read", "type": "tool" } },
+    "task": { "claude": { "name": "Task", "type": "tool" }, "pi": { "name": "task", "type": "tool" } },
+    "read_agent": { "claude": null, "pi": { "name": "read_agent", "type": "tool" } },
+    "wait_for_agents": { "claude": null, "pi": { "name": "wait_for_agents", "type": "tool" } },
+    "peer_send": { "claude": { "name": "SendMessage", "type": "tool" }, "pi": { "name": "peer_send", "type": "tool" } },
+    "peer_list": { "claude": { "name": "ListAgents", "type": "tool" }, "pi": { "name": "peer_list", "type": "tool" } },
+    "post_merge_watch": { "claude": { "name": "ScheduleWakeup", "type": "tool" }, "pi": { "name": "post-merge-watch", "type": "command" } },
+    "interrupt_rewind": { "claude": { "name": "/rewind", "type": "command" }, "pi": { "name": "interrupt_resume", "type": "tool" } },
+    "interrupt_checkpoint": { "claude": null, "pi": { "name": "interrupt_checkpoint", "type": "tool" } },
+    "interrupt_resume": { "claude": null, "pi": { "name": "interrupt_resume", "type": "tool" } },
+    "compact_window": { "claude": { "name": "/compact", "type": "command" }, "pi": { "name": "request_compact", "type": "tool" } },
+    "flush_window": { "claude": { "name": "/clear", "type": "command" }, "pi": { "name": "request_flush", "type": "tool" } }
   },
   "paths": {
     "plugin_root": {
@@ -82,7 +82,7 @@
     }
   },
   "notes": {
-    "tools": {
+    "capabilities": {
       "rg": "Canonical alias for grep. Claude and pi collapse it onto their single search tool (Grep / grep).",
       "glob": "Claude has a dedicated Glob tool. pi's built-in pattern-search tool is find (hypa_find when the pi-hypa extension is installed).",
       "ask_user": "Claude (AskUserQuestion) prompts the user mid-run. pi's equivalent is ask_questions, provided by the pi-questions package (an ordinary runtime dependency of this package that `agent-cortex install pi` bundles into the staged package's node_modules) — the genuine interactive-questioning tool, restoring grilling in plan/ralph-plan/strategy modes. Like fetch_content (pi-web-access), it is only present when its package is installed, so the mapping depends on that package (see the extension-manifests idea). pi still intentionally ships no permission popups; ask_questions is the interactive mid-run question tool, not a popup.",
@@ -93,7 +93,7 @@
       "wait_for_agents": "PI-only blocking wait over background subagent runs (the task tool): returns the results of completed agents and STILL RUNNING for the rest. Claude's Task delivers results inline with no wait step — null on claude.",
       "peer_send": "Session-to-session message send. pi takes it from the published pi-peer package (an ordinary package the consuming repository installs itself, never a dependency of this one). Claude Code has it built in and its docs name it there. Both address a peer by the name or address their own list reports, and neither send is proof of receipt. Only sends and discovery are tokenised: pi-peer's peer_get and peer_await have no Claude Code equivalent, and a null claude mapping drops the token and leaves the sentence that named it broken, so harness-varying prose must never name them — such passages stay inside a harness-labelled runbook.",
       "peer_list": "Peer discovery: the peers that can receive a message, and the address each is reached by. pi's is the pi-peer package's tool. Claude Code's built-in equivalent is ListAgents (an earlier binary named it ListPeers), which also reports reachability and so doubles as the peer-state read.",
-      "post_merge_watch": "Who waits for a CI run that outlives the check's own wait window. The row maps a name, not a protocol: the verdicts and the escalation rule layered above it are harness-invariant text, so only the mechanism is tokenised. pi's name is this package's own post-merge-watch extension, which re-runs the check on a timer and wakes an idle session with the verdict. Claude Code's is its built-in ScheduleWakeup tool, which schedules the session's own resumption so it can re-run the check. The values differ in kind — an extension on pi, a tool on claude — because that is what each harness supplies; the surrounding prose therefore describes only what both do (the session resumes, the check runs again, the verdict table is unchanged) and never a call shape.",
+      "post_merge_watch": "Who waits for a CI run that outlives the check's own wait window. The row maps a name, not a protocol: the verdicts and the escalation rule layered above it are harness-invariant text, so only the mechanism is tokenised. pi's name is this package's own post-merge-watch extension, which re-runs the check on a timer and wakes an idle session with the verdict. Claude Code's is its built-in ScheduleWakeup tool, which schedules the session's own resumption so it can re-run the check. The values differ in kind — an extension on pi, a tool on claude — because that is what each harness supplies; the recorded kinds are `command` on pi and `tool` on claude, because the extension registers a CLI flag the user starts the session with and the model cannot call it, while ScheduleWakeup is model-callable. The surrounding prose therefore describes only what both do (the session resumes, the check runs again, the verdict table is unchanged) and never a call shape.",
       "interrupt_rewind": "How an interrupted task returns to its checkpoint and leaves the interruption behind. Consumed by agents/guppi/agent.md's interrupt protocol, which names the row once and states the checkpoint, record, rewind and resume steps around it. The row maps a name, not a protocol: pi's name is this package's own interrupt-bookmark extension's resume tool, which rewinds the session tree and has pi's summariser keep the abandoned branch under a branch summary labelled `interrupt`. Claude Code's is its built-in /rewind command, which restores the conversation and the file checkpoints taken for it. The values differ in kind — a model-callable tool on pi, a user-facing command on claude — because that is what each harness supplies. Constraints on the prose: it must describe only what both do (the session returns to the earlier point, and the interrupt's turns leave the live context) and never a call shape; it must also state who acts, because the actor forks with the kind — guppi performs the rewind where the harness gives it a tool, and hands it to the human where the harness gives it a user command; and it must not tokenise the checkpoint half, because Claude Code checkpoints on its own while pi needs a tool call, and a null claude column would drop the token and leave the sentence that named it broken. test/guppi-interrupt-render.test.mjs stages both installs to prove the fork.",
       "interrupt_checkpoint": "The checkpoint half of the interrupt protocol, pi-only: guppi takes a resume point by calling this tool, while Claude Code checkpoints on its own with no tool to call, so the claude column is null and no claude frontmatter lists it. It is a tool-list row, not a prose row — prose must never tokenise it, for the reason recorded on interrupt_rewind.",
       "interrupt_resume": "The resume tool as a tool-list row, for an agent that declares its tools per harness (guppi lists it in agents/guppi/pi/frontmatter.json). It is distinct from the interrupt_rewind prose row, which maps the same pi name to Claude Code's user-run /rewind: a tool list cannot carry /rewind, because the agent cannot call a user command, so the claude column is null and no claude frontmatter lists it.",
@@ -111,14 +111,17 @@
   },
   "contract": {
     "version": 1,
-    "summary": "Installers substitute {{TOOL:...}}, {{PATH:...}}, and {{SECTION:...}} tokens in generated harness files using this map. This contract is the single reference installers must implement; token-map.json is the data those rules operate on.",
+    "summary": "Installers substitute {{CAPABILITY:...}}, {{PATH:...}}, and {{SECTION:...}} tokens in generated harness files using this map. This contract is the single reference installers must implement; token-map.json is the data those rules operate on.",
     "harness_ids": ["claude", "pi"],
-    "binding": "The harness id is the same value the installer is invoked with (agent-cortex install <harness>). Each harness reads its own column from the tools, paths, and agents sections.",
-    "substitution_order": ["SECTION", "TOOL", "PATH"],
+    "binding": "The harness id is the same value the installer is invoked with (agent-cortex install <harness>). Each harness reads its own column from the capabilities, paths, and agents sections.",
+    "substitution_order": ["SECTION", "CAPABILITY", "PATH"],
     "rules": [
-      "TOOL: replace {{TOOL:<key>}} with tools.<key>.<harness>. Canonical keys are exact, case-sensitive strings (the names the canonical sources in agents/<name>/agent.md are authored with).",
-      "TOOL null: a null value means the harness has no equivalent. In prose, remove the token (and emit a warning). In a tool-list context (frontmatter tools: [...]), omit the entry. Do not substitute an empty string.",
-      "TOOL unknown: a {{TOOL:<key>}} with no entry in tools is a hard error — the map must be extended. This mirrors the generators (bin/installers/claude.mjs, bin/installers/pi.mjs), which throw on unknown tools.",
+      "CAPABILITY: replace {{CAPABILITY:<key>}} with capabilities.<key>.<harness>.name. Canonical keys are exact, case-sensitive strings (the names the canonical sources in agents/<name>/agent.md are authored with).",
+      "CAPABILITY kind: every row value is either null or an object {name, type} whose type is `tool` or `command`. The kind is per harness, because the same capability genuinely differs between them (interrupt_rewind is a pi tool and a claude command). A string value is invalid — there is no shorthand.",
+      "CAPABILITY tool: a `tool` is model-callable and may appear in a tool list.",
+      "CAPABILITY command: a `command` is invoked directly by the user or agent (a slash command, or an extension's command). It may appear in rendered prose and must never appear in a tool list — a tool-list context that resolves to a `command` is a hard error naming the canonical key, never a silent omission.",
+      "CAPABILITY null: a null value means the harness has no equivalent. In prose, remove the token (and emit a warning). In a tool-list context (frontmatter tools: [...]), omit the entry. Do not substitute an empty string.",
+      "CAPABILITY unknown: a {{CAPABILITY:<key>}} with no entry in capabilities is a hard error — the map must be extended. This mirrors the generators (bin/installers/claude.mjs, bin/installers/pi.mjs), which throw on unknown capabilities.",
       "PATH named key: replace {{PATH:<key>}} with the resolved value of paths.<key>.<harness>.",
       "PATH relative: replace {{PATH:<relative>}} with plugin_root + '/' + <relative> (e.g. {{PATH:skills/workflow/plan/SKILL.md}}).",
       "PATH relative skill: a relative arg whose first segment is `skills` is authored against the repository tree, which nests every skill at skills/<group>/<name>/<file>. Map it onto the harness's staged shape from layouts.skills.<harness>: `grouped` keeps it as written, `flat` drops the group segment (skills/<name>/<file>) because that installer copies skills flat. An arg with fewer than three segments is a hard error — no install has a skill one level under skills/.",
@@ -129,10 +132,11 @@
       "Case sensitivity: all token arguments and map keys are case-sensitive."
     ],
     "error_handling": {
-      "unknown_tool": "throw — the map must stay complete",
+      "unknown_capability": "throw — the map must stay complete",
       "unknown_path_base": "throw — the map must stay complete",
-      "null_tool_in_prose": "warn and drop the token",
-      "null_tool_in_tool_list": "omit the entry from the array",
+      "null_capability_in_prose": "warn and drop the token",
+      "null_capability_in_tool_list": "omit the entry from the array",
+      "command_in_tool_list": "throw, naming the canonical key — a command is not a tool and omitting it silently would hide the defect",
       "unsupported_version": "throw with the supported version range"
     }
   }

@@ -19,7 +19,7 @@ previously implied.
 | pi 1.4.0 | Yes — byte-identical copy | Yes — hidden from the prompt, `/skill:name` still works | `bin/installers/pi.mjs:182-204`, `scripts/lib/compose-agent.mjs:69-95`; `dist/core/skills.js:262` (parse) and `:279` (filter); `docs/skills.md:53` |
 | Claude Code 2.1.294 | Yes — byte-identical copy | Yes — Claude cannot invoke it, `/skill-name` still works | `bin/installers/claude.mjs:160-201`, same token helper; [Claude Code skills docs](https://code.claude.com/docs/en/skills) ("Control who invokes a skill") |
 
-Both materialisers copy `SKILL.md` as text and rewrite only `{{TOOL:...}}` /
+Both materialisers copy `SKILL.md` as text and rewrite only `{{CAPABILITY:...}}` /
 `{{PATH:...}}` tokens, so frontmatter keys they do not know pass through untouched —
 nothing re-serialises YAML. Verified by installing both harnesses into
 `/var/tmp/dmi-check` and diffing `skills/productivity/teach/SKILL.md` (the repo's

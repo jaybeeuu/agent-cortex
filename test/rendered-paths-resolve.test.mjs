@@ -35,7 +35,7 @@ const tempRoot = createTempRoot("agent-cortex-rendered-paths-");
 const HARNESSES = ["pi", "claude"];
 
 const PATH_TOKEN_RE = /\{\{PATH:([^}]+)\}\}/g;
-const LITERAL_TOKEN_RE = /\{\{(?:TOOL|PATH|SECTION):/;
+const LITERAL_TOKEN_RE = /\{\{(?:CAPABILITY|PATH|SECTION):/;
 
 /** Run the CLI.
  * @param {string[]} args

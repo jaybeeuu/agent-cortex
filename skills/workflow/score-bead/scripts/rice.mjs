@@ -18,8 +18,8 @@
 // The rubric is the strategy file owned by the strategise skill. This script reads
 // it through that skill's validator and resolver, so there is one definition of a valid
 // strategy and one way to find it. A missing or invalid strategy refuses the score before
-// the first tracker call, so a refusal writes nothing at all; so does an impact value the
-// strategy's `## Impact levels` table does not list.
+// the first tracker call, so a refusal writes nothing at all; so does a component value that
+// the strategy's own level table does not list.
 //
 // Zero runtime dependencies, async fs only, and every child process runs with an argv
 // array — never a shell string, so a rationale carrying spaces or quotes reaches `bd`
@@ -36,8 +36,7 @@ import { promisify } from 'node:util';
 
 import {
   DEFAULT_FILE,
-  IMPACT_LEVELS_SECTION,
-  parseImpactLevels,
+  LEVEL_TABLES,
   resolveStrategyPath,
   validateStrategy,
 } from '../../strategise/scripts/strategy.mjs';
@@ -119,9 +118,11 @@ const PRIOR_PREFIX = '[prior]';
  * @property {string} bead
  * @property {RiceRecord} rice
  * @property {{ file: string, version: number }} strategy
- * @property {{ label: string, value: number } | undefined} impactLevel  The strategy's level
- *   for this impact value. Absent when the strategy states no `## Impact levels` table, so
- *   the CLI can say impact is unconstrained rather than imply a rule the file never wrote.
+ * @property {Record<string, { label: string, value: number }>} levels  The strategy's level
+ *   for each component it constrains, keyed by component name. A component with no table is
+ *   absent, so its value is unconstrained.
+ * @property {string[]} unconstrained  The components the strategy states no table for, in the
+ *   order a score names them. The CLI says so rather than implying a rule the file never wrote.
  * @property {StoredRice | undefined} previous
  */
 
@@ -385,10 +386,10 @@ export async function readBead({ beadId, bd }) {
  *
  * The order is the contract. The strategy is read and validated before the first `bd`
  * call, so a missing or malformed rubric refuses the run with nothing written — not a
- * score, not a note, not a metadata key. An impact value the strategy's `## Impact levels`
- * table does not list is refused at that same point, so a value the rubric never allowed
- * cannot reach a bead either. Reach * impact * confidence / effort is computed once, and the
- * version recorded is the file's own version, read after it validated.
+ * score, not a note, not a metadata key. A component value that a table in the strategy does
+ * not list is refused at that same point, so a value the rubric never allowed cannot reach a
+ * bead either. Reach * impact * confidence / effort is computed once, and the version
+ * recorded is the file's own version, read after it validated.
  *
  * @param {object} options
  * @param {string} options.beadId
@@ -432,20 +433,36 @@ export async function scoreBead({
   }
   const strategyVersion = strategy.version;
 
-  // The level check belongs here, where the strategy is in scope, and not in
+  // The level checks belong here, where the strategy is in scope, and not in
   // `validateComponents`: that function stays strategy-free, and this runs before the first
-  // `bd` call, so a refusal still writes nothing. A strategy with no table states no levels
+  // `bd` call, so a refusal still writes nothing. A component with no table states no levels
   // and is not checked, because a restriction the owner never wrote must not reject a score.
-  const levels = parseImpactLevels(strategyText);
-  const impactLevel =
-    levels.source === 'file' ? levels.levels.find((level) => level.value === clean.impact) : undefined;
-  if (levels.source === 'file' && impactLevel === undefined) {
-    throw new RiceError(
-      `--impact ${clean.impact} is not on the "## ${IMPACT_LEVELS_SECTION}" table in ${strategyFile}, ` +
-        `which allows: ${levels.levels.map((level) => `${level.label} ${level.value}`).join(', ')} — ` +
-        'score against one of those values, or add the level to the strategy and bump it',
-    );
+  // Every table is checked, so one run names every off-list component rather than making the
+  // caller fix them one at a time.
+  /** @type {Record<string, { label: string, value: number }>} */
+  const levels = {};
+  /** @type {string[]} */
+  const unconstrained = [];
+  /** @type {string[]} */
+  const refusals = [];
+  for (const table of LEVEL_TABLES) {
+    const parsed = table.parse(strategyText);
+    if (parsed.source !== 'file') {
+      unconstrained.push(table.component);
+      continue;
+    }
+    const matched = parsed.levels.find((level) => level.value === clean[table.component]);
+    if (matched === undefined) {
+      refusals.push(
+        `--${table.component} ${clean[table.component]} is not on the "## ${table.section}" table in ${strategyFile}, ` +
+          `which allows: ${parsed.levels.map((level) => `${level.label} ${level.value}`).join(', ')} — ` +
+          'score against one of those values, or add the level to the strategy and bump it',
+      );
+      continue;
+    }
+    levels[table.component] = matched;
   }
+  if (refusals.length > 0) throw new RiceError(refusals.join('\n'));
 
   const bd = deps.bd ?? makeRunner(BD_PATH, cwd);
   const bead = await readBead({ beadId, bd });
@@ -462,7 +479,7 @@ export async function scoreBead({
 
   await bd(['update', bead.id, '--metadata', JSON.stringify({ [RICE_KEY]: rice })]);
 
-  return { bead: bead.id, rice, strategy: { file: strategyFile, version: strategyVersion }, impactLevel, previous };
+  return { bead: bead.id, rice, strategy: { file: strategyFile, version: strategyVersion }, levels, unconstrained, previous };
 }
 
 // ─── Band ─────────────────────────────────────────────────────────────────────
@@ -524,11 +541,16 @@ const USAGE = `Usage: node rice.mjs score <bead-id> --reach <n> --impact <n> --c
           never touches a bead already at P0.
 
 Options:
-  --reach <n>        How much work or how many workflows this changes.
+  --reach <n>        How much work or how many workflows this changes. When the strategy states
+                     a "## Reach levels" table, the value must be one of its levels.
   --impact <n>       How much it matters per unit of reach. When the strategy states a
                      "## Impact levels" table, the value must be one of its levels.
   --confidence <0..1>  How sure the estimate is. A real figure, not a guess dressed as one.
+                     When the strategy states a "## Confidence levels" table, the value must be
+                     one of its levels.
   --effort <n>       Cost, on the strategy's calibration scale. Must be greater than zero.
+                     When the strategy states an "## Effort levels" table, the value must be one
+                     of its levels.
   --rationale <text> Why these numbers, naming the strategy section that justifies them.
   --file <path>      Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)
   --at <rfc3339>     Assessment timestamp (default: now, UTC)
@@ -649,11 +671,15 @@ export async function runCli({
           `× confidence ${rice.confidence} ÷ effort ${rice.effort} (strategy v${report.strategy.version})\n`,
       );
       write(`  assessed ${rice.assessedAt}\n`);
-      write(
-        report.impactLevel === undefined
-          ? '  impact unconstrained: the strategy states no "## Impact levels" table, so any number of zero or more is accepted\n'
-          : `  impact level: ${report.impactLevel.label} ${report.impactLevel.value} — cite this label in the rationale\n`,
-      );
+      for (const [component, level] of Object.entries(report.levels)) {
+        write(`  ${component} level: ${level.label} ${level.value} — cite this label in the rationale\n`);
+      }
+      if (report.unconstrained.length > 0) {
+        write(
+          `  unconstrained: ${report.unconstrained.join(', ')} — the strategy states no level table ` +
+            'for them, so any value their floor allows is accepted\n',
+        );
+      }
       if (report.previous !== undefined) {
         write(
           `  replaced score ${report.previous.score ?? '(none)'} @ strategy ` +

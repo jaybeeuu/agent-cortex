@@ -6,9 +6,10 @@ confidence and effort. Keep it short enough that you actually maintain it.
 
 It lives in the repository as a committed file, never in the tracker, so a reviewer can
 diff how the judgement changed. Every `##` section below is required: leave one empty and
-the validator names it. `## Deadline tiers` and `## Impact levels` are the two exceptions —
-omit either and the queue ranks on its documented deadline default, or `score` accepts any
-impact value of zero or more. Set the version and the date with
+the validator names it. `## Deadline tiers` and the four level tables — `## Reach levels`,
+`## Impact levels`, `## Confidence levels`, `## Effort levels` — are the exceptions: omit one
+and the queue ranks on its documented deadline default, or `score` accepts any value that
+component's floor allows. Set the version and the date with
 `node <strategise-scripts>/strategy.mjs bump` after you edit the content.
 
 `<strategise-scripts>` is the absolute path to the `scripts/` directory of the `strategise`
@@ -75,16 +76,15 @@ The steps roughly double, so a `major` gain counts for much more than a `minor` 
 that sits between two rows has to round, and the rationale should say which neighbouring
 level it rejected and why.
 
-Reach, confidence and effort get no table here, and that is deliberate: reach is a count
-over a stated population, `## How to judge confidence` already bands the probability, and
-`## How to calibrate effort` already anchors the cost. Impact is the one component the
-rubric would otherwise leave to taste.
+Every component gets a table of its own: reach, confidence and effort follow this one, each
+with the same shape, because a rule that binds impact and not reach invites a scorer to be
+careful in one place and careless in three. The three sections after this one are that scale.
 
-A strategy with no table accepts any impact value of zero or more, and `score` prints a line
-saying so. There is no shipped default level set: unlike a deadline factor, a level set
-decides whether a score is accepted at all, so a value the owner never named must not be
-refused by one they never saw. Delete the table to lift the restriction; edit or add a row
-to move it.
+A strategy with no table accepts any impact value of zero or more, and `score` prints one
+line naming impact as unconstrained. There is no shipped default level set: unlike a deadline
+factor, a level set decides whether a score is accepted at all, so a value the owner never
+named must not be refused by one they never saw. Delete the table to lift the restriction;
+edit or add a row to move it.
 
 The five rows below are a starting point, written so a first table parses. Replace them with
 the scale you actually judge on: they are an example of the shape, not a recommendation the
@@ -98,6 +98,71 @@ tool prefers.
 | normal | 1 |
 | large | 2 |
 | major | 3 |
+
+## Reach levels
+
+<!--
+The scale a reach judgement lands on: one row per level, a label a rationale can cite and the
+figure it is worth. `score` refuses a reach value that is not on this table and names the rows
+it allows, so two scorers count the same population the same way.
+
+Reach is a count, so every value here is a whole number of zero or more. `validate` names a
+row it cannot read, a fractional or negative value, a repeated label and a repeated value, and
+a line that opens with a pipe must divide into exactly two cells.
+
+The rows below are a starting point. Replace them with the populations you actually count —
+workflows, beads, people — and keep every label and every value distinct. A strategy with no
+table accepts any reach of zero or more, and `score` says reach is unconstrained.
+-->
+
+| Level | Value |
+|---|---|
+| one | 1 |
+| several | 5 |
+| many | 20 |
+
+## Confidence levels
+
+<!--
+The probabilities a confidence judgement may take: one row per level, a label a rationale can
+cite and the figure it is worth. `score` refuses a confidence value that is not on this table
+and names the rows it allows.
+
+A confidence is a probability, so every value here is more than 0 and at most 1. `validate`
+names a row it cannot read, a value outside that range, a repeated label and a repeated value.
+
+Keep the rows consistent with `## How to judge confidence` above: that section says when to
+score low, and this table says which figures are available at all. The rows below are a
+starting point, not a recommendation. A strategy with no table accepts any confidence in
+`0..1`, and `score` says confidence is unconstrained.
+-->
+
+| Level | Value |
+|---|---|
+| guessing | 0.3 |
+| likely | 0.8 |
+| certain | 1 |
+
+## Effort levels
+
+<!--
+The costs an effort judgement may take, anchored to `## How to calibrate effort` above: one
+row per level, a label a rationale can cite and the figure it is worth. `score` refuses an
+effort value that is not on this table and names the rows it allows.
+
+An effort is a cost, so every value here is greater than zero. `validate` names a row it
+cannot read, a zero or negative value, a repeated label and a repeated value.
+
+The rows below are a starting point. Replace them with the anchors you actually use, so a
+scorer picks a figure the rubric named instead of inventing one. A strategy with no table
+accepts any effort above zero, and `score` says effort is unconstrained.
+-->
+
+| Level | Value |
+|---|---|
+| half a day | 1 |
+| two or three days | 3 |
+| a week or more | 5 |
 
 ## Deadline tiers
 

@@ -25,9 +25,9 @@
 //
 // `summary` is what the skill prints before it asks anything, and it exists so the digest
 // is read off the file rather than re-derived by an agent: it validates first, then reports
-// the version, the newest change-log entry, the themes, the two admissibility lists and the
-// deadline factors and impact levels when the file states them — each one read from the file,
-// none restated from elsewhere.
+// the version, the newest change-log entry, the themes, the two admissibility lists, the
+// deadline factors and the four component level tables when the file states them — each one
+// read from the file, none restated from elsewhere.
 //
 // Exit codes: 0 the file is valid or summarised, 1 the file is invalid or the operation
 // refused, 2 the caller asked for something malformed, 3 `summary` found no strategy file —
@@ -80,13 +80,20 @@ export const CHANGE_LOG_SECTION = 'Change log';
 export const DEADLINE_TIERS_SECTION = 'Deadline tiers';
 
 /**
- * The section that fixes the impact scale: one labelled value per level, so two scorers
- * put the same bead on the same figure. Optional in a hand-written file, and — unlike the
- * deadline tiers — with no documented default: a default factor only changes a rank, while
- * a default level set would reject a number the owner never ruled on. `init` copies a table
- * the owner can edit, and a file with none accepts any impact of zero or more.
+ * The four sections that fix a component's scale: one labelled value per level, so two
+ * scorers put the same bead on the same figure. Each is optional in a hand-written file, and
+ * — unlike the deadline tiers — with no documented default: a default factor only changes a
+ * rank, while a default level set would reject a number the owner never ruled on. `init`
+ * copies tables the owner can edit, and a file with none accepts any value the component's
+ * floor allows.
+ *
+ * `## Impact levels` shipped first and keeps its name, because a consumer's strategy already
+ * carries it. The three siblings follow the same shape.
  */
 export const IMPACT_LEVELS_SECTION = 'Impact levels';
+export const REACH_LEVELS_SECTION = 'Reach levels';
+export const CONFIDENCE_LEVELS_SECTION = 'Confidence levels';
+export const EFFORT_LEVELS_SECTION = 'Effort levels';
 
 /**
  * The deadline tiers the queue uses when the strategy carries none. The numbers live here
@@ -126,9 +133,6 @@ const TABLE_ROW = /^[ \t]*\|(.*)\|[ \t]*$/;
 /** The deadline table's header row, skipped as a label rather than read as a tier. */
 const TIER_HEADER = /^(remaining|time|when|deadline)$/i;
 
-/** The impact table's header row, skipped as a label rather than read as a level. */
-const LEVEL_HEADER = /^(level|impact|impact level)$/i;
-
 /** A table's `|---|:--:|` rule, which carries no value. */
 const TABLE_RULE = /^:?-{2,}:?$/;
 
@@ -167,18 +171,35 @@ const MS_PER_MINUTE = 60_000;
  */
 
 /**
- * One impact level: the label the strategy gives a step on the scale, and the figure it is
- * worth. The label is the word a rationale cites, so it is the reader-facing name.
- * @typedef {{ label: string, value: number }} ImpactLevel
+ * One level: the label the strategy gives a step on a component's scale, and the figure it
+ * is worth. The label is the word a rationale cites, so it is the reader-facing name.
+ * @typedef {{ label: string, value: number }} Level
  */
 
 /**
- * What `parseImpactLevels` found.
- * @typedef {object} ImpactLevelsReport
+ * What a level-table parser found.
+ * @typedef {object} LevelsReport
  * @property {boolean} ok
- * @property {ImpactLevel[]} levels  The parsed levels, in the order the table writes them.
+ * @property {Level[]} levels  The parsed levels, in the order the table writes them.
  * @property {string[]} errors       One line per defect in the table.
  * @property {'file' | 'none'} source  Whether the file states levels at all.
+ */
+
+/** The four RICE components, in the order a score names them.
+ * @typedef {'reach' | 'impact' | 'confidence' | 'effort'} Component
+ */
+
+/**
+ * One component's level table: the section it lives under, the words its header row may use,
+ * the rule a value must satisfy, and how that rule reads in an error. The reader is one
+ * function; a table is the whole of what a component changes about it.
+ * @typedef {object} LevelTable
+ * @property {Component} component  The RICE component the table constrains.
+ * @property {string} section    The `## <section>` heading the table lives under.
+ * @property {RegExp} header     The first cell's words when the row is a header, not a level.
+ * @property {(value: number) => boolean} accepts  Whether a value is on the component's scale.
+ * @property {string} requirement  The accepted shape, as a refusal names it.
+ * @property {(text: string) => LevelsReport} parse  The wrapper that reads this table.
  */
 
 /** A usage mistake: the caller asked for something malformed. Exit code 2. */
@@ -354,26 +375,81 @@ export function parseDeadlineTiers(text) {
 }
 
 /**
- * Read the impact levels out of a strategy: the `## Impact levels` table, in the order the
- * rows are written.
+ * The `## Impact levels` table: a positive number. This is the rule #298 shipped, kept as it
+ * was so a consumer's existing table keeps parsing to the same levels.
+ * @type {LevelTable}
+ */
+const IMPACT_TABLE = {
+  component: 'impact',
+  section: IMPACT_LEVELS_SECTION,
+  header: /^(level|impact|impact level)$/i,
+  accepts: (value) => value > 0,
+  requirement: 'a positive number',
+  parse: parseImpactLevels,
+};
+
+/** The `## Reach levels` table: reach is a count, so a whole number of zero or more. @type {LevelTable} */
+const REACH_TABLE = {
+  component: 'reach',
+  section: REACH_LEVELS_SECTION,
+  header: /^(level|reach|reach level)$/i,
+  accepts: (value) => Number.isInteger(value) && value >= 0,
+  requirement: 'a whole number of zero or more',
+  parse: parseReachLevels,
+};
+
+/** The `## Confidence levels` table: a probability, so more than 0 and at most 1. @type {LevelTable} */
+const CONFIDENCE_TABLE = {
+  component: 'confidence',
+  section: CONFIDENCE_LEVELS_SECTION,
+  header: /^(level|confidence|confidence level)$/i,
+  accepts: (value) => value > 0 && value <= 1,
+  requirement: 'more than 0 and at most 1',
+  parse: parseConfidenceLevels,
+};
+
+/** The `## Effort levels` table: a cost, so greater than zero. @type {LevelTable} */
+const EFFORT_TABLE = {
+  component: 'effort',
+  section: EFFORT_LEVELS_SECTION,
+  header: /^(level|effort|effort level)$/i,
+  accepts: (value) => value > 0,
+  requirement: 'a positive number',
+  parse: parseEffortLevels,
+};
+
+/**
+ * The four level tables, in the order a score names its components. One registry, so a caller
+ * that must check every component — `validateStrategy` and `rice.mjs score` — reads the list
+ * once instead of naming four parsers and drifting from the fifth. Each table names the wrapper
+ * that reads it, so the pair cannot drift apart either.
+ * @type {readonly LevelTable[]}
+ */
+export const LEVEL_TABLES = [REACH_TABLE, IMPACT_TABLE, CONFIDENCE_TABLE, EFFORT_TABLE];
+
+/**
+ * Read one level table out of a strategy: the `## <section>` table, in the order the rows are
+ * written. One reader for every component; `parseImpactLevels` and its three siblings are the
+ * thin wrappers, so a fix here reaches all four.
  *
- * There is no default level set. A missing section leaves impact unconstrained, and `score`
- * says so when it prints the record, because a restriction the owner never wrote must not
- * decide whether a score is accepted. A section that is present but unreadable is a
+ * There is no default level set. A missing section leaves the component unconstrained, and
+ * `score` says so when it prints the record, because a restriction the owner never wrote must
+ * not decide whether a score is accepted. A section that is present but unreadable is a
  * different matter: it is an error rather than a fallback, because a rule the reader cannot
- * see must not decide the outcome either. Every defect is reported, so one run fixes the
- * whole table.
+ * see must not decide the outcome either. Every defect is reported, so one run fixes the whole
+ * table.
  *
  * A line that opens like a row but is not one is a defect, not a line to skip: a level the
- * author wrote and this parser dropped would leave the allowed set in silence, and the scorer
+ * author wrote and this reader dropped would leave the allowed set in silence, and the scorer
  * would then be told a value is not on a table that never said so.
- * @param {string} text @returns {ImpactLevelsReport}
+ * @param {string} text @param {LevelTable} table @returns {LevelsReport}
  */
-export function parseImpactLevels(text) {
-  const body = sectionBody(text.split('\n'), IMPACT_LEVELS_SECTION);
+function readLevels(text, table) {
+  const { section } = table;
+  const body = sectionBody(text.split('\n'), section);
   if (body === null) return { ok: true, levels: [], errors: [], source: 'none' };
 
-  /** @type {ImpactLevel[]} */
+  /** @type {Level[]} */
   const levels = [];
   /** @type {string[]} */
   const errors = [];
@@ -390,14 +466,14 @@ export function parseImpactLevels(text) {
       // reader cannot close is a row the author wrote.
       if (line.trimStart().startsWith('|')) {
         errors.push(
-          `${IMPACT_LEVELS_SECTION}: line "${line.trim()}" is not a "| <level> | <value> |" row — every row needs two cells between two pipes`,
+          `${section}: line "${line.trim()}" is not a "| <level> | <value> |" row — every row needs two cells between two pipes`,
         );
       }
       continue;
     }
     if (cells.length !== 2) {
       errors.push(
-        `${IMPACT_LEVELS_SECTION}: line "${line.trim()}" is not a "| <level> | <value> |" row — it divides into ${cells.length} cells`,
+        `${section}: line "${line.trim()}" is not a "| <level> | <value> |" row — it divides into ${cells.length} cells`,
       );
       continue;
     }
@@ -405,17 +481,19 @@ export function parseImpactLevels(text) {
     const valueText = cells[1].trim();
     const isFirst = firstTableLine;
     firstTableLine = false;
-    if (isFirst && LEVEL_HEADER.test(label)) continue;
+    if (isFirst && table.header.test(label)) continue;
     if (TABLE_RULE.test(label) || TABLE_RULE.test(valueText)) continue;
 
-    const row = `${IMPACT_LEVELS_SECTION}: row "| ${label} | ${valueText} |"`;
+    const row = `${section}: row "| ${label} | ${valueText} |"`;
     if (label === '') {
       errors.push(`${row} — every level needs a label a rationale can cite`);
       continue;
     }
-    const value = TABLE_NUMBER.test(valueText) ? Number(valueText) : 0;
-    if (value <= 0) {
-      errors.push(`${row} — value "${valueText}" is not a positive number`);
+    // A value the number shape rejects becomes NaN, so the component's own rule refuses it and
+    // the message repeats what the table wrote rather than a number it guessed.
+    const value = TABLE_NUMBER.test(valueText) ? Number(valueText) : Number.NaN;
+    if (!table.accepts(value)) {
+      errors.push(`${row} — value "${valueText}" is not ${table.requirement}`);
       continue;
     }
     if (labels.has(label)) {
@@ -433,13 +511,45 @@ export function parseImpactLevels(text) {
 
   if (levels.length === 0 && errors.length === 0) {
     errors.push(
-      `${IMPACT_LEVELS_SECTION}: carries no "| Level | Value |" row — write one row per level, or remove the section`,
+      `${section}: carries no "| Level | Value |" row — write one row per level, or remove the section`,
     );
   }
 
   return errors.length > 0
     ? { ok: false, levels, errors, source: 'file' }
     : { ok: true, levels, errors, source: 'file' };
+}
+
+/**
+ * Read the impact levels out of a strategy: the `## Impact levels` table.
+ * @param {string} text @returns {LevelsReport}
+ */
+export function parseImpactLevels(text) {
+  return readLevels(text, IMPACT_TABLE);
+}
+
+/**
+ * Read the reach levels out of a strategy: the `## Reach levels` table.
+ * @param {string} text @returns {LevelsReport}
+ */
+export function parseReachLevels(text) {
+  return readLevels(text, REACH_TABLE);
+}
+
+/**
+ * Read the confidence levels out of a strategy: the `## Confidence levels` table.
+ * @param {string} text @returns {LevelsReport}
+ */
+export function parseConfidenceLevels(text) {
+  return readLevels(text, CONFIDENCE_TABLE);
+}
+
+/**
+ * Read the effort levels out of a strategy: the `## Effort levels` table.
+ * @param {string} text @returns {LevelsReport}
+ */
+export function parseEffortLevels(text) {
+  return readLevels(text, EFFORT_TABLE);
 }
 
 /**
@@ -554,8 +664,12 @@ export function validateStrategy(text) {
   const lines = text.split('\n');
   const tiers = parseDeadlineTiers(text);
   if (!tiers.ok) errors.push(...tiers.errors);
-  const levels = parseImpactLevels(text);
-  if (!levels.ok) errors.push(...levels.errors);
+  // Every table is read, so one run names every defect in every table the file carries: a
+  // broken reach table must not hide a broken confidence table behind it.
+  for (const table of LEVEL_TABLES) {
+    const parsed = readLevels(text, table);
+    if (!parsed.ok) errors.push(...parsed.errors);
+  }
 
   for (const title of REQUIRED_SECTIONS) {
     const body = sectionBody(lines, title);
@@ -750,12 +864,12 @@ function deadlineLine(tiers) {
 }
 
 /**
- * The impact levels as one digest line, in the order the table writes them. The order is the
+ * One level table as one digest line, in the order the table writes them. The order is the
  * owner's scale and the line is short, so the whole table prints: a label plus the figure a
  * scorer must match, which is exactly what a refusal names.
- * @param {ImpactLevel[]} levels @returns {string}
+ * @param {Level[]} levels @returns {string}
  */
-function impactLine(levels) {
+function levelLine(levels) {
   return levels.map((level) => `${level.label} ${level.value}`).join(' · ');
 }
 
@@ -776,14 +890,15 @@ function lastChange(lines, updated) {
 
 /**
  * The digest the skill opens with: the file it read, the version, the newest change-log
- * entry, the themes, the two admissibility lists, and the deadline factors when the file
- * states them — a handful of lines, never a re-print.
+ * entry, the themes, the two admissibility lists, and the deadline factors and level tables
+ * when the file states them — a handful of lines, never a re-print.
  *
  * Nothing here is a ranking order, and the labels must not suggest one. `## What counts as
  * value` and `## Explicitly out of scope` are admissibility: the test a bead passes to earn
  * work, and the work the month rules out. What orders the beads that pass them is the
  * scoring rubric — RICE with its multipliers — not this file. The rule sets the file may
- * state are `## Deadline tiers`, printed in its own order, and `## Impact levels`, printed
+ * state are `## Deadline tiers`, printed in its own order, and the four level tables
+ * (`## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels`), printed
  * as the scale a score must land on; each is omitted entirely when the section is absent,
  * because the file is then silent on it and the documented default or no restriction applies.
  *
@@ -803,8 +918,10 @@ export function summariseStrategy(text, file, report) {
   ];
   const tiers = parseDeadlineTiers(text);
   if (tiers.source === 'file') digest.push(`  deadline factors: ${deadlineLine(tiers.tiers)}`);
-  const levels = parseImpactLevels(text);
-  if (levels.source === 'file') digest.push(`  impact levels: ${impactLine(levels.levels)}`);
+  for (const table of LEVEL_TABLES) {
+    const parsed = readLevels(text, table);
+    if (parsed.source === 'file') digest.push(`  ${table.component} levels: ${levelLine(parsed.levels)}`);
+  }
   return `${digest.join('\n')}\n`;
 }
 
@@ -819,8 +936,8 @@ const USAGE = `Usage: node strategy.mjs <${COMMANDS.join('|')}> [options]
   validate   Check the shape and print the file to stdout only when it passes.
   bump       Raise the version by one, record today's date and append the reason.
   summary    Print the digest to open a run with: path, version, last change, admissibility,
-             deadline factors, impact levels. Exits 3 when no strategy file exists, so a first
-             run is told apart from a strategy that is present but invalid.
+             deadline factors, the four level tables. Exits 3 when no strategy file exists, so a
+             first run is told apart from a strategy that is present but invalid.
 
 Options:
   --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)

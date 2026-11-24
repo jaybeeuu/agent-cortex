@@ -433,6 +433,10 @@ describe("acting on an armed request", () => {
         level: "error",
       },
     ]);
+    // "The window is unchanged" is the claim the report makes, so prove it: a
+    // failure must not dispatch the flush command or replace the session.
+    assert.deepEqual(instance.calls.userMessages, [], "a failed compaction flushes nothing");
+    assert.deepEqual(instance.calls.replacements, [], "a failed compaction replaces no session");
   });
 });
 

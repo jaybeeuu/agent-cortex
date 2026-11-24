@@ -186,7 +186,7 @@ describe("guppi's window transitions render each harness's own mechanism", () =>
     );
   });
 
-  it("states what each outcome does to the window, and the timing each names", async () => {
+  it("states what each outcome does to the window, and why", async () => {
     const { pi, claude } = await stageBoth();
 
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {

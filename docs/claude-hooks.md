@@ -23,6 +23,7 @@ UI surface. Each decision below is grounded in the Claude Code hooks reference.
 | `subagent/` | — | **Reject** — native |
 | `agent-modes/` | — | **Reject** — no equivalent |
 | `session-clear/` | — | **Reject** — built-in `/clear` |
+| `session-transition/` | — | **Reject** — built-in `/compact` and `/clear` |
 | `post-merge-watch/` | — | **Reject** — no hook surface; Claude watches with its own tools |
 | `interrupt-bookmark/` | — | **Reject** — no hook surface; Claude rewinds with its own `/rewind` |
 
@@ -152,6 +153,18 @@ pi has no "same session identity, empty context" command, so the extension adds
 `/clear` on top of `ctx.newSession()`. Claude Code ships `/clear` itself, and it
 keeps the model and the permission mode, so there is nothing to port: no hook, no
 command, no settings entry. Rejected as duplicate.
+
+## `session-transition/` → Reject (built-in)
+
+pi has no deliberate way to ask for either window transition a boundary decision
+chooses, so the extension adds `request_compact` for a stay and `request_flush`
+for a switch, plus the `session-flush` command an armed flush dispatches. Claude
+Code ships both transitions itself: `/compact` summarises the window and keeps a
+tail, and `/clear` drops it and carries nothing across. There is therefore
+nothing to port: no hook, no command, no settings entry. The `compact_window`
+and `flush_window` rows in `token-map.json` name `/compact` and `/clear` for
+claude, so the guppi lifecycle states the decision and each harness names the
+mechanism it already has. Rejected as duplicate.
 
 ## `post-merge-watch/` → Reject (no hook surface)
 

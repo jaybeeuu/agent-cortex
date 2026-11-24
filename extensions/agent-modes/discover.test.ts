@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   type AgentDef,
   type TokenMap,
+  DEFAULT_TOOLS,
   discoverAgents,
   loadTokenMap,
 } from "./discover.ts";
@@ -185,6 +186,36 @@ describe("discoverAgents (composable source format)", () => {
     assert.deepEqual(agents[0].tools, ["bash"]);
   });
 
+  it("keeps the all-tools sentinel as the resolved tool list", () => {
+    const fx = track(makeFixture());
+    writeComposableAgent(fx, "guppi", {
+      frontmatter: { name: "agent-cortex:guppi", description: "Collaborator", tools: ["*"] },
+    });
+
+    const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+
+    assert.equal(agents.length, 1);
+    // "*" is not a tool name, so it must not be translated, sorted among names
+    // or normalised to DEFAULT_TOOLS: activation resolves it against the
+    // session's real tool set (the index.test.ts activation case).
+    assert.deepEqual(agents[0].tools, ["*"]);
+  });
+
+  it("normalises a whitespace-padded all-tools sentinel to the sentinel", () => {
+    const fx = track(makeFixture());
+    writeComposableAgent(fx, "guppi", {
+      frontmatter: { name: "agent-cortex:guppi", description: "Collaborator", tools: ["* "] },
+    });
+
+    const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+
+    assert.equal(agents.length, 1);
+    // Padding carries no meaning in a YAML scalar, and the installers trim the
+    // same authored value before they compare, so the padded form must not
+    // survive as a tool name: it resolves to the sentinel at activation.
+    assert.deepEqual(agents[0].tools, ["*"]);
+  });
+
   it("uses the built-in fallback map when token-map.json is unavailable", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "legacy", {
@@ -262,6 +293,29 @@ describe("discoverAgents (flat fallback)", () => {
     const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
 
     assert.deepEqual(agents[0].tools, ["bash", "read", "task"]);
+  });
+
+  it("reads an absent tools key as every tool, because the installers omit the line for it", () => {
+    const fx = track(makeFixture());
+    // A staged pi package's render for a ["*"] agent: no tools line at all.
+    writeFlatAgent(fx, "guppi", '---\nname: "agent-cortex:guppi"\ndescription: "Collaborator"\n---\n\nFlat body.');
+
+    const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+
+    assert.equal(agents.length, 1);
+    assert.deepEqual(agents[0].tools, ["*"]);
+  });
+
+  it("keeps DEFAULT_TOOLS when a flat agent's frontmatter cannot be parsed", () => {
+    const fx = track(makeFixture());
+    // No opening delimiter, so no frontmatter can be read: a corrupt file must
+    // not be mistaken for "no tools key" and must never grant every tool.
+    writeFlatAgent(fx, "legacy", "# legacy\n\nBody with no frontmatter.\n");
+
+    const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+
+    assert.equal(agents.length, 1);
+    assert.deepEqual(agents[0].tools, DEFAULT_TOOLS);
   });
 });
 

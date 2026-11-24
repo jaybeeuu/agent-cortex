@@ -88,6 +88,51 @@ async function pathExists(p) {
   }
 }
 
+/**
+ * The one sentinel an authored tool list may carry instead of tool names: it
+ * means every tool the session has (agents/README.md). The installers resolve it
+ * by omitting the `tools:` line, so a literal `*` never reaches a harness.
+ */
+export const ALL_TOOLS = "*";
+
+/**
+ * True when one authored entry names the all-tools sentinel.
+ *
+ * Padding is ignored: `"* "` and `" *"` are the sentinel. Whitespace carries no
+ * meaning in a JSON or YAML scalar, and the runtime side
+ * (extensions/agent-modes/discover.ts) trims the same authored value — reading
+ * the padded form as a tool name here would render a literal `*` that a harness
+ * treats as every tool, so one authored value would mean two things.
+ *
+ * scripts/validate-agent-dir.mjs imports this, so the repository validator and
+ * both installers cannot drift apart. The extension keeps its own copy only
+ * because a staged pi package ships `extensions/` without `scripts/`.
+ *
+ * @param {string} tool
+ * @returns {boolean}
+ */
+export function isAllToolsEntry(tool) {
+  return tool.trim() === ALL_TOOLS;
+}
+
+/**
+ * True when a resolved tool list is the all-tools sentinel.
+ * @param {readonly string[]} tools
+ * @returns {boolean}
+ */
+export function isAllTools(tools) {
+  return tools.length === 1 && isAllToolsEntry(tools[0]);
+}
+
+/**
+ * True when any entry names the sentinel, alone or beside tool names.
+ * @param {readonly string[]} tools
+ * @returns {boolean}
+ */
+function mentionsAllTools(tools) {
+  return tools.some(isAllToolsEntry);
+}
+
 // ─── Token substitution ──────────────────────────────────────────────────────
 
 const TOOL_RE = /\{\{TOOL:([^}]+)\}\}/g;
@@ -221,6 +266,14 @@ async function parseFrontmatter(path, name, harness) {
   if (!Array.isArray(fm.tools) || fm.tools.length === 0 || !fm.tools.every((t) => typeof t === "string")) {
     throw new Error(`agent "${name}": ${path} tools must be a non-empty array of strings`);
   }
+  // `"*"` means every tool the session has, and it cannot be combined with tool
+  // names. Both installers carry the meaning by omitting the `tools:` line, so a
+  // mixed list would put a literal `*` in the scalar instead: pi's `--tools`
+  // compiles any entry containing `*` to a glob, so the same text means "every
+  // tool" to one consumer and nothing to a consumer that takes exact names.
+  if (mentionsAllTools(fm.tools) && !isAllTools(fm.tools)) {
+    throw new Error(`agent "${name}": ${path} tools must be ["*"] or a list of tool names — "*" cannot be combined`);
+  }
   for (const key of Object.keys(fm)) {
     if (![...REQUIRED_FIELDS, ...KNOWN_OPTIONAL_FIELDS].includes(key)) {
       throw new Error(`agent "${name}": ${path} unknown field "${key}" — strict schema per agents/README.md`);
@@ -306,9 +359,10 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
  *
  * Canonical keys resolve through token-map.json's tools table; a null mapping
  * means the harness has no equivalent and the entry is omitted (the contract's
- * tool-list rule); a name that is not a canonical key passes through untouched
- * (it may be a native tool, e.g. pi's fetch_content). Mirrors the runtime
- * translation in extensions/agent-modes/discover.ts.
+ * tool-list rule); the all-tools sentinel `"*"` passes through untouched for
+ * the renderer to resolve; a name that is not a canonical key passes through
+ * untouched (it may be a native tool, e.g. pi's fetch_content). Mirrors the
+ * runtime translation in extensions/agent-modes/discover.ts.
  *
  * @param {string[]} tools  Canonical tool names from a harness frontmatter.json
  * @param {TokenMap} tokenMap Parsed token-map.json (from loadTokenMap)
@@ -319,6 +373,11 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
 export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}) {
   const out = [];
   for (const tool of tools) {
+    if (isAllToolsEntry(tool)) {
+      // Normalised, so a padded sentinel cannot survive as a tool name.
+      out.push(ALL_TOOLS);
+      continue;
+    }
     const mapping = tokenMap.tools[tool];
     if (mapping === undefined) {
       out.push(tool);

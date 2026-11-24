@@ -43,6 +43,12 @@ composable directory — a staged pi package carries flat renders, and a hand-wr
 agent may be a single flat file. A composable directory always wins over its flat
 counterpart for the same agent id.
 
+An authored `tools` list of exactly `["*"]` means every tool the session has. The
+installed renders carry no `tools:` line for it, so this extension reads an absent
+key on the flat path as every tool and resolves it at activation from
+`pi.getAllTools()` — a connector registered during the session is included. A flat
+file whose frontmatter cannot be parsed keeps the conservative default set instead.
+
 ## Development
 
 Discovery and prompt composition live in `discover.ts` (unit-tested against

@@ -54,6 +54,8 @@ agent-cortex/
 │   └── skill-stats/
 │       ├── README.md      # Installation & usage
 │       └── index.ts       # Extension entrypoint
+├── docs/                  # Repository documentation (not shipped unless package.json `files` names it)
+│   └── CONTEXT.md         #   Glossary of the shipped vocabulary: theme, item, boundary, clear, flush
 ├── hooks/                # Canonical Claude Code hooks (hooks.json + scripts — see docs/claude-hooks.md)
 │   └── claude/           #   generated into the plugin's hooks.json + hooks/ by bin/installers/claude.mjs
 ├── claude/               # Committed Claude user-settings template — merged into ~/.claude/settings.json on install

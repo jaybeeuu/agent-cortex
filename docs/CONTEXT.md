@@ -12,37 +12,59 @@ a review given. Items belong to a theme. See boundary.
 # boundary
 
 The completion of one item. The moment guppi re-ranks: it runs `boundary` in `hitl-queue`, says the
-block, and asks for one of three outcomes — stay, switch or move — which `--decide` writes to the
-theme bead's trail.
+block, and asks for one of two outcomes — stay or switch — which `--decide` writes to the theme
+bead's trail.
 
 A completed task is one kind of item, so every completed task is a boundary. The reverse does not
 hold: recording a decision is a boundary at which no task has completed. See item, theme, task.
 
-# task
+# decision
 
-Not a defined unit. Shipped text uses "task" loosely for the thing the human brought to the session —
-"guppi is resident and works one task at a time" — so a phrase such as "when a task completes" names
-no moment the domain can locate. The defined units are item and theme; a phrase that means a moment
-should name one of those, or a boundary. See item, theme, boundary.
+The answer guppi records at a boundary, one of **stay** or **switch**, passed to `boundary` as
+`--decide` and written to the theme bead's trail with a timestamp.
 
-# clear
+A decision is about the next theme, not the next item. A stay continues in the theme and may take
+any of its items, so skipping a higher-scoring bead elsewhere is ordinary and carries a reason
+rather than a separate name. A switch leaves the theme for wherever the queue points. See boundary,
+compact, flush, interrupt.
 
-Any reset that drops the window — `/clear` and anything that replaces it. Rules are written against
-a clear, never against one command name, so they survive the mechanism changing. A clear drops the
-window; it does not reseed it. See flush.
+# compact
+
+Summarise the window and carry on: the older turns become a summary and the recent tail is kept.
+The window transition of a **stay**, because the next item on the theme needs what the last one
+established but not its raw turns.
+
+Compact is one of three window transitions. It keeps a summary; a flush drops the window entirely; a
+rewind discards everything after a checkpoint. See flush, rewind, decision.
 
 # flush
 
-Write the outcome to the tracker, then drop the window, keeping the bead ID. A flush is the act; a
-clear is the mechanism it uses.
+Drop the window and start fresh, keeping nothing but what the tracker already holds. The window
+transition of a **switch**, because a summary of a theme you have just left is the noise the flush
+exists to remove.
 
-A flush happens at a boundary whose decision leaves the theme — a switch or a move — and never at a
-stay. A stay keeps the window, because the next item on the theme needs what the last one
-established; the trail and the memory are still written. See boundary, decision, clear.
+A flush does not carry a handoff: the next session's own `## Session start` re-establishes the
+rubric and the queue, and `Recover a theme from the tracker` restores any theme on demand. See
+compact, rewind, clear.
 
-# decision
+# clear
 
-The answer guppi records at a boundary, one of stay, switch or move, passed to `boundary` as
-`--decide` and written to the theme bead's trail with a timestamp. A decision that leaves the theme
-is what triggers a flush. See boundary, flush.
+The mechanism a flush uses on a harness that offers only a session reset — `/clear` and anything
+that replaces it. Rules name the transition, never the command, so they survive the mechanism
+changing. See flush.
 
+# interrupt
+
+Work that arrives mid-item and forces its way in: a note from a meeting, PR feedback to pass on, a
+Slack todo. Met in four steps — checkpoint at the last clean boundary, record it as the bead its
+content implies, rewind to the checkpoint, then resume with one sentence naming the task and the
+record.
+
+An interrupt is distinguished from a decision by where it ends: a decision ends a theme, an interrupt
+ends nothing and returns you to the item you were on. See rewind, decision, boundary.
+
+# rewind
+
+Drop every turn after a checkpoint, keeping everything before it. The window transition an interrupt
+uses, and the only one that restores a known state rather than summarising it or discarding the
+window. See interrupt, compact, flush.

@@ -23,7 +23,7 @@
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { discoverAgents, DEFAULT_TOOLS, type AgentDef } from "./discover.ts";
+import { discoverAgents, DEFAULT_TOOLS, isAllTools, type AgentDef } from "./discover.ts";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -95,6 +95,20 @@ export default function agentModesExtension(pi: ExtensionAPI): void {
     return agents[activeAgentIndex];
   }
 
+  /**
+   * The tool names to activate for an agent.
+   *
+   * `["*"]` means every tool the session has, and only pi knows that set, so the
+   * sentinel is resolved here — at activation — rather than at discovery: a
+   * connector registered later in the session is then included. pi documents
+   * `setActiveTools` as ignoring unknown and hidden tools, so passing every
+   * registered name is safe.
+   */
+  function activateTools(agent: AgentDef): string[] {
+    if (!isAllTools(agent.tools)) return agent.tools;
+    return pi.getAllTools().map((tool) => tool.name);
+  }
+
   function setAgentMode(ctx: ExtensionContext, index: number): boolean {
     if (index < 0) index = agents.length; // default mode
     if (index > agents.length) return false;
@@ -122,7 +136,7 @@ export default function agentModesExtension(pi: ExtensionAPI): void {
       const agent = agents[index];
       activeAgentIndex = index;
       try {
-        pi.setActiveTools(agent.tools);
+        pi.setActiveTools(activateTools(agent));
       } catch (err) {
         console.warn(`[agent-modes] Failed to set tools for ${agent.id}: ${err}`);
         return false;

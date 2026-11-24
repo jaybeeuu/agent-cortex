@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 
 import { type AgentDef, discoverAgents } from "./discover.ts";
 import agentModesExtension, { registerAgentFlag } from "./index.ts";
@@ -21,6 +21,23 @@ function agent(id: string): AgentDef {
     prompt: "",
   };
 }
+
+/**
+ * One registered tool, as `pi.getAllTools()` reports it. Complete, so a pi
+ * release that grows `ToolInfo` fails `tsc` here rather than being cast away.
+ */
+function toolInfo(name: string): ToolInfo {
+  return {
+    name,
+    description: `The ${name} tool`,
+    parameters: { type: "object", properties: {} },
+    exposure: "direct",
+    sourceInfo: { path: `builtin:${name}`, source: "builtin", scope: "user", origin: "top-level" },
+  };
+}
+
+/** The tools the fake session has registered. `guppi`'s ["*"] must activate all of them. */
+const SESSION_TOOLS = ["read", "bash", "mcp__atlassian__get_page", "mcp__slack__search"].map(toolInfo);
 
 type RegisterFlagArgs = Parameters<ExtensionAPI["registerFlag"]>;
 /** A handler recorded from `pi.on`, invoked via Reflect.apply so its exact
@@ -98,7 +115,7 @@ function createFakePi(flagValues: Record<string, boolean | string> = {}): FakePi
     exec: async () => {
       throw new Error("not implemented");
     },
-    getAllTools: () => [],
+    getAllTools: () => SESSION_TOOLS,
     getSettings: () => {
       throw new Error("not implemented");
     },
@@ -216,6 +233,21 @@ describe("agentModesExtension --agent flag", () => {
     assert.ok(
       ctx.ui.statuses.every((s) => !s.text?.includes("agent:")),
       "no agent mode should be reported",
+    );
+  });
+
+  it("activates every tool the session has when the agent's list is the all-tools sentinel", () => {
+    // guppi's authored frontmatter is ["*"], so its activation must name every
+    // registered tool — connectors included, which no authored list can know.
+    const fake = createFakePi({ agent: "guppi" });
+    const ctx = createFakeContext();
+
+    agentModesExtension(fake.pi);
+    fake.fire("session_start", {}, ctx);
+
+    assert.deepEqual(
+      fake.setActiveToolsCalls.at(-1),
+      SESSION_TOOLS.map((tool) => tool.name),
     );
   });
 });

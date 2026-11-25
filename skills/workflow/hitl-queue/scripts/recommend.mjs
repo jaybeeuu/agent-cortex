@@ -209,11 +209,11 @@ export function findQuote(text, quote) {
  * @param {boolean} options.includeIdeas
  * @returns {Promise<{ strategyFile: string, text: string, report: QueueReport } | { strategyFile: string, strategyErrors: string[] }>}
  */
-async function readQueue({ bd, file, cwd, includeIdeas }) {
+async function readQueue({ bd, file, cwd, includeIdeas, scopes }) {
   const strategyFile = await resolveStrategyPath({ ...(file === undefined ? {} : { file }), cwd });
   const strategy = await readStrategy(strategyFile);
   if ('errors' in strategy) return { strategyFile, strategyErrors: strategy.errors };
-  const report = await buildQueue({ bd, cwd, includeIdeas, ...(file === undefined ? {} : { file }) });
+  const report = await buildQueue({ bd, cwd, includeIdeas, scopes, ...(file === undefined ? {} : { file }) });
   return { strategyFile, text: strategy.text, report };
 }
 
@@ -237,8 +237,8 @@ async function readQueue({ bd, file, cwd, includeIdeas }) {
  * @param {boolean} [options.includeIdeas]
  * @returns {Promise<Recommendation>}
  */
-export async function buildRecommendation({ bd, file, cwd = process.cwd(), why, bead, includeIdeas = false }) {
-  const loaded = await readQueue({ bd, file, cwd, includeIdeas });
+export async function buildRecommendation({ bd, file, cwd = process.cwd(), why, bead, includeIdeas = false, scopes }) {
+  const loaded = await readQueue({ bd, file, cwd, includeIdeas, scopes });
   if ('strategyErrors' in loaded) {
     return { state: RECOMMEND_STATE.noStrategy, file: loaded.strategyFile, strategyErrors: loaded.strategyErrors };
   }
@@ -358,8 +358,9 @@ export async function buildShortlist({
   why,
   includeIdeas = false,
   top = SHORTLIST_DEFAULT_TOP,
+  scopes,
 }) {
-  const loaded = await readQueue({ bd, file, cwd, includeIdeas });
+  const loaded = await readQueue({ bd, file, cwd, includeIdeas, scopes });
   if ('strategyErrors' in loaded) {
     return { state: RECOMMEND_STATE.noStrategy, file: loaded.strategyFile, strategyErrors: loaded.strategyErrors };
   }

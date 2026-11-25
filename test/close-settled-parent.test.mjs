@@ -14,12 +14,14 @@ import { closeSettledParent, runCli } from "../skills/workflow/run-pipeline-stag
  */
 
 /**
- * A stateful fake `bd`: it answers `show`/`children` from `state` and records
- * every `note` and `close`, so a test reads what the script actually wrote.
+ * A stateful fake `bd`: it answers `show`/`children` from `state`, records
+ * every `note` and `close` so a test reads what the script actually wrote, and
+ * keeps `writes` — every `note`/`close` call in the order it arrived — so a
+ * test can assert the order of the writes, not only their content.
  * @param {{ id: string, status?: string, children: Child[] }} seed
  * @returns {{
  *   bd: (args: string[]) => Promise<string>,
- *   state: { parent: { id: string, status: string }, children: Child[], notes: { bead: string, text: string }[], closings: { bead: string, reason: string }[] },
+ *   state: { parent: { id: string, status: string }, children: Child[], notes: { bead: string, text: string }[], closings: { bead: string, reason: string }[], writes: string[][] },
  * }}
  */
 function createBd({ id, status = "open", children }) {
@@ -28,6 +30,7 @@ function createBd({ id, status = "open", children }) {
     children,
     notes: /** @type {{ bead: string, text: string }[]} */ ([]),
     closings: /** @type {{ bead: string, reason: string }[]} */ ([]),
+    writes: /** @type {string[][]} */ ([]),
   };
   /** @param {string[]} args */
   const bd = async (args) => {
@@ -37,9 +40,11 @@ function createBd({ id, status = "open", children }) {
       case "children":
         return JSON.stringify(state.children);
       case "note":
+        state.writes.push(args);
         state.notes.push({ bead: args[1], text: args[2] });
         return "";
       case "close":
+        state.writes.push(args);
         state.closings.push({ bead: args[1], reason: args[2].replace("--reason=", "") });
         state.parent.status = "closed";
         return "";
@@ -161,6 +166,11 @@ describe("closeSettledParent", () => {
 
     await closeSettledParent({ beadId: "proj-1", bd, now: () => "2026-01-02T03:04:05Z" });
 
+    assert.deepEqual(
+      state.writes.map(([command]) => command),
+      ["note", "close"],
+      "the note must be written before the close, so the evidence survives a failed close",
+    );
     assert.deepEqual(state.notes, [
       {
         bead: "proj-1",
@@ -231,11 +241,17 @@ describe("close-settled-parent CLI", () => {
   });
 
   it("exits two and prints the usage when --parent is missing", async () => {
+    const help = capture();
+    await runCli({ argv: ["--help"], write: help.write, writeError: help.writeError });
     const out = capture();
 
     const code = await runCli({ argv: ["--json"], write: out.write, writeError: out.writeError });
 
     assert.equal(code, 2);
     assert.match(out.err(), /--parent is required/);
+    assert.ok(
+      out.err().includes(help.out()),
+      `the usage error must print the usage block; stderr was:\n${out.err()}`,
+    );
   });
 });

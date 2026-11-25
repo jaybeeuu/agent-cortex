@@ -135,10 +135,19 @@ function shortQueueFixture() {
 async function shortlist({ beads, file, why, top }) {
   const workspace = await makeWorkspace();
   const strategyFile = file ?? (await writeStrategy(workspace));
+  const scope = {
+    name: 'code',
+    path: workspace,
+    kind: /** @type {'code' | 'personal' | 'ops'} */ ('code'),
+    readOnly: false,
+    current: true,
+    writable: true,
+  };
   const built = await buildShortlist({
     bd: fakeBd(beads),
     file: strategyFile,
     cwd: workspace,
+    scopes: [scope],
     why,
     ...(top === undefined ? {} : { top }),
   });

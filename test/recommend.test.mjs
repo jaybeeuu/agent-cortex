@@ -119,10 +119,19 @@ function queueFixture() {
 async function recommend({ beads, file, why = THEME, bead }) {
   const workspace = await makeWorkspace();
   const strategyFile = file ?? (await writeStrategy(workspace));
+  const scope = {
+    name: 'code',
+    path: workspace,
+    kind: /** @type {'code' | 'personal' | 'ops'} */ ('code'),
+    readOnly: false,
+    current: true,
+    writable: true,
+  };
   const recommendation = await buildRecommendation({
     bd: fakeBd(beads),
     file: strategyFile,
     cwd: workspace,
+    scopes: [scope],
     why,
     bead,
   });

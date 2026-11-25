@@ -206,14 +206,15 @@ export function findQuote(text, quote) {
  * @param {(args: string[]) => Promise<string>} options.bd
  * @param {string | undefined} options.file
  * @param {string} options.cwd
- * @param {boolean} options.includeIdeas
+ * @param {import("./scopes.mjs").Scope[]} [options.scopes]
+ * @param {boolean} [options.includeIdeas]
  * @returns {Promise<{ strategyFile: string, text: string, report: QueueReport } | { strategyFile: string, strategyErrors: string[] }>}
  */
-async function readQueue({ bd, file, cwd, includeIdeas }) {
+async function readQueue({ bd, file, cwd, includeIdeas, scopes }) {
   const strategyFile = await resolveStrategyPath({ ...(file === undefined ? {} : { file }), cwd });
   const strategy = await readStrategy(strategyFile);
   if ('errors' in strategy) return { strategyFile, strategyErrors: strategy.errors };
-  const report = await buildQueue({ bd, cwd, includeIdeas, ...(file === undefined ? {} : { file }) });
+  const report = await buildQueue({ bd, cwd, includeIdeas, scopes, ...(file === undefined ? {} : { file }) });
   return { strategyFile, text: strategy.text, report };
 }
 
@@ -234,11 +235,12 @@ async function readQueue({ bd, file, cwd, includeIdeas }) {
  * @param {string} [options.cwd]
  * @param {string | undefined} [options.why]    The strategy line that justifies the choice.
  * @param {string | undefined} [options.bead]   A bead the human named.
+ * @param {import("./scopes.mjs").Scope[]} [options.scopes]
  * @param {boolean} [options.includeIdeas]
  * @returns {Promise<Recommendation>}
  */
-export async function buildRecommendation({ bd, file, cwd = process.cwd(), why, bead, includeIdeas = false }) {
-  const loaded = await readQueue({ bd, file, cwd, includeIdeas });
+export async function buildRecommendation({ bd, file, cwd = process.cwd(), why, bead, includeIdeas = false, scopes }) {
+  const loaded = await readQueue({ bd, file, cwd, includeIdeas, scopes });
   if ('strategyErrors' in loaded) {
     return { state: RECOMMEND_STATE.noStrategy, file: loaded.strategyFile, strategyErrors: loaded.strategyErrors };
   }
@@ -348,6 +350,7 @@ export async function buildRecommendation({ bd, file, cwd = process.cwd(), why, 
  * @param {string} [options.cwd]
  * @param {string | undefined} [options.why]    The strategy line that justifies the top row.
  * @param {boolean} [options.includeIdeas]
+ * @param {import("./scopes.mjs").Scope[]} [options.scopes]
  * @param {number} [options.top]                Rows to show; defaults to SHORTLIST_DEFAULT_TOP.
  * @returns {Promise<Shortlist>}
  */
@@ -358,8 +361,9 @@ export async function buildShortlist({
   why,
   includeIdeas = false,
   top = SHORTLIST_DEFAULT_TOP,
+  scopes,
 }) {
-  const loaded = await readQueue({ bd, file, cwd, includeIdeas });
+  const loaded = await readQueue({ bd, file, cwd, includeIdeas, scopes });
   if ('strategyErrors' in loaded) {
     return { state: RECOMMEND_STATE.noStrategy, file: loaded.strategyFile, strategyErrors: loaded.strategyErrors };
   }

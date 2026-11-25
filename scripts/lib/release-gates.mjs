@@ -100,19 +100,39 @@ export function evaluateChangesetGate({ changes, labels, headRef, actor }) {
 /**
  * Read the package names a changeset's frontmatter bumps. Only the block between
  * the two `---` delimiters is read, so a body line containing a colon is never
- * mistaken for a package. A changeset with no frontmatter names no package.
+ * mistaken for a package.
+ *
+ * The parse is strict: it reports why a frontmatter block could not be read
+ * instead of reading no package names from it. `changeset version` reads every
+ * file in `.changeset` and throws on one it cannot parse, so a changeset the PR
+ * cannot parse and the gate passes fails the Release job on `main`, where nothing
+ * can fix it forward.
  * @param {string} content
- * @returns {string[]}
+ * @returns {{ packageNames: string[], error: string | null }} the names the
+ *   frontmatter bumps, and the reason there are none when it could not be read
  */
 export function parseChangesetPackages(content) {
-  const names = [];
-  for (const line of readFrontmatter(content)) {
-    const separator = line.indexOf(":");
-    if (separator === -1) continue;
-    const name = unquoteScalar(line.slice(0, separator));
-    if (name !== "") names.push(name);
+  if (content.trim() === "") {
+    return { packageNames: [], error: "the changeset file is empty" };
   }
-  return names;
+  const frontmatter = readFrontmatter(content);
+  if (frontmatter === null) {
+    return { packageNames: [], error: "missing or invalid frontmatter" };
+  }
+
+  const packageNames = [];
+  for (const line of frontmatter) {
+    const separator = line.indexOf(":");
+    if (separator === -1) {
+      return {
+        packageNames: [],
+        error: `frontmatter must map package names to version types, but found: ${line.trim()}`,
+      };
+    }
+    const name = unquoteScalar(line.slice(0, separator));
+    if (name !== "") packageNames.push(name);
+  }
+  return { packageNames, error: null };
 }
 
 /**
@@ -145,18 +165,18 @@ export function resolvePublishCommand(labels) {
 
 /**
  * The lines between the opening and closing frontmatter delimiters, with blank
- * lines and YAML comments dropped.
+ * lines and comments dropped, or `null` when the block is missing or unclosed.
  * @param {string} content
- * @returns {string[]}
+ * @returns {string[] | null}
  */
 function readFrontmatter(content) {
   const lines = content.split("\n");
   const opening = lines.findIndex((line) => line.trim() === FRONTMATTER_DELIMITER);
-  if (opening === -1) return [];
+  if (opening === -1) return null;
   const closing = lines.findIndex(
     (line, index) => index > opening && line.trim() === FRONTMATTER_DELIMITER,
   );
-  if (closing === -1) return [];
+  if (closing === -1) return null;
   return lines
     .slice(opening + 1, closing)
     .filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));

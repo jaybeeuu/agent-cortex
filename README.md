@@ -138,11 +138,13 @@ workspace `package.json` names directly:
 git diff --name-status "origin/main...HEAD" | node scripts/check-changeset.mjs
 ```
 
-A changeset whose frontmatter cannot be parsed still passes the package check. No
-frontmatter block, an unclosed block, a line with no colon and an empty value all exit
-0, so a malformed changeset still reaches `changeset version` and fails Release on
-`main`. That case sits outside this gate and is tracked separately (`agnt-ctx-yjw9`).
-Check that your changeset closes its frontmatter block and names the exact package.
+A changeset whose frontmatter cannot be parsed fails the PR instead, naming the file and
+why it could not be read: no frontmatter block, an unclosed block, a line that is not a
+`package: bump` pair, and an empty file. Each of those throws in `changeset version`, so
+passing it would fail the Release job on `main`. One shape stays outside the gate: a
+frontmatter pair with a name but no release type (`"@jaybeeuu/agent-cortex":`) still
+resolves its name, while `changeset version` rejects it as an invalid release type; that
+gap is tracked separately.
 
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when

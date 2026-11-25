@@ -93,8 +93,9 @@ closed beads and changes no files.
 ## Settled parent
 
 This is the last stage, so it is the run that closes the parent feature bead once the merge is on
-record and no child remains open. After closing the chore, run the settlement check from the same
-main checkout:
+record and no child remains open. The reasoning — why this stage owns the close, which labels count
+as a merge, and what each verdict means — is in [REFERENCE.md](../REFERENCE.md). After closing the
+chore, run the settlement check from the same main checkout:
 
 ```bash
 node <run-pipeline-stage-scripts>/close-settled-parent.mjs --parent <parent-id>
@@ -107,7 +108,8 @@ hardcode one harness's install path.
 It closes the parent only when every child is closed **and** a closed child carries
 `lifecycle:feature-pr` (the merge gate a human closed) or `lifecycle:post-merge`
 (`stage:post-merge`). It prints one verdict: `closed`, `skipped: children open`,
-`skipped: no merge evidence`, or `skipped: already closed`.
+`skipped: no merge evidence`, or `skipped: already closed`. Each verdict exits `0`, so a quiet run
+is a success and not a failure to escalate.
 
 - `skipped: no merge evidence` is the answer for a parent whose children were all closed by hand
   before any merge happened. Report the line and leave the parent open: closing it would claim a

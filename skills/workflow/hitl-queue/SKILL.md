@@ -71,7 +71,7 @@ unavailable: ops (/srv/ops) — workspace does not exist
 
 1  code    bd-7  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0  ×1.00 theme (untouched)
     Ship the queue — unblocks bd-8, bd-9, bd-10
-2  notes   bd-2   8.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)  ×0.70 theme bd-20 (2 served)
+2  notes   bd-2   8.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)  ×0.49 theme bd-20 (2 served)
     Decide the API shape — unblocks nothing
 -  code    bd-4     —  unscored — no rice metadata (score it with score-bead)
     Decide the rollout — unblocks nothing

@@ -44,8 +44,8 @@ each row are what a challenge is made of.
 1. **Read the rubric.** Run `validate` in `strategise`. It prints the file when it passes, and
    that printed text is the only place a justification may be quoted from.
 2. **Read the ranked rows.** Run `shortlist --json` in `hitl-queue`. Each row carries the bead, its
-   total, the four components, both multipliers, its scope, its due date where it has one and the
-   beads it unblocks. Report them as given; guppi computes no score.
+   total, the four components, all four multipliers, its scope, its due date where it has one and
+   the beads it unblocks. Report them as given; guppi computes no score.
 3. **Say the list.** Choose the one line of the rubric that justifies the top row, and run
    `shortlist --why "<that line>"`. The script refuses a line the file does not contain, so an
    invented reason fails before it is spoken. Say the rows it prints, keep the top row marked, then

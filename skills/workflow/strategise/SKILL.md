@@ -30,7 +30,7 @@ The strategy is a **committed file**, never a bead and never a scratch note. A r
 |---|---|
 | Default path | `.agent-cortex/working-docs/strategy.md`, relative to the repository root |
 | Override | `--file <path>` on every subcommand |
-| Contents | a version integer, a date, five required sections, and five optional tables — the four level tables (`## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels`) and `## Deadline tiers` |
+| Contents | a version integer, a date, five required sections, and six optional tables — the four level tables (`## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels`), `## Deadline tiers` and `## Theme balance` |
 | Daily line | one `- daily: <scope>, <scope> — <why>` bullet under `## Current themes` |
 | Lifetime | committed; edited by interview, then versioned with `bump` |
 
@@ -56,7 +56,7 @@ A run never opens with a question. Run the summary first: it reads the committed
 node <skill-scripts>/strategy.mjs summary
 ```
 
-The digest is all it prints: the path it read, the version, the newest change-log entry, the themes, the two admissibility lists as up to two bullets each, and — when the file states them — the deadline factors in the order the queue applies them and each level table in the order it writes its rows. It is not a re-print — open the file for what a cut line left out.
+The digest is all it prints: the path it read, the version, the newest change-log entry, the themes, the two admissibility lists as up to two bullets each, and — when the file states them — the deadline factors in the order the queue applies them, the theme balance as one line (`theme balance: window 5 · decay 0.7`), and each level table in the order it writes its rows. It is not a re-print — open the file for what a cut line left out.
 
 | Exit | The file | What to do |
 |---|---|---|
@@ -64,7 +64,7 @@ The digest is all it prints: the path it read, the version, the newest change-lo
 | 3 | absent | Say there is no strategy yet and take the first-run interview below. Print no digest. |
 | 1 | invalid or partly missing | Never present it as current. Say what it named — the empty or missing section, the field it could not read — and fix the file or re-interview before anything is scored against it. |
 
-**The file gains no new required section.** An admissibility heading would fail every strategy already committed, because `validate` gates them all. The file says what is worth doing and what is not: `## Current themes` is what the month is for, `## What counts as value` is the test a bead must pass, and `## Explicitly out of scope` is the work the month rules out — the last two are the digest's **admissibility** lines. What orders the beads that pass them is the **scoring rubric**, RICE with its multipliers, never this file. The optional sections are the rule sets: `## Deadline tiers`, whose rows the digest prints narrowest first, and the four level tables — `## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels` — the labelled scales a component's figure must land on. `score` refuses a value a table does not list and names the rows it allows. Omit a table and the file states nothing on that component: the deadline queue falls back to its documented default, and the component is unconstrained.
+**The file gains no new required section.** An admissibility heading would fail every strategy already committed, because `validate` gates them all. The file says what is worth doing and what is not: `## Current themes` is what the month is for, `## What counts as value` is the test a bead must pass, and `## Explicitly out of scope` is the work the month rules out — the last two are the digest's **admissibility** lines. What orders the beads that pass them is the **scoring rubric**, RICE with its multipliers, never this file. The optional sections are the rule sets: `## Deadline tiers`, whose rows the digest prints narrowest first, `## Theme balance`, whose `window` and `decay` the digest prints as one line, and the four level tables — `## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels` — the labelled scales a component's figure must land on. `score` refuses a value a table does not list and names the rows it allows. Omit a table and the file states nothing on that component: the deadline queue and the theme balance fall back to their documented defaults, and the component is unconstrained. `decay 1` keeps the section but turns balancing off.
 
 ## Workflow
 
@@ -133,7 +133,7 @@ A hand edit that changes a section but forgets `bump` still passes `validate`: t
 
 ## Verification checklist
 
-- [ ] The run opened with the digest — file, version, last change, themes, admissibility, deadline factors, the level tables — before it asked anything, and `node <skill-scripts>/strategy.mjs validate` exits 0 with the rubric printed.
+- [ ] The run opened with the digest — file, version, last change, themes, admissibility, deadline factors, the theme balance, the level tables — before it asked anything, and `node <skill-scripts>/strategy.mjs validate` exits 0 with the rubric printed.
 - [ ] The version is one higher than the previous file for an update, or `1` for a new one, and the change log names it.
 - [ ] A challenged order moved only after a bump, and the record names what moved.
 - [ ] No bead was created, tagged or closed by this skill; `git ls-files --error-unmatch .agent-cortex/working-docs/strategy.md` succeeds.

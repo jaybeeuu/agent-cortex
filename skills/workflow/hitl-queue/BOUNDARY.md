@@ -45,8 +45,9 @@ that leaves a theme without showing what it left for has asserted a priority it 
 A switch with no comparison on screen is a defect, not a summary.
 
 The recommendation is derived from the two stored totals and nothing else. The totals, the
-components and both multipliers are the queue's; this comparison computes no score, so the number
-a reader checks is the number the queue ranked by. [SKILL.md](SKILL.md) owns that arithmetic.
+components and all four multipliers are the queue's; this comparison computes no score, so the
+number a reader checks is the number the queue ranked by. [SKILL.md](SKILL.md) owns that
+arithmetic.
 
 ## The record
 

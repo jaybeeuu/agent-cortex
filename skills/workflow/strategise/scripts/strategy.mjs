@@ -26,8 +26,8 @@
 // `summary` is what the skill prints before it asks anything, and it exists so the digest
 // is read off the file rather than re-derived by an agent: it validates first, then reports
 // the version, the newest change-log entry, the themes, the two admissibility lists, the
-// deadline factors and the four component level tables when the file states them — each one
-// read from the file, none restated from elsewhere.
+// deadline factors, the theme balance and the four component level tables when the file states
+// them — each one read from the file, none restated from elsewhere.
 //
 // Exit codes: 0 the file is valid or summarised, 1 the file is invalid or the operation
 // refused, 2 the caller asked for something malformed, 3 `summary` found no strategy file —
@@ -78,6 +78,25 @@ export const CHANGE_LOG_SECTION = 'Change log';
  * `DEFAULT_DEADLINE_TIERS`, and `init` copies a table the owner can edit.
  */
 export const DEADLINE_TIERS_SECTION = 'Deadline tiers';
+
+/**
+ * The section that tunes the per-theme multiplier the ranked queue applies. Optional in a
+ * hand-written file: a strategy created before the balance existed ranks on
+ * `DEFAULT_THEME_BALANCE`, and `init` copies a table the owner can edit.
+ */
+export const THEME_BALANCE_SECTION = 'Theme balance';
+
+/**
+ * The theme balance the queue uses when the strategy carries none. Both numbers live here
+ * once, as the documented default, so a caller that never opens the strategy still ranks
+ * predictably; a strategy overrides them, so the balance tunes without a code change.
+ *
+ * `window` is how many of the newest closes are counted, and `decay` is what one serve of a
+ * theme costs: a theme served n times in the window keeps `decay ** n` of its weight, and a
+ * theme served not at all keeps all of it. `decay: 1` therefore disables the effect, which is
+ * the documented way to turn it off without deleting the section.
+ */
+export const DEFAULT_THEME_BALANCE = /** @type {ThemeBalance} */ ({ window: 5, decay: 0.7 });
 
 /**
  * The four sections that fix a component's scale: one labelled value per level, so two
@@ -136,6 +155,12 @@ const TIER_HEADER = /^(remaining|time|when|deadline)$/i;
 /** A table's `|---|:--:|` rule, which carries no value. */
 const TABLE_RULE = /^:?-{2,}:?$/;
 
+/** The theme-balance table's header row, skipped as a label rather than read as a setting. */
+const THEME_HEADER = /^(setting|settings)$/i;
+
+/** A whole number, the only shape a window may take. */
+const WHOLE_NUMBER = /^\d+$/;
+
 /** `within 7d` and `<= 7d`: the factor earned at or inside this much time left. */
 const TIER_WITHIN = /^(?:within|<=)\s+(\d+)\s*([mhd])$/i;
 
@@ -168,6 +193,24 @@ const MS_PER_MINUTE = 60_000;
  * @property {DeadlineTier[]} tiers  The parsed tiers, or the documented default when absent.
  * @property {string[]} errors       One line per defect in the table.
  * @property {'file' | 'default'} source  Whether the tiers were read from the file.
+ */
+
+/**
+ * The per-theme balance: how many of the newest closes are counted, and what one serve of a
+ * theme costs. Both are settings the strategy states, so the ranking stays explicable from
+ * the file rather than from a constant buried in a script.
+ * @typedef {object} ThemeBalance
+ * @property {number} window  How many of the newest non-chore closes are counted; 1 or more.
+ * @property {number} decay   What one serve costs; more than 0 and at most 1. `1` disables it.
+ */
+
+/**
+ * What `parseThemeBalance` found.
+ * @typedef {object} ThemeBalanceReport
+ * @property {boolean} ok
+ * @property {ThemeBalance} balance  The parsed settings, or the documented default.
+ * @property {string[]} errors       One line per defect in the table.
+ * @property {'file' | 'default'} source  Whether the settings were read from the file.
  */
 
 /**
@@ -372,6 +415,98 @@ export function parseDeadlineTiers(text) {
   const beyond = rows.filter((tier) => tier.kind === 'beyond');
   const overdue = rows.filter((tier) => tier.kind === 'overdue');
   return { ok: true, tiers: [...within, ...beyond, ...overdue], errors: [], source: 'file' };
+}
+
+/**
+ * Read the theme balance out of a strategy: the `## Theme balance` table, or the documented
+ * default when the section is absent.
+ *
+ * A section that is present must be complete — one `window` row and one `decay` row — because
+ * a value that silently fell back to a default would make the ranking depend on a setting the
+ * reader cannot see. An unknown setting name is a defect rather than a line to skip: a number
+ * the author wrote and this reader ignored would leave the balance decided by something the
+ * table does not show. Every defect is reported, so one run fixes the whole table.
+ *
+ * A heading with no readable row states no settings, so the documented default applies and the
+ * file is not credited with a table it does not carry — the same rule the deadline tiers use.
+ * @param {string} text @returns {ThemeBalanceReport}
+ */
+export function parseThemeBalance(text) {
+  const body = sectionBody(text.split('\n'), THEME_BALANCE_SECTION);
+  if (body === null) return { ok: true, balance: { ...DEFAULT_THEME_BALANCE }, errors: [], source: 'default' };
+
+  /** @type {{ window?: number, decay?: number }} */
+  const stated = {};
+  /** @type {string[]} */
+  const errors = [];
+  let firstTableLine = true;
+  let rows = 0;
+  let windowRow = false;
+  let decayRow = false;
+
+  for (const line of body) {
+    const cells = TABLE_ROW.exec(line)?.[1].split('|');
+    if (cells === undefined || cells.length !== 2) continue;
+    const name = cells[0].trim();
+    const valueText = cells[1].trim();
+    const isFirst = firstTableLine;
+    firstTableLine = false;
+    if (isFirst && THEME_HEADER.test(name)) continue;
+    if (TABLE_RULE.test(name) || TABLE_RULE.test(valueText)) continue;
+    rows += 1;
+
+    const row = `${THEME_BALANCE_SECTION}: row "| ${name} | ${valueText} |"`;
+    const setting = name.toLowerCase();
+    if (setting === 'window') windowRow = true;
+    else if (setting === 'decay') decayRow = true;
+    else {
+      errors.push(`${row} — "${name}" is not a setting this table carries; write "window" or "decay"`);
+      continue;
+    }
+    if (setting === 'window') {
+      if (stated.window !== undefined) {
+        errors.push(`${row} — "window" is already on the table, so one setting carries two values`);
+        continue;
+      }
+      const window = WHOLE_NUMBER.test(valueText) ? Number(valueText) : Number.NaN;
+      if (!Number.isInteger(window) || window < 1) {
+        errors.push(`${row} — window "${valueText}" is not a positive integer of at least 1`);
+        continue;
+      }
+      stated.window = window;
+      continue;
+    }
+    if (stated.decay !== undefined) {
+      errors.push(`${row} — "decay" is already on the table, so one setting carries two values`);
+      continue;
+    }
+    const decay = TABLE_NUMBER.test(valueText) ? Number(valueText) : Number.NaN;
+    if (!(decay > 0 && decay <= 1)) {
+      errors.push(`${row} — decay "${valueText}" is not more than 0 and at most 1`);
+      continue;
+    }
+    stated.decay = decay;
+  }
+
+  // A heading with no readable row states no settings, so the default applies.
+  if (rows === 0 && errors.length === 0) {
+    return { ok: true, balance: { ...DEFAULT_THEME_BALANCE }, errors: [], source: 'default' };
+  }
+
+  if (!windowRow) errors.push(`${THEME_BALANCE_SECTION}: needs a "window" row — how many of the newest closes are counted`);
+  if (!decayRow) errors.push(`${THEME_BALANCE_SECTION}: needs a "decay" row — what one serve of a theme costs`);
+
+  if (errors.length > 0) return { ok: false, balance: { ...DEFAULT_THEME_BALANCE }, errors, source: 'file' };
+
+  return {
+    ok: true,
+    balance: {
+      window: stated.window ?? DEFAULT_THEME_BALANCE.window,
+      decay: stated.decay ?? DEFAULT_THEME_BALANCE.decay,
+    },
+    errors: [],
+    source: 'file',
+  };
 }
 
 /**
@@ -664,6 +799,8 @@ export function validateStrategy(text) {
   const lines = text.split('\n');
   const tiers = parseDeadlineTiers(text);
   if (!tiers.ok) errors.push(...tiers.errors);
+  const balance = parseThemeBalance(text);
+  if (!balance.ok) errors.push(...balance.errors);
   // Every table is read, so one run names every defect in every table the file carries: a
   // broken reach table must not hide a broken confidence table behind it.
   for (const table of LEVEL_TABLES) {
@@ -864,6 +1001,15 @@ function deadlineLine(tiers) {
 }
 
 /**
+ * The theme balance as one digest line. Both numbers print because the row total multiplies by
+ * both: a window quoted without its decay would describe half the rule.
+ * @param {ThemeBalance} balance @returns {string}
+ */
+function balanceLine(balance) {
+  return `theme balance: window ${balance.window} · decay ${balance.decay}`;
+}
+
+/**
  * One level table as one digest line, in the order the table writes them. The order is the
  * owner's scale and the line is short, so the whole table prints: a label plus the figure a
  * scorer must match, which is exactly what a refusal names.
@@ -890,14 +1036,15 @@ function lastChange(lines, updated) {
 
 /**
  * The digest the skill opens with: the file it read, the version, the newest change-log
- * entry, the themes, the two admissibility lists, and the deadline factors and level tables
- * when the file states them — a handful of lines, never a re-print.
+ * entry, the themes, the two admissibility lists, and the deadline factors, the theme balance
+ * and the level tables when the file states them — a handful of lines, never a re-print.
  *
  * Nothing here is a ranking order, and the labels must not suggest one. `## What counts as
  * value` and `## Explicitly out of scope` are admissibility: the test a bead passes to earn
  * work, and the work the month rules out. What orders the beads that pass them is the
  * scoring rubric — RICE with its multipliers — not this file. The rule sets the file may
- * state are `## Deadline tiers`, printed in its own order, and the four level tables
+ * state are `## Deadline tiers`, printed in its own order, `## Theme balance`, printed as the
+ * two settings the queue multiplies by, and the four level tables
  * (`## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels`), printed
  * as the scale a score must land on; each is omitted entirely when the section is absent,
  * because the file is then silent on it and the documented default or no restriction applies.
@@ -918,6 +1065,8 @@ export function summariseStrategy(text, file, report) {
   ];
   const tiers = parseDeadlineTiers(text);
   if (tiers.source === 'file') digest.push(`  deadline factors: ${deadlineLine(tiers.tiers)}`);
+  const balance = parseThemeBalance(text);
+  if (balance.source === 'file') digest.push(`  ${balanceLine(balance.balance)}`);
   for (const table of LEVEL_TABLES) {
     const parsed = readLevels(text, table);
     if (parsed.source === 'file') digest.push(`  ${table.component} levels: ${levelLine(parsed.levels)}`);
@@ -936,8 +1085,9 @@ const USAGE = `Usage: node strategy.mjs <${COMMANDS.join('|')}> [options]
   validate   Check the shape and print the file to stdout only when it passes.
   bump       Raise the version by one, record today's date and append the reason.
   summary    Print the digest to open a run with: path, version, last change, admissibility,
-             deadline factors, the four level tables. Exits 3 when no strategy file exists, so a
-             first run is told apart from a strategy that is present but invalid.
+             deadline factors, the theme balance, the four level tables. Exits 3 when no
+             strategy file exists, so a first run is told apart from a strategy that is
+             present but invalid.
 
 Options:
   --file <path>    Strategy file (default: ${DEFAULT_FILE}, relative to the repository root)

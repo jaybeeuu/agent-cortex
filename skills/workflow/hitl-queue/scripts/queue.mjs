@@ -21,6 +21,12 @@
 // lifted in silence. `now` is a parameter of the build, never read deep inside the
 // ranking, so a boundary case is deterministic.
 //
+// A theme's own recent closes add a third factor, and its numbers live in the strategy's
+// `## Theme balance` section. A bead's theme is its **root** ancestor, and a theme served n
+// times in the newest `window` real-item closes keeps `decay ** n` of its weight: a theme
+// someone just worked in drops, a neglected one keeps its full weight, and nothing is stored,
+// because the window is read back out of the tracker on every run.
+//
 // The RICE score is read from the bead's own metadata, written by the score-bead skill.
 // This script never recomputes it and never invents one: a bead with no score is listed
 // as `unscored` with the reason, because a queue that guessed would hide the gap.
@@ -45,7 +51,13 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { DEFAULT_FILE, resolveStrategyPath, validateStrategy } from '../../strategise/scripts/strategy.mjs';
-import { DEFAULT_DEADLINE_TIERS, deadlineMultiplier, parseDeadlineTiers } from '../../strategise/scripts/strategy.mjs';
+import {
+  DEFAULT_DEADLINE_TIERS,
+  DEFAULT_THEME_BALANCE,
+  deadlineMultiplier,
+  parseDeadlineTiers,
+  parseThemeBalance,
+} from '../../strategise/scripts/strategy.mjs';
 import { BD_PATH, RICE_KEY, errorMessage, makeRunner, storedRice } from '../../score-bead/scripts/rice.mjs';
 import {
   DEFAULT_SCOPES_FILE,
@@ -63,6 +75,7 @@ import {
 
 /** @typedef {import('../../score-bead/scripts/rice.mjs').StoredRice} StoredRice */
 /** @typedef {import('../../strategise/scripts/strategy.mjs').DeadlineTier} DeadlineTier */
+/** @typedef {import('../../strategise/scripts/strategy.mjs').ThemeBalance} ThemeBalance */
 /** @typedef {import('./scopes.mjs').DailyNote} DailyNote */
 /** @typedef {import('./scopes.mjs').Scope} Scope */
 /** @typedef {(args: string[]) => Promise<string>} Runner */
@@ -90,6 +103,13 @@ export const WIP_MULTIPLIER = 1.5;
 
 /** The dependency type that blocks. A "related" edge is not an answer anyone waits on. */
 export const BLOCKS_TYPE = 'blocks';
+
+/**
+ * The label prefixes that mark a pipeline step rather than an item. A stage chore and a
+ * lifecycle bead are steps one task walks through, so counting them as services of a theme
+ * would penalise that theme for finishing a single item.
+ */
+export const PIPELINE_LABEL_PREFIXES = ['stage:', 'lifecycle:'];
 
 /** How many dependent ids a row names before it summarises the rest as a count. */
 const NAMED_DEPENDENTS = 5;
@@ -136,6 +156,9 @@ export class QueueError extends Error {}
  * @property {number | undefined} remainingMs    Distance to the deadline; negative once past.
  * @property {number} deadlineFactor             The strategy's factor; 1 without a deadline.
  * @property {boolean} overdue                   The deadline has passed.
+ * @property {string} theme                      The bead's root ancestor.
+ * @property {number} served                     How many of the window's closes that theme served.
+ * @property {number} themeMultiplier            decay ** served, from the strategy's balance.
  * @property {number | undefined} total          The rounded ranking key; undefined if unscored.
  * @property {number | undefined} scoredAtVersion
  * @property {boolean} stale                     Scored against an older strategy version.
@@ -168,7 +191,7 @@ export class QueueError extends Error {}
 /**
  * The whole answer.
  * @typedef {object} QueueReport
- * @property {{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[] }} strategy
+ * @property {{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[], themeBalance: ThemeBalance }} strategy
  * @property {'local' | 'shared'} invocation
  * @property {ScopeStatus[]} scopes
  * @property {DailyNote} today
@@ -197,18 +220,65 @@ export function dependentMultiplier(count) {
 
 /**
  * The ranking key: RICE × dependent multiplier × work-in-progress multiplier × deadline
- * multiplier, rounded to one decimal. The rounded figure is the sort key as well as the
- * printed one, so the number a reader sees is the number the order was decided by.
+ * multiplier × theme multiplier, rounded to one decimal. The rounded figure is the sort key as
+ * well as the printed one, so the number a reader sees is the number the order was decided by.
  * @param {object} input
  * @param {number} input.score
  * @param {number} input.dependents
  * @param {boolean} input.inProgress
  * @param {number} [input.deadline]  The strategy's factor at the bead's remaining time; 1
  *                                   when the bead has no deadline.
+ * @param {number} [input.theme]     The theme balance's factor for the bead's theme; 1 when
+ *                                   the theme was not served inside the window.
  * @returns {number}
  */
-export function queueTotal({ score, dependents, inProgress, deadline = 1 }) {
-  return round1(score * dependentMultiplier(dependents) * (inProgress ? WIP_MULTIPLIER : 1) * deadline);
+export function queueTotal({ score, dependents, inProgress, deadline = 1, theme = 1 }) {
+  return round1(score * dependentMultiplier(dependents) * (inProgress ? WIP_MULTIPLIER : 1) * deadline * theme);
+}
+
+/**
+ * What one serve of a theme costs, compounded: `decay ** served`. A theme served not at all
+ * keeps its full weight, so a neglected theme is not lifted — it simply is not discounted,
+ * and `decay: 1` makes every factor 1 and leaves the order exactly as it was.
+ * @param {number} served  How many of the window's closes belong to the theme.
+ * @param {number} decay   The strategy's decay; more than 0 and at most 1.
+ * @returns {number}
+ */
+export function themeMultiplier(served, decay) {
+  return decay ** served;
+}
+
+/**
+ * A bead's theme: its **root** ancestor, following `parent` until it is absent. The immediate
+ * parent is not the theme — a stage chore three levels down belongs to the task at the top, so
+ * one afternoon of pipeline work cannot look like five themes. A `parent` cycle, which a
+ * tracker should never hold, stops at the bead that closes it rather than looping.
+ * @param {string} id @param {Map<string, string>} parents  Bead id to its parent, as bd reports it.
+ * @returns {string}
+ */
+export function rootTheme(id, parents) {
+  const seen = new Set([id]);
+  let current = id;
+  for (;;) {
+    const up = parents.get(current);
+    if (up === undefined || seen.has(up)) return current;
+    seen.add(up);
+    current = up;
+  }
+}
+
+/**
+ * How many of the window's closes each theme served: the newest `window` closes, counted per
+ * theme. Newest first is the caller's order, so the window is the head of the list.
+ * @param {{ id: string, theme: string }[]} history  Closes, newest first.
+ * @param {number} window
+ * @returns {Map<string, number>}
+ */
+export function servedThemes(history, window) {
+  /** @type {Map<string, number>} */
+  const served = new Map();
+  for (const close of history.slice(0, window)) served.set(close.theme, (served.get(close.theme) ?? 0) + 1);
+  return served;
 }
 
 // ─── Tracker ──────────────────────────────────────────────────────────────────
@@ -442,29 +512,95 @@ async function readCandidates({ bd, scope, includeIdeas, now }) {
 }
 
 /**
- * The strategy a run ranks against: the version a score is compared with, and the deadline
- * tiers its factor comes from. A missing or malformed strategy does not stop the queue:
- * the scores are already on the beads, and refusing to rank them would hide the backlog
- * behind a file. The version is then reported for what it is — unknown — and the tiers
- * fall back to their documented default, which is a value a reader can look up.
+ * The strategy a run ranks against: the version a score is compared with, the deadline tiers
+ * its factor comes from and the theme balance its fourth multiplier comes from. A missing or
+ * malformed strategy does not stop the queue: the scores are already on the beads, and refusing
+ * to rank them would hide the backlog behind a file. The version is then reported for what it
+ * is — unknown — and the tiers and the balance fall back to their documented defaults, which
+ * are values a reader can look up.
  * @param {object} options
  * @param {string | undefined} options.file
  * @param {string} options.cwd
- * @returns {Promise<{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[] }>}
+ * @returns {Promise<{ file: string, version: number | undefined, deadlineTiers: DeadlineTier[], themeBalance: ThemeBalance }>}
  */
 async function readStrategy({ file, cwd }) {
   const path = await resolveStrategyPath({ ...(file === undefined ? {} : { file }), cwd });
   const text = await readFile(path, 'utf8').catch(() => undefined);
   if (text === undefined) {
-    return { file: path, version: undefined, deadlineTiers: [...DEFAULT_DEADLINE_TIERS] };
+    return {
+      file: path,
+      version: undefined,
+      deadlineTiers: [...DEFAULT_DEADLINE_TIERS],
+      themeBalance: { ...DEFAULT_THEME_BALANCE },
+    };
   }
   const strategy = validateStrategy(text);
   const tiers = parseDeadlineTiers(text);
+  const balance = parseThemeBalance(text);
   return {
     file: path,
     version: strategy.ok ? strategy.version : undefined,
     deadlineTiers: tiers.ok ? tiers.tiers : [...DEFAULT_DEADLINE_TIERS],
+    themeBalance: balance.ok ? balance.balance : { ...DEFAULT_THEME_BALANCE },
   };
+}
+
+/**
+ * One bead's share of a scope's history, as the balance reads it: the closes newest first, and
+ * the parent edges the theme walk follows.
+ * @typedef {object} ThemeHistory
+ * @property {{ id: string, theme: string }[]} closes  Real-item closes, newest first.
+ * @property {Map<string, string>} parents            Bead id to its parent.
+ */
+
+/**
+ * Read a scope's closed history: every bead, so the window and the theme walk both come from
+ * one call and one snapshot.
+ *
+ * `--all` is what makes the window a query rather than a stored counter: the tracker already
+ * holds every close, so nothing has to be written for the effect to survive a session, a
+ * machine or a worktree. Three filters are deliberate, and the real data forced each one:
+ *
+ *   • **`closed_at`, not `updated_at`.** A note appended after a close moves `updated_at`, so
+ *     ordering by it would reorder the window for a bead nobody finished later. A close with no
+ *     readable moment is skipped rather than sorted as if it were ancient.
+ *   • **Real items only.** Beads labelled `stage:*` or `lifecycle:*` are pipeline steps, so one
+ *     task's nine stage chores must not count as nine services of its theme.
+ *   • **The root ancestor is the theme.** The parent edges of every bead are kept, open ones
+ *     included, because the chain to the root runs through them.
+ *
+ * Ties keep the tracker's order: the moment decides, and the sort is stable.
+ * @param {object} options
+ * @param {Runner} options.bd
+ * @returns {Promise<ThemeHistory>}
+ */
+async function readThemeHistory({ bd }) {
+  const stdout = await bd(['list', '--all', '--json', '--limit', '0']);
+  const rows = parseJsonArray(stdout, 'bd list --all --json');
+
+  /** @type {Map<string, string>} */
+  const parents = new Map();
+  /** @type {{ id: string, closedAt: number }[]} */
+  const closes = [];
+
+  for (const row of rows) {
+    const record = asRecord(row);
+    if (record === undefined) continue;
+    const id = asString(record.id);
+    if (id === undefined) continue;
+    const parent = asString(record.parent);
+    if (parent !== undefined && parent !== '') parents.set(id, parent);
+
+    if (asString(record.status) !== CLOSED_STATUS) continue;
+    const closedAt = instantOf(record.closed_at);
+    if (closedAt === undefined) continue;
+    const labels = Array.isArray(record.labels) ? record.labels.filter((label) => typeof label === 'string') : [];
+    if (labels.some((label) => PIPELINE_LABEL_PREFIXES.some((prefix) => label.startsWith(prefix)))) continue;
+    closes.push({ id, closedAt });
+  }
+
+  closes.sort((a, b) => b.closedAt - a.closedAt);
+  return { closes: closes.map((close) => ({ id: close.id, theme: rootTheme(close.id, parents) })), parents };
 }
 
 // ─── Scopes ───────────────────────────────────────────────────────────────────
@@ -476,6 +612,8 @@ async function readStrategy({ file, cwd }) {
  * @property {'available' | 'unavailable' | 'withheld'} status
  * @property {string | undefined} reason
  * @property {Candidate[]} candidates
+ * @property {{ id: string, theme: string }[]} history  The scope's closes, newest first.
+ * @property {Map<string, string>} parents            Bead id to its parent, for the theme walk.
  * @property {number} excludedIdeas
  * @property {number} excludedDeferred
  */
@@ -503,7 +641,16 @@ async function readScopes({ bd, scopes, includeIdeas, now, shared }) {
 
   for (const scope of scopes) {
     /** @type {ScopeRead} */
-    const empty = { scope, status: 'unavailable', reason: undefined, candidates: [], excludedIdeas: 0, excludedDeferred: 0 };
+    const empty = {
+      scope,
+      status: 'unavailable',
+      reason: undefined,
+      candidates: [],
+      history: [],
+      parents: new Map(),
+      excludedIdeas: 0,
+      excludedDeferred: 0,
+    };
 
     if (shared && scope.kind === PERSONAL_KIND) {
       reads.push({ ...empty, status: 'withheld', reason: 'personal scope, withheld in a shared invocation' });
@@ -517,8 +664,10 @@ async function readScopes({ bd, scopes, includeIdeas, now, shared }) {
     }
 
     try {
-      const read = await readCandidates({ bd: guardRunner(scope, bd), scope: scope.name, includeIdeas, now });
-      reads.push({ ...empty, ...read, status: 'available' });
+      const scoped = guardRunner(scope, bd);
+      const read = await readCandidates({ bd: scoped, scope: scope.name, includeIdeas, now });
+      const history = await readThemeHistory({ bd: scoped });
+      reads.push({ ...empty, ...read, history: history.closes, parents: history.parents, status: 'available' });
     } catch (error) {
       if (error instanceof ScopeWriteError) throw error;
       reads.push({ ...empty, reason: `bd failed: ${errorMessage(error)}` });
@@ -621,6 +770,21 @@ export async function buildQueue({
   const excludedIdeas = reads.reduce((total, read) => total + read.excludedIdeas, 0);
   const excludedDeferred = reads.reduce((total, read) => total + read.excludedDeferred, 0);
 
+  /**
+   * Each scope's balance, computed once: the served count per theme over the window, and the
+   * parent edges the row's own theme is walked through. The balance is per scope, because two
+   * workspaces may hold the same bead id and neither one's history is the other's.
+   * @type {Map<string, { served: Map<string, number>, parents: Map<string, string> }>}
+   */
+  const balances = new Map();
+  for (const read of reads) {
+    if (read.status !== 'available') continue;
+    balances.set(read.scope.name, {
+      served: servedThemes(read.history, strategy.themeBalance.window),
+      parents: read.parents,
+    });
+  }
+
   /** @type {QueueRow[]} */
   const rows = [];
   /** @type {WithheldRow[]} */
@@ -661,6 +825,11 @@ export async function buildQueue({
       strategy.version !== undefined &&
       scoredAtVersion !== strategy.version;
 
+    const balance = balances.get(candidate.scope);
+    const theme = balance === undefined ? candidate.id : rootTheme(candidate.id, balance.parents);
+    const served = balance?.served.get(theme) ?? 0;
+    const themeFactor = themeMultiplier(served, strategy.themeBalance.decay);
+
     rows.push({
       rank: undefined,
       id: candidate.id,
@@ -678,9 +847,12 @@ export async function buildQueue({
       remainingMs,
       deadlineFactor: deadline.factor,
       overdue: deadline.overdue,
+      theme,
+      served,
+      themeMultiplier: themeFactor,
       total: score === undefined
         ? undefined
-        : queueTotal({ score, dependents: live.length, inProgress, deadline: deadline.factor }),
+        : queueTotal({ score, dependents: live.length, inProgress, deadline: deadline.factor, theme: themeFactor }),
       scoredAtVersion,
       stale,
       unscoredReason: score === undefined
@@ -832,6 +1004,22 @@ function unscoredDueClause(row) {
 }
 
 /**
+ * The theme balance as one clause: the factor, the theme it was computed for and how many of
+ * the window's closes that theme served. The theme is named only when it is not the row's own
+ * id, because the row already carries that id at the head of the line.
+ *
+ * The clause prints on every row, factor 1 included, so the total can always be checked
+ * against the bead's stored score: an omitted multiplier would leave a reader unable to say
+ * where the difference went.
+ * @param {QueueRow} row @returns {string}
+ */
+function themeClause(row) {
+  const theme = row.theme === row.id ? '' : ` ${row.theme}`;
+  const served = row.served === 0 ? 'untouched' : `${row.served} served`;
+  return `  ×${row.themeMultiplier.toFixed(2)} theme${theme} (${served})`;
+}
+
+/**
  * What the answer unblocks, in one clause: named ids while they fit, a count after that.
  * @param {QueueRow} row @returns {string}
  */
@@ -897,7 +1085,7 @@ export function renderQueue(report) {
     ? [`HITL decision queue · no open ${HITL_LABEL} beads · ${scopes}`, renderToday(today)]
     : [
         `HITL decision queue · ${counts.ranked} ranked, ${counts.unscored} unscored · ${scopes} · ${strategyLabel}`,
-        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last',
+        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier × theme balance · ties break on rice, then scope, then id · unscored last',
         renderToday(today),
       ];
 
@@ -946,20 +1134,21 @@ function noRankLine(counts) {
 
 /**
  * The score line of one row: the stored RICE total, the four components it was computed
- * from, and both multipliers. Exported so the one-item recommendation prints the queue's
- * own numbers instead of deriving them a second time.
+ * from, and the multipliers the total was scaled by. Exported so the one-item recommendation
+ * prints the queue's own numbers instead of deriving them a second time.
  * @param {QueueRow} row @returns {string}
  */
 export function formatNumbers(row) {
   return `rice ${/** @type {number} */ (row.score).toFixed(1)} = ${formatComponents(/** @type {StoredRice} */ (row.rice))}` +
     `  ×${row.dependentMultiplier.toFixed(2)} dependents(${row.dependents})` +
     `  ×${row.wipMultiplier.toFixed(1)}${row.inProgress ? ' in-progress' : ''}` +
-    deadlineClause(row);
+    deadlineClause(row) +
+    themeClause(row);
 }
 
 /**
  * The score clause of one row: the stored total with the four components it was computed from
- * and both multipliers, or the reason no total exists — with the due moment either way. A row
+ * and every multiplier, or the reason no total exists — with the due moment either way. A row
  * with no rank still shows its deadline, so the reason it is unscored is never the whole story.
  * Exported so the queue, the one-item block and the shortlist print one definition of it.
  * @param {QueueRow} row @returns {string}

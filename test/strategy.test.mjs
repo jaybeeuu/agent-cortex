@@ -18,6 +18,7 @@ import { promisify } from 'node:util';
 import { createTempRoot } from './helpers/temp-root.mjs';
 import {
   DEFAULT_DEADLINE_TIERS,
+  DEFAULT_THEME_BALANCE,
   LEVEL_TABLES,
   REQUIRED_SECTIONS,
   parseConfidenceLevels,
@@ -25,6 +26,7 @@ import {
   parseEffortLevels,
   parseImpactLevels,
   parseReachLevels,
+  parseThemeBalance,
   runCli,
 } from '../skills/workflow/strategise/scripts/strategy.mjs';
 
@@ -44,6 +46,7 @@ const DEFAULT_FILE = '.agent-cortex/working-docs/strategy.md';
  * @param {Record<string, string>} [options.answers]  Body text per section title.
  * @param {string[]} [options.omit]                   Sections to leave out of the file.
  * @param {[string, string][]} [options.deadlineTiers]  Rows for a `## Deadline tiers` table.
+ * @param {[string, string][]} [options.themeBalance]   Rows for a `## Theme balance` table.
  * @param {[string, string][]} [options.impactLevels]   Rows for a `## Impact levels` table.
  * @param {[string, string][]} [options.reachLevels]    Rows for a `## Reach levels` table.
  * @param {[string, string][]} [options.confidenceLevels]  Rows for a `## Confidence levels` table.
@@ -57,6 +60,7 @@ function createStrategy({
   answers = {},
   omit = [],
   deadlineTiers,
+  themeBalance,
   impactLevels,
   reachLevels,
   confidenceLevels,
@@ -82,8 +86,13 @@ function createStrategy({
     .filter(([, rows]) => rows !== undefined)
     .map(([title, rows]) => levelTable(title, rows ?? []))
     .join('');
+  const balance = themeBalance === undefined
+    ? ''
+    : `\n## Theme balance\n\n| Setting | Value |\n|---|---|\n${themeBalance
+        .map(([setting, value]) => `| ${setting} | ${value} |`)
+        .join('\n')}\n`;
   const log = changeLog === undefined ? '' : `\n## Change log\n\n${changeLog}\n`;
-  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${levels}${tiers}${log}`;
+  return `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** ${updated}\n\n${sections.join('\n')}${levels}${tiers}${balance}${log}`;
 }
 
 /**
@@ -631,6 +640,142 @@ describe('the deadline tiers', () => {
 
     assert.equal(parsed.ok, true, parsed.errors.join('; '));
     assert.deepEqual(parsed.tiers, DEFAULT_DEADLINE_TIERS);
+  });
+});
+
+describe('the theme balance', () => {
+  it('uses the documented default when the strategy carries no section', () => {
+    const parsed = parseThemeBalance(createStrategy());
+
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.source, 'default');
+    assert.deepEqual(parsed.balance, DEFAULT_THEME_BALANCE);
+    assert.deepEqual(DEFAULT_THEME_BALANCE, { window: 5, decay: 0.7 });
+  });
+
+  it('reads the table into the two settings, in either order', () => {
+    const parsed = parseThemeBalance(createStrategy({ themeBalance: [['decay', '0.5'], ['window', '3']] }));
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.equal(parsed.source, 'file');
+    assert.deepEqual(parsed.balance, { window: 3, decay: 0.5 });
+  });
+
+  it('accepts decay 1 as the documented way to turn balancing off', () => {
+    const parsed = parseThemeBalance(createStrategy({ themeBalance: [['window', '5'], ['decay', '1']] }));
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.equal(parsed.balance.decay, 1);
+  });
+
+  it('refuses an unknown setting name instead of ignoring it', () => {
+    const parsed = parseThemeBalance(
+      createStrategy({ themeBalance: [['window', '5'], ['decay', '0.7'], ['boost', '2']] }),
+    );
+
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.errors.join('\n'), /"boost" is not a setting this table carries; write "window" or "decay"/);
+  });
+
+  it('reports a missing setting, and applies the default when the heading carries no row', () => {
+    const missingDecay = parseThemeBalance(createStrategy({ themeBalance: [['window', '5']] }));
+    assert.equal(missingDecay.ok, false);
+    assert.match(missingDecay.errors.join('\n'), /Theme balance: needs a "decay" row/);
+
+    const empty = parseThemeBalance(createStrategy({ themeBalance: [] }));
+    assert.equal(empty.ok, true, 'a heading with no row states nothing, so the default applies');
+    assert.equal(empty.source, 'default');
+    assert.deepEqual(empty.errors, [], 'a heading with no row reports no defect');
+  });
+
+  it('refuses a window that is not a whole number of at least 1', () => {
+    for (const window of ['0', '-2', '2.5', 'five']) {
+      const parsed = parseThemeBalance(createStrategy({ themeBalance: [['window', window], ['decay', '0.7']] }));
+      assert.equal(parsed.ok, false, `window ${window} was accepted`);
+      assert.match(parsed.errors.join('\n'), new RegExp(`window "${window.replace('.', '\\.')}" is not a positive integer`));
+    }
+  });
+
+  it('refuses a decay outside (0, 1]', () => {
+    for (const decay of ['0', '-0.5', '1.5', 'half']) {
+      const parsed = parseThemeBalance(createStrategy({ themeBalance: [['window', '5'], ['decay', decay]] }));
+      assert.equal(parsed.ok, false, `decay ${decay} was accepted`);
+      assert.match(parsed.errors.join('\n'), new RegExp(`decay "${decay.replace('.', '\\.')}" is not more than 0 and at most 1`));
+    }
+  });
+
+  it('reports every defect in one run, across both settings', () => {
+    const parsed = parseThemeBalance(createStrategy({ themeBalance: [['window', '0'], ['decay', '4']] }));
+
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.errors.length, 2, parsed.errors.join('\n'));
+    assert.match(parsed.errors.join('\n'), /window "0" is not a positive integer/);
+    assert.match(parsed.errors.join('\n'), /decay "4" is not more than 0 and at most 1/);
+  });
+
+  it('fails validate with the defect, so no queue ranks against a table it cannot read', async () => {
+    const file = await writeStrategy(createStrategy({ themeBalance: [['window', '5'], ['decay', '2']] }));
+
+    const check = await run(['validate', '--file', file]);
+
+    assert.equal(check.code, 1);
+    assert.match(check.stderr, /Theme balance: row "\| decay \| 2 \|"/);
+    assert.equal(check.stdout, '');
+  });
+
+  it('prints the parsed values in the digest, beside the deadline factors', async () => {
+    // The fixture carries a deadline table and a level table, because the claim in this
+    // test's name is a position between them: a fixture holding only the balance section
+    // would let the digest print the line anywhere and still pass.
+    const file = await writeStrategy(
+      createStrategy({
+        deadlineTiers: [
+          ['within 1d', '4'],
+          ['within 7d', '1'],
+          ['more than 7d', '1'],
+          ['overdue', '8'],
+        ],
+        themeBalance: [['window', '3'], ['decay', '0.5']],
+        impactLevels: [['minor', '0.25'], ['normal', '1']],
+      }),
+    );
+
+    const digest = await run(['summary', '--file', file]);
+
+    assert.equal(digest.code, 0, digest.stderr);
+    const printed = digest.stdout.trimEnd().split('\n');
+    const deadlineAt = printed.findIndex((line) => /^ {2}deadline factors: /.test(line));
+    const balanceAt = printed.findIndex((line) => /^ {2}theme balance: window 3 · decay 0\.5$/.test(line));
+    const levelsAt = printed.findIndex((line) => /^ {2}impact levels: /.test(line));
+
+    assert.ok(deadlineAt >= 0, `the fixture's deadline table must print, so the line has a neighbour: ${digest.stdout}`);
+    assert.ok(balanceAt >= 0, `the balance must print both values it was written with: ${digest.stdout}`);
+    assert.ok(levelsAt >= 0, `the fixture's level table must print, so the line's other neighbour exists: ${digest.stdout}`);
+    assert.ok(
+      deadlineAt < balanceAt && balanceAt < levelsAt,
+      `the balance prints after the deadline factors and before the level tables: ${digest.stdout}`,
+    );
+  });
+
+  it('says nothing about the balance when the file carries no section', async () => {
+    const file = await writeStrategy(createStrategy());
+
+    const digest = await run(['summary', '--file', file]);
+
+    assert.doesNotMatch(digest.stdout, /theme balance/);
+  });
+
+  it('ships a template whose table is the documented default', async () => {
+    const template = await readFile(
+      join(REPO_ROOT, 'skills', 'workflow', 'strategise', 'templates', 'strategy.md'),
+      'utf8',
+    );
+
+    const parsed = parseThemeBalance(template);
+
+    assert.equal(parsed.ok, true, parsed.errors.join('; '));
+    assert.equal(parsed.source, 'file');
+    assert.deepEqual(parsed.balance, DEFAULT_THEME_BALANCE);
   });
 });
 

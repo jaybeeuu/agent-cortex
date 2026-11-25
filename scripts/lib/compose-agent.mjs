@@ -16,6 +16,11 @@
 // hard errors: a committed generated file must never ship a literal token or a
 // silently dropped section.
 //
+// The tool set is authored once per agent, in <dir>/tools.json, and never in a
+// harness frontmatter.json: it is what the agent can do, not harness metadata,
+// and a list authored twice drifts. composeAgent reads it here and returns it as
+// `tools`, so a caller translates one authored list into its own harness.
+//
 // Options (both installers pass `pluginRoot` and `resolveRelativePaths`; pi also
 // passes `dropNullTools`):
 //   dropNullTools          replace null-mapped capability tokens with an empty
@@ -71,14 +76,20 @@ import { join } from "node:path";
  * @typedef {object} AgentFrontmatter
  * @property {string} name
  * @property {string} description
- * @property {string[]} tools
  * @property {string} [model]
  * @property {string} [argumentHint]
  */
 
 /**
- * A composed agent: its frontmatter plus the substituted body.
- * @typedef {AgentFrontmatter & { body: string }} ComposedAgent
+ * Parsed and schema-checked authored tool set (`agents/<name>/tools.json`).
+ * @typedef {object} AgentToolSet
+ * @property {string[]} tools  Canonical capability keys, or the all-tools sentinel
+ * @property {string[]} skills Skill directories the agent loads, repo-relative
+ */
+
+/**
+ * A composed agent: its frontmatter, its authored tool set, and the substituted body.
+ * @typedef {AgentFrontmatter & AgentToolSet & { body: string }} ComposedAgent
  */
 
 /**
@@ -96,7 +107,7 @@ async function pathExists(p) {
 }
 
 /**
- * The one sentinel an authored tool list may carry instead of tool names: it
+ * The one sentinel an authored tool set may carry instead of tool names: it
  * means every tool the session has (agents/README.md). The installers resolve it
  * by omitting the `tools:` line, so a literal `*` never reaches a harness.
  */
@@ -209,6 +220,7 @@ export async function composeAgent(root, name, harness, options = {}) {
   const { dropNullTools = false, pluginRoot, resolveRelativePaths = false, warn = noop } = options;
   const agentDir = join(root, "agents", name);
   const frontmatter = await parseFrontmatter(join(agentDir, harness, "frontmatter.json"), name, harness);
+  const toolSet = await loadToolSet(root, name);
   const tokenMap = await loadTokenMap(root);
 
   let body = await readFile(join(agentDir, "agent.md"), "utf-8");
@@ -239,13 +251,75 @@ export async function composeAgent(root, name, harness, options = {}) {
     context: `agent "${name}"`,
   });
 
-  return { ...frontmatter, body: body.trim() };
+  return { ...frontmatter, ...toolSet, body: body.trim() };
 }
 
 // ─── Frontmatter ─────────────────────────────────────────────────────────────
 
-const REQUIRED_FIELDS = ["name", "description", "tools"];
+const REQUIRED_FIELDS = ["name", "description"];
 const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
+
+/**
+ * The field that moved out of the frontmatter into the authored tool set. It is
+ * named here rather than left to the generic unknown-field error, so the error
+ * says where the list now lives.
+ */
+const MOVED_TOOL_FIELD = "tools";
+
+// ─── Tool set ────────────────────────────────────────────────────────────────
+
+/**
+ * Parse and schema-check an authored tool set (`agents/<name>/tools.json`).
+ *
+ * `tools` is the agent's capability set — canonical capability keys, or the
+ * single all-tools sentinel — and is never harness metadata, so it exists once
+ * per agent. `skills` records the skill directories whose files the agent's own
+ * instructions tell it to load, which is what lets a check walk the text that
+ * names tools and compare it with this list.
+ *
+ * @param {string} root Package root (contains agents/)
+ * @param {string} name Agent directory name
+ * @returns {Promise<AgentToolSet>}
+ */
+export async function loadToolSet(root, name) {
+  const path = join(root, "agents", name, "tools.json");
+  let raw;
+  try {
+    raw = await readFile(path, "utf-8");
+  } catch {
+    throw new Error(`agent "${name}": missing ${path} — the agent's tool set is authored once, in tools.json`);
+  }
+  /** @type {Record<string, unknown>} */
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`agent "${name}": invalid JSON in ${path}: ${/** @type {Error} */ (err).message}`);
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error(`agent "${name}": ${path} must be a JSON object`);
+  }
+  const tools = parsed.tools;
+  if (!Array.isArray(tools) || tools.length === 0 || !tools.every((t) => typeof t === "string" && t !== "")) {
+    throw new Error(`agent "${name}": ${path} tools must be a non-empty array of strings`);
+  }
+  // Same sentinel rule as the installers and the validator: `"*"` means every
+  // tool the session has and cannot be combined with names, because each
+  // installer carries it by omitting the rendered `tools:` line.
+  if (mentionsAllTools(tools) && !isAllTools(tools)) {
+    throw new Error(`agent "${name}": ${path} tools must be ["*"] or a list of tool names — "*" cannot be combined`);
+  }
+  const skills = parsed.skills;
+  if (!Array.isArray(skills) || !skills.every((s) => typeof s === "string" && s !== "")) {
+    throw new Error(`agent "${name}": ${path} skills must be an array of skill directory names`);
+  }
+  for (const key of Object.keys(parsed)) {
+    if (key !== "tools" && key !== "skills") {
+      throw new Error(`agent "${name}": ${path} unknown field "${key}" — the tool set names tools and skills only`);
+    }
+  }
+  return { tools: /** @type {string[]} */ (tools), skills: /** @type {string[]} */ (skills) };
+}
 
 /**
  * Parse and schema-check a harness frontmatter.json (strict, per agents/README.md).
@@ -266,22 +340,16 @@ async function parseFrontmatter(path, name, harness) {
   if (typeof fm !== "object" || fm === null) {
     throw new Error(`agent "${name}": ${path} must be a JSON object`);
   }
+  if (MOVED_TOOL_FIELD in fm) {
+    throw new Error(
+      `agent "${name}": ${path} carries "${MOVED_TOOL_FIELD}" — the tool set is authored once, in agents/${name}/tools.json`,
+    );
+  }
   for (const field of REQUIRED_FIELDS) {
     if (!(field in fm)) throw new Error(`agent "${name}": ${path} missing required field "${field}" (harness ${harness})`);
   }
   if (typeof fm.name !== "string" || fm.name.trim() === "") throw new Error(`agent "${name}": ${path} name must be a non-empty string`);
   if (typeof fm.description !== "string" || fm.description.trim() === "") throw new Error(`agent "${name}": ${path} description must be a non-empty string`);
-  if (!Array.isArray(fm.tools) || fm.tools.length === 0 || !fm.tools.every((t) => typeof t === "string")) {
-    throw new Error(`agent "${name}": ${path} tools must be a non-empty array of strings`);
-  }
-  // `"*"` means every tool the session has, and it cannot be combined with tool
-  // names. Both installers carry the meaning by omitting the `tools:` line, so a
-  // mixed list would put a literal `*` in the scalar instead: pi's `--tools`
-  // compiles any entry containing `*` to a glob, so the same text means "every
-  // tool" to one consumer and nothing to a consumer that takes exact names.
-  if (mentionsAllTools(fm.tools) && !isAllTools(fm.tools)) {
-    throw new Error(`agent "${name}": ${path} tools must be ["*"] or a list of tool names — "*" cannot be combined`);
-  }
   for (const key of Object.keys(fm)) {
     if (![...REQUIRED_FIELDS, ...KNOWN_OPTIONAL_FIELDS].includes(key)) {
       throw new Error(`agent "${name}": ${path} unknown field "${key}" — strict schema per agents/README.md`);
@@ -290,7 +358,6 @@ async function parseFrontmatter(path, name, harness) {
   return {
     name: fm.name,
     description: fm.description,
-    tools: fm.tools,
     ...(typeof fm.model === "string" ? { model: fm.model } : {}),
     ...(typeof fm.argumentHint === "string" ? { argumentHint: fm.argumentHint } : {}),
   };
@@ -367,10 +434,12 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
  *
  * Canonical keys resolve through token-map.json's capabilities table; a null
  * mapping means the harness has no equivalent and the entry is omitted (the
- * contract's tool-list rule); the all-tools sentinel `"*"` passes through
- * untouched for the renderer to resolve; a name that is not a canonical key
- * passes through untouched (it may be a native tool, e.g. pi's fetch_content).
- * Mirrors the runtime translation in extensions/agent-modes/discover.ts.
+ * contract's tool-list rule), without a warning: an agent's tool set is one list
+ * for every harness, so a harness-only row is the normal case and not a defect.
+ * The all-tools sentinel `"*"` passes through untouched for the renderer to
+ * resolve; a name that is not a canonical key passes through untouched (it may
+ * be a native tool, e.g. pi's fetch_content). Mirrors the runtime translation in
+ * extensions/agent-modes/discover.ts.
  *
  * A capability whose binding is a `command` throws instead of resolving: a
  * command is not model-callable, so rendering `request_flush` into a tool list
@@ -378,7 +447,7 @@ function resolvePath(arg, harness, tokenMap, opts = {}) {
  * the defect the same way an absent tool hides it, so the error names the
  * canonical key the map is keyed by.
  *
- * @param {string[]} tools  Capability keys from a harness frontmatter.json
+ * @param {string[]} tools  Capability keys from an authored tools.json
  * @param {TokenMap} tokenMap Parsed token-map.json (from loadTokenMap)
  * @param {string} harness  Harness id: "claude" | "pi"
  * @param {ComposeOptions} [options]  { warn }
@@ -398,10 +467,7 @@ export function translateToolList(tools, tokenMap, harness, { warn = noop } = {}
       continue;
     }
     const binding = mapping[harness];
-    if (binding == null) {
-      warn(`capability "${tool}" has no ${harness} mapping — omitted from the tool list`);
-      continue;
-    }
+    if (binding == null) continue;
     if (binding.type === "command") {
       throw new Error(
         `capability "${tool}" is a ${harness} command (${binding.name}) and cannot appear in a tool list — a command is not model-callable`,

@@ -6,9 +6,9 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
  * Agent discovery for the agent-modes extension.
  *
  * Agents are read from the composable source format (`agents/<name>/agent.md` +
- * `agents/<name>/pi/frontmatter.json`) — the canonical layout defined in
- * agents/README.md. The PI system prompt is composed per the token-map.json
- * contract:
+ * `agents/<name>/pi/frontmatter.json` + `agents/<name>/tools.json`) — the
+ * canonical layout defined in agents/README.md. The PI system prompt is composed
+ * per the token-map.json contract:
  *
  *   1. `{{SECTION:name}}` is resolved from the agent's `pi/<name>.md` section file.
  *   2. `{{CAPABILITY:key}}` and `{{PATH:key}}` are substituted against the pi column
@@ -16,6 +16,10 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
  *      location (installers must compute it from the real resolution, per the
  *      token-map notes — a hardcoded `~/.pi/...` literal would break checkout
  *      and symlinked installs).
+ *
+ * The tool set is authored once per agent, in `tools.json`, and is not harness
+ * metadata: this reader translates the same authored list the installers render,
+ * so a composable directory and a staged render grant the same tools.
  *
  * Flat `agents/*.agent.md` files are parsed as a fallback for agents that have
  * no composable directory (a staged pi package ships flat renders, and a
@@ -154,15 +158,17 @@ function prettifyId(id: string): string {
 // ─── Tool translation ────────────────────────────────────────────────────────
 
 /**
- * Translate a frontmatter tool list into PI tool names.
+ * Translate an authored tool set into PI tool names.
  *
  * With token-map.json: capability keys are translated via the pi column; a null
  * binding means PI has no equivalent for that capability and the entry is
- * omitted; a name that is not a capability key passes through untouched (it may
- * be a native PI tool such as `fetch_content`). A binding whose type is
- * `command` is a hard error naming the canonical key — a command is not
- * model-callable, so resolving one into the list would enable a tool pi never
- * offers, and dropping it silently is the omission this map exists to catch.
+ * omitted, without a warning — an agent's set is one list for every harness, so a
+ * harness-only row is the normal case. A name that is not a capability key passes
+ * through untouched (it may be a native PI tool such as `fetch_content`). A
+ * binding whose type is `command` is a hard error naming the canonical key — a
+ * command is not model-callable, so resolving one into the list would enable a
+ * tool pi never offers, and dropping it silently is the omission this map exists
+ * to catch.
  * Without the map, the built-in COPILOT_TO_PI fallback applies and unknown names
  * pass through.
  */
@@ -188,7 +194,9 @@ function translateTools(raw: unknown, tokenMap: TokenMap | null, agentId: string
       if (mapping === undefined) {
         out.add(t); // not a capability key — pass through (may be a native PI tool)
       } else if (mapping[PI] === null) {
-        console.warn(`[agent-modes] Capability "${t}" has no PI equivalent — omitted from the tool set`);
+        // Omitted silently: an agent's tool set is one list for both harnesses,
+        // so a row this harness has no counterpart for is normal, not a defect.
+        continue;
       } else if (mapping[PI]!.type === "command") {
         throw new Error(
           `capability "${t}" is a pi command (${mapping[PI]!.name}) and cannot appear in agent "${agentId}"'s tool list — a command is not model-callable`,
@@ -286,16 +294,9 @@ function composePiPrompt(
 
 // ─── Composable directory reading ────────────────────────────────────────────
 
-interface Frontmatter {
-  name?: string;
-  description?: string;
-  tools?: string[];
-}
-
-interface ComposableFrontmatter extends Frontmatter {
+interface ComposableFrontmatter {
   name: string;
   description: string;
-  tools: string[];
 }
 
 function parseFrontmatterJson(raw: string, id: string): ComposableFrontmatter {
@@ -304,14 +305,38 @@ function parseFrontmatterJson(raw: string, id: string): ComposableFrontmatter {
     fm = JSON.parse(raw) as Record<string, unknown>;
   } catch (err) {
     console.warn(`[agent-modes] Invalid frontmatter.json for agent "${id}": ${err}`);
-    return { name: prettifyId(id), description: "", tools: [] };
+    return { name: prettifyId(id), description: "" };
   }
 
   return {
     name: typeof fm.name === "string" && fm.name !== "" ? fm.name : prettifyId(id),
     description: typeof fm.description === "string" ? fm.description : "",
-    tools: Array.isArray(fm.tools) ? (fm.tools.filter((t): t is string => typeof t === "string") as string[]) : [],
   };
+}
+
+/**
+ * Read an agent's authored tool set from `agents/<name>/tools.json`.
+ *
+ * The same file the installers render from (agents/README.md). A missing or
+ * unreadable file yields an empty list, which readComposableAgent treats as a
+ * defect and replaces with the conservative DEFAULT_TOOLS — a corrupt file must
+ * never become "everything".
+ */
+function readToolSet(agentDir: string, id: string): string[] {
+  let raw: string;
+  try {
+    raw = readFileSync(join(agentDir, "tools.json"), "utf-8");
+  } catch {
+    console.warn(`[agent-modes] Agent "${id}" has no tools.json — the tool set is authored once, beside agent.md`);
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Array.isArray(parsed.tools) ? parsed.tools.filter((t): t is string => typeof t === "string") : [];
+  } catch (err) {
+    console.warn(`[agent-modes] Invalid tools.json for agent "${id}": ${err}`);
+    return [];
+  }
 }
 
 function readComposableAgent(
@@ -322,10 +347,10 @@ function readComposableAgent(
 ): AgentDef | null {
   try {
     const fm = parseFrontmatterJson(readFileSync(join(agentDir, "pi", "frontmatter.json"), "utf-8"), id);
-    const tools = translateTools(fm.tools, tokenMap, id);
-    // The composable schema requires a non-empty list, so `ALL_TOOLS` survives
-    // translation as `["*"]` and is resolved at activation. An unparseable
-    // frontmatter yields an empty list here and keeps the conservative
+    const tools = translateTools(readToolSet(agentDir, id), tokenMap, id);
+    // The authored schema requires a non-empty set, so `ALL_TOOLS` survives
+    // translation as `["*"]` and is resolved at activation. A missing or
+    // unparseable tools.json yields an empty list here and keeps the conservative
     // DEFAULT_TOOLS: a corrupt file must never become "everything".
     return {
       id,

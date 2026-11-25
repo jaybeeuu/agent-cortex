@@ -10,8 +10,8 @@
  * Modeled on Pi's built-in preset.ts example and R-Dson/pi-modes.
  *
  * Agents are discovered from the composable source format (`agents/<name>/` +
- * `agents/<name>/pi/frontmatter.json`) — see agents/README.md. Discovery and
- * PI-prompt composition live in discover.ts.
+ * `agents/<name>/pi/frontmatter.json` + `agents/<name>/tools.json`) — see
+ * agents/README.md. Discovery and PI-prompt composition live in discover.ts.
  *
  * Commands:
  *   /agent         — show mode selector

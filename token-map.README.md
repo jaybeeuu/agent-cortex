@@ -176,12 +176,14 @@ The pi install-time installer (`bin/installers/pi.mjs`) follows the strict contr
 One consumer deviates deliberately: the pi `agent-modes` extension reads the map at
 **runtime** (not install time) to compose agent prompts from the composable agents
 format. For it, an unmapped tool name passes through unchanged — it may be a
-native PI tool — while a mapped-null tool is omitted with a warning, and a capability bound
+native PI tool — while a mapped-null tool is omitted, and a capability bound
 to a `command` is reported and the one agent skipped rather than taking every mode down with
-it. The pi column
+it. Neither installer nor runtime warns for a null row in a tool set: one set serves both
+harnesses, so a harness-only row is the normal case and a warning per install would be noise.
+The pi column
 currently maps every canonical tool (`ask_user` → `ask_questions`, `skill` → `read`),
-so the warn-and-omit path applies only to future null entries. See
-`extensions/agent-modes/README.md`.
+so the omit path applies only to rows such as `peer_get` and `task_list` that name a
+capability one harness does not have. See `extensions/agent-modes/README.md`.
 
 ### 4. Token substitution contract
 
@@ -206,17 +208,25 @@ The full contract is embedded in `token-map.json` under `contract`. In summary, 
   `skills/**/SKILL.md`) — that defeats the map. The materialised Claude plugin
   (`~/.agent-cortex/claude`), the generated `agents/*.agent.md` files, and any installed
   copies are the only places substituted names appear.
-- When you add a new capability to an agent's frontmatter, add a row to `capabilities` in
-  `token-map.json` in the same change — the contract treats unknown capabilities as errors, so a
-  missing row breaks the install pipeline loudly instead of silently.
+- When a tool set (`agents/<name>/tools.json`) or a text row names a new capability, add a row to
+  `capabilities` in `token-map.json` in the same change — the contract treats unknown capabilities
+  as errors, so a missing row breaks the install pipeline loudly instead of silently.
+- A row that is a tool on one harness and a command on the other (`post_merge_watch`) can only be
+  named in prose, never in a tool set: one set renders for both harnesses, and the harness where the
+  row is a command refuses it in a tool list. `test/agent-tool-coverage.test.mjs` accepts that — it
+  does not demand a mixed-kind row — so the prose that names one states what the session does
+  without the mechanism.
 
 ## Related
 
 - `agents/README.md` — composable agent directory format (ADR #63), defines the token
-  grammar the map implements.
+  grammar the map implements, and the authored tool set (`agents/<name>/tools.json`) the
+  installers render from the map.
 - `scripts/lib/compose-agent.mjs` — the shared token composer: resolves `{{CAPABILITY:...}}` /
   `{{PATH:...}}` against the map and `{{SECTION:...}}` from the per-harness section files
   for `bin/installers/claude.mjs` and `bin/installers/pi.mjs`.
+- `scripts/lib/tool-coverage.mjs` — the check that an agent's authored tool set grants every
+  capability its own text names, on both harnesses.
 - `bin/installers/claude.mjs` — the single Claude generator: plain
   `agent-cortex install claude` materialises the plugin into `~/.agent-cortex/claude`
   with token-substituted skills, merges the committed `claude/settings.json` into

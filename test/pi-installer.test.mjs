@@ -141,6 +141,8 @@ function fakeResolver(packages) {
  *   agents?: Record<string, {
  *     body?: string,
  *     frontmatter?: Record<string, unknown>,
+ *     tools?: string[],
+ *     skills?: string[],
  *     sections?: Record<string, string>,
  *   }>,
  *   tokenMap?: Record<string, unknown>,
@@ -165,10 +167,15 @@ async function seedPackage(fx, opts = {}) {
         def.frontmatter ?? {
           name: `agent-cortex:${name}`,
           description: `Description of ${name}`,
-          tools: ["bash", "view"],
           argumentHint: `Hint for ${name}`,
         },
       ),
+    );
+    // The tool set is authored once per agent, beside agent.md (agents/README.md).
+    await writeFixture(
+      fx,
+      `agents/${name}/tools.json`,
+      JSON.stringify({ tools: def.tools ?? ["bash", "view"], skills: def.skills ?? [] }),
     );
     for (const [section, content] of Object.entries(def.sections ?? {})) {
       await writeFixture(fx, `agents/${name}/pi/${section}.md`, content);
@@ -204,9 +211,9 @@ describe("installPi — agent composition", () => {
             frontmatter: {
               name: "agent-cortex:alpha",
               description: "Reads things.",
-              tools: ["bash", "view", "glob", "ask_user"],
               argumentHint: "Read something",
             },
+            tools: ["bash", "view", "glob", "ask_user"],
           },
         },
       });
@@ -240,11 +247,12 @@ describe("installPi — agent composition", () => {
             frontmatter: {
               name: "agent-cortex:guppi",
               description: "Collaborator.",
-              tools: ["*"],
             },
+            tools: ["*"],
           },
           plan: {
-            frontmatter: { name: "agent-cortex:plan", description: "Planner.", tools: ["bash", "view"] },
+            frontmatter: { name: "agent-cortex:plan", description: "Planner." },
+            tools: ["bash", "view"],
           },
         },
       });
@@ -274,7 +282,8 @@ describe("installPi — agent composition", () => {
       await seedPackage(fx, {
         agents: {
           guppi: {
-            frontmatter: { name: "agent-cortex:guppi", description: "Collaborator.", tools: ["* "] },
+            frontmatter: { name: "agent-cortex:guppi", description: "Collaborator." },
+            tools: ["* "],
           },
         },
       });
@@ -302,8 +311,8 @@ describe("installPi — agent composition", () => {
             frontmatter: {
               name: "agent-cortex:alpha",
               description: "Delegates.",
-              tools: ["bash", "view", "glob", "task", "read_agent"],
             },
+            tools: ["bash", "view", "glob", "task", "read_agent"],
           },
         },
       });
@@ -368,7 +377,7 @@ describe("installPi — agent composition", () => {
     const fx = await makeFixture();
     try {
       await seedPackage(fx, {
-        agents: { alpha: { frontmatter: { name: "agent-cortex:alpha", description: "Flushes.", tools: ["bash", "post_merge_watch"] } } },
+        agents: { alpha: { frontmatter: { name: "agent-cortex:alpha", description: "Flushes." }, tools: ["bash", "post_merge_watch"] } },
       });
       await assert.rejects(
         installPi({ root: fx.root, output: fx.output, resolvePackage: fakeResolver({}).resolvePackage }),
@@ -840,10 +849,16 @@ describe("installPi — real repo integration", () => {
       const names = result.agents.map((a) => a.name).sort();
       assert.deepEqual(names, ["guppi", "plan", "ralph", "ralph-plan", "strategy"]);
 
-      // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents", "idle_watch"]
+      // ralph's authored set: bash, view, rg, glob, skill, task, read_agent,
+      // wait_for_agents, the four peer rows and the three claude-only worker rows.
+      // pi renders every row it has a name for, in authoring order, and omits the
+      // claude-only rows without a warning.
       const ralph = await readFile(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
       assert.match(ralph, /name: "agent-cortex:ralph"/);
-      assert.match(ralph, /tools: "bash, read, grep, find, task, read_agent, wait_for_agents, idle_watch"/);
+      assert.match(
+        ralph,
+        /tools: "bash, read, grep, find, read, task, read_agent, wait_for_agents, peer_send, peer_list, peer_get, peer_await, idle_watch"/,
+      );
       assert.ok(ralph.includes("## Wake mechanism (PI — blocking wait)"), "{{SECTION:wake}} composed from pi/wake.md");
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");
@@ -853,7 +868,10 @@ describe("installPi — real repo integration", () => {
       // runtime agent-modes translateTools which sorts): ask_user → ask_questions,
       // skill → read (last position).
       const plan = await readFile(join(fx.output, "agents", "plan.agent.md"), "utf-8");
-      assert.match(plan, /tools: "bash, read, edit, write, grep, find, ask_questions, task, read_agent, read"/);
+      assert.match(
+        plan,
+        /tools: "bash, read, edit, write, grep, find, ask_questions, task, read_agent, read, peer_send, peer_list"/,
+      );
       assert.ok(
         plan.includes("~/.agent-cortex/pi/skills/workflow/plan/SKILL.md"),
         "plan PATH token resolved against token-map plugin root",

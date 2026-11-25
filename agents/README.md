@@ -9,7 +9,9 @@ The original format used a single `*.agent.md` file per agent, combining harness
 The composable directory format separates concerns:
 
 - **Shared body**: Harness-agnostic instructions (workflow, branching model, constraints)
-- **Harness-specific frontmatter**: Tool names, model preferences, metadata per harness
+- **Authored tool set**: The capabilities the agent may use, plus the skills it loads — one file
+  for both harnesses
+- **Harness-specific frontmatter**: Model and metadata per harness
 - **Section files**: Harness-specific instructions (e.g., the harness wake mechanism) included via tokens
 
 ## Directory Structure
@@ -18,6 +20,7 @@ The composable directory format separates concerns:
 agents/
 ├── <agent-name>/
 │   ├── agent.md                    # Shared body (harness-agnostic)
+│   ├── tools.json                  # The agent's tool set and the skills it loads
 │   ├── pi/
 │   │   ├── frontmatter.json        # PI-specific metadata
 │   │   └── <section>.md            # Optional: PI-specific sections
@@ -31,11 +34,13 @@ agents/
 ```
 agents/ralph/
 ├── agent.md                        # Shared body (branching model, dispatch logic, constraints)
+├── tools.json                      # One authored set: bash, view, rg, glob, skill, task,
+│                                   #   the peer rows, the worker rows; skills it loads
 ├── pi/
-│   ├── frontmatter.json            # PI tools: ["bash", "task", "read_agent", "wait_for_agents"]
+│   ├── frontmatter.json            # PI metadata (no tools — see tools.json)
 │   └── wake.md                     # PI wake: blocking wait_for_agents (no poll timer)
 └── claude/
-    ├── frontmatter.json            # Claude tools: ["bash", "task"]
+    ├── frontmatter.json            # Claude metadata (no tools — see tools.json)
     └── wake.md                     # Claude wake: event-driven re-invocation on worker completion
 ```
 
@@ -57,10 +62,11 @@ shape), **completion arrival**, **id tracking**, **trail reading**, and **stop**
 ```
 agents/plan/
 ├── agent.md                        # Shared body (planning workflow)
+├── tools.json                      # One authored set and the skills it loads
 ├── pi/
-│   └── frontmatter.json            # PI tools
+│   └── frontmatter.json            # PI metadata
 └── claude/
-    └── frontmatter.json            # Claude tools
+    └── frontmatter.json            # Claude metadata
 ```
 
 ## File Specifications
@@ -78,6 +84,94 @@ The shared body contains everything harness-agnostic:
 
 **No YAML frontmatter.** The file is pure markdown.
 
+### tools.json
+
+The agent's **tool set** — the capabilities it may use, and the skill directories whose files it
+loads — authored once for the agent and rendered into every harness:
+
+```json
+{
+  "tools": ["bash", "view", "task", "peer_send", "peer_list"],
+  "skills": ["workflow/ralph", "workflow/run-pipeline-stage"]
+}
+```
+
+#### Required fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tools` | `string[]` | The capabilities the agent may use, as canonical capability keys (non-empty), or the single sentinel `["*"]` for every tool the session has |
+| `skills` | `string[]` | The skill directories the agent's instructions tell it to load, repo-relative and one group deep (e.g. `workflow/ralph`). May be empty |
+
+#### Constraints
+
+- No unknown fields allowed (strict schema)
+- `tools` may be the single sentinel `["*"]`, which means every tool the session has. It is the
+  only value that means "all", and it cannot be combined with tool names: the validator
+  (`scripts/validate-agent-dir.mjs`) and both installers reject a mixed list with an error, so a
+  build fails instead of resolving one. A rendered literal would not be equivalent either: pi's
+  `--tools` compiles a lone `*` to `^.*$`, which matches every tool name, so pi would grant full
+  access rather than less. Claude Code's `tools:` field takes exact names, so the same literal
+  would name none of its tools.
+- Surrounding whitespace is ignored, so `["* "]` is the same sentinel as `["*"]`, in both
+  installers and in the `agent-modes` runtime that reads the composed agents
+- Both installers resolve `["*"]` by omitting the rendered `tools:` line, so the harness
+  inherits its own full tool set. An authored set never renders a literal `*`
+- Every `skills` entry must name a directory holding a `SKILL.md` under the package's `skills/`
+  tree. A stale entry fails the validator, because the coverage check would otherwise walk no
+  text and report a mapping that covers nothing as complete
+
+#### Why the set is not in `frontmatter.json`
+
+The set is behaviour, not harness metadata: it is what the harness enforces. A set authored twice —
+once per harness — drifts, and the drift is silent. It already had: ralph's pi list named none of
+the peer tools its own runbook instructed it to call, so the agent reported them as unavailable, and
+that reads like a transport fault rather than a missing list entry. One authored set is therefore
+checked against the text that names tools (see _Coverage check_).
+
+#### Example with the all-tools sentinel
+
+```json
+{
+  "tools": ["*"],
+  "skills": ["workflow/prioritise", "workflow/hitl-queue"]
+}
+```
+
+`"*"` is an authored form only. The harness reads the resulting agent as having no tool
+restriction at all, which is how an agent reaches tools that cannot be named at authoring time —
+MCP connector tools carry a per-machine name (`mcp__<server>__<tool>`), so no fixed list can
+include them. An absent `tools` key is never the authored form: the schema requires the key, so a
+forgotten set is a validation error rather than a silent grant of every tool.
+
+#### A capability that is a command on either harness
+
+One set renders for both harnesses, and the harness where a row is a `command` refuses it in a tool
+list — a command is user-invoked and not model-callable. A **mixed-kind row** (a tool on one
+harness, a command on the other) therefore cannot be granted through a tool set at all: it stays
+prose-only, and the prose states what the session does without the mechanism. `post_merge_watch` is
+the worked example — it is a tool on Claude Code and a command on pi, and
+`skills/workflow/run-pipeline-stage/playbooks/post-merge.md` pairs it with the no-watcher fallback.
+The coverage check does not demand a mixed-kind row, and a set that names one still fails the
+render, naming the canonical key.
+
+#### Coverage check
+
+`test/agent-tool-coverage.test.mjs` stages both installs (`--output <dir>`) and, for each agent and
+harness, collects every `{{CAPABILITY:x}}` token from `agent.md`, that harness's section files, and
+every markdown file of every skill in the agent's `skills` list. It then requires the staged
+frontmatter to grant each capability that is a `tool` there. A capability with a `null` mapping for
+that harness is not required, a `command` is not required, a mixed-kind row is not required, and the
+all-tools sentinel grants everything. A `{{CAPABILITY:x}}` with no row at all is a failure, because
+the map must stay complete.
+
+```bash
+node --test test/agent-tool-coverage.test.mjs
+```
+
+The check reads the staged artefact, never this checkout: a check that passes only because the
+repository is present is not a check.
+
 ### frontmatter.json
 
 JSON schema for harness-specific metadata:
@@ -86,8 +180,7 @@ JSON schema for harness-specific metadata:
 {
   "name": "agent-cortex:ralph",
   "description": "Parallel task orchestration agent",
-  "tools": ["bash", "task", "read_agent"],
-  "model": "claude-sonnet-4-5",           // optional
+  "model": "claude-sonnet-4-5",          // optional
   "argumentHint": "Run all pending beads"  // optional
 }
 ```
@@ -98,7 +191,6 @@ JSON schema for harness-specific metadata:
 |-------|------|-------------|
 | `name` | `string` | Agent identifier (e.g., `agent-cortex:ralph`) |
 | `description` | `string` | What the agent does (used in agent selection) |
-| `tools` | `string[]` | Tools the agent can use (non-empty), or `["*"]` for every tool the session has. An entry is a canonical capability key or a harness-native tool name |
 
 #### Optional Fields
 
@@ -111,34 +203,9 @@ JSON schema for harness-specific metadata:
 
 - No unknown fields allowed (strict schema)
 - `name` and `description` must be non-empty strings
-- `tools` is required and must be a non-empty array of strings
-- `tools` may be the single sentinel `["*"]`, which means every tool the session has. It is the
-  only value that means "all", and it cannot be combined with tool names: the validator
-  (`scripts/validate-agent-dir.mjs`) and both installers reject a mixed list with an error, so a
-  build fails instead of resolving one. A rendered literal would not be equivalent either: pi's
-  `--tools` compiles a lone `*` to `^.*$`, which matches every tool name, so pi would grant full
-  access rather than less. Claude Code's `tools:` field takes exact names, so the same literal
-  would name none of its tools.
-- Surrounding whitespace is ignored, so `["* "]` is the same sentinel as `["*"]`, in both
-  installers and in the `agent-modes` runtime that reads the composed agents
-- Both installers resolve `["*"]` by omitting the rendered `tools:` line, so the harness
-  inherits its own full tool set. An authored list never renders a literal `*`
-
-#### Example with the all-tools sentinel
-
-```json
-{
-  "name": "agent-cortex:guppi",
-  "description": "Resident prioritising collaborator",
-  "tools": ["*"]
-}
-```
-
-`"*"` is an authored form only. The harness reads the resulting agent as having no tool
-restriction at all, which is how an agent reaches tools that cannot be named at authoring time —
-MCP connector tools carry a per-machine name (`mcp__<server>__<tool>`), so no fixed list can
-include them. An absent `tools` key is never the authored form: the schema requires the key, so a
-forgotten list is a validation error rather than a silent grant of every tool.
+- `tools` is not a frontmatter field. The tool set is authored once, in `tools.json`; a
+  `frontmatter.json` that carries `tools` is rejected by the validator and by the composer, naming
+  the file that now holds it
 
 ### Section Files
 
@@ -161,15 +228,17 @@ Tokens in agent.md reference capabilities, paths, and sections:
 
 A capability is a **tool** or a **command**, and the kind is per harness, because the same
 capability can be one on one harness and the other on the next. A `tool` is offered to the
-model and may appear in a `tools` list. A `command` is invoked directly by the user or agent —
+model and may appear in a tool set. A `command` is invoked directly by the user or agent —
 a slash command, or an extension's command — and may appear in rendered prose only. Naming a
-`command` in a `tools` list is a hard error naming the canonical key, never a silent omission.
+`command` in a tool set is a hard error naming the canonical key, never a silent omission.
 The map states the kind beside each name, so no consumer has to infer it.
 
-A `tools` entry is either a canonical capability key or a harness-native tool name. An installer
-translates a canonical key to that harness's name, and passes a native name through unchanged, so
-a list may mix the two. An entry whose row is `null` for that harness is omitted from the rendered
-list, which lets one authored list serve both harnesses.
+A `tools` entry in `tools.json` is a canonical capability key. An installer translates each key
+through its own column of the map, so the same authored set serves both harnesses: a row the
+harness maps to `null` is omitted from that harness's rendered list. A harness-native name is
+still accepted where nothing else can express it (the map cannot grow a row for a tool only one
+harness offers under a name no other harness would use), but a capability key is the form to
+prefer — it is the form the coverage check can prove.
 
 Installers substitute those three token types only. A token with any other type stays in the
 text, so it reaches the harness as literal prose. `{{TOOL:...}}` was the earlier name of the
@@ -231,13 +300,13 @@ rendered frontmatter has no `tools:` key therefore runs with every tool (see
 When a harness directory contains section files:
 
 ```
-agent.md + pi/frontmatter.json + pi/wake.md → composed agent
+agent.md + tools.json + pi/frontmatter.json + pi/wake.md → composed agent
 ```
 
 The composer:
 1. Reads agent.md as the base
 2. For each `{{SECTION:name}}` token, reads `<harness>/<name>.md` and replaces the token
-3. Prepends YAML frontmatter from `<harness>/frontmatter.json`
+3. Prepends YAML frontmatter composed from `<harness>/frontmatter.json` and `tools.json`
 4. Outputs the composed agent file
 
 ### For Harnesses Without Sections
@@ -245,24 +314,27 @@ The composer:
 When a harness directory only has frontmatter.json:
 
 ```
-agent.md + pi/frontmatter.json → composed agent
+agent.md + tools.json + pi/frontmatter.json → composed agent
 ```
 
 The composer:
 1. Reads agent.md as the base
 2. No section replacements needed
-3. Prepends YAML frontmatter from `<harness>/frontmatter.json`
+3. Prepends YAML frontmatter composed from `<harness>/frontmatter.json` and `tools.json`
 4. Outputs the composed agent file
 
 ### Agents with No Per-Harness Differences
 
-Agents like `plan`, `ralph-plan`, `guppi`, and `strategy` that have identical behavior across harnesses still need per-harness directories for their frontmatter.json (since tool names differ between harnesses).
+Agents like `plan`, `ralph-plan`, `guppi`, and `strategy` that have identical behavior across
+harnesses still need per-harness directories for their frontmatter.json (the metadata and the
+model can differ), while the tool set is authored once for both.
 
 ```
 agents/plan/
 ├── agent.md              # Shared body (same for all harnesses)
-├── pi/frontmatter.json   # PI tools
-└── claude/frontmatter.json    # Claude tools
+├── tools.json            # One authored tool set
+├── pi/frontmatter.json   # PI metadata
+└── claude/frontmatter.json    # Claude metadata
 ```
 
 ## Migration Path
@@ -312,8 +384,12 @@ node --test test/validate-agent-dir.test.mjs
 
 The validator checks:
 - agent.md exists
+- tools.json exists, conforms to its schema, and every `skills` entry names a real skill directory
 - At least one harness subdirectory with valid frontmatter.json
-- Frontmatter conforms to the schema (required fields, no unknown fields)
+- Frontmatter conforms to the schema (required fields, no unknown fields, and no `tools` key)
+
+The coverage check (`test/agent-tool-coverage.test.mjs`) goes further than shape: it proves each
+agent's tool set grants the capabilities its own text names, on both harnesses.
 
 ## Design Decisions
 
@@ -335,7 +411,23 @@ The validator checks:
 
 - Ensures every agent has explicit harness configuration
 - Prevents "default harness" ambiguity
-- Makes the agent's capabilities explicit per harness
+- Makes the agent's harness metadata explicit per harness
+
+### Why is the tool set one file for both harnesses?
+
+The list decides what the agent can do, and the harness enforces it, so it is behaviour rather than
+metadata. Behaviour authored twice drifts, and the drift is silent — an agent whose list omits a
+tool its own text names reports that tool as unavailable, which reads like a transport fault.
+Authoring it once also makes it checkable: the coverage test compares one set against the text that
+names tools, and it cannot do that when each harness holds its own half.
+
+### Why does `skills` live beside `tools`?
+
+Nothing else maps an agent to the skill files that name its tools: `agent.md` says "the
+create-task hierarchy flow" as prose. Without that mapping no check can prove a set is complete,
+which is how the omission that started this format change survived. Recording the skills in the
+same authored file makes the mapping machine-readable, so the coverage check can walk the text an
+agent actually reads.
 
 ### Why strict schema (no unknown fields)?
 

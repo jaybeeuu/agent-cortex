@@ -237,8 +237,8 @@ describe("agentModesExtension --agent flag", () => {
   });
 
   it("activates every tool the session has when the agent's list is the all-tools sentinel", () => {
-    // guppi's authored frontmatter is ["*"], so its activation must name every
-    // registered tool — connectors included, which no authored list can know.
+    // guppi's authored tool set is ["*"], so its activation must name every
+    // registered tool — connectors included, which no authored set can know.
     const fake = createFakePi({ agent: "guppi" });
     const ctx = createFakeContext();
 

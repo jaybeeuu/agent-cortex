@@ -1,16 +1,18 @@
 // @ts-check
-// Validator for the composable agent directory layout: `agent.md` plus at
-// least one harness subdirectory with a valid `frontmatter.json`.
+// Validator for the composable agent directory layout: `agent.md`, an authored
+// `tools.json` tool set, and at least one harness subdirectory with a valid
+// `frontmatter.json`.
 //
 // Repo tooling, not a shipped skill: the composable layout exists only in this
 // repository's `agents/` tree, and installs carry flat rendered agents. Run the
 // test suite at `test/validate-agent-dir.test.mjs`.
 
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { isDirectory, isFile } from "./lib/fs.mjs";
 import { ALL_TOOLS, isAllToolsEntry } from "./lib/compose-agent.mjs";
+import { skillEntryExists } from "./lib/tool-coverage.mjs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,9 +20,14 @@ import { ALL_TOOLS, isAllToolsEntry } from "./lib/compose-agent.mjs";
  * @typedef {object} Frontmatter
  * @property {string} name
  * @property {string} description
- * @property {string[]} tools
  * @property {string} [model]
  * @property {string} [argumentHint]
+ */
+
+/**
+ * @typedef {object} ToolSet
+ * @property {string[]} tools
+ * @property {string[]} skills
  */
 
 /**
@@ -39,9 +46,11 @@ import { ALL_TOOLS, isAllToolsEntry } from "./lib/compose-agent.mjs";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** @type {readonly string[]} */
-const REQUIRED_FIELDS = ["name", "description", "tools"];
+const REQUIRED_FIELDS = ["name", "description"];
 /** @type {readonly string[]} */
 const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
+/** @type {readonly string[]} */
+const TOOL_SET_FIELDS = ["tools", "skills"];
 
 /**
  * The one sentinel a `tools` list may carry instead of tool names: it means
@@ -55,6 +64,10 @@ const KNOWN_OPTIONAL_FIELDS = ["model", "argumentHint"];
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 /**
+ * Validate one harness `frontmatter.json`. It carries harness metadata only: the
+ * tool set is authored once, in `tools.json`, so a `tools` key here is rejected
+ * rather than ignored — an ignored copy is the drift the authored set exists to
+ * end.
  * @param {unknown} fm
  * @returns {ValidationResult}
  */
@@ -85,7 +98,41 @@ export function validateFrontmatter(fm) {
     errors.push("description must not be empty");
   }
 
-  // Validate tools
+  if ("tools" in record) {
+    errors.push("carries tools — the tool set is authored once, in tools.json");
+  }
+
+  // Check for unknown fields
+  const knownFields = new Set([...REQUIRED_FIELDS, ...KNOWN_OPTIONAL_FIELDS]);
+  for (const key of Object.keys(record)) {
+    if (!knownFields.has(/** @type {any} */ (key))) {
+      errors.push(`unknown field: ${key}`);
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+/**
+ * Validate an authored `tools.json`: the agent's tool set, plus the skills whose
+ * text the coverage check walks.
+ * @param {unknown} toolSet
+ * @returns {ValidationResult}
+ */
+export function validateToolSet(toolSet) {
+  /** @type {string[]} */
+  const errors = [];
+
+  if (typeof toolSet !== "object" || toolSet === null) {
+    return { ok: false, errors: ["tool set must be an object"] };
+  }
+
+  const record = /** @type {Record<string, unknown>} */ (toolSet);
+
+  for (const field of TOOL_SET_FIELDS) {
+    if (!(field in record)) errors.push(`missing required field: ${field}`);
+  }
+
   if ("tools" in record) {
     if (!Array.isArray(record.tools)) {
       errors.push("tools must be an array");
@@ -98,10 +145,16 @@ export function validateFrontmatter(fm) {
     }
   }
 
-  // Check for unknown fields
-  const knownFields = new Set([...REQUIRED_FIELDS, ...KNOWN_OPTIONAL_FIELDS]);
+  if ("skills" in record) {
+    if (!Array.isArray(record.skills)) {
+      errors.push("skills must be an array");
+    } else if (!record.skills.every((s) => typeof s === "string")) {
+      errors.push("skills must be an array of skill directory names");
+    }
+  }
+
   for (const key of Object.keys(record)) {
-    if (!knownFields.has(/** @type {any} */ (key))) {
+    if (!TOOL_SET_FIELDS.includes(/** @type {any} */ (key))) {
       errors.push(`unknown field: ${key}`);
     }
   }
@@ -126,6 +179,29 @@ export async function validateAgentDir(agentDirPath) {
   // Check for at least one harness subdirectory with frontmatter.json
   if (!(await isDirectory(agentDirPath))) {
     return { ok: false, errors: ["agent directory does not exist"] };
+  }
+
+  // The tool set is authored once, beside agent.md. Its skills entries resolve
+  // against the package root, two levels up from agents/<name>/.
+  const toolSetPath = join(agentDirPath, "tools.json");
+  if (!(await isFile(toolSetPath))) {
+    errors.push("missing tools.json — the agent's tool set is authored once, beside agent.md");
+  } else {
+    try {
+      const parsed = JSON.parse(await readFile(toolSetPath, "utf-8"));
+      const result = validateToolSet(parsed);
+      for (const err of result.errors) errors.push(`tools.json: ${err}`);
+      if (result.ok) {
+        const root = dirname(dirname(agentDirPath));
+        for (const entry of /** @type {ToolSet} */ (parsed).skills) {
+          if (!(await skillEntryExists(root, entry))) {
+            errors.push(`tools.json: skills entry "${entry}" names no skill directory under skills/`);
+          }
+        }
+      }
+    } catch {
+      errors.push("tools.json: invalid JSON");
+    }
   }
 
   const entries = await readdir(agentDirPath);

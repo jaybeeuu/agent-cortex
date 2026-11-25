@@ -158,9 +158,8 @@ function normaliseIdleWatch(text) {
 }
 
 /** A minimal install root whose token-map.json holds `capabilities` and whose
- * single agent authors `tools` in its claude frontmatter — the fixture seam for
- * the installer's translation of an authored tool list through the claude
- * column.
+ * single agent authors its tool set in tools.json — the fixture seam for the
+ * installer's translation of an authored tool set through the claude column.
  * @param {{ capabilities: Record<string, unknown>, tools: string[] }} spec
  * @returns {Promise<{ root: string, output: string }>} */
 async function claudeToolFixture({ capabilities, tools }) {
@@ -172,8 +171,9 @@ async function claudeToolFixture({ capabilities, tools }) {
   await writeFile(join(root, "agents", "translator", "agent.md"), "Body.\n");
   await writeFile(
     join(root, "agents", "translator", "claude", "frontmatter.json"),
-    JSON.stringify({ name: "agent-cortex:translator", description: "Translates.", tools }),
+    JSON.stringify({ name: "agent-cortex:translator", description: "Translates." }),
   );
+  await writeFile(join(root, "agents", "translator", "tools.json"), JSON.stringify({ tools, skills: [] }));
   return { root, output: join(root, "out") };
 }
 
@@ -239,7 +239,7 @@ describe("install claude", () => {
     const { exitCode } = await runCli(["install", "claude", "--output", out]);
     assert.equal(exitCode, 0);
 
-    // agents/guppi/claude/frontmatter.json authors ["*"]. Claude Code reads an
+    // agents/guppi/tools.json authors ["*"]. Claude Code reads an
     // absent tools key as every tool; a literal `*` names no Claude Code tool.
     const guppi = await readFile(join(out, "agents", "guppi.md"), "utf-8");
     assert.doesNotMatch(guppi, /^tools:/m, "no tools line for the all-tools sentinel");
@@ -263,7 +263,7 @@ describe("install claude", () => {
     // provenance header + composed Claude frontmatter
     assert.match(ralph, /^---\n# GENERATED from agents\/ralph\/ /);
     assert.match(ralph, /\nname: ralph\n/);
-    assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, TaskList, TaskGet, TaskStop, ScheduleWakeup\n/);
+    assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, SendMessage, ListAgents, TaskList, TaskGet, TaskStop, ScheduleWakeup\n/);
     // the harness-neutral body arrives with its wake section resolved
     assert.match(ralph, /^## Wake mechanism \(Claude Code — event-driven\)$/m);
     assert.doesNotMatch(ralph, /\{\{(CAPABILITY|PATH|SECTION):/);
@@ -709,7 +709,11 @@ describe("install claude", () => {
       await writeFile(join(fixture, "agents", "padded", "agent.md"), "Body.\n");
       await writeFile(
         join(fixture, "agents", "padded", "claude", "frontmatter.json"),
-        JSON.stringify({ name: "agent-cortex:padded", description: "Padded.", tools: ["* "] }),
+        JSON.stringify({ name: "agent-cortex:padded", description: "Padded." }),
+      );
+      await writeFile(
+        join(fixture, "agents", "padded", "tools.json"),
+        JSON.stringify({ tools: ["* "], skills: [] }),
       );
 
       await installClaude({ root: fixture, output: join(fixture, "out") });

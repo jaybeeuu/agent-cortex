@@ -14,7 +14,7 @@ Harness-agnostic rules (tool names and completion detection differ per harness �
 - ALWAYS set the subagent's working directory to the feature worktree path when running stage chores.
 - ALWAYS keep the returned agent/task id in memory so you can read the result later.
 
-Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.mjs` from the `create-task` skill's `pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready -l execution:afk` returns". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads — the only local state is `state.json`, holding the worker-ID-to-bead mapping plus whatever wake-loop handle the wake section tracks. Progress lives in the bead trail the workers write, never in a file Ralph tails.
+Each pipeline stage is a separate **chore bead**, pre-created by `create-chores.mjs` from the `create-task` skill's `pipeline.json` when the task is expanded, with `blocks` deps that encode the stage order. Ralph never creates a stage chore — dispatch is always "claim what `bd ready -l execution:afk` returns". Stage tags (`stage:*`) live on chore beads, not on the parent feature bead. Loop counts are derived by querying chore children of the parent, not stored in state. Orchestration state is derived entirely from beads, the dispatch included: Ralph claims the bead and appends one dispatch record to its trail, so the in-flight set is a query over the tracker (*State: the dispatch set* below). Ralph keeps no state file, and whatever handle the wake mechanism needs belongs to that mechanism. Progress lives in the bead trail the workers write, never in a file Ralph tails.
 
 ## Branching model
 
@@ -40,10 +40,8 @@ Run once at startup:
    - **`task` or other bead with no `stage:*` chore children** — expand it (see _Expanding a chore-less task bead_ below), then dispatch its `stage:code` chore.
    - **Bead that already has its children** (a decomposed feature, an expanded task parent) — skip it: it is not dispatchable itself, and its `stage:*` chore is dispatched on its own.
    `execution:hitl` beads never appear in this query and are not Ralph's to touch: record them for the **Pending Human Action** summary at shutdown. That includes every feature still at its default `execution:hitl` label.
-5. **Start the idle watch** (see _Idle watch_): read whether a watch is running and arm it if it is not. It runs for the rest of the session, so a worker that stalls or vanishes is caught while ralph waits on the others. Arm it before the first dispatch, never after.
-6. Create Ralph's workspace directory: `mkdir -p .agent-cortex/ralph`
-7. Create `.agent-cortex/ralph/state.json` with the initial shape given in the wake section (`inflight` empty, plus whatever wake-loop handle that mechanism tracks).
-8. For each AFK bead (up to 5), kick off its pipeline:
+5. Create Ralph's workspace directory: `mkdir -p .agent-cortex/ralph`. It holds no state file — the dispatch set is the tracker's.
+6. For each AFK bead (up to 5), kick off its pipeline:
    a. Determine the epic for each bead, count its feature task children, then create branches accordingly:
       - Count feature children: `bd children <epic-id> | grep -v 'chore'` (or use `bd show` to inspect the epic).
       - **Single-feature epic (1 child)**: create only `feature/<parent-id>`, based from `origin/main`. No epic branch needed.
@@ -51,8 +49,8 @@ Run once at startup:
       - Ensure `.agent-cortex/worktrees/<parent-id>` exists.
    b. Claim the parent bead: `bd update <parent-id> --claim`.
    c. Expand the bead if it has no `stage:*` chore children, then dispatch its first ready chore (see _Expanding a chore-less task bead_ and _Dispatching a stage chore_ below).
-9. Record each launched agent in `.agent-cortex/ralph/state.json` (see format below).
-10. Hand over to the completion-detection mechanism in the wake section: start the wake loop it describes when agent work was dispatched, and proceed to **HITL Pause** directly when none was and `skills/workflow/ralph/scripts/pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate or an epic tagged `awaiting-epic-pr-merge`. Gates still parked behind their own pipeline do not count (REFERENCE.md, _Gate predicate_).
+7. Every dispatch records itself on the bead it dispatches — a claim plus one `dispatched:` trail entry (*State: the dispatch set* below) — so no worker is ever running without a record a cold agent can read.
+8. Hand over to the completion-detection mechanism in the wake section: start the wake loop it describes when agent work was dispatched, and proceed to **HITL Pause** directly when none was and `skills/workflow/ralph/scripts/pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate or an epic tagged `awaiting-epic-pr-merge`. Gates still parked behind their own pipeline do not count (REFERENCE.md, _Gate predicate_).
 
 ---
 
@@ -62,10 +60,12 @@ A ready `execution:afk` bead of type `feature` with **no** children is not dispa
 
 1. Confirm it is childless: `bd children <feature-id> --json` returns an empty list `[]`. Any existing child means the feature is already decomposed and this does not apply.
 2. Dispatch a **decomposition worker** in the feature worktree (`.agent-cortex/worktrees/<feature-id>`) whose whole job is to run the `create-task` hierarchy flow (`prd-to-tasks` → `create-task`) for that one **existing** feature — its planning bead and impl children only, never a second feature bead — and report the IDs it created. The worker builds one `execution:hitl` planning bead (`--parent <feature-id>`) plus `execution:afk` implementation task children (`--parent <feature-id>`, `--no-inherit-labels`), each wired with `bd dep add <impl-child> <planning-bead>` so the dependency — not an extra label — is the readiness gate. `create-task`'s feature path (its `SKILL.md` steps 5–6) is the authority for this shape.
-3. Record the worker in `inflight` as a **decomposition** entry — it holds no chore, so `choreId` is `null`:
-   ```json
-   { "kind": "decompose", "choreId": null, "parentId": "<feature-id>", "title": "<feature title>", "agentId": "<agent-id>" }
+3. Record the dispatch on the **feature bead** — a decomposition worker holds no chore, so the feature bead itself carries its record:
+   ```bash
+   bd update <feature-id> --claim
+   bd note <feature-id> "[<ISO-timestamp>] dispatched: kind=decompose worker=<agent-id>; cwd=<feature worktree>; session=<session reference, or none>"
    ```
+   The claim is the ownership and the lease; the trail entry is what makes the worker discoverable as in flight. When its result is handled, append the matching record — `[<ISO-timestamp>] completed: kind=decompose worker=<agent-id>` — because the feature stays `in_progress` after its worker is done, and that record is what takes it out of the dispatch set (*State: the dispatch set*).
 4. On completion, confirm the children exist (`bd children <feature-id> --json`) rather than trusting the report, and surface the created IDs in chat. An empty list means the decomposition failed: record the feature for the shutdown summary and continue — do **not** re-dispatch.
 5. **Never re-dispatch a decomposition.** The bead creation it runs is not idempotent, so a second run duplicates the planning bead and every implementation child beside the first.
 6. **Go idle.** After decomposition nothing is dispatchable for that feature: `bd ready -l execution:afk` still lists the feature itself (it now has children, so it is skipped — never decomposed again) but none of its children until a human closes the planning bead. Returning to the event loop with nothing to dispatch is the correct outcome — not a failure to re-expand.
@@ -89,11 +89,12 @@ A ready `execution:afk` task bead with no `stage:*` chore children has nothing t
    `<create-task-scripts>` is the absolute path to the `create-task` skill's `scripts/` directory, resolved from wherever the skill was loaded. `<parent-priority>` is the parent bead's own priority from `bd show <parent-id>`.
 
    The command is idempotent: it adopts an existing child by its `stage:<id>` or `lifecycle:feature-pr` label, creates only what is missing, skips deps that are already wired, and prints the resolved mapping either way. Re-running it is the recovery path for a failed expansion.
-3. Record the worker in `inflight` as an **expansion** entry — it has no chore to key on, so `choreId` is `null`:
-   ```json
-   { "kind": "expand", "choreId": null, "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>" }
+3. Record the dispatch on the **task bead** — an expansion worker has no chore to key on, so the parent carries its record:
+   ```bash
+   bd update <parent-id> --claim
+   bd note <parent-id> "[<ISO-timestamp>] dispatched: kind=expand worker=<agent-id>; cwd=<feature worktree>; session=<session reference, or none>"
    ```
-   That entry is what keeps it in the wait set and makes its completion attributable to the parent.
+   That record is what keeps it in the dispatch set, and what makes its completion attributable to the parent. Append `[<ISO-timestamp>] completed: kind=expand worker=<agent-id>` to the same bead when its result is handled — the parent stays `in_progress`, so the completion record is what takes it back out.
 4. The worker reports the returned mapping — `code`, `verify`, `review`, `document`, `post-merge`, `housekeeping`, `featurePrReview` — and closes nothing. It emits **no** `---REPORT---` block and owns no bead, so there is nothing to parse and no close to confirm.
 5. Its completion means the parent now has a `stage:*` chain: the event loop's next `bd ready -l execution:afk` pass picks up the `stage:code` chore (event loop step 7).
 
@@ -109,58 +110,66 @@ A ready `execution:afk` task bead with no `stage:*` chore children has nothing t
 
 ## Dispatching a stage chore
 
-Chores already exist and their deps already encode the order, so dispatch is claim-and-spawn — claim the ready chore (`bd update <chore-id> --claim`) and skip to the prompt.
+Chores already exist and their deps already encode the order, so dispatch is claim, spawn, record — claim the ready chore (`bd update <chore-id> --claim`), spawn the worker, then append its dispatch record to the same chore's trail.
 
 Load the universal stage runner prompt from the `run-pipeline-stage` skill's `prompts/stage-runner.md`, fill in all placeholders (including `<stage>` from the bead label, parent task description from `bd show <parent-id>`, prior SUMMARY/FILES_CHANGED from the last REPORT, chore bead ID, and the trail writer's path `<run-pipeline-stage-scripts>/trail-entry.mjs`), and spawn a subagent in **background** mode using the spawning mechanism described in the wake section, running from the feature worktree. Stage-specific policy comes from that skill's `playbooks/<stage>.md`. The prompt's lifecycle, remediation, and REPORT sections are the worker's contract — pass them through verbatim, never restate or trim them.
 
-Add the entry to `inflight` in `state.json`:
-```json
-{ "kind": "stage", "choreId": "<chore-id>", "parentId": "<parent-id>", "title": "<parent title>", "agentId": "<agent-id>" }
+Record the dispatch on the chore itself, with the id the spawn call returned:
+```bash
+bd note <chore-id> "[<ISO-timestamp>] dispatched: kind=stage worker=<agent-id>; cwd=<feature worktree>; session=<session reference, or none>"
 ```
+A stage chore needs no `completed:` record: its worker closes the chore, and a closed bead never reaches the in-progress query.
 
 ---
 
-## State Files
+## State: the dispatch set
 
-All status is read from beads — Ralph renders nothing to disk:
+All status is read from beads — Ralph renders nothing to disk and keeps no state file:
 
 ```bash
-bd list --parent <parent-id>   # every chore for a feature, with its state
-bd ready -l execution:afk      # the next dispatchable work
-bd show <id>                   # full detail, including the worker's notes
+bd list --parent <parent-id>                       # every chore for a feature, with its state
+bd list -s in_progress --json                      # every bead a worker may hold, with its trail
+bd ready -l execution:afk                          # the next dispatchable work
+bd show <id>                                       # full detail, including the worker's notes
+node skills/workflow/ralph/scripts/inflight.mjs    # the dispatch set, as one JSON digest
 ```
 
-Report status in chat from those commands. The only files Ralph owns are:
+**A dispatch writes two things, both to the tracker.**
 
-- **`.agent-cortex/ralph/state.json`** — runtime bookkeeping only (worker-ID→bead mapping plus the wake loop's own handle).
-- **The bead trail** — not a file Ralph writes: each worker appends its own entries with `trail-entry.mjs`, and Ralph reads them from `bd show` and `bd provenance log`.
+1. **A claim** — `bd update <id> --claim`. The claim is the ownership and the lease, and bd beats it, so a live worker shows a sign of life without Ralph writing anything.
+2. **One dispatch record in that bead's trail** — `[<ISO-timestamp>] dispatched: kind=<stage|decompose|expand> worker=<agent-id>; cwd=<path>; session=<session reference, or none>`. The claim says the bead is held; the record says which agent holds it, and names the working directory, the dispatch instant and a session reference where the harness exposes one, so a retro can find the work.
 
-All orchestration state is derived from beads:
+A stage chore carries its own record. A decomposition worker holds no chore, so its record goes on the **feature bead**, and an expansion worker's on the **task bead** — both of which always exist, so no dispatch is ever unrecorded. When a worker's result is handled Ralph appends the matching record, `[<ISO-timestamp>] completed: kind=<kind> worker=<agent-id>`. A feature or task bead stays `in_progress` after its worker finishes, so that record is what takes it back out of the dispatch set; a closed stage chore needs none.
+
+**The in-flight set is a query over those records.** `inflight.mjs` runs one read-only `bd list -s in_progress` and prints one digest:
 
 ```json
 {
-  "inflight": [
-    { "kind": "stage", "choreId": "xyz-456", "parentId": "abc-123", "title": "Add auth", "agentId": "agent-xyz-456" },
-    { "kind": "stage", "choreId": "def-789", "parentId": "ghi-101", "title": "Fix cache", "agentId": "agent-def-789" },
-    { "kind": "expand", "choreId": null, "parentId": "jkl-202", "title": "Expand billing", "agentId": "agent-jkl-202" }
-  ]
+  "inflight":   [ { "id": "abc-123.1", "kind": "stage", "parentId": "abc-123", "worker": "agent-1",
+                    "liveness": "running", "reason": null, "quietMinutes": 3 } ],
+  "parents":    [ "abc-123" ],
+  "stalled":    [ "abc-123.2" ],
+  "unrecorded": [ "abc-124" ]
 }
 ```
 
-- **inflight[].kind**: `"stage"` for a dispatched stage chore (the only shape that carries a `choreId`), `"decompose"` for a feature-decomposition worker and `"expand"` for an expansion worker (both no chore — `choreId` is `null`). Every dispatched agent has an entry; anything missing from `inflight` is invisible to the wait set and to the HITL-pause check.
-- **inflight[].agentId**: the worker id the spawn call returned — the key every completion is correlated to its bead against, and the identifier the wake section's read/wait path takes (see that section).
-- **inflight[].choreId**: the chore bead currently being worked by the subagent.
-- **inflight[].parentId**: the parent feature task bead — the id every trail entry is read under (`bd show <parentId>`, `bd children <parentId>`).
-- **Loop counts are not stored here** — derive them from beads:
-  - Fix round count = number of `stage:fix` chore children of `<parentId>` (closed ones count)
+| Question | How to answer | Never from |
+|---|---|---|
+| What is in flight? | A bead is in flight when it is `in_progress` and the newest record on its trail is a `dispatched:` one. `inflight` names each worker, its kind and its parent; `parents` is the same set rolled up per parent feature | A file, or a chore-type `bd` query |
+| Is a worker dead rather than busy? | `stalled`: an expired lease, or silence past the stall threshold `idle-check.mjs` uses — the same rule, not a second one. `reason` and `quietMinutes` carry the check's own words | A missing heartbeat read as a failure |
+| Which bead is a worker id working? | The `inflight` entry whose `worker` matches the id the spawn call returned | A map in memory that dies with the session |
+| Did a completed stage leave the set? | Yes: its worker closed the chore, so the chore is no longer `in_progress` and never reaches the query | Deleting a record |
+| Which beads does no record explain? | `unrecorded`: an `in_progress` bead with no dispatch record and no worker behind it. A parent whose worker is in flight is owned, not unrecorded | `bd list -s in_progress` alone |
 
-Update `.agent-cortex/ralph/state.json` after **every** agent completion or dispatch.
+**Loop counts are beads, not state.** Derive them by querying chore children of the parent: the fix round count is the number of `stage:fix` children of `<parentId>`, closed ones included.
+
+An `.agent-cortex/ralph/state.json` left by an older run is ignored: Ralph never reads it, never rewrites it, and no install deletes it. Remove it by hand if you want it gone.
 
 ---
 
-## Background Watch (always-active nudge)
+## Idle watch
 
-Ralph runs a background watch that monitors the bead queue and nudges the session when work needs attention. This is separate from the subagent wake mechanism — it's about being proactive when the queue is idle or work is stuck.
+Ralph runs a background watch that monitors the bead queue and nudges the session when work needs attention. This is separate from the subagent wake mechanism — it is about being proactive when the queue is idle or work is stuck.
 
 ### Watch behavior
 
@@ -173,7 +182,7 @@ Ralph runs a background watch that monitors the bead queue and nudges the sessio
   - The ready set has changed (new beads ready, or beads no longer ready)
   - Any bead has been `in_progress` > 15 minutes with no prior nudge
   - Any in-progress worker has exceeded its budget or vanished (no heartbeat)
-- **Deduplication**: Don't nudge about the same bead twice until its state changes
+- **Deduplication**: Do not nudge about the same bead twice until its state changes
 - **Status reporting**: Include watch status in the status summary (armed/disarmed, last wake time, next wake time)
 
 ### Watch lifecycle
@@ -200,29 +209,27 @@ After initialization, Ralph waits for background agents to complete. Completions
 
 1. **Read the worker's bead trail** — `bd show <chore-id>` for its entries and `bd provenance log <chore-id>` for the refs — and use it for the chat summary. There is no log file to flush.
 2. **Read** the completed agent's full output the way the wake section describes.
-3. **Re-read** `.agent-cortex/ralph/state.json` to identify the entry for that agent ID, then branch on its `kind`:
-   - **`kind: "expand"` — expansion completion branch.** The worker claimed no chore, emits no `---REPORT---`, and owns no bead to confirm, so steps 4-6 **do not apply**: remove the entry from `inflight`, confirm the parent now has `stage:*` chore children (`bd children <parent-id> --json | grep -c '"stage:'`) and surface the reported mapping in chat, then go straight to step 7 — the new `stage:code` chore is ready to dispatch. If the count is `0` — or below the stage total, which is a partial chain whose later stages never arrive — the expansion failed: surface the worker's output, record the parent for the shutdown summary, remove the entry, and re-dispatch the expansion — re-running `create-chores.mjs` is idempotent and is the recovery path, so it repairs the tree instead of duplicating it. Never create or close a bead for an expansion.
-   - **`kind: "decompose"` — decomposition completion branch.** Same shape as expansion: no chore, no `---REPORT---`, so steps 4-6 **do not apply**: remove the entry from `inflight`, confirm the feature now has children (`bd children <feature-id> --json` returns a non-empty list) and surface the created IDs in chat, then go straight to step 7. Nothing is dispatchable for that feature until a human closes the planning bead, so finding no ready work for it is the correct outcome — do **not** re-dispatch the decomposition (the bead creation it ran is not idempotent; that hazard is `create-task`'s, not the expansion's). If the feature still has no children, the worker failed: surface its output, record it for the shutdown summary, remove the entry, and continue at step 7. Never create or close a bead here.
+3. **Find the bead** carrying that worker id — `node skills/workflow/ralph/scripts/inflight.mjs` reports it in `inflight[].worker` — then branch on its `kind`:
+   - **`kind: "expand"` — expansion completion branch.** The worker claimed no chore, emits no `---REPORT---`, and owns no bead to confirm, so steps 4-6 **do not apply**: append the completion record to the task bead (`[<ISO-timestamp>] completed: kind=expand worker=<agent-id>` — the parent stays in progress, so that record is what takes it out of the dispatch set), confirm the parent now has `stage:*` chore children (`bd children <parent-id> --json | grep -c '"stage:'`) and surface the reported mapping in chat, then go straight to step 7 — the new `stage:code` chore is ready to dispatch. If the count is `0` — or below the stage total, which is a partial chain whose later stages never arrive — the expansion failed: surface the worker's output, record the parent for the shutdown summary, append the completion record, and re-dispatch the expansion — re-running `create-chores.mjs` is idempotent and is the recovery path, so it repairs the tree instead of duplicating it. Never create or close a bead for an expansion.
+   - **`kind: "decompose"` — decomposition completion branch.** Same shape as expansion: no chore, no `---REPORT---`, so steps 4-6 **do not apply**: append the completion record to the feature bead (`[<ISO-timestamp>] completed: kind=decompose worker=<agent-id>`), confirm the feature now has children (`bd children <feature-id> --json` returns a non-empty list) and surface the created IDs in chat, then go straight to step 7. Nothing is dispatchable for that feature until a human closes the planning bead, so finding no ready work for it is the correct outcome — do **not** re-dispatch the decomposition (the bead creation it ran is not idempotent; that hazard is `create-task`'s, not the expansion's). If the feature still has no children, the worker failed: surface its output, record it for the shutdown summary, append the completion record, and continue at step 7. Never create or close a bead here.
    - **`kind: "stage"`** — a stage worker: continue with steps 4-6.
 4. **Parse** the agent's `---REPORT---` block (see report format in the `run-pipeline-stage` skill).
 5. **Confirm** the worker closed its own leaf execution bead: `bd show <chore-id>` should read `closed`. If it is still open the worker died mid-stage — read its notes and re-dispatch. Never close it yourself.
 6. **Advance** the parent using the routing guidance in the `run-pipeline-stage` skill:
-   - **Success paths** (code → verify, verify SUCCESS → review, review SUCCESS → document): create nothing — closing the chore already unblocked the next stage of the pre-created chain. Point the parent's inflight entry at that newly ready `stage:*` chore and dispatch it (see _Dispatching a stage chore_ above).
-   - **Documenting → done**: do not close the parent feature bead — `bd close <parent-id>` refuses while its stage chores are open. Remove it from inflight, open/update the feature PR immediately (agent-branch → feature branch), report the PR URL in chat, then update the HITL PR gate bead with the PR URL. The `post-merge` and `housekeeping` stages close the parent through `close-settled-parent.mjs` once a human closes the gate and no child remains open.
-   - **Failure paths** (`OUTCOME: BLOCKED` from any stage): create nothing. The worker already closed its failed chore and built its own remediation — a `stage:fix` chore plus a fresh instance of the failed stage blocked on it. Run the cap backstop (see below); if the parent is at `maxFixRounds`, block the parent instead and record it for shutdown. Remove the inflight entry for this chore; the worker's beads appear in `bd ready` and are picked up in step 7. `post-merge` and `housekeeping` are the exceptions: neither builds a chain, and each leaves its chore **open**, so remove the inflight entry and hand the chore to a human — never re-dispatch it, and for `post-merge` report the escalation bead the check filed.
-7. **Check for newly ready beads**: run `bd ready -l execution:afk`. For each bead not yet tracked:
+   - **Success paths** (code → verify, verify SUCCESS → review, review SUCCESS → document): create nothing — closing the chore already unblocked the next stage of the pre-created chain. Dispatch that newly ready `stage:*` chore (see _Dispatching a stage chore_ above); it records itself when it is dispatched.
+   - **Documenting → done**: do not close the parent feature bead — `bd close <parent-id>` refuses while its stage chores are open. Open/update the feature PR immediately (agent-branch → feature branch), report the PR URL in chat, then update the HITL PR gate bead with the PR URL. The `post-merge` and `housekeeping` stages close the parent through `close-settled-parent.mjs` once a human closes the gate and no child remains open.
+   - **Failure paths** (`OUTCOME: BLOCKED` from any stage): create nothing. The worker already closed its failed chore and built its own remediation — a `stage:fix` chore plus a fresh instance of the failed stage blocked on it. Run the cap backstop (see below); if the parent is at `maxFixRounds`, block the parent instead and record it for shutdown. The failed chore is closed, so it has left the dispatch set; the worker's beads appear in `bd ready` and are picked up in step 7. `post-merge` and `housekeeping` are the exceptions: neither builds a chain, and each leaves its chore **open**, so read its record and notes and hand the chore to a human — never re-dispatch it, and for `post-merge` report the escalation bead the check filed.
+7. **Check for newly ready beads**: run `bd ready -l execution:afk`. For each ready bead with no worker in the dispatch set:
    - **Chore bead with `stage:*` label** (a worker-built remediation chore or a pre-created stage): find its parent via `bd show <chore-id>` (follow the `parent-child` dep). Run the cap backstop (see below). If under cap: dispatch it via _Dispatching a stage chore_. If at cap: block the parent (`bd update <parent-id> --status blocked --append-notes "<cap> reached"`) and record it for shutdown — create nothing.
    - **Childless `feature` bead, in-flight count < 5, no pending human action**: dispatch a decomposition worker (see _Feature decomposition_ above). Check `pendingHumanAction` with `node skills/workflow/ralph/scripts/pending-gates.mjs` — an unblocked `lifecycle:feature-pr` gate means a feature is awaiting a human merge, so hold new parent features. Gates still blocked behind their own pipeline are parked and do not count.
    - **Task bead with no `stage:*` chore children, in-flight count < 5, no pending human action**: claim the parent and dispatch an expansion worker (see _Expanding a chore-less task bead_ above) instead of a stage; otherwise dispatch its first ready chore. Check `pendingHumanAction` the same way as the row above.
    - **Any other `execution:afk` bead, in-flight count at 5**: hold in memory as Waiting.
-   When a parent is removed from `inflight` (completed or failed), immediately promote the first Waiting parent.
+   When a parent leaves the dispatch set (its worker completed, or its bead closed), immediately promote the first Waiting parent.
    `execution:hitl` beads are absent from this query by construction, so nothing needs filtering out here.
-8. **If nothing remains in flight** — `inflight` holds no stage, decomposition or expansion workers, and `bd ready -l execution:afk` returns nothing (no stage chore, no childless feature to decompose, and no ready, claimable chore-less task bead awaiting expansion — a queued `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate is not claimable, so it keeps ralph paused rather than awake):
+8. **If nothing remains in flight** — the dispatch set is empty, and `bd ready -l execution:afk` returns nothing (no stage chore, no childless feature to decompose, and no ready, claimable chore-less task bead awaiting expansion — a queued `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate is not claimable, so it keeps ralph paused rather than awake):
+   - Surface any `unrecorded` ids the digest reports. An `in_progress` bead with no dispatch record and no worker behind it is drift from an older run: name it in the pause or shutdown summary so a human can find it, and leave it alone.
    - If `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`; gates still parked behind their own pipeline do not count — REFERENCE.md, _Gate predicate_), proceed to **HITL Pause** (see below).
    - Otherwise, proceed to **Shutdown** (see below).
-
-   Both endings report the idle watch's status line before they stop (see _Idle watch_). The watch is
-   already running: an ending reports it, and re-arms it only when the status says it stopped.
 
 ### Cap backstop (read-only)
 
@@ -236,87 +243,9 @@ Read `maxFixRounds` from the `create-task` skill's `pipeline.json`. If `fix_roun
 
 ---
 
-## Idle watch
-
-Ralph is poor at watching its own workers, and an empty queue is not the end of its work. One
-mechanism closes both gaps: **{{CAPABILITY:idle_watch}}** resumes this session every few minutes, so
-ralph runs the check again and acts on what it says. It runs from the moment ralph starts until ralph
-closes.
-
-### When ralph arms it
-
-The watch is always active for the life of the session. Ralph does not arm it when the queue empties
-and does not wait for a predicate to become true: it starts the watch during **Initialization** and
-leaves it running.
-
-- **Arm it at startup**, before the first dispatch, so the first wait is already watched. A worker
-  stalls while other workers run, which is the middle of the session and not its end.
-- **Re-arm it on every wake.** A wake may be the last one the watch ever sends: the mechanism can
-  die, a session can be re-entered without it, and a user can stop it. On each wake ralph reads
-  whether a watch is running, and arms it again if it is not.
-- **Never arm a second one.** One session has one watch. Arming is repair, so it replaces a running
-  watch rather than adding a second cadence.
-- **Never stop it while ralph runs.** A stop belongs to the session ending. Any other stop is a silent
-  hole in the clock, which is the failure this policy exists to prevent.
-
-There is no tick limit and no deadline: the watch runs until ralph closes, because the worker that
-stalls or the bead that becomes ready can appear in the tenth hour. Arming again is the repair of a
-mechanism that is gone, never a refill of an allowance that ran out. The queue being empty and the
-in-flight count being zero are not arming conditions — they are what HITL Pause and Shutdown read,
-and both endings keep the watch running.
-
-### What a wake means
-
-A wake says the check's answer changed and carries the ids that arrived, the ids that left, and the
-time of the check. It never carries the answer, so ralph acts in this order:
-
-1. **Read whether a watch is running**, and arm it again if it is not. A wake with no watch behind it
-   is the last one ralph would receive.
-2. **Run the check once for the full result** (REFERENCE.md, _Idle Check_). A check that exits
-   non-zero has no answer: report the failure, dispatch nothing, and never dispatch from the ids a
-   message names.
-3. **Take each ready id through the readiness test** the event loop already runs (REFERENCE.md, _The
-   in-flight invariant_): dispatch a stage chore, decompose a childless feature, expand a chore-less
-   task, and hold a bead an open `lifecycle:feature-pr` gate blocks. Run the cap backstop and the
-   pending-gate hold again — a wake is a re-check, never an allowance.
-4. **Inspect each stalled id before touching it.** `bd show <id>` and `bd provenance log <id>`
-   separate a dead worker from a quiet one, and only a bead whose worker is gone is re-dispatched. A
-   stalled bead under a worker that is still running is left alone: the worker's own trail is the
-   evidence, and its completion removes the bead from the stalled list.
-5. **Continue the event loop from the top.** A wake never ends the session and is never a reason to
-   stop: read the queue, dispatch, and wait again.
-
-A resume is a cue and never approval. Nothing about a merge gate, the in-flight cap or a bead's own
-dependencies changes because ralph woke up, and a wake that arrives while a worker runs changes
-nothing about that worker.
-
-### The status line
-
-Report four facts beside the bead view, and count the nudges from the messages themselves, so the
-line never depends on the mechanism having a report of its own:
-
-| Field | Meaning |
-| --- | --- |
-| Watching | whether a watch is running now |
-| Last check | the time of the most recent tick |
-| Nudges | how many wakes this session has received |
-| Stalled | the ids the most recent check reported as stalled |
-
-The watch is unbounded, so `Watching: no` never means "it finished". It means the mechanism stopped
-or the session lost it, and the next thing ralph does is arm it again.
-
-### A session with no such mechanism
-
-Ralph still works, one prompt later. It runs the check once on each prompt, reports the ready and
-stalled ids it printed, and waits for the user. It never fakes a cadence with `sleep`, a background
-shell timer or a poll loop: a session whose clock is the prompt is a supported session, not a broken
-one. It reports no watch in its status line rather than claiming a clock it does not have.
-
----
-
 ## HITL Pause
 
-Proceed here when no agent work is in flight (no stage, decomposition or expansion workers in `inflight`), no work is dispatchable (nothing returned by `bd ready -l execution:afk` — no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less `execution:afk` task bead awaiting expansion — claimability is part of dispatchability: an `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it does not keep ralph awake), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate (a feature genuinely awaiting human merge) or an epic tagged `awaiting-epic-pr-merge`. Gates still parked behind their own pipeline do not count (REFERENCE.md, _Gate predicate_). Ralph stops rather than burning requests on idle polls.
+Proceed here when no agent work is in flight (the dispatch set is empty), no work is dispatchable (nothing returned by `bd ready -l execution:afk` — no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less `execution:afk` task bead awaiting expansion — claimability is part of dispatchability: an `execution:afk` bead behind an open `lifecycle:feature-pr` HITL gate cannot be claimed, so it does not keep ralph awake), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` — an **unblocked** `lifecycle:feature-pr` gate (a feature genuinely awaiting human merge) or an epic tagged `awaiting-epic-pr-merge`. Gates still parked behind their own pipeline do not count (REFERENCE.md, _Gate predicate_). Ralph stops rather than burning requests on idle polls.
 
 1. For each **multi-feature** epic whose feature beads are all closed but not yet tagged `awaiting-epic-pr-merge`, open/update an epic PR to main, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — their feature branch PRs already target `main` directly.
 2. Run `bd dolt push` and gate it on the exit status: non-zero, retry once, then stop and report the command, exit code and stderr as a sync blocker — no Pending Human Action table.
@@ -335,17 +264,13 @@ Proceed here when no agent work is in flight (no stage, decomposition or expansi
 
    When you've completed the above actions, prompt me to continue.
    ```
-5. **Report the idle watch's status line** (see _Idle watch_), and arm the watch again if the status
-   says it stopped. The watch is what brings ralph back here, and it keeps running through the pause —
-   a nudge only tells ralph that the queue or a bead changed, and the next wake re-runs the readiness
-   test and the pending-gate hold before it dispatches anything.
-6. **Stop completely.** Stop the completion wake mechanism exactly as the wake section describes — whatever stopping that takes, and nothing more. The idle watch is not that mechanism, so it keeps running. Do **not** start any background process. Do **not** check bead status again. Do **not** continue the event loop. Output **nothing further** after the summary above. A nudge, or the user, brings ralph back.
+5. **Stop completely.** Stop the wake mechanism exactly as the wake section describes — whatever killing it takes, and nothing more. Do **not** restart or schedule anything. Do **not** start any background processes. Do **not** check bead status again. Do **not** continue the event loop. Output **nothing further** after the summary above. Ralph is now fully idle — it must not act again until the user explicitly re-prompts.
 
 ---
 
 ## Shutdown
 
-When nothing is in flight AND nothing is dispatchable — `inflight` holds no entries, and `bd ready -l execution:afk` returns nothing (no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less task bead awaiting expansion — see _The in-flight invariant_ in the `ralph` skill's REFERENCE.md):
+When nothing is in flight AND nothing is dispatchable — the dispatch set is empty, and `bd ready -l execution:afk` returns nothing (no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less task bead awaiting expansion — see _The in-flight invariant_ in the `ralph` skill's REFERENCE.md):
 
 1. For each **multi-feature** epic whose feature beads are complete, open/update a PR from `epic/<epic-id>` into `main`, then tag the epic `awaiting-epic-pr-merge`. Skip single-feature epics — no epic branch exists.
 2. Run:
@@ -392,10 +317,6 @@ Run `bd show <id>` for full details on each.
 ```
 All beads complete.
 ```
-8. **Report the idle watch's status line** (see _Idle watch_), whatever the summary said, and arm the
-   watch again if the status says it stopped. The watch is what tells ralph that the queue changed — a
-   bead that becomes ready or a worker that vanishes while another runs resumes the session instead
-   of waiting for a prompt.
 
 ---
 
@@ -405,13 +326,14 @@ All beads complete.
 - **Never** write, edit, or create source code or documentation yourself.
 - **Never** edit bead task files directly — only use `bd` commands.
 - **ALWAYS use the documented spawning mechanism to spawn subagents** — never use bash, never run stages inline, never use any other tool. This is your only spawning mechanism.
-- **Always** derive orchestration state from beads — do not store loop counts in state.json.
+- **Always** derive orchestration state from beads — do not store loop counts, the dispatch set, or a worker id in a file.
 - **Subagents can fetch their own context** — they will run `bd prime` if they need project-level state. Do not inject `bd prime` output into subagent prompts.
-- **Max 5** tasks in-flight at once (counted by parent features, not individual chore beads) — a parent counts while any of its workers, stage, decomposition or expansion, sits in `inflight`.
+- **Max 5** tasks in-flight at once (counted by parent features, not individual chore beads) — a parent counts while any of its workers, stage, decomposition or expansion, sits in the dispatch set (`inflight.mjs`'s `parents`).
 - **Never** close a leaf execution bead and **never** create a `stage:fix`/feedback bead — the worker owns its bead's lifecycle and builds its own remediation chain.
 - **Never** create a stage chore — `create-chores.mjs` pre-creates the chain; dispatch what `bd ready -l execution:afk` returns.
 - **Never** re-dispatch a decomposition or an expansion, and never narrow the dispatch query to "chores with `stage:*`": an `execution:afk` bead with no stage chores is work waiting, not work that does not exist.
-- **Always** record every dispatch in `inflight`, stage workers as `kind: "stage"`, decomposition workers as `kind: "decompose"` and expansion workers as `kind: "expand"` with `choreId: null` — an untracked worker is never waited on, and its absence can make HITL Pause or Shutdown fire mid-decomposition.
+- **Always** record every dispatch on the bead it dispatches — a claim and one `dispatched:` trail entry naming the worker id and the kind — and append the matching `completed:` record when its result is handled. A dispatch with no record is invisible to the wait set and to the HITL-pause check, and leaves a cold agent guessing what is running.
+- **Never** keep a state file beside the tracker: a fact with no bead field becomes a trail entry, and a handle the wake mechanism needs stays with that mechanism.
 - **Never** run `create-task` for a bead that already exists to give it a pipeline — it creates a **second parent**. Expand with `create-chores.mjs --parent <id>`.
 - **Max fix rounds** per parent is a read-only backstop (read `maxFixRounds` from the `create-task` skill's `pipeline.json`; count `stage:fix` chore children); block the parent at cap and create nothing.
 - **Always** run feature chores in the feature worktree (`.agent-cortex/worktrees/<parent-id>`), never from repo root.

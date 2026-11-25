@@ -8,6 +8,7 @@ A living record of external repos and promoted internal research that inform age
 - [Skill pattern research notes](research/skill-patterns-research.md)
 - [Skill design research](research/skill-design-research.md)
 - [Skill improvements analysis](research/skill-improvements-analysis.md)
+- [Skill usage audit](research/skill-usage-audit.md)
 
 ## addyosmani/agent-skills
 

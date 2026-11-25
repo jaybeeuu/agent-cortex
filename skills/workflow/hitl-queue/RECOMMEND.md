@@ -51,9 +51,9 @@ HITL shortlist · 10 of 14 eligible · 12 ranked, 2 unscored · strategy v2
 excluded: 1 kind:idea bead (--include-ideas ranks them)
 why: "shorter review turnaround for human-gated work." · Current themes
 
- 1  code  tst-b   27.9  Ship the decision queue  ·  rice 11.0 = R4 · I3 · C0.7 · E2  ×1.69 dependents(1)  ×1.0  deadline ×1.5 in 2d 23h (due 2026-11-24T15:46Z)  ×1.00 theme (untouched)  ·  unblocks tst-w  ·  ← recommendation
- 2  code  tst-a   20.3  Decide the API shape  ·  rice 12.0 = R4 · I3 · C0.7 · E2  ×1.69 dependents(1)  ×1.0  ×1.00 theme (untouched)  ·  unblocks tst-w
- 3  code  tst-c   10.0  Report the queue  ·  rice 10.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  ×1.00 theme (untouched)  ·  unblocks nothing
+ 1  code  tst-b   27.9  Ship the decision queue  ·  rice 11.0 = R4 · I3 · C0.7 · E2  ×1.69 dependents(1)  ×1.0  deadline ×1.5 in 2d 23h (due 2026-11-24T15:46Z)  ·  unblocks tst-w  ·  ← recommendation
+ 2  code  tst-a   20.3  Decide the API shape  ·  rice 12.0 = R4 · I3 · C0.7 · E2  ×1.69 dependents(1)  ×1.0  ·  unblocks tst-w
+ 3  code  tst-c   10.0  Report the queue  ·  rice 10.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  ·  unblocks nothing
 
 11 omitted, see them with node <skill-scripts>/queue.mjs queue
 a row other than the top is a priority challenge — run strategise, never a reorder
@@ -63,9 +63,6 @@ One line, one bead: rank, scope, id, total, title, the four components with all 
 the due moment where the bead has one, and what answering it unblocks. The rows, their order and
 every number are the queue's own — nothing is re-sorted and nothing is recomputed — so the order is
 the answer and the columns are the evidence for it.
-
-The theme clause closes every scored line, factor `×1.00 theme (untouched)` included, and it names
-the theme when that theme is another bead: `×0.70 theme tst-epic (1 served)`.
 
 **The count is `--top`, and its default is 10.** Fewer eligible rows than the count says `the list
 is complete`; more states how many were omitted and the command that shows them, so no row leaves
@@ -82,14 +79,14 @@ spot: the rubric moves first, or the order stands and the answer says so.
 ```text
 Recommendation · tst-a · total 10.0 · strategy v2
 Ship the decision queue
-rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0  ×1.00 theme (untouched)
+rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0
 unblocks tst-c, tst-d, tst-e
 why: "shorter review turnaround for human-gated work." · Current themes
 ```
 
-Five lines: the bead and its total, its title, the four components with all four multipliers, the
-beads the answer releases, and the strategy line. One recommendation, never the list the row came
-from.
+Five lines: the bead and its total, its title, the four components with the unblocking multiplier
+and the work-in-progress multiplier, the beads the answer releases, and the strategy line. One
+recommendation, never the list the row came from.
 
 ## When the human names a bead
 

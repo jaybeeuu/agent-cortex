@@ -6,10 +6,10 @@ confidence and effort. Keep it short enough that you actually maintain it.
 
 It lives in the repository as a committed file, never in the tracker, so a reviewer can
 diff how the judgement changed. Every `##` section below is required: leave one empty and
-the validator names it. `## Deadline tiers`, `## Theme balance` and the four level tables —
-`## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels` — are the
-exceptions: omit one and the queue ranks on its documented deadline or theme-balance default, or
-`score` accepts any value that component's floor allows. Set the version and the date with
+the validator names it. `## Deadline tiers` and the four level tables — `## Reach levels`,
+`## Impact levels`, `## Confidence levels`, `## Effort levels` — are the exceptions: omit one
+and the queue ranks on its documented deadline default, or `score` accepts any value that
+component's floor allows. Set the version and the date with
 `node <strategise-scripts>/strategy.mjs bump` after you edit the content.
 
 `<strategise-scripts>` is the absolute path to the `scripts/` directory of the `strategise`
@@ -197,9 +197,7 @@ closed beads the tracker already holds, takes the newest `window` closes that ar
 and counts how many of them belong to each bead's **theme** — its root ancestor, not its
 immediate parent. A theme served n times in that window keeps `decay ** n` of its weight, so
 a theme someone just worked in drops and a neglected theme keeps all of it. Nothing is stored
-and nothing is written to a bead: the effect is recomputed from the tracker on every run. At
-the shipped decay 0.7, a theme served twice keeps 0.7 × 0.7 = 0.49 of its weight, not 0.70,
-and a theme served once keeps 0.70.
+and nothing is written to a bead: the effect is recomputed from the tracker on every run.
 
 A close counts only when it is a real item. Beads labelled `stage:*` or `lifecycle:*` are
 pipeline steps, so they are skipped; otherwise one task's nine stage chores would penalise

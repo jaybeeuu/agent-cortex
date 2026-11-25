@@ -69,9 +69,10 @@ agent-cortex/
 
 Use `pnpm changeset` for all version bumps. Never edit versions manually.
 `package.json` and `CHANGELOG.md` stay in lockstep automatically.
-Every package a changeset names must match a workspace `name` exactly, scope included:
-the Changeset check resolves those names and fails the PR naming the file and the
-package, and fails a changeset whose frontmatter it cannot read, naming the file and the
+Every package a changeset names must match a workspace `name` exactly, scope included,
+and every release must carry the type `changeset version` parses — `major`, `minor`,
+`patch` or `none`. The Changeset check resolves those names, checks every release type,
+and fails a changeset whose frontmatter it cannot read, naming the file and the
 reason. See the `style-versioning` skill for the full workflow.
 
 ## Changelog

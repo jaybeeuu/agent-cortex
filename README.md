@@ -124,13 +124,22 @@ that no PR can ship. The `style-versioning` skill documents the format of a
 changeset.
 
 The job then reads the frontmatter of every changeset the PR adds or **modifies** and
-resolves each package name against the workspace. A name the workspace does not declare
-fails the PR, naming both the changeset file and the offending package. Use the exact
-name, scope included: `changeset version` reads the whole `.changeset` directory, so a
-modified changeset that names an unknown package breaks the Release job on `main`,
-where nothing can fix it forward. That is what happened twice — two changesets named
-`@cryptolibertus/agent-cortex` when the package is `@jaybeeuu/agent-cortex` — and a
-typo now fails at the pull request instead. Run the gate locally before pushing. It
+holds each release it declares to the grammar `changeset version` applies, naming the
+changeset file and the offending key when a release fails:
+
+- **The package name** must be a `name` a workspace `package.json` declares — exact,
+  scope included. An empty name fails too, because it names nothing that can be bumped.
+- **The release type** must be one `changeset version` parses: `major`, `minor`, `patch`
+  or `none`. The gate holds that list in one constant and tests membership, so a missing
+  value, a quoted empty string and a misspelling are one failure, not three.
+
+That is one rule with three faces, and each face arrived the same way — a green gate,
+then a dead Release job on `main`, where nothing can fix it forward. First two changesets
+named `@cryptolibertus/agent-cortex` when the package is `@jaybeeuu/agent-cortex`; then
+`"@jaybeeuu/agent-cortex":` with no value at all; then `"": patch` with no package. All
+three now fail the pull request instead of the release. A PR that modifies an existing
+changeset is checked as closely as one that adds it, because `changeset version` reads the
+whole `.changeset` directory. Run the gate locally before pushing. It
 needs no install and no `pnpm` on `PATH`, because it reads `pnpm-workspace.yaml` and the
 workspace `package.json` names directly:
 
@@ -138,15 +147,11 @@ workspace `package.json` names directly:
 git diff --name-status "origin/main...HEAD" | node scripts/check-changeset.mjs
 ```
 
-A changeset whose frontmatter cannot be parsed fails the PR instead, naming the file and
-why it could not be read: no frontmatter block, an unclosed block, a line that is not a
-`package: bump` pair, and an empty file. The gate reads the same frontmatter block
-`changeset version` does and fails on each shape that parser throws on, so a malformed
-file stops at the pull request instead of in the Release job on `main`. One shape stays
-outside the gate: a frontmatter pair that names a package but carries no release type, or
-an unrecognised one (`"@jaybeeuu/agent-cortex":`), still resolves its name while
-`changeset version` rejects it. That gap is open and tracked separately (`agnt-ctx-f0f7`),
-so this gate covers the parse failures and not the release-type check.
+The gate reads the same frontmatter block `changeset version` does, so a changeset it
+cannot parse fails the PR naming the file and the reason: no frontmatter block, an
+unclosed block, a line that is not a `package: bump` pair, and an empty file. A malformed
+file therefore stops at the pull request instead of in the Release job on `main`, and no
+shape is left for the release to catch.
 
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when

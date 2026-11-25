@@ -12,12 +12,24 @@ node <skill-scripts>/create-chores.mjs --parent <bead-id> [--priority <0-4>]
   - **pour** — when a `pipeline.formula.json` exists under `.beads/formulas/` at or above the working directory *and* the parent has no stage chore yet. One `bd mol pour pipeline` creates every stage chore with its labels and stage-to-stage edges, then each step is reparented onto the parent (`bd update <step> --parent <parent>`, one call per step) and the inert molecule root is deleted (`bd delete <root> --force`). The pour record is noted on the parent bead.
   - **per-stage** — the loop: one `bd create` per missing stage chore and one `bd dep add` per missing edge. Used when the formula is absent (an older install, or a project whose installer has not run since) and when the parent already has stage chores.
 
-  stderr states once which path ran. A pour that cannot finish is reverted and the loop runs instead, so a missing or unusable formula never fails an expansion.
+  stderr states once which path ran. A pour that cannot finish hands over to the per-stage path, so a missing or unusable formula never fails an expansion.
 - `agent-cortex install pi` / `install claude` copy the formula to `<project>/.beads/formulas/pipeline.formula.json` (the filename is the formula id) and say in their output that the copy is an untracked file. A project with no `.beads/` is reported and the install continues.
 - Prints a JSON object mapping each stage ID to its chore bead ID, plus `featurePrReview` for the PR gate.
 - Expands a bead that already exists — it never creates a parent.
 - **Idempotent**: it reads that parent's children once (`bd children <parent-id> --json`) and adopts an existing child by its role label — `stage:<id>` for a stage chore, `lifecycle:feature-pr` for the gate — creating only what is missing. Deps that are already wired are skipped. A re-run on an expanded bead creates nothing and prints the same mapping, so re-running after a failed expansion is the recovery path. Convergence is not inherited from the pour — a second pour duplicates the whole tree silently — so a stage chore's existence is what suppresses the pour, not the parent's pour record.
 - Adoption ignores bead status and reads only labels: a chore a later stage already closed is still adopted and reprinted in the mapping, which keeps a re-run convergent instead of creating a duplicate. When a role label appears twice under one parent the first-listed child wins. Adoption is scoped to that parent's children and keyed on labels, never titles, so a stray chore from another bead is never adopted.
+
+**One chore per stage, even on partial failure.** A pour that fails is rolled back as far as bd
+allows. A step the rollback could not delete keeps the `stage:<id>` label the formula gave it, so
+the loop adopts it under that role instead of creating a second chore for the stage. A failure after
+a reparent therefore leaves a tree that still holds exactly one chore per stage — across the whole
+tracker, not only under the parent. This is the invariant a change to either path must preserve.
+
+The one state that breaks it is a survivor whose delete *and* move are both refused. That step stays
+under the molecule root, where `bd children <parent-id>` cannot see it, so the run names its id and
+the `bd update <step> --parent <parent>` command that finishes the tree. Re-running the expansion
+before that command runs pours a second molecule. Only a workspace-wide `stage:*` label scan would
+cover it, and this route deliberately does not do one.
 
 ## Stage chore beads
 

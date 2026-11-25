@@ -114,6 +114,7 @@ const PRE_RENAME_AGENT_TOOLS = {
       "TaskList",
       "TaskGet",
       "TaskStop",
+      "ScheduleWakeup",
     ],
     pi: [
       "bash",
@@ -128,6 +129,7 @@ const PRE_RENAME_AGENT_TOOLS = {
       "peer_list",
       "peer_get",
       "peer_await",
+      "idle_watch",
     ],
   },
   strategy: {

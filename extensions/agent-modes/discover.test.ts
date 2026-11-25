@@ -345,6 +345,41 @@ describe("discoverAgents (flat fallback)", () => {
     assert.equal(agents.length, 1);
     assert.deepEqual(agents[0].tools, DEFAULT_TOOLS);
   });
+
+  it("skips only the flat agent whose tool list names a command, and warns about it", () => {
+    const fx = track(makeFixture());
+    // The post-merge-watch extension registers a CLI flag on pi, so the map
+    // binds post_merge_watch to a command. Binding one in a tool list is a
+    // defect in that one file.
+    writeFlatAgent(fx, "broken", FLAT_FRONTMATTER("broken", '["bash", "post_merge_watch"]'));
+    writeFlatAgent(fx, "strategy", FLAT_FRONTMATTER("strategy", '["bash", "view"]'));
+
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (message: unknown) => warnings.push(String(message));
+    let agents: AgentDef[];
+    try {
+      agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+    } finally {
+      console.warn = original;
+    }
+
+    // The flat path is the production read path, and discoverAgents is called
+    // unguarded from the extension factory: throwing here takes down the whole
+    // session, so the offending agent is skipped and the sound one survives.
+    assert.deepEqual(
+      agents.map((a) => a.id),
+      ["strategy"],
+    );
+    assert.deepEqual(agents[0].tools, ["bash", "read"]);
+
+    assert.ok(
+      warnings.some(
+        (w) => w.includes('Skipping agent "broken"') && w.includes('capability "post_merge_watch"'),
+      ),
+      `warning names the skipped agent and the canonical key: ${warnings.join(" | ")}`,
+    );
+  });
 });
 
 // ─── loadTokenMap ────────────────────────────────────────────────────────────

@@ -1,10 +1,11 @@
 /**
  * Idle-watch extension.
  *
- * A session works only when something prompts it. When its queue empties it
- * idles, and work that becomes ready sits there until a human speaks. This
- * extension supplies the missing clock: one tool, `idle_watch`, which a caller
- * arms when its queue empties.
+ * A session works only when something prompts it. While ralph runs, its workers
+ * can stall or vanish, and work that becomes ready sits there until a human
+ * speaks. This extension supplies the missing clock: one tool, `idle_watch`,
+ * which a caller starts when its session starts and leaves running until the
+ * session closes.
  *
  * Arming returns at once. The tool schedules the first tick and ends the turn,
  * so the session stays interactive while the cadence runs; nothing here holds a
@@ -12,6 +13,10 @@
  * child process with a timeout, reduces its JSON to a digest of ids, and sends
  * one message carrying only what changed. A tick that changes nothing, fails or
  * times out sends nothing at all.
+ *
+ * The watch is session-scoped and has no tick budget: it runs until it is
+ * stopped or the session shuts down, because the work it watches for can arrive
+ * at any point in the session. A caller that finds it stopped re-arms it.
  *
  * The check owns what is worth saying — it is the caller's script, named by
  * configuration. This extension owns the cadence, the digest and the nudge, so
@@ -23,7 +28,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { DEFAULT_INTERVAL_MS, DEFAULT_MAX_TICKS, IdleWatch, MAX_BACKOFF_MS } from "./watch.ts";
+import { DEFAULT_INTERVAL_MS, IdleWatch, MAX_BACKOFF_MS } from "./watch.ts";
 import type { CommandRunner, NudgeMessage, WatchStatus } from "./watch.ts";
 
 /** The single tool this extension registers. */
@@ -88,9 +93,8 @@ export function reportText(status: WatchStatus): string {
     `Idle watch: ${status.watching ? "watching" : "stopped"}`,
     `- Check: ${status.script} in ${status.project}`,
     `- Last check: ${status.lastCheck ?? "none yet"}`,
-    `- Checks run: ${status.checksRun} of ${status.maxTicks}`,
+    `- Checks run: ${status.checksRun}`,
     `- Nudges sent: ${status.nudgesSent}`,
-    `- Budget left: ${status.budgetLeft}`,
   ].join("\n");
 }
 
@@ -115,17 +119,18 @@ export default function idleWatchExtension(pi: ExtensionAPI): void {
     name: TOOL_NAME,
     label: "Idle watch",
     description: [
-      "Arm a watch that polls one configured check on a bounded cadence and sends one message",
-      "when the check's result changes. Call it when the queue is empty: it returns at once, so",
-      "this turn ends and the session stays interactive. A tick that changes nothing, fails or",
-      "times out sends nothing. `status` reports the watch without polling; `stop` ends it.",
+      "Arm a watch that polls one configured check on a backing-off cadence and sends one message",
+      "when the check's result changes. Start it when the session starts and leave it running until",
+      "the session closes: it returns at once, so this turn ends and the session stays interactive.",
+      "A tick that changes nothing, fails or times out sends nothing. `status` reports whether it is",
+      "still running without polling; `stop` ends it.",
     ].join(" "),
-    promptSnippet: `${TOOL_NAME}: when the queue empties, arm a watch that nudges only on a change`,
+    promptSnippet: `${TOOL_NAME}: start the session's watch once; re-arm it whenever status says it stopped`,
     parameters: Type.Object({
       action: Type.Optional(
         Type.Union([Type.Literal("start"), Type.Literal("stop"), Type.Literal("status")], {
           description:
-            "start arms a watch and ends this turn; stop ends it; status reports it. Default: start.",
+            "start (re-)arms a watch and ends this turn; stop ends it; status reports it. Default: start.",
         }),
       ),
       command: Type.Optional(
@@ -202,7 +207,7 @@ export default function idleWatchExtension(pi: ExtensionAPI): void {
               "Idle watch armed. This turn ends now, so the session stays interactive.",
               `- Check: ${script}`,
               `- Cadence: one tick every ${base}s, backing off to ${cap}s while nothing changes`,
-              `- First tick ${base}s from now, and at most ${DEFAULT_MAX_TICKS} ticks in all`,
+              "- Scope: this session. It runs until you stop it or the session ends, with no tick limit.",
               "A tick sends one message only when the digest changes; a failed or timed-out tick sends nothing.",
             ].join("\n"),
           },
@@ -231,7 +236,5 @@ function stoppedStatus(): WatchStatus {
     lastCheck: null,
     checksRun: 0,
     nudgesSent: 0,
-    budgetLeft: DEFAULT_MAX_TICKS,
-    maxTicks: DEFAULT_MAX_TICKS,
   };
 }

@@ -219,9 +219,10 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   once in `agents/ralph/agent.md` (`## Idle watch`) with the detail in
   `skills/workflow/ralph/REFERENCE.md` (`## Idle Watch`), and the shared text states only what both
   mechanisms do — the session resumes, the check runs again, only a changed answer resumes it — never
-  a call shape and never a bound, because pi's watch spends a tick budget while `ScheduleWakeup`
-  spends a scheduled instant. The no-watcher fallback is plain prose in its own subsection, so it
-  survives both renders without naming a name that is absent there, and
+  a call shape. It also states no bound: pi's watch is session-scoped with no tick limit while
+  `ScheduleWakeup` spends a scheduled instant, so the shared rule is only that ralph arms the watch at
+  startup and arms it again whenever a wake finds it gone. The no-watcher fallback is plain prose in
+  its own subsection, so it survives both renders without naming a name that is absent there, and
   `test/ralph-idle-watch-render.test.mjs` stages both installs to prove the fork.
 
 ## PI Extension Conventions

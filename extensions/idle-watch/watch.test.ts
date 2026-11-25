@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import {
   DEFAULT_INTERVAL_MS,
-  DEFAULT_MAX_TICKS,
   IdleWatch,
   MAX_BACKOFF_MS,
   NUDGE_CUSTOM_TYPE,
@@ -69,7 +68,7 @@ function createStepScheduler() {
 }
 
 /** One watch over one project, with only the values a test cares about set. */
-function createWatch(overrides: { runs: TickRun[]; maxTicks?: number; intervalMs?: number }) {
+function createWatch(overrides: { runs: TickRun[]; intervalMs?: number }) {
   const step = createStepScheduler();
   const deliveries: NudgeMessage[] = [];
   const warnings: string[] = [];
@@ -80,7 +79,6 @@ function createWatch(overrides: { runs: TickRun[]; maxTicks?: number; intervalMs
     project: "/projects/one",
     script: "/agent-cortex/skills/idle-check.mjs",
     intervalMs: overrides.intervalMs,
-    maxTicks: overrides.maxTicks,
     scheduler: step.scheduler,
     runCommand: async (invocation) => {
       invocations.push(invocation);
@@ -155,7 +153,6 @@ describe("buildNudge", () => {
       added: ["ready:agnt-ctx-2"],
       removed: ["ready:agnt-ctx-1"],
       checksRun: 4,
-      maxTicks: 40,
       at: "2026-01-01T00:01:00.000Z",
     });
 
@@ -163,7 +160,7 @@ describe("buildNudge", () => {
     assert.equal(nudge.display, true);
     assert.match(nudge.content, /ready:agnt-ctx-2/);
     assert.match(nudge.content, /ready:agnt-ctx-1/);
-    assert.match(nudge.content, /Tick: 4 of 40/);
+    assert.match(nudge.content, /Tick: 4, at/);
     assert.deepEqual(nudge.details.added, ["ready:agnt-ctx-2"]);
     assert.deepEqual(nudge.details.removed, ["ready:agnt-ctx-1"]);
   });
@@ -337,37 +334,50 @@ describe("IdleWatch cadence", () => {
     assert.equal(deliveries.length, 1, "the watch survives a runner that threw");
   });
 
-  it("stops at the named bound instead of polling for ever", async () => {
-    const { watch, step, deliveries } = createWatch({
-      maxTicks: 3,
-      runs: [tick(0, result(["a"])), tick(0, result(["b"])), tick(0, result(["c"]))],
+  it("keeps polling past any fixed tick count, so a long quiet session is still watched", async () => {
+    // The watch has no budget: a session that stays quiet for hours is exactly
+    // the case it exists for, so no tick count may end it. 50 ticks is more than
+    // the cap this extension used to ship with, and it is only a sample of the
+    // unbounded range — the assertion is that the cadence is still running.
+    const step = createStepScheduler();
+    const deliveries: NudgeMessage[] = [];
+    const watch = new IdleWatch({
+      project: "/projects/one",
+      script: "/agent-cortex/skills/idle-check.mjs",
+      scheduler: step.scheduler,
+      runCommand: async () => tick(0, result(["a"])),
+      deliver: (message) => deliveries.push(message),
     });
 
     watch.start();
-    await step.fire();
-    await step.fire();
-    await step.fire();
+    for (let fired = 0; fired < 50; fired += 1) await step.fire();
 
-    assert.equal(watch.active, false);
-    assert.equal(step.pending(), 0, "no timer survives the last tick");
-    assert.equal(watch.status.checksRun, 3);
-    assert.equal(watch.status.budgetLeft, 0);
-    assert.equal(deliveries.length, 3);
+    assert.equal(watch.active, true, "50 ticks do not end the watch");
+    assert.equal(step.pending(), 1, "exactly one cadence is still scheduled");
+    assert.equal(watch.status.checksRun, 50);
+    assert.equal(deliveries.length, 1, "the unchanged digest stayed silent throughout");
+
+    await step.fire();
+    assert.equal(watch.status.checksRun, 51, "tick 51 runs because nothing bounds the count");
   });
 
-  it("stops instead of waking anyone when the budget runs out", async () => {
-    const { watch, step, deliveries } = createWatch({
-      maxTicks: 2,
-      runs: [tick(0, result(["a"])), tick(1, "")],
+  it("stays silent and running when every tick fails, however many fail", async () => {
+    const step = createStepScheduler();
+    const deliveries: NudgeMessage[] = [];
+    const watch = new IdleWatch({
+      project: "/projects/one",
+      script: "/agent-cortex/skills/idle-check.mjs",
+      scheduler: step.scheduler,
+      runCommand: async () => tick(1, ""),
+      deliver: (message) => deliveries.push(message),
     });
 
     watch.start();
-    await step.fire();
-    await step.fire();
+    for (let fired = 0; fired < 45; fired += 1) await step.fire();
 
-    assert.equal(deliveries.length, 1, "the spent budget is not itself a nudge");
-    assert.equal(watch.active, false);
-    assert.equal(step.pending(), 0);
+    assert.deepEqual(deliveries, [], "a failing check wakes nobody");
+    assert.equal(watch.active, true, "a broken check does not end the watch either");
+    assert.equal(step.pending(), 1);
   });
 
   it("backs off while nothing changes, up to the cap, and resets when something does", async () => {
@@ -399,26 +409,36 @@ describe("IdleWatch cadence", () => {
     assert.equal(step.delay(), DEFAULT_INTERVAL_MS, "a change puts the interval back to base");
   });
 
-  it("gives a started watch a fresh budget and no previous digest", async () => {
-    const { watch, step, deliveries } = createWatch({
-      maxTicks: 2,
-      runs: [tick(0, result(["a"])), tick(0, result(["a"])), tick(0, result(["a"]))],
+  it("gives a re-armed watch a fresh digest and exactly one cadence", async () => {
+    // A watch that stopped — by `stop`, or because its mechanism died — is
+    // repaired by arming it again. One arming must never leave two timers, or a
+    // single change would be delivered twice.
+    const { watch, step, deliveries, invocations } = createWatch({
+      runs: [tick(0, result(["a"])), tick(0, result(["a"]))],
     });
 
     watch.start();
     await step.fire();
-    await step.fire();
-    assert.equal(watch.active, false, "the budget is spent");
+    assert.equal(deliveries.length, 1);
+
+    watch.stop();
+    assert.equal(watch.active, false);
+    assert.equal(step.pending(), 0, "the stop leaves no timer behind");
 
     watch.start();
-    assert.deepEqual(
-      { watching: watch.active, checks: watch.status.checksRun, left: watch.status.budgetLeft },
-      { watching: true, checks: 0, left: 2 },
-    );
+    assert.equal(watch.active, true);
+    assert.equal(step.pending(), 1, "one arming schedules exactly one cadence");
+    assert.equal(watch.status.checksRun, 0, "the counts start again with the fresh watch");
 
     await step.fire();
-    assert.equal(deliveries.length, 2, "the first tick after a restart reports what is there");
+    assert.equal(invocations.length, 2, "one interval after the re-arm runs exactly one check");
+    assert.equal(
+      deliveries.length,
+      2,
+      "the first tick after a re-arm reports what is there now, rather than diffing an old digest",
+    );
     assert.deepEqual(deliveries[1].details.added, ["ready:a"]);
+    assert.equal(step.pending(), 1);
   });
 
   it("stops the cadence when it is told to, and leaves the counts readable", async () => {
@@ -473,11 +493,8 @@ describe("IdleWatch cadence", () => {
 // ─── Status ──────────────────────────────────────────────────────────────────
 
 describe("IdleWatch status", () => {
-  it("reports watching, the last check, the checks run, the nudges sent and the budget left", async () => {
-    const { watch, step } = createWatch({
-      maxTicks: 5,
-      runs: [tick(0, result(["a"])), tick(0, result(["a", "b"]))],
-    });
+  it("reports watching, the last check, the checks run and the nudges sent", async () => {
+    const { watch, step } = createWatch({ runs: [tick(0, result(["a"])), tick(0, result(["a", "b"]))] });
 
     assert.deepEqual(
       {
@@ -485,9 +502,8 @@ describe("IdleWatch status", () => {
         lastCheck: watch.status.lastCheck,
         checks: watch.status.checksRun,
         nudges: watch.status.nudgesSent,
-        left: watch.status.budgetLeft,
       },
-      { watching: false, lastCheck: null, checks: 0, nudges: 0, left: 5 },
+      { watching: false, lastCheck: null, checks: 0, nudges: 0 },
     );
 
     watch.start();
@@ -498,29 +514,33 @@ describe("IdleWatch status", () => {
     assert.equal(status.watching, true);
     assert.equal(status.checksRun, 2);
     assert.equal(status.nudgesSent, 2);
-    assert.equal(status.budgetLeft, 3);
-    assert.equal(status.maxTicks, 5);
     assert.equal(status.lastCheck, "2026-01-01T00:00:15.000Z");
     assert.equal(status.script, "/agent-cortex/skills/idle-check.mjs");
     assert.equal(status.project, "/projects/one");
   });
 
-  it("counts a failed tick as budget spent", async () => {
-    const { watch, step } = createWatch({ maxTicks: 4, runs: [tick(1, "")] });
+  it("counts a failed tick and keeps watching, because a failure is not a spent allowance", async () => {
+    const { watch, step } = createWatch({ runs: [tick(1, "")] });
 
     watch.start();
     await step.fire();
 
     assert.deepEqual(
-      { checks: watch.status.checksRun, nudges: watch.status.nudgesSent, left: watch.status.budgetLeft },
-      { checks: 1, nudges: 0, left: 3 },
+      { checks: watch.status.checksRun, nudges: watch.status.nudgesSent, watching: watch.status.watching },
+      { checks: 1, nudges: 0, watching: true },
     );
   });
 
-  it("defaults to the documented bound", () => {
+  it("reports no budget at all, because the session is the only bound", () => {
     const { watch } = createWatch({ runs: [] });
 
-    assert.equal(watch.status.maxTicks, DEFAULT_MAX_TICKS);
-    assert.equal(watch.status.budgetLeft, DEFAULT_MAX_TICKS);
+    assert.deepEqual(Object.keys(watch.status).sort(), [
+      "checksRun",
+      "lastCheck",
+      "nudgesSent",
+      "project",
+      "script",
+      "watching",
+    ]);
   });
 });

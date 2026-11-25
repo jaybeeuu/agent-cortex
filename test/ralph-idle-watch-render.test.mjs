@@ -134,27 +134,33 @@ describe("ralph's idle watch renders per harness", () => {
     );
   });
 
-  it("states the arming condition, the inspection rule and the status fields in both renders", async () => {
+  it("states the always-active rule, the re-arm rule, the inspection rule and the status fields in both renders", async () => {
     const { pi, claude } = await stageBoth();
 
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
       const policy = section(doc, HEADING);
 
-      // The arming condition is the rule the epic exists for: arm on an empty
-      // queue, and only when nothing is in flight. Both halves are asserted,
-      // because either one alone arms a watch over work that is waiting.
-      assert.match(policy, /Arm it only when both conditions hold/, `${harness} states one arming condition`);
-      assert.match(policy, /`bd ready -l execution:afk` returns nothing dispatchable/, `${harness} arms on an empty queue`);
-      assert.match(policy, /holds no stage, decomposition or expansion worker/, `${harness} arms on an idle inflight`);
-      assert.match(policy, /Never at startup\./, `${harness} forbids arming at startup`);
+      // The watch is session-scoped: it starts with ralph and runs until it
+      // closes. Both halves are asserted, because a watch that is armed once and
+      // never checked leaves the session unwatched the first time it dies.
+      assert.match(policy, /The watch is always active/, `${harness} states the always-active rule`);
+      assert.match(policy, /Arm it at startup/, `${harness} arms the watch at startup`);
+      assert.match(policy, /Re-arm it on every wake\./, `${harness} re-arms on every wake`);
+      assert.match(policy, /arms it again if it is not/, `${harness} repairs a stopped watch`);
+      assert.match(policy, /no tick limit and no deadline/, `${harness} states the unbounded scope`);
+      assert.match(policy, /never a refill of an allowance that ran out/, `${harness} treats a re-arm as repair`);
 
-      // A stalled bead is read before it is touched, and re-arming is what
-      // refills the mechanism's budget after acting.
+      // The superseded idle-armed wording must be gone: it would make ralph arm
+      // one watch at shutdown and never look at a working session again.
+      assert.doesNotMatch(policy, /Arm it only when both conditions hold/, `${harness} drops the idle-armed rule`);
+      assert.doesNotMatch(policy, /Never at startup\./, `${harness} no longer forbids a startup watch`);
+
+      // A stalled bead is read before it is touched, and a wake never ends the session.
       assert.match(policy, /Inspect each stalled id before touching it/, `${harness} inspects a stalled bead`);
-      assert.match(policy, /arm again/, `${harness} re-arms after acting`);
+      assert.match(policy, /Continue the event loop from the top/, `${harness} continues after a wake`);
 
-      // The status line is three rows, one per fact ralph must report.
-      for (const field of ["| Watching |", "| Last check |", "| Nudges |"]) {
+      // The status line is four rows, one per fact ralph must report.
+      for (const field of ["| Watching |", "| Last check |", "| Nudges |", "| Stalled |"]) {
         assert.ok(policy.includes(field), `${harness} reports the ${field.trim()} field`);
       }
     }
@@ -192,8 +198,8 @@ describe("ralph's idle watch renders per harness", () => {
     const { pi, claude } = await stageBoth();
 
     // The fork is one row, so everything else in the agent — the event loop, the
-    // two idle endings that arm the watch, the HITL pause and the shutdown — is
-    // one authored copy.
+    // initialization that starts the watch, the two idle endings that report it,
+    // the HITL pause and the shutdown — is one authored copy.
     const normalised = (/** @type {string} */ doc, /** @type {string} */ own) =>
       sharedPart(doc).replace(own, PLACEHOLDER);
 

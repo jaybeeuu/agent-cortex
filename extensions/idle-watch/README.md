@@ -9,6 +9,12 @@ tool starts a bounded cadence and **returns at once**, so the calling turn ends
 and the session stays interactive. Each tick runs one configured check, digests
 its JSON, and sends one message carrying only what changed.
 
+The extension owns the cadence, the digest and the nudge. The check owns the
+subject: what to poll, and what its result means. This extension has no bead
+vocabulary, runs no tracker query, and never decides that an id is ready, blocked
+or worth acting on. It only tells its reader that the set of ids changed, and
+that reader runs the check again to learn what the change is.
+
 ## Usage
 
 | Input | Meaning |
@@ -41,7 +47,9 @@ package. With neither source set, the tool refuses to start and names both.
 ## What one tick does
 
 1. Runs the check as a child process, with the session's own executor, in the
-   project directory, under a 60 s timeout.
+   project directory, under a 60 s timeout. The executor runs it with the
+   session's node binary, so the check is a Node script, not an arbitrary shell
+   command line.
 2. Reads the run as a digest: every non-empty string `id` the JSON mentions,
    tagged with the property that carried it — `ready:agnt-ctx-1`,
    `stalled:agnt-ctx-9` — sorted, so a reordering is not a change.
@@ -49,6 +57,7 @@ package. With neither source set, the tool refuses to start and names both.
 
 | Tick outcome | Message |
 | --- | --- |
+| First tick after arming | The baseline, never a difference report: one message naming every id found, or silence when it names none |
 | Digest changed | One message naming the ids that arrived and the ids that left |
 | Digest unchanged | None |
 | No digest: exit code ≠ 0, timeout, empty or unparseable output | None |
@@ -84,11 +93,13 @@ anyone to say that its budget is gone, so it stops. `status` then reports
 `watching: false` and `budget left: 0`, and that number is the diagnostic.
 
 **The budget resets when the caller starts a new watch.** A start is a fresh
-watch: the budget is full again and the previous digest is dropped, so the first
-tick reports the whole result as an arrival. A caller that arms the watch after
-doing work is told what is there now, not what changed since a watch it has
-already finished with. A start also replaces a running watch rather than adding a
-second one.
+watch: the budget is full again and the previous digest is dropped. The first
+tick after a start is a **baseline**, not a change report. It records what the
+check reports now, and it sends nothing when the result names no ids. An empty
+queue therefore wakes nobody, and the first id to arrive after that is the
+change. A caller that arms the watch after doing work is told what is there now,
+not what changed since a watch it has already finished with. A start also
+replaces a running watch rather than adding a second one.
 
 The pending timer is unref'd, so a watch never holds the host process open. On
 `session_shutdown` the cadence is stopped and its timer cancelled: an abandoned
@@ -124,9 +135,12 @@ measurement rather than an absence.
   loads with pi absent from the extension's own `node_modules`
   (`test/pi-extensions-load.test.mjs` proves this). `typebox` is the one bare
   runtime import, and pi supplies it to extensions.
-- **No change to `post-merge-watch`.** That extension polls until a verdict and
-  then wakes the session once; this one returns before the wait and nudges on
-  every change. They stay separate.
+- **No change to `post-merge-watch`.** These are two extensions with two
+  behaviours, and neither generalises the other. `post-merge-watch` polls one
+  merge until it reaches a verdict, then wakes the session once. This extension
+  returns before the wait and nudges on every change, for as long as its budget
+  lasts. A caller that wants a verdict wants the former; a caller that wants to
+  hear about new work wants this one.
 
 ## Files
 

@@ -184,9 +184,7 @@ Ralph runs a background watch that monitors the bead queue and nudges the sessio
 
 ### Harness-specific implementation
 
-The exact spawn/arm/stop calls are harness-specific. See the wake section below for:
-- PI: `idle_watch` tool with `command` parameter pointing to the check script
-- Claude: `idle_watch` tool with similar parameters
+The exact spawn/arm/stop calls are harness-specific. See the wake section below for the harness-specific details.
 
 The policy above is harness-agnostic; the wake files describe the harness-specific mechanisms.
 

@@ -6,16 +6,25 @@
 // explicit `no-publish` label on the merged PR — skipping is never implicit.
 //
 // The changeset gate has two halves. The first decides whether the PR added a
-// changeset at all; the second resolves the package names that the changesets the
-// PR adds or modifies bump against the workspace, because `changeset version`
-// reads the whole directory and refuses a name the workspace does not declare —
-// failing the Release job on `main`, where nothing can fix it forward.
+// changeset at all; the second resolves what the changesets the PR adds or
+// modifies declare, because `changeset version` reads the whole directory and
+// refuses a frontmatter it cannot parse, a package name the workspace does not
+// declare, or a release type it does not know — failing the Release job on
+// `main`, where nothing can fix it forward.
 
 import { unquoteScalar } from "./yaml-scalar.mjs";
 
 export const NO_PUBLISH_LABEL = "no-publish";
 export const PUBLISH_COMMAND = "pnpm publish-package";
 export const NO_PUBLISH_COMMAND = "pnpm publish-noop";
+
+// The release types `@changesets/parse` accepts, in its order. The gate mirrors
+// the list instead of importing the parser because the Changeset check job runs
+// on a bare checkout with no `pnpm install` (see yaml-scalar.mjs), so a hand-rolled
+// subset is the only option — one list, checked against the grammar rather than
+// against a shape the hand parser happens to read.
+export const CHANGESET_RELEASE_TYPES = ["major", "minor", "patch", "none"];
+const RELEASE_TYPES = new Set(CHANGESET_RELEASE_TYPES);
 
 // The changesets bot's Version Packages PR consumes changesets and adds none.
 const VERSION_PACKAGES_HEAD_REF = "changeset-release/";
@@ -27,9 +36,13 @@ const FRONTMATTER_DELIMITER = "---";
 
 /** @typedef {{ status: string, path: string }} NameStatusEntry */
 
-/** @typedef {{ file: string, packageNames: string[] }} ChangesetPackages */
+/** @typedef {{ file: string, releases: ChangesetRelease[] }} ChangesetDeclarations */
+
+/** @typedef {{ packageName: string, releaseType: string }} ChangesetRelease */
 
 /** @typedef {{ file: string, packageName: string }} UnknownChangesetPackage */
+
+/** @typedef {{ file: string, packageName: string, releaseType: string }} InvalidChangesetRelease */
 
 /**
  * @typedef {object} ChangesetGateInput
@@ -98,56 +111,85 @@ export function evaluateChangesetGate({ changes, labels, headRef, actor }) {
 }
 
 /**
- * Read the package names a changeset's frontmatter bumps. Only the block between
+ * Read the release pairs a changeset's frontmatter declares, keeping the release
+ * type beside the package name so a caller can check both. Only the block between
  * the two `---` delimiters is read, so a body line containing a colon is never
- * mistaken for a package.
+ * mistaken for a release.
  *
  * The parse is strict: it reports why a frontmatter block could not be read
- * instead of reading no package names from it. `changeset version` reads every
- * file in `.changeset` and throws on one it cannot parse, so a changeset the PR
- * cannot parse and the gate passes fails the Release job on `main`, where nothing
- * can fix it forward.
+ * instead of reading no release from it. `changeset version` reads every file in
+ * `.changeset` and throws on one it cannot parse, so a changeset the PR cannot
+ * parse and the gate passes fails the Release job on `main`, where nothing can
+ * fix it forward.
+ *
+ * Each release keeps the type beside the package name, so one parse answers both
+ * questions the two checks ask of a changeset: which packages it bumps, and with
+ * what release type.
  * @param {string} content
- * @returns {{ packageNames: string[], error: string | null }} the names the
- *   frontmatter bumps, and the reason there are none when it could not be read
+ * @returns {{ releases: ChangesetRelease[], error: string | null }} the releases
+ *   the frontmatter declares, and the reason there are none when it could not be
+ *   read
  */
-export function parseChangesetPackages(content) {
+export function parseChangesetReleases(content) {
   if (content.trim() === "") {
-    return { packageNames: [], error: "the changeset file is empty" };
+    return { releases: [], error: "the changeset file is empty" };
   }
   const frontmatter = readFrontmatter(content);
   if (frontmatter === null) {
-    return { packageNames: [], error: "missing or invalid frontmatter" };
+    return { releases: [], error: "missing or invalid frontmatter" };
   }
 
-  const packageNames = [];
+  const releases = [];
   for (const line of frontmatter) {
     const separator = line.indexOf(":");
     if (separator === -1) {
       return {
-        packageNames: [],
+        releases: [],
         error: `frontmatter must map package names to version types, but found: ${line.trim()}`,
       };
     }
-    const name = unquoteScalar(line.slice(0, separator));
-    if (name !== "") packageNames.push(name);
+    // An absent value stays an empty release type, so the grammar check reports
+    // it instead of the parse dropping the release.
+    releases.push({
+      packageName: unquoteScalar(line.slice(0, separator)),
+      releaseType: unquoteScalar(line.slice(separator + 1)),
+    });
   }
-  return { packageNames, error: null };
+  return { releases, error: null };
 }
 
 /**
- * Resolve each added changeset's package names against the workspace, so a name
- * the workspace does not declare is rejected at the pull request, naming the file
+ * Reject every release whose type is not one changesets parses. A frontmatter
+ * pair with no value, a misspelled type, and a quoted empty string all reach
+ * `changeset version` as a release it refuses with "invalid release type", so
+ * the pull request has to fail instead.
+ * @param {{ changesets: ChangesetDeclarations[] }} input
+ * @returns {{ ok: boolean, invalid: InvalidChangesetRelease[] }}
+ */
+export function evaluateChangesetReleaseTypes({ changesets }) {
+  const invalid = [];
+  for (const { file, releases } of changesets) {
+    for (const { packageName, releaseType } of releases) {
+      if (!RELEASE_TYPES.has(releaseType)) invalid.push({ file, packageName, releaseType });
+    }
+  }
+  return { ok: invalid.length === 0, invalid };
+}
+
+/**
+ * Resolve each changeset's package names against the workspace, so a name the
+ * workspace does not declare is rejected at the pull request, naming the file
  * and the package, instead of failing `changeset version` on `main`.
- * @param {{ changesets: ChangesetPackages[], workspacePackages: string[] }} input
+ * @param {{ changesets: ChangesetDeclarations[], workspacePackages: string[] }} input
  * @returns {{ ok: boolean, unknown: UnknownChangesetPackage[] }}
  */
 export function evaluateChangesetPackages({ changesets, workspacePackages }) {
   const known = new Set(workspacePackages);
   const unknown = [];
-  for (const { file, packageNames } of changesets) {
-    for (const packageName of packageNames) {
-      if (!known.has(packageName)) unknown.push({ file, packageName });
+  for (const { file, releases } of changesets) {
+    for (const { packageName } of releases) {
+      if (packageName === "" || known.has(packageName)) continue;
+      unknown.push({ file, packageName });
     }
   }
   return { ok: unknown.length === 0, unknown };

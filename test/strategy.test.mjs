@@ -677,7 +677,7 @@ describe('the theme balance', () => {
     assert.match(parsed.errors.join('\n'), /"boost" is not a setting this table carries; write "window" or "decay"/);
   });
 
-  it('reports a missing setting, and both of them when the table states neither', () => {
+  it('reports a missing setting, and applies the default when the heading carries no row', () => {
     const missingDecay = parseThemeBalance(createStrategy({ themeBalance: [['window', '5']] }));
     assert.equal(missingDecay.ok, false);
     assert.match(missingDecay.errors.join('\n'), /Theme balance: needs a "decay" row/);
@@ -685,6 +685,7 @@ describe('the theme balance', () => {
     const empty = parseThemeBalance(createStrategy({ themeBalance: [] }));
     assert.equal(empty.ok, true, 'a heading with no row states nothing, so the default applies');
     assert.equal(empty.source, 'default');
+    assert.deepEqual(empty.errors, [], 'a heading with no row reports no defect');
   });
 
   it('refuses a window that is not a whole number of at least 1', () => {

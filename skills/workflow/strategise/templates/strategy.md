@@ -6,10 +6,10 @@ confidence and effort. Keep it short enough that you actually maintain it.
 
 It lives in the repository as a committed file, never in the tracker, so a reviewer can
 diff how the judgement changed. Every `##` section below is required: leave one empty and
-the validator names it. `## Deadline tiers` and the four level tables — `## Reach levels`,
-`## Impact levels`, `## Confidence levels`, `## Effort levels` — are the exceptions: omit one
-and the queue ranks on its documented deadline default, or `score` accepts any value that
-component's floor allows. Set the version and the date with
+the validator names it. `## Deadline tiers`, `## Theme balance` and the four level tables —
+`## Reach levels`, `## Impact levels`, `## Confidence levels`, `## Effort levels` — are the
+exceptions: omit one and the queue ranks on its documented deadline or theme-balance default, or
+`score` accepts any value that component's floor allows. Set the version and the date with
 `node <strategise-scripts>/strategy.mjs bump` after you edit the content.
 
 `<strategise-scripts>` is the absolute path to the `scripts/` directory of the `strategise`

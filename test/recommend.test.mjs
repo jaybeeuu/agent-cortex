@@ -122,7 +122,7 @@ async function recommend({ beads, file, why = THEME, bead }) {
   const scope = {
     name: 'code',
     path: workspace,
-    kind: 'code',
+    kind: /** @type {'code' | 'personal' | 'ops'} */ ('code'),
     readOnly: false,
     current: true,
     writable: true,

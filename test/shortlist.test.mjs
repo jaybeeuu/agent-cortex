@@ -138,7 +138,7 @@ async function shortlist({ beads, file, why, top }) {
   const scope = {
     name: 'code',
     path: workspace,
-    kind: 'code',
+    kind: /** @type {'code' | 'personal' | 'ops'} */ ('code'),
     readOnly: false,
     current: true,
     writable: true,

@@ -37,6 +37,10 @@ import {
 
 const tempRoot = createTempRoot('hitl-shortlist-');
 
+// The scope list falls back to the user-level file, so point that at the temp root: the
+// suite must never read, or depend on, the machine's own ~/.agent-cortex.
+process.env.AGENT_CORTEX_HOME = await tempRoot.createWorkspace();
+
 /** The one line of the fixture strategy that justifies the top of the fixture queue. */
 const THEME = 'shorter review turnaround for human-gated work.';
 

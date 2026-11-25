@@ -34,6 +34,10 @@ import {
 const tempRoot = createTempRoot('hitl-recommend-');
 const execFileAsync = promisify(execFile);
 
+// The scope list falls back to the user-level file, so point that at the temp root: the
+// suite must never read, or depend on, the machine's own ~/.agent-cortex.
+process.env.AGENT_CORTEX_HOME = await tempRoot.createWorkspace();
+
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'skills', 'workflow', 'hitl-queue', 'scripts', 'recommend.mjs');
 const HELPER = join(REPO_ROOT, 'test', 'helpers', 'fake-bd-queue.mjs');

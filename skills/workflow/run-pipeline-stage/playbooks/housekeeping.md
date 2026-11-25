@@ -78,12 +78,42 @@ closed beads and changes no files.
 - **This stage is the exception to close-on-both-outcomes.** Nothing downstream waits on its close,
   so the bead's own state is the report.
 - `OUTCOME: SUCCESS` — record the trail entry, then
-  `bd close <id> --reason="SUCCESS: <removed/kept summary>"`. Create nothing: this is the last stage
-  and its closed chore ends the pipeline.
+  `bd close <id> --reason="SUCCESS: <removed/kept summary>"`. Then close the parent if it is
+  settled (see _Settled parent_ below). Create nothing: this is the last stage and its closed chore
+  ends the pipeline.
 - `OUTCOME: BLOCKED` — **do not close the bead.** Leave it open: return it to `open` status
   (`bd update <id> --status open`) if your claim moved it to `in_progress`. Report the surviving
   worktrees and hand the chore back to a human. Create no `stage:fix` chore and no fresh
-  `stage:housekeeping` chore — a fix round repairs files, and this stage repairs none.
+  `stage:housekeeping` chore — a fix round repairs files, and this stage repairs none. Run no
+  settlement check: an open chore keeps the parent open, and that is the correct record.
 - **No downstream re-block.** This stage sits behind the PR gate rather than behind another stage, so
   no later stage needs wiring behind a fresh instance.
 - Report `COMMIT: none`, `PUSHED: no`, and `PR: none`.
+
+## Settled parent
+
+This is the last stage, so it is the run that closes the parent feature bead once the merge is on
+record and no child remains open. After closing the chore, run the settlement check from the same
+main checkout:
+
+```bash
+node <run-pipeline-stage-scripts>/close-settled-parent.mjs --parent <parent-id>
+```
+
+`<run-pipeline-stage-scripts>` is the absolute path to
+`skills/workflow/run-pipeline-stage/scripts/`, resolved from wherever that skill was loaded — never
+hardcode one harness's install path.
+
+It closes the parent only when every child is closed **and** a closed child carries
+`lifecycle:feature-pr` (the merge gate a human closed) or `lifecycle:post-merge`
+(`stage:post-merge`). It prints one verdict: `closed`, `skipped: children open`,
+`skipped: no merge evidence`, or `skipped: already closed`.
+
+- `skipped: no merge evidence` is the answer for a parent whose children were all closed by hand
+  before any merge happened. Report the line and leave the parent open: closing it would claim a
+  merge nothing recorded.
+- Exit `0` covers `closed` and every `skipped` verdict. A non-zero exit is a bd failure: report it
+  under `BLOCKING_ISSUES`, and do not close the parent by hand.
+- The pruner kept this parent's own worktree as `open-bead`, because the parent still read `open`
+  when the pruner ran. Report it as `kept`; the next housekeeping run removes it once the parent
+  reads `closed`. Never remove it by hand to make the report tidy.

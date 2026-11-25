@@ -77,8 +77,8 @@ On each completion notification (a background agent finished):
    | `verify` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh `stage:verify`; dispatch the ready fix chore |
    | `review` | `OUTCOME: SUCCESS` | Closing the review chore unblocks the document chore |
    | `review` | `OUTCOME: BLOCKED` | Create nothing — the worker built `stage:fix` + a fresh `stage:review`; dispatch the ready fix chore |
-   | `document` | `OUTCOME: SUCCESS` | Open/update the feature PR now (`feature/<parent-id>` → its base branch), report the URL, and update the child HITL gate bead (`lifecycle:feature-pr`). Wait for a human to close that bead after merge, then `bd close <parent-id>` — closing the gate unblocks the pre-created `stage:post-merge` and `stage:housekeeping` chores |
-   | `post-merge` | `OUTCOME: SUCCESS` | Nothing further — the merge commit's CI run is green; the chore's close is the record |
+   | `document` | `OUTCOME: SUCCESS` | Open/update the feature PR now (`feature/<parent-id>` → its base branch), report the URL, and update the child HITL gate bead (`lifecycle:feature-pr`). Wait for a human to close that bead after merge — closing the gate unblocks the pre-created `stage:post-merge` and `stage:housekeeping` chores, and those stages close the parent |
+   | `post-merge` | `OUTCOME: SUCCESS` | Nothing further — the merge commit's CI run is green; the chore's close is the record, and the stage closed the parent when it was settled |
    | `post-merge` | `OUTCOME: BLOCKED` | Create nothing — the worker left its chore **open** and the check already filed one P1 escalation bead; report the escalation id and the run URL, and do not re-dispatch |
    | `housekeeping` | `OUTCOME: SUCCESS` | Nothing further — it is the last stage; its closed chore ends the pipeline |
    | any | parent status `blocked` | Nothing — the worker hit `maxFixRounds`; record the parent for the shutdown summary |

@@ -236,24 +236,56 @@ describe("resolvePublishCommand", () => {
 
 describe("parseChangesetPackages", () => {
   it("reads a quoted scoped name with its bump type", () => {
-    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex": minor\n---\n\nBody.\n'), [
-      "@jaybeeuu/agent-cortex",
-    ]);
+    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex": minor\n---\n\nBody.\n'), {
+      packageNames: ["@jaybeeuu/agent-cortex"],
+      error: null,
+    });
   });
 
   it("reads unquoted names and several packages from one changeset", () => {
     const content = "---\n@jaybeeuu/agent-cortex: patch\n'@jaybeeuu/plugin': major\n---\n\nBody.\n";
 
-    assert.deepEqual(parseChangesetPackages(content), [
-      "@jaybeeuu/agent-cortex",
-      "@jaybeeuu/plugin",
-    ]);
+    assert.deepEqual(parseChangesetPackages(content), {
+      packageNames: ["@jaybeeuu/agent-cortex", "@jaybeeuu/plugin"],
+      error: null,
+    });
   });
 
   it("ignores the body, including lines that contain a colon", () => {
     const content = '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nRelease job: it fails on\nmain: see below.\n';
 
-    assert.deepEqual(parseChangesetPackages(content), ["@jaybeeuu/agent-cortex"]);
+    assert.deepEqual(parseChangesetPackages(content), {
+      packageNames: ["@jaybeeuu/agent-cortex"],
+      error: null,
+    });
+  });
+
+  it("reports a changeset with no frontmatter block instead of reading no packages", () => {
+    assert.deepEqual(parseChangesetPackages("Fix the gate, which passes on this file.\n"), {
+      packageNames: [],
+      error: "missing or invalid frontmatter",
+    });
+  });
+
+  it("reports a frontmatter block that is never closed", () => {
+    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex": patch\n\nBody.\n'), {
+      packageNames: [],
+      error: "missing or invalid frontmatter",
+    });
+  });
+
+  it("reports a frontmatter line with no colon separator", () => {
+    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex" patch\n---\n\nBody.\n'), {
+      packageNames: [],
+      error: `frontmatter must map package names to version types, but found: "@jaybeeuu/agent-cortex" patch`,
+    });
+  });
+
+  it("reports an empty changeset file", () => {
+    assert.deepEqual(parseChangesetPackages("\n\n"), {
+      packageNames: [],
+      error: "the changeset file is empty",
+    });
   });
 });
 
@@ -349,6 +381,39 @@ describe("check-changeset CLI", () => {
     const { code, stderr } = await runChangesetCheck(
       workspace,
       "A\t.changeset/added.md\nD\t.changeset/gone.md\n",
+    );
+
+    assert.equal(code, 0, stderr);
+  });
+
+  it("exits 1 naming the changeset file when its frontmatter cannot be read", async (t) => {
+    const shapes = {
+      "no-frontmatter.md": "Fix the gate, which passes on this file.\n",
+      "unclosed-block.md": '---\n"@jaybeeuu/agent-cortex": patch\n\nBody.\n',
+      "no-colon.md": '---\n"@jaybeeuu/agent-cortex" patch\n---\n\nBody.\n',
+      "empty.md": "",
+    };
+    const workspace = await createChangesetWorkspace(shapes);
+
+    for (const file of Object.keys(shapes)) {
+      await t.test(file, async () => {
+        const { code, stderr } = await runChangesetCheck(workspace, `A\t.changeset/${file}\n`);
+
+        assert.equal(code, 1, stderr);
+        assert.ok(stderr.includes(`.changeset/${file}`), stderr);
+      });
+    }
+  });
+
+  it("exits 0 for a multi-package changeset whose packages are all in the workspace", async () => {
+    const workspace = await createChangesetWorkspace({
+      "two-packages.md":
+        '---\n"@jaybeeuu/agent-cortex": minor\n"@jaybeeuu/agent-cortex-app": patch\n---\n\nChange both.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(
+      workspace,
+      "A\t.changeset/two-packages.md\n",
     );
 
     assert.equal(code, 0, stderr);

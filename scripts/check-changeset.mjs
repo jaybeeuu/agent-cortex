@@ -39,41 +39,49 @@ function readLabels(raw) {
 }
 
 /**
- * Read each changeset the PR adds or modifies, and the package names its
- * frontmatter bumps.
+ * Read each changeset the PR adds or modifies, the package names its
+ * frontmatter bumps, and the reason any of them could not be read.
  * @param {string[]} paths
- * @returns {Promise<{ changesets: { file: string, packageNames: string[] }[], unreadable: string[] }>}
+ * @returns {Promise<{ changesets: { file: string, packageNames: string[] }[],
+ *   unreadable: string[], unparseable: { file: string, reason: string }[] }>}
  */
 async function readChangesets(paths) {
   const changesets = [];
   const unreadable = [];
+  const unparseable = [];
   for (const path of paths) {
     try {
       const content = await readFile(join(ROOT, path), "utf8");
-      changesets.push({ file: path, packageNames: parseChangesetPackages(content) });
+      const { packageNames, error } = parseChangesetPackages(content);
+      if (error !== null) unparseable.push({ file: path, reason: error });
+      changesets.push({ file: path, packageNames });
     } catch {
       unreadable.push(path);
     }
   }
-  return { changesets, unreadable };
+  return { changesets, unreadable, unparseable };
 }
 
 /**
- * @param {{ file: string, packageName: string }[]} unknown
- * @param {string[]} unreadable
+ * @param {{ unknown: { file: string, packageName: string }[], unreadable: string[],
+ *   unparseable: { file: string, reason: string }[] }} problems
  */
-function reportUnknownPackages(unknown, unreadable) {
+function reportChangesetProblems({ unknown, unreadable, unparseable }) {
   for (const path of unreadable) {
     console.error(`::error::Cannot read the changeset ${path}, so its packages cannot be checked.`);
+  }
+  for (const { file, reason } of unparseable) {
+    console.error(`::error::Cannot read the frontmatter of ${file}: ${reason}.`);
   }
   for (const { file, packageName } of unknown) {
     console.error(`::error::${file} names package ${packageName}, which is not in the workspace.`);
   }
   console.error(
     [
-      "Every package a changeset names must be a `name` in a workspace package.json.",
-      "`changeset version` refuses an unknown package, so the Release job fails on main",
-      "where nothing can fix it forward — use the exact name, scope included.",
+      "Every changeset this PR adds or modifies needs a frontmatter block that reads",
+      "as `package: bump` pairs, and every package it names must be a `name` in a",
+      "workspace package.json. `changeset version` refuses both, so the Release job",
+      "fails on main where nothing can fix it forward — use the exact name, scope included.",
     ].join("\n"),
   );
 }
@@ -100,16 +108,16 @@ if (!result.ok) {
   );
   process.exitCode = 1;
 } else if (changedChangesets.length > 0) {
-  const { changesets, unreadable } = await readChangesets(changedChangesets);
+  const { changesets, unreadable, unparseable } = await readChangesets(changedChangesets);
   const packages = evaluateChangesetPackages({
     changesets,
     workspacePackages: await readWorkspacePackageNames(ROOT),
   });
 
-  if (packages.ok && unreadable.length === 0) {
+  if (packages.ok && unreadable.length === 0 && unparseable.length === 0) {
     console.log(`✓ Changeset gate passed (${result.reason}).`);
   } else {
-    reportUnknownPackages(packages.unknown, unreadable);
+    reportChangesetProblems({ unknown: packages.unknown, unreadable, unparseable });
     process.exitCode = 1;
   }
 } else {

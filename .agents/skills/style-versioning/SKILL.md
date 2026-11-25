@@ -156,6 +156,10 @@ Two files carry the version, in lockstep automatically:
   opt-out is the `no-publish` label, which must already exist in the repo's settings.
 - **Wrong bump type**: `patch` for fixes, `minor` for additions, `major` for breakage. When in doubt, ask the user.
 - **Wrong package name in frontmatter**: Must be `"@jaybeeuu/agent-cortex"` exactly.
+- **Frontmatter that does not parse**: the PR gate reads the same frontmatter block
+  `changeset version` does, and fails the PR naming the file and the reason. A missing or
+  unclosed `---` block, a line with no `:`, and an empty file all stop at review instead of
+  in the Release job on `main`.
 - **Merging a Version Packages PR with anything but squash**: the bot's commit is unsigned,
   and squash is the path this repo has landed on (a rebase merge adds the head-branch commit
   without signature verification).

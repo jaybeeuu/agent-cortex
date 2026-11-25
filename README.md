@@ -140,11 +140,13 @@ git diff --name-status "origin/main...HEAD" | node scripts/check-changeset.mjs
 
 A changeset whose frontmatter cannot be parsed fails the PR instead, naming the file and
 why it could not be read: no frontmatter block, an unclosed block, a line that is not a
-`package: bump` pair, and an empty file. Each of those throws in `changeset version`, so
-passing it would fail the Release job on `main`. One shape stays outside the gate: a
-frontmatter pair with a name but no release type (`"@jaybeeuu/agent-cortex":`) still
-resolves its name, while `changeset version` rejects it as an invalid release type; that
-gap is tracked separately.
+`package: bump` pair, and an empty file. The gate reads the same frontmatter block
+`changeset version` does and fails on each shape that parser throws on, so a malformed
+file stops at the pull request instead of in the Release job on `main`. One shape stays
+outside the gate: a frontmatter pair that names a package but carries no release type, or
+an unrecognised one (`"@jaybeeuu/agent-cortex":`), still resolves its name while
+`changeset version` rejects it. That gap is open and tracked separately (`agnt-ctx-f0f7`),
+so this gate covers the parse failures and not the release-type check.
 
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when

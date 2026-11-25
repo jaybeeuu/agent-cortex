@@ -1,4 +1,4 @@
-// Shared test helper: a stateful fake `bd` binary for create-chores.mjs.
+// Shared test helper: a stateful fake `bd` binary for create-chores.mjs and idle-check.mjs.
 // `bd` is a genuine external system (its real database must never be touched
 // by tests), so the script is driven against this fake via the BD_PATH
 // override. The fake reproduces the real behaviours the tests depend on —
@@ -6,8 +6,11 @@
 // passed), `bd create --validate` section enforcement, `bd children --json`
 // listing, `bd dep add` state, `bd mol pour` of a formula file under
 // `<cwd>/.beads/formulas/`, `bd update --parent/--priority/--add-label`,
-// `bd delete --force` and `bd note` — and records every created bead,
-// dependency, dep-add, update, delete, note and raw call to a JSON state file
+// `bd delete --force`, `bd note`, and the two read-only queue queries a digest
+// makes — `bd list -l <label> -s <status>` and `bd ready -l <label>`. `ready`
+// is modelled as the open, unclaimed set, which is what the real ready-work
+// query returns for the rows a test seeds. Every created bead, dependency,
+// dep-add, update, delete, note and raw call is recorded to a JSON state file
 // the test can read back.
 //
 // The pour models the real command's two hard edges: `{{var}}` substitution
@@ -56,15 +59,30 @@ const FAKE_BD_SCRIPT = [
   "    process.exit(1);",
   "  }",
   "",
-  "  if (argv[0] === 'list') {",
-  "    // `bd list -l <label> --json`: every bead carrying all the given labels.",
-  "    const labels = [];",
-  "    for (let i = 1; i < argv.length; i++) {",
-  "      if (argv[i] === '-l' || argv[i] === '--label') labels.push(argv[++i]);",
-  "    }",
-  "    const beads = state.beads.filter((bead) => labels.every((label) => bead.labels.includes(label)));",
+  "  if (argv[0] === 'list' || argv[0] === 'ready') {",
+  "    // `bd list -l <label> [-s <status>]` and `bd ready -l <label>`: AND filters, then the",
+  "    // row limit. `ready` is the open, unclaimed set; `list` filters by status only when",
+  "    // asked, so a caller that passes no `-s` sees every bead carrying the labels.",
+  "    const valuesOf = (names) => {",
+  "      const out = [];",
+  "      for (let i = 1; i < argv.length; i++) {",
+  "        if (names.includes(argv[i])) out.push(argv[++i]);",
+  "      }",
+  "      return out;",
+  "    };",
+  "    const labels = valuesOf(['-l', '--label']);",
+  "    const statuses = argv[0] === 'ready'",
+  "      ? ['open']",
+  "      : valuesOf(['-s', '--status']).flatMap((value) => value.split(','));",
+  "    const limit = valuesOf(['-n', '--limit']);",
+  "    const matched = state.beads.filter((bead) =>",
+  "      labels.every((label) => bead.labels.includes(label)) &&",
+  "      (statuses.length === 0 || statuses.includes(bead.status ?? 'open')));",
+  "    // Real bd reads `-n 0` as unlimited, and callers rely on it (`--limit 0`).",
+  "    const cap = limit.length === 0 ? 0 : Number(limit[limit.length - 1]);",
+  "    const rows = cap === 0 ? matched : matched.slice(0, cap);",
   "    await save();",
-  "    process.stdout.write(JSON.stringify(beads, null, 2) + '\\n');",
+  "    process.stdout.write(JSON.stringify(rows, null, 2) + '\\n');",
   "    return;",
   "  }",
   "",
@@ -260,6 +278,12 @@ const FAKE_BD_SCRIPT = [
  * @property {string[]} labels
  * @property {string | null} [parent]  Parent bead ID; omit for the parent itself
  * @property {string[]} [dependsOn]    Bead IDs this bead blocks on
+ * @property {string} [status]         Stored status; `open` when omitted
+ * @property {number} [priority]       Priority; `2` when omitted
+ * @property {string} [notes]          The trail text, as `bd note` appends it
+ * @property {string} [heartbeat_at]   Last lease heartbeat, ISO-8601
+ * @property {string} [started_at]     Claim instant, ISO-8601
+ * @property {string} [lease_expires_at]  Lease expiry, ISO-8601
  */
 
 /** Create a stateful fake `bd` binary in `dir`.
@@ -297,4 +321,14 @@ function nextIdAfter(beads) {
     const match = /^bd-(\d+)$/.exec(bead.id);
     return match ? Math.max(next, Number(match[1]) + 1) : next;
   }, 1);
+}
+
+/** A `bd` that accepts a call and never answers, so only the caller's own bound ends it.
+ * @param {string} dir  Directory to hold the binary
+ * @returns {Promise<string>} the binary path */
+export async function makeHangingBd(dir) {
+  const bin = join(dir, "bd");
+  await writeFile(bin, "#!/usr/bin/env node\n// A tracker that accepts the call and never answers.\nsetInterval(() => {}, 1000);\n");
+  await chmod(bin, 0o755);
+  return bin;
 }

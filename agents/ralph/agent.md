@@ -167,7 +167,7 @@ An `.agent-cortex/ralph/state.json` left by an older run is ignored: Ralph never
 
 ---
 
-## Background Watch (always-active nudge)
+## Idle watch
 
 Ralph runs a background watch that monitors the bead queue and nudges the session when work needs attention. This is separate from the subagent wake mechanism — it is about being proactive when the queue is idle or work is stuck.
 

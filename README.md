@@ -121,6 +121,27 @@ label must exist in the repository's label settings — a one-off repo-settings 
 that no PR can ship. The `style-versioning` skill documents the format of a
 changeset.
 
+The job then reads the frontmatter of every changeset the PR adds or **modifies** and
+resolves each package name against the workspace. A name the workspace does not declare
+fails the PR, naming both the changeset file and the offending package. Use the exact
+name, scope included: `changeset version` reads the whole `.changeset` directory, so a
+modified changeset that names an unknown package breaks the Release job on `main`,
+where nothing can fix it forward. That is what happened twice — two changesets named
+`@cryptolibertus/agent-cortex` when the package is `@jaybeeuu/agent-cortex` — and a
+typo now fails at the pull request instead. Run the gate locally before pushing. It
+needs no install and no `pnpm` on `PATH`, because it reads `pnpm-workspace.yaml` and the
+workspace `package.json` names directly:
+
+```sh
+git diff --name-status "origin/main...HEAD" | node scripts/check-changeset.mjs
+```
+
+A changeset whose frontmatter cannot be parsed still passes the package check. No
+frontmatter block, an unclosed block, a line with no colon and an empty value all exit
+0, so a malformed changeset still reaches `changeset version` and fails Release on
+`main`. That case sits outside this gate and is tracked separately (`agnt-ctx-yjw9`).
+Check that your changeset closes its frontmatter block and names the exact package.
+
 On pushes to `main`, a `release` job (gated on `lint`, `test`, and
 `claude-plugin-check`) runs changesets to open a `chore: version packages` PR when
 changesets are pending, then publishes to npm once it lands. The version step runs

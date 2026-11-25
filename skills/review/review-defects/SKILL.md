@@ -143,7 +143,8 @@ gap in the stage before this one, and a lens that keeps appearing is a gap in th
 ## Worked examples
 
 `EXAMPLES.md` carries a case per class, with the rejection text a reviewer should write. Eleven are
-real observations; `scope-creep` is a described situation, because no recorded case exists.
+real observations; `scope-creep` is a described situation, because no recorded case exists. One case
+names no class: it shows two lenses rejecting one bead, so two labels reach it.
 
 ## See Also
 

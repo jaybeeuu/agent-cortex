@@ -312,8 +312,8 @@ describe("validateAgentDir", () => {
 // ─── Behavior 3: token format validation ──────────────────────────────────────
 
 describe("token format in agent.md body", () => {
-  it("accepts valid {{TOOL:name}} tokens", () => {
-    const body = "# Body\n\nUse {{TOOL:task}} to spawn subagents.";
+  it("accepts valid {{CAPABILITY:name}} tokens", () => {
+    const body = "# Body\n\nUse {{CAPABILITY:task}} to spawn subagents.";
     const tokens = extractTokens(body);
     assert.deepEqual(tokens.tools, ["task"]);
   });
@@ -334,7 +334,7 @@ describe("token format in agent.md body", () => {
     const body = `
 # Body
 
-Use {{TOOL:task}} to spawn.
+Use {{CAPABILITY:task}} to spawn.
 Read {{PATH:skills/plan/SKILL.md}}.
 {{SECTION:wake}}
 `;
@@ -352,7 +352,7 @@ Read {{PATH:skills/plan/SKILL.md}}.
  * @returns {{ tools: string[], paths: string[], sections: string[] }}
  */
 function extractTokens(body) {
-  const toolPattern = /\{\{TOOL:([^}]+)\}\}/g;
+  const toolPattern = /\{\{CAPABILITY:([^}]+)\}\}/g;
   const pathPattern = /\{\{PATH:([^}]+)\}\}/g;
   const sectionPattern = /\{\{SECTION:([^}]+)\}\}/g;
 

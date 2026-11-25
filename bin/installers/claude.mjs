@@ -9,14 +9,16 @@
 //                                           package — never stale)
 //   <output>/agents/<slug>.md               composed agents (agents/<name>/
 //                                           agent.md + claude/ harness dirs,
-//                                           {{TOOL:...}}/{{PATH:...}}
+//                                           {{CAPABILITY:...}}/{{PATH:...}}
 //                                           substituted against token-map.json's
-//                                           claude column)
+//                                           claude column, and the authored tool
+//                                           list translated through the same
+//                                           column)
 //   <output>/skills/<name>/                 skill dirs COPIED flat (one dir per
 //                                           skill, as Claude's <name>/SKILL.md
 //                                           plugin scan expects) with .md files
 //                                           token-substituted — no symlinks, so
-//                                           literal {{TOOL:...}}/{{PATH:...}}
+//                                           literal {{CAPABILITY:...}}/{{PATH:...}}
 //                                           never reaches Claude. Cross-skill
 //                                           links are rewritten for the flat
 //                                           layout (scripts/lib/skill-links.mjs),
@@ -72,7 +74,7 @@ import { spawn } from "node:child_process";
 import { join, dirname, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { composeAgent, isAllTools, loadTokenMap, substituteTokens } from "../../scripts/lib/compose-agent.mjs";
+import { composeAgent, isAllTools, loadTokenMap, substituteTokens, translateToolList } from "../../scripts/lib/compose-agent.mjs";
 import { installDocs } from "../../scripts/lib/docs.mjs";
 import { isDirectory, isFile } from "../../scripts/lib/fs.mjs";
 import { normaliseRepository } from "../../scripts/lib/manifest.mjs";
@@ -160,10 +162,10 @@ function byName(a, b) {
  * relative path would name a file relative to the reader's working directory, and the
  * install ships the file under ${CLAUDE_PLUGIN_ROOT}.
  * @param {string} root
- * @param {{ pluginRoot: string | undefined, warn: Warn }} options
+ * @param {{ pluginRoot: string | undefined, tokenMap: TokenMap, warn: Warn }} options
  * @returns {Promise<{ files: { file: string, content: string }[] }>}
  */
-async function buildAgents(root, { pluginRoot, warn }) {
+async function buildAgents(root, { pluginRoot, tokenMap, warn }) {
   const files = [];
   const entries = (await readdir(join(root, "agents"), { withFileTypes: true })).sort((a, b) =>
     byName(a.name, b.name),
@@ -176,11 +178,17 @@ async function buildAgents(root, { pluginRoot, warn }) {
 
     const fm = await composeAgent(root, entry.name, CLAUDE, { pluginRoot, resolveRelativePaths: true, warn });
     const slug = fm.name.startsWith(NAME_PREFIX) ? fm.name.slice(NAME_PREFIX.length) : fm.name;
+    // The authored list resolves through token-map.json's claude column, exactly
+    // as bin/installers/pi.mjs resolves it through the pi column: an authored
+    // capability key becomes the name Claude Code exposes, a null binding is
+    // omitted, a name that is not a capability key passes through (it may be a
+    // native Claude Code tool), and a `command` binding throws.
+    const tools = translateToolList(fm.tools, tokenMap, CLAUDE, { warn });
     // `["*"]` means every tool the session has, and Claude Code reads an absent
     // `tools` key that way, so the line is omitted rather than rendered: a
     // literal `*` is not a Claude Code tool name. agent-modes reads the absent
     // key on the flat path as all tools, so both harnesses agree.
-    const toolsLine = isAllTools(fm.tools) ? "" : `tools: ${fm.tools.join(", ")}\n`;
+    const toolsLine = isAllTools(tools) ? "" : `tools: ${tools.join(", ")}\n`;
     const header =
       `---\n` +
       `# GENERATED from agents/${entry.name}/ by bin/installers/claude.mjs — DO NOT EDIT.\n` +
@@ -198,7 +206,7 @@ async function buildAgents(root, { pluginRoot, warn }) {
  * (skills/<name>/ — Claude's plugin scan expects <name>/SKILL.md directly
  * under skills/), token-substituting .md files against token-map.json's claude
  * column (the same materialisation as bin/installers/pi.mjs: no symlinks, so
- * literal {{TOOL:...}}/{{PATH:...}} never survives; non-.md files verbatim).
+ * literal {{CAPABILITY:...}}/{{PATH:...}} never survives; non-.md files verbatim).
  * Flattening drops the group segment an authored cross-skill link relies on, so
  * each .md file's skill links are rewritten to the flat sibling path.
  * @param {string} root
@@ -809,7 +817,7 @@ export async function installClaude({ root = PACKAGE_ROOT, output, dryRun = fals
       ? await installInstructions({ root, target: instructionsTarget, dryRun, warn: warnSink })
       : null;
 
-  const agents = await buildAgents(root, { pluginRoot: rootPlugin, warn: warnSink });
+  const agents = await buildAgents(root, { pluginRoot: rootPlugin, tokenMap, warn: warnSink });
   const skillOut = join(out, "skills");
   const skills = await buildSkills(root, skillOut, { dryRun, pluginRoot: rootPlugin, tokenMap, warn: warnSink });
   const docs = await installDocs({ root, output: out, dryRun, tokenMap });

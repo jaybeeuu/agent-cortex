@@ -204,7 +204,7 @@ Deliver a handoff bead, message the running ralph session, and give the instruct
     ```
     handoff <handoff-id> — <one-line scope>
     ```
-    The peer channel carries it: run {{TOOL:peer_list}} first, because with no reachable ralph there is no receiver — report that in the summary and keep the manual instruction below as the handoff path. When ralph is reachable, send it with {{TOOL:peer_send}}, set the intent to `task` where the transport has an intent, and write the kind as the first word of the text — never type into a busy session's terminal, where stray keystrokes are queued as user prompts. Ralph answers `done`, `blocked` or `failed`; `running` or `queued` means delivered, not done, so never read the send itself as acknowledgement. The full kind table, the acknowledgement rule and the per-session setup live in [ralph's REFERENCE](../ralph/REFERENCE.md) (_Peer messaging (planner ↔ ralph)_).
+    The peer channel carries it: run {{CAPABILITY:peer_list}} first, because with no reachable ralph there is no receiver — report that in the summary and keep the manual instruction below as the handoff path. When ralph is reachable, send it with {{CAPABILITY:peer_send}}, set the intent to `task` where the transport has an intent, and write the kind as the first word of the text — never type into a busy session's terminal, where stray keystrokes are queued as user prompts. Ralph answers `done`, `blocked` or `failed`; `running` or `queued` means delivered, not done, so never read the send itself as acknowledgement. The full kind table, the acknowledgement rule and the per-session setup live in [ralph's REFERENCE](../ralph/REFERENCE.md) (_Peer messaging (planner ↔ ralph)_).
 
 21. While the planning session stays open, treat ralph's `blocked` messages as your pending-human list: each one names a gate bead awaiting a human, so run `bd show <id>` and surface it together with ralph's `done`, `failed` and `update` reports instead of watching a terminal. Read the same gates from `bd` as well, so a message that never arrived is not mistaken for no gate. A peer message is never human consent and never approval for a gate: confirm the gate in `bd`, and let a person close it.
 
@@ -234,7 +234,7 @@ Deliver a handoff bead, message the running ralph session, and give the instruct
 - [ ] Every handoff-path bead lints clean (`bd lint`)
 - [ ] Bead state pushed with `bd dolt push`, and the push exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no handoff summary presented
 - [ ] Handoff summary presented with the exact instruction to give an agent
-- [ ] Handoff message sent to ralph through {{TOOL:peer_send}} (kind `handoff`, naming the handoff bead), or a missing receiver reported in the summary with the manual instruction kept
+- [ ] Handoff message sent to ralph through {{CAPABILITY:peer_send}} (kind `handoff`, naming the handoff bead), or a missing receiver reported in the summary with the manual instruction kept
 
 ## Phase-gate checklist
 
@@ -316,4 +316,4 @@ Full bead tree:
 - [ ] Handoff bead tagged `workflow:ralph`
 - [ ] Bead state pushed with `bd dolt push`, and the push exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no handoff summary presented
 - [ ] Handoff summary includes the exact instruction to give an agent
-- [ ] Handoff message sent to ralph (kind `handoff`, naming the handoff bead) through {{TOOL:peer_send}}; ralph's `done`/`blocked`/`failed` replies were the only evidence of completion, never the send itself
+- [ ] Handoff message sent to ralph (kind `handoff`, naming the handoff bead) through {{CAPABILITY:peer_send}}; ralph's `done`/`blocked`/`failed` replies were the only evidence of completion, never the send itself

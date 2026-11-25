@@ -33,7 +33,7 @@ score rather than picking one by feel.
 If the input looks like a PRD (product requirements document), invoke the **prd-to-tasks** skill first — it handles exploration, user quizzing, and creates epics and task beads directly. Then continue from step 7 (Agree with the user).
 
 ### 2. Understand the request
-If the request is ambiguous or incomplete, use {{TOOL:ask_user}} to resolve blockers before exploring. One question at a time.
+If the request is ambiguous or incomplete, use {{CAPABILITY:ask_user}} to resolve blockers before exploring. One question at a time.
 
 If the domain language is unclear or inconsistent, invoke the **grill-with-docs** skill to extract canonical terms. It updates `CONTEXT.md` inline and surfaces ambiguities.
 
@@ -133,4 +133,4 @@ Every explore sub-agent prompt must include:
 - Never assume — verify by reading actual code before creating a bead.
 - Never write outside `.agent-cortex/working-docs/` or bead fields.
 - Never make commits, open PRs, or run shell commands that modify the repo.
-- Use {{TOOL:bash}} only for read-only commands (`git log`, `find`, `cat`, etc.).
+- Use {{CAPABILITY:bash}} only for read-only commands (`git log`, `find`, `cat`, etc.).

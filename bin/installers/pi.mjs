@@ -16,8 +16,8 @@
 //                                    repository (this package's origin, so the
 //                                    shipped skills resolve it from the install)
 //   <output>/agents/<slug>.agent.md  composed flat agents (agents/<name>/
-//                                    agent.md + pi/ harness dirs, {{TOOL:...}} /
-//                                    {{PATH:...}} substituted against
+//                                    agent.md + pi/ harness dirs, {{CAPABILITY:...}}
+//                                    / {{PATH:...}} substituted against
 //                                    token-map.json's pi column). pi package
 //                                    rules have no agent resource type: the
 //                                    shipped agent-modes extension resolves
@@ -41,14 +41,16 @@
 // Composition per the token-map.json contract:
 //   1. {{SECTION:name}} is resolved from the agent's pi/<name>.md section file
 //      (shared composer, scripts/lib/compose-agent.mjs).
-//   2. {{TOOL:key}} is substituted with the pi column; a null pi mapping drops
-//      the token from prose with a warning.
+//   2. {{CAPABILITY:key}} is substituted with the pi column; a null pi mapping
+//      drops the token from prose with a warning.
 //   3. {{PATH:key}} named keys resolve through the paths table; bare relative
 //      paths resolve against the plugin root (default: token-map.json's pi
 //      value, which points at this staged package; overridable with
 //      --plugin-root for checkout/symlinked installs).
 // Frontmatter tool lists are translated the same way agent-modes does at
 // runtime: canonical → pi column, null → omitted, unknown (native pi tool) →
+// passed through unchanged, and a capability whose binding is a `command` →
+// hard error naming the canonical key (a command is not model-callable).
 // pass through.
 //
 // Third-party packages: the agents need tools that live in other pi packages.

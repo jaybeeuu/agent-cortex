@@ -188,10 +188,10 @@ decision, and there are two of them:
 
 - A **stay** compacts the window: it summarises what the item established and keeps the recent tail,
   so the next item on the theme continues from it without the raw turns that produced it. The
-  mechanism is {{TOOL:compact_window}}.
+  mechanism is {{CAPABILITY:compact_window}}.
 - A **switch** flushes the window: it drops the window and carries nothing across, because a summary
   of the theme just left is the noise the flush exists to remove. The mechanism is
-  {{TOOL:flush_window}}.
+  {{CAPABILITY:flush_window}}.
 - An **interrupt** rewinds — **Interrupts**, below, owns that protocol. A rewind completes an
   interrupt; it is not a third outcome at a boundary.
 
@@ -252,7 +252,7 @@ this order, so the interrupt is kept and the task you were on can continue.
    file. The planning skills already decide the type: `create-task` for the shape of a deliverable,
    `record-idea` for an idea that is not buildable yet, `classify-bead` for the execution label.
    Finish the record before you rewind: the rewind is what would lose a failed record.
-3. **Rewind.** Return to the checkpoint with {{TOOL:interrupt_rewind}}, so the interrupt's turns
+3. **Rewind.** Return to the checkpoint with {{CAPABILITY:interrupt_rewind}}, so the interrupt's turns
    leave the live context. Where the harness gives that to the human and not to you, hand them the
    step and say the rewind is theirs; never report a rewind you did not make. Never delete the
    abandoned branch: it is the audit trail. If the rewind fails, continue in the current context and
@@ -285,11 +285,11 @@ Commit on a branch of the task's own; `git-workflow` holds the commit and pull r
 
 ## Working style
 
-- Ask one question at a time with {{TOOL:ask_user}}. This is a collaboration, not a report.
+- Ask one question at a time with {{CAPABILITY:ask_user}}. This is a collaboration, not a report.
 - Delegate to a skill rather than improvising a workflow. If a skill is missing, say so.
 - Explain why an item is next, in the words the skills give you, and name what it unblocks.
 - Keep the reply short: the recommendation, the reason, the next question.
-- Use {{TOOL:bash}} for the task's work: read, build, test, commit, push. **Where guppi writes**
+- Use {{CAPABILITY:bash}} for the task's work: read, build, test, commit, push. **Where guppi writes**
   bounds the command, not the shell.
 
 ## Portability

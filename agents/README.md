@@ -98,7 +98,7 @@ JSON schema for harness-specific metadata:
 |-------|------|-------------|
 | `name` | `string` | Agent identifier (e.g., `agent-cortex:ralph`) |
 | `description` | `string` | What the agent does (used in agent selection) |
-| `tools` | `string[]` | Tool names the agent can use (non-empty), or `["*"]` for every tool the session has |
+| `tools` | `string[]` | Tools the agent can use (non-empty), or `["*"]` for every tool the session has. An entry is a canonical capability key or a harness-native tool name |
 
 #### Optional Fields
 
@@ -151,18 +151,35 @@ Examples:
 
 ## Token Format
 
-Tokens in agent.md reference tools, paths, and sections:
+Tokens in agent.md reference capabilities, paths, and sections:
 
 | Token | Syntax | Description |
 |-------|--------|-------------|
-| Tool reference | `{{TOOL:name}}` | Canonical tool name; resolved per harness from `token-map.json` |
+| Capability reference | `{{CAPABILITY:name}}` | Canonical capability name; resolved per harness from `token-map.json` |
 | Path reference | `{{PATH:path}}` | Canonical path name; resolved per harness from `token-map.json` |
 | Section include | `{{SECTION:name}}` | Include content from a section file in the harness directory (substituted by the composer) |
+
+A capability is a **tool** or a **command**, and the kind is per harness, because the same
+capability can be one on one harness and the other on the next. A `tool` is offered to the
+model and may appear in a `tools` list. A `command` is invoked directly by the user or agent —
+a slash command, or an extension's command — and may appear in rendered prose only. Naming a
+`command` in a `tools` list is a hard error naming the canonical key, never a silent omission.
+The map states the kind beside each name, so no consumer has to infer it.
+
+A `tools` entry is either a canonical capability key or a harness-native tool name. An installer
+translates a canonical key to that harness's name, and passes a native name through unchanged, so
+a list may mix the two. An entry whose row is `null` for that harness is omitted from the rendered
+list, which lets one authored list serve both harnesses.
+
+Installers substitute those three token types only. A token with any other type stays in the
+text, so it reaches the harness as literal prose. `{{TOOL:...}}` was the earlier name of the
+capability token: a file that still writes it composes with the token intact, and the harness
+reads it as text rather than as a tool. Rename it to `{{CAPABILITY:...}}`.
 
 ### Examples
 
 ```markdown
-Use {{TOOL:task}} to spawn subagents.
+Use {{CAPABILITY:task}} to spawn subagents.
 
 Read {{PATH:skills/workflow/plan/SKILL.md}} for the full workflow.
 
@@ -173,8 +190,8 @@ When composing the final agent file for a specific harness:
 
 1. Start with agent.md content
 2. Replace `{{SECTION:name}}` with content from `<harness>/<name>.md`
-3. `{{TOOL:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
-   canonical tool/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
+3. `{{CAPABILITY:name}}` and `{{PATH:name}}` are resolved against `token-map.json` — the
+   canonical capability/path/agent names per harness. `scripts/lib/compose-agent.mjs` (used by
    `bin/installers/claude.mjs` / `bin/installers/pi.mjs`) resolves them when generating the flat
    files / installing for claude and pi; pi's `agent-modes` extension does the same at runtime. See the `contract` section of `token-map.json` and
    `token-map.README.md` for the rules.

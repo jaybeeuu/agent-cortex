@@ -29,7 +29,7 @@ node <skill-scripts>/classify-bead.mjs <bead-id>
 ```
 
 - Output carries `"classification": "afk" | "hitl"` → done. The classifier applied the label; report the classification. Do not spawn a subagent.
-- Output carries `"escalate": true` → no deterministic signal. Spawn this skill as a background subagent via {{TOOL:task}} (a small, cheap model) with the bead ID and the `bd prime` output; the subagent applies the rubric below and tags the bead.
+- Output carries `"escalate": true` → no deterministic signal. Spawn this skill as a background subagent via {{CAPABILITY:task}} (a small, cheap model) with the bead ID and the `bd prime` output; the subagent applies the rubric below and tags the bead.
 - `--dry-run` resolves without applying the label. `--audit [--limit <n>]` reports the deterministic-vs-rubric split over recent beads.
 
 `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded — it varies by harness and install location, so never hardcode one harness's path. Only run inline when no task-spawning capability exists in the current environment.

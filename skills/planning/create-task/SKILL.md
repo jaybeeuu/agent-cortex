@@ -52,7 +52,7 @@ Turn a piece of work into a tracked bead, classify it for autonomous (AFK) or hu
    ```
 
    - `"classification": "afk" | "hitl"` → the label is applied; branch on that class in step 4.
-   - `"escalate": true` → delegate to the `classify-bead` skill as a subagent via {{TOOL:task}}; it applies the rubric and tags the bead.
+   - `"escalate": true` → delegate to the `classify-bead` skill as a subagent via {{CAPABILITY:task}}; it applies the rubric and tags the bead.
 
    `<skill-scripts>` is the absolute path to this skill's own `scripts/` directory, resolved from wherever this skill was loaded. Sibling skills sit alongside this skill's directory in every harness, so `../../classify-bead/scripts/` resolves to the classifier.
 

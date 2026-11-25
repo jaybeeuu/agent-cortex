@@ -288,7 +288,7 @@ describe("guppi's interrupt protocol renders per harness", () => {
     const { pi, claude, stdout } = await stageBoth();
 
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
-      assert.doesNotMatch(doc, /\{\{TOOL:|\{\{PATH:|\{\{SECTION:/, `${harness} agent carries no literal token`);
+      assert.doesNotMatch(doc, /\{\{CAPABILITY:|\{\{PATH:|\{\{SECTION:/, `${harness} agent carries no literal token`);
       // A null mapping drops the token and leaves its sentence missing a name;
       // the shipped source must therefore never rely on one.
       assert.doesNotMatch(doc, /\bwith\s{2,}/, `${harness} agent has no dropped-name gap`);

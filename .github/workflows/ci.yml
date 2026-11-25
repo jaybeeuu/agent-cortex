@@ -208,7 +208,7 @@ jobs:
       # `--output <dir>` is generate-only for tests). There is no committed
       # output to diff, so this job validates the materialiser itself: it must
       # produce a complete, structural plugin (generated + hand-authored pieces),
-      # no symlinks, no literal {{TOOL:/{{PATH:/{{SECTION: tokens, and a
+      # no symlinks, no literal {{CAPABILITY:/{{PATH:/{{SECTION: tokens, and a
       # plugin.json version tracking the package — exactly what a real install
       # would ship.
       - name: Materialise the Claude plugin and run structural checks
@@ -237,7 +237,7 @@ jobs:
           # Shipped docs are copied verbatim rather than substituted, so they are
           # in scope too: a doc that teaches the token syntax describes the braces
           # in words instead of printing them (see docs/skills/skill-anatomy.md).
-          TOKENS=$(grep -rlE '\{\{(TOOL|PATH|SECTION):' "$OUT" || true)
+          TOKENS=$(grep -rlE '\{\{(CAPABILITY|PATH|SECTION):' "$OUT" || true)
           if [ -n "$TOKENS" ]; then
             echo "::error::literal substitution tokens in materialised Claude plugin:"
             echo "$TOKENS"

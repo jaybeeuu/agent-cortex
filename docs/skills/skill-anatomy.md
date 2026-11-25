@@ -38,11 +38,17 @@ Optional fields:
 ## Tool references
 
 Reference agent tools by token, never by a hardcoded harness-specific name such as `bash`,
-`task`, or `read_agent`. A tool token is the tool's canonical authoring name prefixed with
-`TOOL:` and wrapped in doubled curly braces — two `{` before it and two `}` after it. The
-wrapper is literal syntax: installers match it and substitute the per-harness name from
-`token-map.json` at install time. Add any new tool to the map's `tools` section in the same
-change; unknown tokens are hard errors. See `token-map.README.md` for the full authoring rules.
+`task`, or `read_agent`. A capability token is the capability's canonical authoring name
+prefixed with `CAPABILITY:` and wrapped in doubled curly braces — two `{` before it and two
+`}` after it. The wrapper is literal syntax: installers match it and substitute the per-harness
+name from `token-map.json` at install time. Add any new capability to the map's `capabilities`
+section in the same change. A `CAPABILITY` key that the map does not carry is a hard error.
+
+Installers substitute three token types only: `CAPABILITY`, `PATH` and `SECTION`. A token of any
+other type stays in the text, so it reaches the harness as literal prose. `TOOL` was the earlier
+name of the `CAPABILITY` type, so a skill that still writes it installs with the token intact and
+names no tool: rename the type to `CAPABILITY`. See `token-map.README.md` for the full authoring
+rules.
 
 ## Required sections
 
@@ -123,7 +129,7 @@ Provide completion gates that are testable and stage-scoped.
 
 A skill passes anatomy review when:
 - [ ] Front matter uses required fields and valid description format.
-- [ ] Tool references use doubled-brace `TOOL:` tokens, not hardcoded tool names.
+- [ ] Tool references use doubled-brace `CAPABILITY:` tokens, not hardcoded tool names.
 - [ ] Required sections exist and follow canonical ordering.
 - [ ] Optional sections (if present) include what/when/example guidance.
 - [ ] `See Also` entries link the target `SKILL.md` relatively and state why to load it.

@@ -32,11 +32,13 @@ The PI system prompt is composed from `agent.md` per the token-map.json
 contract:
 
 1. `{{SECTION:name}}` tokens are replaced with the agent's `pi/<name>.md`.
-2. `{{TOOL:key}}` / `{{PATH:key}}` tokens are substituted against the pi column
+2. `{{CAPABILITY:key}}` / `{{PATH:key}}` tokens are substituted against the pi column
    of `token-map.json`, with the plugin root resolved from the actual extension
-   location. Tools map through that column (e.g. `ask_user` → `ask_questions`,
-   `skill` → `read`); a tool with a null mapping — any future one — is omitted
-   from the tool set with a warning.
+   location. Capabilities map through that column (e.g. `ask_user` → `ask_questions`,
+   `skill` → `read`); a capability with a null mapping — any future one — is omitted
+   from the tool set with a warning, and one bound to a `command` is an error naming the
+   canonical key: a command is not model-callable, so the agent is skipped rather than
+   enabled with a name pi never offers.
 
 Flat `agents/*.agent.md` files are parsed as a fallback when an agent has no
 composable directory — a staged pi package carries flat renders, and a hand-written

@@ -157,7 +157,7 @@ describe("post-merge watch transport renders per harness", () => {
     const { pi, claude, stdout } = await stageBoth();
 
     for (const [harness, doc] of [["pi", pi], ["claude", claude]]) {
-      assert.doesNotMatch(doc, /\{\{TOOL:|\{\{PATH:/, `${harness} playbook carries no literal token`);
+      assert.doesNotMatch(doc, /\{\{CAPABILITY:|\{\{PATH:/, `${harness} playbook carries no literal token`);
       // A null mapping drops the token and leaves its sentence missing a name;
       // the shipped source must therefore never rely on one.
       assert.doesNotMatch(doc, /\bwith\s{2,}/, `${harness} playbook has no dropped-name gap`);

@@ -126,7 +126,7 @@ describe("installed docs", () => {
       const docs = (await listFiles(out)).filter((file) => relative(out, file).startsWith("docs/"));
       assert.ok(docs.length > 0, `expected the ${harness} install to ship docs`);
 
-      const literalToken = /\{\{(?:TOOL|PATH|SECTION):/;
+      const literalToken = /\{\{(?:CAPABILITY|PATH|SECTION):/;
       /** @type {string[]} */
       const offenders = [];
       for (const file of docs) {

@@ -88,8 +88,8 @@ const FLAT_FRONTMATTER = (name: string, tools: string) =>
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 
 const TOKEN_PROSE =
-  "Run with {{TOOL:bash}}.\n" +
-  "Ask the user with {{TOOL:ask_user}}.\n" +
+  "Run with {{CAPABILITY:bash}}.\n" +
+  "Ask the user with {{CAPABILITY:ask_user}}.\n" +
   "Read the plan skill at {{PATH:skills/workflow/plan/SKILL.md}}.\n" +
   "Agents live in {{PATH:agents_dir}}.";
 
@@ -99,7 +99,7 @@ describe("discoverAgents (composable source format)", () => {
   it("discovers agents from <name>/agent.md + <name>/pi/frontmatter.json", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "ralph", {
-      body: "# ralph\nUse {{TOOL:task}} to spawn subagents.\n\n{{SECTION:wake}}",
+      body: "# ralph\nUse {{CAPABILITY:task}} to spawn subagents.\n\n{{SECTION:wake}}",
       frontmatter: {
         name: "agent-cortex:ralph",
         description: "Runs beads end-to-end",
@@ -119,13 +119,13 @@ describe("discoverAgents (composable source format)", () => {
     assert.equal(ralph.description, "Runs beads end-to-end");
     // Canonical tool names translated to PI names via token-map (glob→find, rg→grep, view→read).
     assert.deepEqual(ralph.tools, ["bash", "find", "grep", "read", "read_agent", "task"]);
-    // SECTION token resolved from pi/<section>.md; TOOL token substituted.
+    // SECTION token resolved from pi/<section>.md; CAPABILITY token substituted.
     assert.match(ralph.prompt, /Use task to spawn subagents\./);
     assert.match(ralph.prompt, /Poll with task \+ read_agent\./);
     assert.doesNotMatch(ralph.prompt, /\{\{/);
   });
 
-  it("substitutes TOOL / PATH tokens against token-map.json using the real plugin root", () => {
+  it("substitutes CAPABILITY / PATH tokens against token-map.json using the real plugin root", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "plan", {
       body: TOKEN_PROSE,
@@ -136,11 +136,11 @@ describe("discoverAgents (composable source format)", () => {
     assert.equal(agents.length, 1);
     const plan = agents[0];
 
-    // {{TOOL:bash}} → bash.
+    // {{CAPABILITY:bash}} → bash.
     assert.match(plan.prompt, /Run with bash\./);
-    // {{TOOL:ask_user}} → ask_questions (pi's native structured-questions tool).
+    // {{CAPABILITY:ask_user}} → ask_questions (pi's native structured-questions tool).
     assert.match(plan.prompt, /Ask the user with ask_questions\./);
-    assert.doesNotMatch(plan.prompt, /\{\{TOOL:ask_user\}\}/);
+    assert.doesNotMatch(plan.prompt, /\{\{CAPABILITY:ask_user\}\}/);
     // Relative {{PATH:...}} resolves against the actual package root (dir of agents/).
     assert.match(plan.prompt, new RegExp(`Read the plan skill at ${escapeRegExp(fx.dir)}/skills/workflow/plan/SKILL\\.md\\.`));
     // Named {{PATH:agents_dir}} resolves to <root>/agents.
@@ -164,10 +164,10 @@ describe("discoverAgents (composable source format)", () => {
     assert.deepEqual(agents[0].tools, ["ask_questions", "bash", "fetch_content", "read"]);
   });
 
-  it("warns and omits a tool whose pi mapping is null", () => {
+  it("warns and omits a capability whose pi binding is null", () => {
     const fx = track(makeFixture());
     const NULL_MAP = {
-      tools: { ask_user: { copilot: "ask_user", claude: "AskUserQuestion", pi: null } },
+      capabilities: { ask_user: { claude: { name: "AskUserQuestion", type: "tool" }, pi: null } },
       paths: {},
     } as TokenMap;
     writeComposableAgent(fx, "plan", {
@@ -184,6 +184,34 @@ describe("discoverAgents (composable source format)", () => {
     // (bash survives so the result is observable — an all-dropped list would be
     // normalised to DEFAULT_TOOLS, which is "no restriction", not the omit result.)
     assert.deepEqual(agents[0].tools, ["bash"]);
+  });
+
+  it("refuses a capability bound to a command in a tool list, naming the canonical key", () => {
+    const fx = track(makeFixture());
+    writeComposableAgent(fx, "plan", {
+      frontmatter: {
+        name: "agent-cortex:plan",
+        description: "Planner",
+        // The post-merge-watch extension registers a CLI flag, not a pi tool.
+        tools: ["bash", "post_merge_watch"],
+      },
+    });
+
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (message: unknown) => warnings.push(String(message));
+    try {
+      const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+      // The agent is skipped, not enabled with a name pi never offers as a tool.
+      assert.deepEqual(agents, []);
+    } finally {
+      console.warn = original;
+    }
+
+    assert.ok(
+      warnings.some((w) => w.includes('capability "post_merge_watch"') && w.includes("command")),
+      `warning names the canonical key: ${warnings.join(" | ")}`,
+    );
   });
 
   it("keeps the all-tools sentinel as the resolved tool list", () => {
@@ -317,6 +345,41 @@ describe("discoverAgents (flat fallback)", () => {
     assert.equal(agents.length, 1);
     assert.deepEqual(agents[0].tools, DEFAULT_TOOLS);
   });
+
+  it("skips only the flat agent whose tool list names a command, and warns about it", () => {
+    const fx = track(makeFixture());
+    // The post-merge-watch extension registers a CLI flag on pi, so the map
+    // binds post_merge_watch to a command. Binding one in a tool list is a
+    // defect in that one file.
+    writeFlatAgent(fx, "broken", FLAT_FRONTMATTER("broken", '["bash", "post_merge_watch"]'));
+    writeFlatAgent(fx, "strategy", FLAT_FRONTMATTER("strategy", '["bash", "view"]'));
+
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (message: unknown) => warnings.push(String(message));
+    let agents: AgentDef[];
+    try {
+      agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
+    } finally {
+      console.warn = original;
+    }
+
+    // The flat path is the production read path, and discoverAgents is called
+    // unguarded from the extension factory: throwing here takes down the whole
+    // session, so the offending agent is skipped and the sound one survives.
+    assert.deepEqual(
+      agents.map((a) => a.id),
+      ["strategy"],
+    );
+    assert.deepEqual(agents[0].tools, ["bash", "read"]);
+
+    assert.ok(
+      warnings.some(
+        (w) => w.includes('Skipping agent "broken"') && w.includes('capability "post_merge_watch"'),
+      ),
+      `warning names the skipped agent and the canonical key: ${warnings.join(" | ")}`,
+    );
+  });
 });
 
 // ─── loadTokenMap ────────────────────────────────────────────────────────────
@@ -324,10 +387,10 @@ describe("discoverAgents (flat fallback)", () => {
 describe("loadTokenMap", () => {
   it("reads the real token-map.json at the package root", () => {
     assert.ok(REAL_TOKEN_MAP);
-    assert.equal(typeof REAL_TOKEN_MAP?.tools?.bash?.pi, "string");
+    assert.equal(typeof REAL_TOKEN_MAP?.capabilities?.bash?.pi?.name, "string");
     // ask_user → ask_questions (pi's native structured-questions tool); skill → read.
-    assert.equal(REAL_TOKEN_MAP?.tools?.ask_user?.pi, "ask_questions");
-    assert.equal(REAL_TOKEN_MAP?.tools?.skill?.pi, "read");
+    assert.equal(REAL_TOKEN_MAP?.capabilities?.ask_user?.pi?.name, "ask_questions");
+    assert.equal(REAL_TOKEN_MAP?.capabilities?.skill?.pi?.name, "read");
     assert.ok(REAL_TOKEN_MAP?.paths?.agents_dir);
   });
 });

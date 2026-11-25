@@ -170,7 +170,7 @@ describe("peer-messaging transport renders per harness", () => {
     }
 
     // The rename the peer_list description exists to record survives the reword.
-    assert.match(tokenMap.notes.tools.peer_list, /\bListPeers\b/, "peer_list still records the ListPeers rename");
+    assert.match(tokenMap.notes.capabilities.peer_list, /\bListPeers\b/, "peer_list still records the ListPeers rename");
   });
 
   it("renders the message kinds and the acknowledgement rule byte-identically", async () => {
@@ -297,7 +297,7 @@ describe("peer-messaging transport renders per harness", () => {
 
     for (const [harness, files] of [["pi", pi], ["claude", claude]]) {
       for (const [key, content] of Object.entries(files)) {
-        assert.doesNotMatch(content, /\{\{TOOL:|\{\{PATH:/, `${harness} ${key} carries no literal token`);
+        assert.doesNotMatch(content, /\{\{CAPABILITY:|\{\{PATH:/, `${harness} ${key} carries no literal token`);
         // A null mapping drops the token and leaves its sentence missing a name;
         // the shipped sources must therefore never name a tool one harness lacks.
         assert.doesNotMatch(content, /\bwith\s*[,;]/, `${harness} ${key} has no dropped-name gap`);

@@ -24,7 +24,7 @@ A **deep module** (John Ousterhout, "A Philosophy of Software Design") has a sma
 
 ## Workflow
 
-1. **Explore the codebase.** Navigate with {{TOOL:bash}}, {{TOOL:rg}}, {{TOOL:view}}, and {{TOOL:glob}}, and note where you experience friction: concepts spread across many small files, interfaces nearly as complex as their implementations, pure functions extracted for testability while bugs hide in their call sites, tight coupling creating integration risk, or untested hard-to-test areas. The friction you encounter is the signal — record it as you go.
+1. **Explore the codebase.** Navigate with {{CAPABILITY:bash}}, {{CAPABILITY:rg}}, {{CAPABILITY:view}}, and {{CAPABILITY:glob}}, and note where you experience friction: concepts spread across many small files, interfaces nearly as complex as their implementations, pure functions extracted for testability while bugs hide in their call sites, tight coupling creating integration risk, or untested hard-to-test areas. The friction you encounter is the signal — record it as you go.
 
 2. **Present candidates.** Give a numbered list of deepening opportunities. For each, show the cluster of modules involved, why they are coupled (shared types, call patterns, co-ownership of a concept), the dependency category (see [REFERENCE.md](REFERENCE.md)), and the test impact. Do not propose interfaces yet — ask "Which of these would you like to explore?"
 

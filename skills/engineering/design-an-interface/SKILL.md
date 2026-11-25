@@ -35,7 +35,7 @@ description: "Generate multiple radically different interface designs for a modu
 
    Ask: "What does this module need to do? Who will use it?"
 
-2. **Generate designs with parallel sub-agents.** Spawn 3+ sub-agents simultaneously with {{TOOL:task}}, each assigned a **different** constraint to guarantee radical difference. Use this prompt template per agent:
+2. **Generate designs with parallel sub-agents.** Spawn 3+ sub-agents simultaneously with {{CAPABILITY:task}}, each assigned a **different** constraint to guarantee radical difference. Use this prompt template per agent:
 
    ```
    Design an interface for: [module description]

@@ -14,6 +14,10 @@
 // Exit codes are the contract: 0 a digest was printed, 1 the tracker could not be read
 // (no digest, so the watch stays silent), 2 the arguments were unusable.
 //
+// Each of the two reads is bounded in wall clock and in bytes: an answer that never comes
+// and an answer past the byte ceiling both end as exit 1, so a wedged or a runaway tracker
+// cannot hang the tick and cannot leave the watch silently blind either.
+//
 // A bead is stalled when it is `in_progress` and nobody has shown a sign of life for
 // longer than the threshold — its lease, its heartbeat, its own row, or a trail entry.
 // An expired lease is stalled immediately, whatever its age, because the lease is bd's
@@ -26,10 +30,6 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 const execFileAsync = promisify(execFile);
-
-// BD_PATH lets a machine where `bd` is not on PATH pin a location; tests drive the same
-// seam with a fake binary.
-const BD_PATH = process.env.BD_PATH || 'bd';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +90,26 @@ export const STALL_MINUTES_ENV = 'AGENT_CORTEX_IDLE_STALL_MINUTES';
 
 /** Rows read per query by default. A tick must stay cheap however long the backlog is. */
 export const DEFAULT_LIMIT = 500;
+
+/**
+ * Wall-clock bound for one tracker read. A wedged `bd` would otherwise leave the read
+ * running forever, and a watch whose command never exits has no exit code to report, so
+ * the whole exit-code contract goes silent with it.
+ */
+export const DEFAULT_CALL_TIMEOUT_MS = 30_000;
+
+/**
+ * Byte ceiling for one tracker answer. The readiness read asks for `--brief`, but the
+ * in-progress read cannot: the stall rule needs each row's notes, so a busy tracker
+ * returns tens of kilobytes per row and the child process default of 1 MiB is reachable.
+ */
+export const DEFAULT_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
+/** Environment override for the per-call wall-clock bound, documented in `--help`. */
+export const CALL_TIMEOUT_ENV = 'AGENT_CORTEX_IDLE_BD_TIMEOUT_MS';
+
+/** Environment override for the per-call byte ceiling, documented in `--help`. */
+export const MAX_BUFFER_ENV = 'AGENT_CORTEX_IDLE_BD_MAX_BUFFER_BYTES';
 
 /** bd's priority for a bead that carries none. */
 const DEFAULT_PRIORITY = 2;
@@ -319,10 +339,76 @@ export function buildDigest({ ready, inProgress, thresholdMinutes, now }) {
 
 // ─── Tracker ──────────────────────────────────────────────────────────────────
 
-/** @type {Runner} */
-async function runBd(args) {
-  const { stdout } = await execFileAsync(BD_PATH, args, { encoding: 'utf-8' });
-  return stdout;
+/**
+ * An environment value as a positive whole number, or the fallback when it is absent or
+ * unusable. An unusable bound keeps the default on purpose: a typo in the environment
+ * must not make the watch blind, which is the failure the bound exists to prevent.
+ * @param {Record<string, string | undefined>} env
+ * @param {string} name
+ * @param {number} fallback
+ * @returns {number}
+ */
+function positiveIntegerFrom(env, name, fallback) {
+  const raw = env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+/**
+ * The bounds one tracker read runs under: an environment override where it is usable, the
+ * documented default otherwise. Exported so both bounds are provable without a wedged and
+ * without a huge tracker.
+ * @param {Record<string, string | undefined>} env
+ * @returns {{ timeoutMs: number, maxBuffer: number }}
+ */
+export function resolveBdLimits(env = process.env) {
+  return {
+    timeoutMs: positiveIntegerFrom(env, CALL_TIMEOUT_ENV, DEFAULT_CALL_TIMEOUT_MS),
+    maxBuffer: positiveIntegerFrom(env, MAX_BUFFER_ENV, DEFAULT_MAX_BUFFER_BYTES),
+  };
+}
+
+/**
+ * Whether a child-process error is the wall-clock bound firing rather than the tracker
+ * answering with a failure.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isTimeout(error) {
+  return error instanceof Error && 'killed' in error && error.killed === true;
+}
+
+/**
+ * A runner that shells out to the tracker under the resolved bounds. Both a wedged `bd`
+ * and a runaway one end as a tracker failure, so the watch stays silent instead of
+ * nudging ralph on a half-read tracker.
+ * @param {Record<string, string | undefined>} env
+ * @returns {Runner}
+ */
+export function createBdRunner(env = process.env) {
+  // BD_PATH lets a machine where `bd` is not on PATH pin a location; tests drive the same
+  // seam with a fake binary.
+  const binary = env.BD_PATH || 'bd';
+  const { timeoutMs, maxBuffer } = resolveBdLimits(env);
+  return async (args) => {
+    try {
+      const { stdout } = await execFileAsync(binary, args, {
+        encoding: 'utf-8',
+        timeout: timeoutMs,
+        maxBuffer,
+        // The caller's environment view, plus the process environment so the child keeps
+        // PATH and anything else the harness exported.
+        env: { ...process.env, ...env },
+      });
+      return stdout;
+    } catch (error) {
+      // Name the bound that fired: "command failed" alone leaves an operator guessing why
+      // the watch went quiet.
+      if (isTimeout(error)) throw new Error(`${binary} did not answer within ${timeoutMs} ms`);
+      throw error;
+    }
+  };
 }
 
 /**
@@ -350,10 +436,17 @@ export async function readTracker({ bd, limit = DEFAULT_LIMIT }) {
  * @param {number} [input.thresholdMinutes]
  * @param {number} [input.limit]
  * @param {Date} [input.now]
+ * @param {Record<string, string | undefined>} [input.env]
  * @returns {Promise<Digest>}
  */
-export async function checkIdle({ deps = {}, thresholdMinutes = DEFAULT_STALL_MINUTES, limit, now = new Date() }) {
-  const bd = deps.bd ?? runBd;
+export async function checkIdle({
+  deps = {},
+  thresholdMinutes = DEFAULT_STALL_MINUTES,
+  limit,
+  now = new Date(),
+  env = process.env,
+}) {
+  const bd = deps.bd ?? createBdRunner(env);
   const tracker = await readTracker({ bd, limit });
   return buildDigest({ ...tracker, thresholdMinutes, now });
 }
@@ -366,6 +459,13 @@ Exit codes: 0 digest printed, 1 the tracker could not be read (nothing is printe
   --stall-minutes <minutes>  minutes of silence before a bead counts as stalled
                              (default ${DEFAULT_STALL_MINUTES}; ${STALL_MINUTES_ENV} sets it too)
   --limit <rows>             rows read per query (default ${DEFAULT_LIMIT})
+Each of the two queries is bounded:
+  ${CALL_TIMEOUT_ENV}
+                             per-call timeout in ms (default ${DEFAULT_CALL_TIMEOUT_MS})
+  ${MAX_BUFFER_ENV}
+                             per-call answer ceiling in bytes (default ${DEFAULT_MAX_BUFFER_BYTES})
+  BD_PATH                    the bd binary (default: bd)
+An unusable bound keeps its default, so a typo cannot blind the watch.
 `;
 
 /**
@@ -446,7 +546,13 @@ export async function runCli({
   }
 
   try {
-    const digest = await checkIdle({ deps, thresholdMinutes: options.thresholdMinutes, limit: options.limit, now });
+    const digest = await checkIdle({
+      deps,
+      thresholdMinutes: options.thresholdMinutes,
+      limit: options.limit,
+      now,
+      env,
+    });
     write(`${JSON.stringify(digest, null, 2)}\n`);
     return EXIT_CODES.digest;
   } catch (error) {

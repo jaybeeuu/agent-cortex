@@ -322,3 +322,13 @@ function nextIdAfter(beads) {
     return match ? Math.max(next, Number(match[1]) + 1) : next;
   }, 1);
 }
+
+/** A `bd` that accepts a call and never answers, so only the caller's own bound ends it.
+ * @param {string} dir  Directory to hold the binary
+ * @returns {Promise<string>} the binary path */
+export async function makeHangingBd(dir) {
+  const bin = join(dir, "bd");
+  await writeFile(bin, "#!/usr/bin/env node\n// A tracker that accepts the call and never answers.\nsetInterval(() => {}, 1000);\n");
+  await chmod(bin, 0o755);
+  return bin;
+}

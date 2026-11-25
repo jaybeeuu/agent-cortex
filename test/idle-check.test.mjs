@@ -8,12 +8,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { createTempRoot } from "./helpers/temp-root.mjs";
-import { makeFakeBd } from "./helpers/fake-bd.mjs";
+import { makeFakeBd, makeHangingBd } from "./helpers/fake-bd.mjs";
 import {
   buildDigest,
+  CALL_TIMEOUT_ENV,
   lastSignOfLife,
+  MAX_BUFFER_ENV,
+  resolveBdLimits,
   resolveStallMinutes,
   runCli,
   STALL_MINUTES_ENV,
@@ -77,6 +81,16 @@ async function runFake({ argv, fake, now = NOW, env = {} }) {
     writeError: (chunk) => err.push(chunk),
   });
   return { exitCode, stdout: out.join(""), stderr: err.join("") };
+}
+
+/**
+ * The tracker calls the fake recorded, in the order it received them.
+ * @param {Awaited<ReturnType<typeof makeFakeBd>>} fake
+ * @returns {Promise<string[]>}
+ */
+async function callsOf(fake) {
+  const state = /** @type {{ calls?: string[] }} */ (JSON.parse(await readFile(fake.state, "utf-8")));
+  return state.calls ?? [];
 }
 
 describe("buildDigest", () => {
@@ -265,6 +279,26 @@ describe("resolveStallMinutes", () => {
   });
 });
 
+describe("resolveBdLimits", () => {
+  it("bounds one tracker read with the documented default", () => {
+    assert.deepEqual(resolveBdLimits({}), { timeoutMs: 30_000, maxBuffer: 16 * 1024 * 1024 });
+  });
+
+  it("reads both bounds from the environment", () => {
+    assert.deepEqual(resolveBdLimits({ [CALL_TIMEOUT_ENV]: "1500", [MAX_BUFFER_ENV]: "2048" }), {
+      timeoutMs: 1500,
+      maxBuffer: 2048,
+    });
+  });
+
+  it("keeps the default when a bound in the environment is unusable", () => {
+    assert.deepEqual(resolveBdLimits({ [CALL_TIMEOUT_ENV]: "soon", [MAX_BUFFER_ENV]: "-1" }), {
+      timeoutMs: 30_000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  });
+});
+
 describe("runCli", () => {
   it("prints only the documented digest on stdout", async () => {
     const workspace = await tempRoot.createWorkspace();
@@ -292,7 +326,7 @@ describe("runCli", () => {
     assert.equal(stdout, `${JSON.stringify(digest, null, 2)}\n`);
   });
 
-  it("reports an in-progress bead through the tracker, using the documented queries", async () => {
+  it("reports an in-progress bead the tracker returns as stalled", async () => {
     const workspace = await tempRoot.createWorkspace();
     const fake = await makeFakeBd(workspace, {
       beads: [
@@ -309,6 +343,97 @@ describe("runCli", () => {
     assert.deepEqual(JSON.parse(stdout), {
       ready: [{ id: "bead-ready", priority: 0 }],
       stalled: [{ id: "bead-done", status: "in_progress", quietMinutes: 12, reason: "quiet" }],
+    });
+  });
+
+  it("sends the documented queries, in order, with the default row bound", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const fake = await makeFakeBd(workspace, {
+      beads: [
+        { id: "bead-ready", title: "waiting", labels: ["execution:afk"], status: "open" },
+        { id: "bead-busy", title: "busy", labels: ["execution:afk"], status: "in_progress", heartbeat_at: "2026-11-24T12:09:00Z" },
+      ],
+    });
+
+    const { exitCode } = await runFake({ argv: [], fake });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(await callsOf(fake), [
+      "ready -l execution:afk --json --brief -n 500",
+      "list -s in_progress --json -n 500",
+    ]);
+  });
+
+  it("bounds both queries by --limit", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const fake = await makeFakeBd(workspace, {
+      beads: [{ id: "bead-ready", title: "waiting", labels: ["execution:afk"], status: "open" }],
+    });
+
+    const { exitCode } = await runFake({ argv: ["--limit", "7"], fake });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(await callsOf(fake), [
+      "ready -l execution:afk --json --brief -n 7",
+      "list -s in_progress --json -n 7",
+    ]);
+  });
+
+  it("exits 1 and prints no digest when the tracker never answers", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const bin = await makeHangingBd(workspace);
+    /** @type {string[]} */
+    const out = [];
+    /** @type {string[]} */
+    const err = [];
+    const startedAt = Date.now();
+
+    const exitCode = await runCli({
+      argv: [],
+      now: NOW,
+      env: { BD_PATH: bin, [CALL_TIMEOUT_ENV]: "200" },
+      write: (chunk) => out.push(chunk),
+      writeError: (chunk) => err.push(chunk),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(out, []);
+    assert.match(err.join(""), /did not answer within 200 ms/);
+    assert.ok(Date.now() - startedAt < 5000, "the per-call bound ended the read, not the test");
+  });
+
+  it("digests an answer larger than the child-process default ceiling", async () => {
+    const workspace = await tempRoot.createWorkspace();
+    const padding = "x".repeat(2 * 1024 * 1024);
+    const fake = await makeFakeBd(workspace, {
+      beads: [
+        {
+          id: "bead-quiet",
+          title: "quiet",
+          labels: ["execution:afk"],
+          status: "in_progress",
+          heartbeat_at: "2026-11-24T11:58:00Z",
+          // The stall rule reads notes, so the in-progress read cannot ask for `--brief`
+          // and one long trail is enough to pass a megabyte.
+          notes: `[2026-11-24T11:58:00Z] [code] trail:1a2b\n${padding}`,
+        },
+      ],
+    });
+    /** @type {string[]} */
+    const out = [];
+
+    const exitCode = await runCli({
+      argv: [],
+      now: NOW,
+      env: { BD_PATH: fake.bin, FAKE_BD_STATE: fake.state },
+      write: (chunk) => out.push(chunk),
+      writeError: () => {},
+    });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(JSON.parse(out.join("")), {
+      ready: [],
+      stalled: [{ id: "bead-quiet", status: "in_progress", quietMinutes: 12, reason: "quiet" }],
     });
   });
 

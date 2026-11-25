@@ -683,21 +683,27 @@ function defectSection(model) {
  * brief or skill to look at, so the section names it; a class that names no lens is counted apart,
  * because a gap in the vocabulary is not a lens result. A tracker with no label says so rather than
  * printing four zeros, because a zero here reads as "this lens found nothing" and may mean the lens
- * never ran.
+ * never ran. A tracker whose only labels are unknown classes says that instead, so no line here
+ * contradicts the drift the defect section names above it.
  * @param {Model} model @returns {string[]}
  */
 function lensSection(model) {
-  const { byLens, labelled, noLens } = model.defects;
+  const { byLens, labelled, noLens, unknownClasses } = model.defects;
   const lines = ['Rejections by lens — the lens each class names in `review-defects`'];
   const ranked = Object.entries(byLens).sort(
     ([nameA, a], [nameB, b]) => b.count - a.count || nameA.localeCompare(nameB),
   );
   if (ranked.length === 0) {
-    lines.push(
-      labelled === 0
-        ? '  No defect label is set on any bead, so no lens is counted. Absent is not zero.'
-        : '  No class names a lens: every finding is `defect:unclassified`.',
-    );
+    if (labelled === 0 && unknownClasses.length === 0) {
+      lines.push('  No defect label is set on any bead, so no lens is counted. Absent is not zero.');
+    } else if (labelled === 0) {
+      lines.push(
+        '  No class in the vocabulary is set on any bead, so no lens is counted. The labels above',
+        '  are vocabulary drift, and a class outside the vocabulary names no lens.',
+      );
+    } else {
+      lines.push('  No class names a lens: every finding is `defect:unclassified`.');
+    }
   } else {
     const total = ranked.reduce((sum, [, entry]) => sum + entry.count, 0);
     lines.push(`  ${ranked.map(([name, entry]) => `${name} ${entry.count}`).join(' · ')}`);

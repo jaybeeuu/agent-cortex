@@ -330,6 +330,17 @@ describe('defect counts', () => {
     });
     assert.match(stdout, /No class names a lens: every finding is `defect:unclassified`\./);
   });
+  it('names the drift, not an absent label, when the only defect label is an unknown class', async () => {
+    const { stdout, model } = await report({
+      defects: [createBead({ id: 'bd-25.1', labels: ['defect:flaky-test'], parent: 'bd-25' })],
+    });
+
+    assert.deepEqual(model.defects.unknownClasses, ['flaky-test']);
+    assert.equal(model.defects.labelled, 0);
+    assert.match(stdout, /No class in the vocabulary is set on any bead, so no lens is counted\./);
+    assert.match(stdout, /are vocabulary drift, and a class outside the vocabulary names no lens\./);
+    assert.doesNotMatch(stdout, /No defect label is set on any bead/);
+  });
   it('reports no lens count when no defect label is set', async () => {
     const { stdout } = await report({ beads: [createBead({ id: 'bd-23.1', labels: ['stage:review'] })] });
     assert.match(stdout, /so no lens is counted\. Absent is not zero\./);

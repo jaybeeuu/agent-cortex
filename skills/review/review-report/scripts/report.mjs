@@ -173,6 +173,11 @@ export class ReportError extends Error {
  * @property {number} changes  Distinct parents those labels sit on.
  * @property {string[]} beads  The labelled bead ids, sorted.
  */
+/** Counts for one lens, over the classes its column in the vocabulary names.
+ * @typedef {object} LensCount
+ * @property {number} count    Labels whose class names this lens.
+ * @property {number} changes  Distinct parents those labels sit on.
+ */
 
 /** The measured state of the tracker.
  * @typedef {object} Model
@@ -180,7 +185,7 @@ export class ReportError extends Error {
  * @property {string} [generatedAt]
  * @property {string} [project]
  * @property {number} beadsRead
- * @property {{ labelled: number, changes: number, byClass: Record<string, ClassCount>, unknownClasses: string[] }} defects
+ * @property {{ labelled: number, changes: number, byClass: Record<string, ClassCount>, byLens: Record<string, LensCount>, noLens: number, unknownClasses: string[] }} defects
  * @property {{ cohorts: number, firstPass: number, rate: number | null }} reviews
  * @property {{ total: number, changes: number, byStage: Record<string, number>, unattributed: number }} fixRounds
  */
@@ -198,6 +203,7 @@ export class ReportError extends Error {
  * @property {string} path
  * @property {string | null} reportedAt
  * @property {Delta[]} classes
+ * @property {Delta[] | null} lenses  Null when the baseline predates the per-lens counts.
  * @property {Delta} labelled
  * @property {{ current: number | null, previous: number | null, points: number | null }} rate
  * @property {Delta[]} stages
@@ -227,17 +233,26 @@ export class ReportError extends Error {
 
 // ─── Vocabulary ──────────────────────────────────────────────────────────────
 
-const CLASS_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const SLUG_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
+/** The lens cell of a class no lens owns: the escape hatch names none of them. */
+export const LENS_ANY = 'any';
+
+/** A markdown table cell without the backticks around it. @param {string} cell @returns {string} */
+function cellText(cell) {
+  const trimmed = cell.trim();
+  return trimmed.startsWith('`') && trimmed.endsWith('`') ? trimmed.slice(1, -1).trim() : trimmed;
+}
 
 /**
- * Read the closed class list out of the vocabulary table in `review-defects/SKILL.md`.
+ * The rows of the closed class table, each with the lens its last cell names.
  *
  * One source, not two: the table is the authored list, and parsing it means a class added
  * there is counted here without a second edit. A table that no longer parses is a loud
  * failure, not an empty vocabulary.
- * @param {string} markdown @returns {string[]}
+ * @param {string} markdown @returns {{ name: string, lens: string }[]}
  */
-export function parseVocabulary(markdown) {
+function classRows(markdown) {
   const lines = markdown.split('\n');
   const start = lines.findIndex((line) => /^##\s/.test(line) && /closed list/i.test(line));
   if (start === -1) {
@@ -245,34 +260,106 @@ export function parseVocabulary(markdown) {
       step: 'vocabulary',
     });
   }
-  /** @type {string[]} */
-  const classes = [];
+  /** @type {{ name: string, lens: string }[]} */
+  const rows = [];
   for (const line of lines.slice(start + 1)) {
     if (/^##\s/.test(line)) break;
     if (!line.trimStart().startsWith('|')) continue;
-    const cell = line.split('|')[1]?.trim() ?? '';
-    if (!cell.startsWith('`') || !cell.endsWith('`')) continue;
-    const name = cell.slice(1, -1).trim();
-    if (CLASS_NAME.test(name) && !classes.includes(name)) classes.push(name);
+    const cells = line.split('|');
+    const head = cells[1] ?? '';
+    if (!head.trim().startsWith('`')) continue;
+    const name = cellText(head);
+    if (!SLUG_NAME.test(name) || rows.some((row) => row.name === name)) continue;
+    rows.push({ name, lens: cellText(cells[cells.length - 2] ?? '') });
   }
-  if (classes.length === 0) {
+  if (rows.length === 0) {
     throw new ReportError('cannot find the class vocabulary: the closed-list table yielded no class', {
       step: 'vocabulary',
     });
   }
-  return classes;
+  return rows;
 }
 
 /**
- * Read the vocabulary out of `review-defects/SKILL.md`.
+ * The lenses the skill documents, in the order its lens table lists them. The list is authored once,
+ * in the same file as the class table, so a lens is added to both or to neither.
+ * @param {string} markdown @returns {string[]}
+ */
+function lensNames(markdown) {
+  const lines = markdown.split('\n');
+  const start = lines.findIndex((line) => /^##\s/.test(line) && /lens/i.test(line));
+  if (start === -1) {
+    throw new ReportError('cannot find the lens list: no section in the skill names the lenses', {
+      step: 'vocabulary',
+    });
+  }
+  /** @type {string[]} */
+  const lenses = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^##\s/.test(line)) break;
+    if (!line.trimStart().startsWith('|')) continue;
+    const cell = line.split('|')[1] ?? '';
+    if (!cell.trim().startsWith('`')) continue;
+    const name = cellText(cell);
+    if (SLUG_NAME.test(name) && !lenses.includes(name)) lenses.push(name);
+  }
+  if (lenses.length === 0) {
+    throw new ReportError('cannot find the lens list: the section names no lens', { step: 'vocabulary' });
+  }
+  return lenses;
+}
+
+/**
+ * Read the closed class list, the lens list and the lens each class names out of
+ * `review-defects/SKILL.md`.
+ *
+ * The lens map comes from the class table's last column and is checked against the lens list the
+ * same skill documents. A class mapped to a lens that is not one of them is refused here, because
+ * the alternative is that class silently leaving every per-lens count.
+ * @param {string} markdown
+ * @returns {{ classes: string[], lenses: string[], classLens: Record<string, string> }}
+ */
+export function parseLensVocabulary(markdown) {
+  const lenses = lensNames(markdown);
+  const rows = classRows(markdown);
+  /** @type {Record<string, string>} */
+  const classLens = {};
+  for (const { name, lens } of rows) {
+    if (lens === '') {
+      throw new ReportError(`the vocabulary names no lens for ${name}: its Lens cell is empty`, {
+        step: 'vocabulary',
+      });
+    }
+    if (lens !== LENS_ANY && !lenses.includes(lens)) {
+      throw new ReportError(
+        `the vocabulary maps ${name} to lens "${lens}", which the skill does not document ` +
+          `(documented: ${lenses.join(', ')}, or ${LENS_ANY})`,
+        { step: 'vocabulary' },
+      );
+    }
+    classLens[name] = lens;
+  }
+  return { classes: rows.map((row) => row.name), lenses, classLens };
+}
+
+/**
+ * The closed class list, which is all most callers need.
+ * @param {string} markdown @returns {string[]}
+ */
+export function parseVocabulary(markdown) {
+  return parseLensVocabulary(markdown).classes;
+}
+
+/**
+ * Read the vocabulary file out of `review-defects/SKILL.md`.
  *
  * The skill group directories are flattened at install time, so the authoring layout
  * (`skills/review/review-defects`) and the installed layout (`skills/review-defects`) sit at
  * different depths from this script. Walk up until the skill directory is found, rather than
  * assuming either depth.
- * @param {string} scriptPath @returns {Promise<string[]>}
+ * @param {string} scriptPath @returns {Promise<string>}
  */
-export async function readVocabulary(scriptPath) {
+async function vocabularyMarkdown(scriptPath) {
   let dir = dirname(scriptPath);
   for (let depth = 0; depth < 4; depth += 1) {
     const parent = dirname(dir);
@@ -280,7 +367,7 @@ export async function readVocabulary(scriptPath) {
     dir = parent;
     const file = join(dir, VOCABULARY_SKILL, VOCABULARY_FILE);
     try {
-      return parseVocabulary(await readFile(file, 'utf-8'));
+      return await readFile(file, 'utf-8');
     } catch (error) {
       if (/** @type {NodeJS.ErrnoException} */ (error).code === 'ENOENT') continue;
       throw new ReportError(`cannot read the class vocabulary from ${file}`, { step: 'vocabulary' });
@@ -290,6 +377,22 @@ export async function readVocabulary(scriptPath) {
     `cannot find the ${VOCABULARY_SKILL} skill beside ${scriptPath}: it owns the class vocabulary`,
     { step: 'vocabulary' },
   );
+}
+
+/**
+ * Read the closed class list out of `review-defects/SKILL.md`.
+ * @param {string} scriptPath @returns {Promise<string[]>}
+ */
+export async function readVocabulary(scriptPath) {
+  return (await readVocabularyTable(scriptPath)).classes;
+}
+
+/**
+ * Read the classes, the lenses and the lens each class names, all from the one skill file.
+ * @param {string} scriptPath @returns {Promise<{ classes: string[], lenses: string[], classLens: Record<string, string> }>}
+ */
+export async function readVocabularyTable(scriptPath) {
+  return parseLensVocabulary(await vocabularyMarkdown(scriptPath));
 }
 
 // ─── Measurement ─────────────────────────────────────────────────────────────
@@ -331,12 +434,19 @@ export function ownerBead(bead) {
  * holding more than one did not. That is the whole derivation: no stage prose is read.
  *
  * A fix round is attributed to the stage its fresh chore re-runs, which that chore declares as
- * a `blocks` dependency on the fix.
- * @param {{ beads: Bead[], defects: Bead[], vocabulary: string[] }} input @returns {Model}
+ * a `blocks` dependency on the fix. A defect label is attributed to the lens its class names in the
+ * vocabulary: the class is the question that failed, so it names the lens that may raise it. The one
+ * class that names no lens is the escape hatch, counted apart rather than forced into a lens.
+ * @param {{ beads: Bead[], defects: Bead[], vocabulary: string[], classLens: Record<string, string> }} input @returns {Model}
  */
-export function aggregate({ beads, defects, vocabulary }) {
+export function aggregate({ beads, defects, vocabulary, classLens }) {
   /** @type {Record<string, ClassCount>} */
   const byClass = {};
+  /** @type {Record<string, LensCount>} */
+  const byLens = {};
+  /** @type {Map<string, Set<string>>} */
+  const lensChanges = new Map();
+  let noLens = 0;
   /** @type {string[]} */
   const unknownClasses = [];
   /** @type {Map<string, Set<string>>} */
@@ -354,11 +464,24 @@ export function aggregate({ beads, defects, vocabulary }) {
       const changes = changesByClass.get(name) ?? new Set();
       changes.add(ownerBead(bead));
       changesByClass.set(name, changes);
+      const lens = classLens[name];
+      if (lens === undefined || lens === LENS_ANY) {
+        noLens += 1;
+        continue;
+      }
+      const lensEntry = (byLens[lens] ??= { count: 0, changes: 0 });
+      lensEntry.count += 1;
+      const lensBeads = lensChanges.get(lens) ?? new Set();
+      lensBeads.add(ownerBead(bead));
+      lensChanges.set(lens, lensBeads);
     }
   }
   for (const [name, entry] of Object.entries(byClass)) {
     entry.beads.sort();
     entry.changes = changesByClass.get(name)?.size ?? 0;
+  }
+  for (const [lens, entry] of Object.entries(byLens)) {
+    entry.changes = lensChanges.get(lens)?.size ?? 0;
   }
 
   const defectChanges = new Set(defects.map(ownerBead));
@@ -412,6 +535,8 @@ export function aggregate({ beads, defects, vocabulary }) {
       labelled: Object.values(byClass).reduce((sum, entry) => sum + entry.count, 0),
       changes: defectChanges.size,
       byClass,
+      byLens,
+      noLens,
       unknownClasses,
     },
     reviews: { cohorts, firstPass, rate: cohorts === 0 ? null : firstPass / cohorts },
@@ -437,6 +562,7 @@ export function compare(current, previous, path) {
   }
 
   const previousClasses = model.defects?.byClass ?? {};
+  const previousLenses = model.defects?.byLens;
   const previousStages = model.fixRounds?.byStage ?? {};
   const names = [...new Set([...Object.keys(current.defects.byClass), ...Object.keys(previousClasses)])];
   const classNames = [...names].sort((a, b) => a.localeCompare(b));
@@ -452,6 +578,9 @@ export function compare(current, previous, path) {
       : Math.round((currentRate - previousRate) * 100);
 
   const stageNames = [...new Set([...Object.keys(current.fixRounds.byStage), ...Object.keys(previousStages)])];
+  const lensKeys = [
+    ...new Set([...Object.keys(current.defects.byLens), ...Object.keys(previousLenses ?? {})]),
+  ].sort((a, b) => a.localeCompare(b));
 
   return {
     path,
@@ -459,6 +588,17 @@ export function compare(current, previous, path) {
     classes: classNames.map((name) =>
       delta(name, current.defects.byClass[name]?.count ?? 0, previousClasses[name]?.count ?? 0),
     ),
+    // A baseline written before the report counted per lens cannot carry that comparison: an
+    // absent field is not a count of zero, so the section says it is not comparable rather than
+    // reporting every lens as newly counted.
+    lenses:
+      previousLenses === undefined
+        ? Object.keys(current.defects.byLens).length === 0
+          ? []
+          : null
+        : lensKeys.map((name) =>
+            delta(name, current.defects.byLens[name]?.count ?? 0, previousLenses[name]?.count ?? 0),
+          ),
     labelled: delta('defects', current.defects.labelled, model.defects?.labelled ?? 0),
     rate: { current: currentRate, previous: previousRate, points },
     stages: stageNames
@@ -533,6 +673,52 @@ function defectSection(model) {
     lines.push(
       `  Unknown class in the labels: ${unknownClasses.map((name) => `${DEFECT_PREFIX}${name}`).join(', ')}. ` +
         'Not in the vocabulary — treat each as a review defect, not a class.',
+    );
+  }
+  return lines;
+}
+
+/**
+ * The lens section: the findings grouped by the lens each class names. A lens that dominates is the
+ * brief or skill to look at, so the section names it; a class that names no lens is counted apart,
+ * because a gap in the vocabulary is not a lens result. A tracker with no label says so rather than
+ * printing four zeros, because a zero here reads as "this lens found nothing" and may mean the lens
+ * never ran. A tracker whose only labels are unknown classes says that instead, so no line here
+ * contradicts the drift the defect section names above it.
+ * @param {Model} model @returns {string[]}
+ */
+function lensSection(model) {
+  const { byLens, labelled, noLens, unknownClasses } = model.defects;
+  const lines = ['Rejections by lens — the lens each class names in `review-defects`'];
+  const ranked = Object.entries(byLens).sort(
+    ([nameA, a], [nameB, b]) => b.count - a.count || nameA.localeCompare(nameB),
+  );
+  if (ranked.length === 0) {
+    if (labelled === 0 && unknownClasses.length === 0) {
+      lines.push('  No defect label is set on any bead, so no lens is counted. Absent is not zero.');
+    } else if (labelled === 0) {
+      lines.push(
+        '  No class in the vocabulary is set on any bead, so no lens is counted. The labels above',
+        '  are vocabulary drift, and a class outside the vocabulary names no lens.',
+      );
+    } else {
+      lines.push('  No class names a lens: every finding is `defect:unclassified`.');
+    }
+  } else {
+    const total = ranked.reduce((sum, [, entry]) => sum + entry.count, 0);
+    lines.push(`  ${ranked.map(([name, entry]) => `${name} ${entry.count}`).join(' · ')}`);
+    if (ranked.length > 1 && ranked[0][1].count > ranked[1][1].count) {
+      const [top, entry] = ranked[0];
+      lines.push(
+        `  ${top} accounts for ${entry.count} of ${total}: a lens that keeps rejecting points at the`,
+        '  brief it applies or the skill its classes name, not at the beads it rejected.',
+      );
+    }
+  }
+  if (noLens > 0 && ranked.length > 0) {
+    lines.push(
+      `  No lens: ${noLens} \`${DEFECT_PREFIX}unclassified\` ${noLens === 1 ? 'finding' : 'findings'}.`,
+      '  A gap in the vocabulary is filed as a change to it, never counted under a lens.',
     );
   }
   return lines;
@@ -620,6 +806,14 @@ function trendSection(context) {
     lines.push(`  ${listed.join(', ')}${rest > 0 ? `, and ${rest} more` : ''}`);
   }
 
+  if (comparison.lenses === null) {
+    lines.push('  Rejections by lens: the baseline records no lens counts, so they are not compared.');
+  } else {
+    const lensChanges = comparison.lenses
+      .filter((entry) => entry.delta !== 0)
+      .map((entry) => `${entry.key} ${entry.current} (${signed(entry.delta)})`);
+    if (lensChanges.length > 0) lines.push(`  Rejections by lens ${lensChanges.join(', ')}`);
+  }
   if (comparison.rate.current !== null && comparison.rate.previous !== null) {
     const points = comparison.rate.points ?? 0;
     const change = points === 0 ? 'no change' : `${signed(points)} points`;
@@ -650,6 +844,8 @@ export function renderReport(model, context) {
     `Reported ${model.generatedAt ?? '(no clock)'}. Read ${model.beadsRead} beads from the tracker.`,
     '',
     ...defectSection(model),
+    '',
+    ...lensSection(model),
     '',
     ...reviewSection(model),
     '',
@@ -924,9 +1120,9 @@ export async function runCli(argv, deps = {}) {
   const bd = deps.bd ?? makeRunner(options.bd ?? process.env.BD_PATH ?? 'bd', cwd);
   const git = deps.git ?? makeRunner(options.git ?? process.env.GIT_PATH ?? 'git', cwd);
 
-  const vocabulary = await readVocabulary(scriptPath);
+  const { classes, classLens } = await readVocabularyTable(scriptPath);
   const { beads, defects } = await collect(bd);
-  const model = aggregate({ beads, defects, vocabulary });
+  const model = aggregate({ beads, defects, vocabulary: classes, classLens });
   model.generatedAt = now.toISOString().replace(/\.\d{3}Z$/, 'Z');
   model.project = await identifyProject(git, cwd);
 

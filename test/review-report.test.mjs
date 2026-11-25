@@ -19,8 +19,10 @@ import { installPi } from '../bin/installers/pi.mjs';
 import {
   DEFECT_OWNERS,
   DEFECT_QUERY,
+  parseLensVocabulary,
   parseSlug,
   readVocabulary,
+  readVocabularyTable,
   runCli,
 } from '../skills/review/review-report/scripts/report.mjs';
 
@@ -159,6 +161,42 @@ describe('vocabulary', () => {
     assert.equal(model.defects.labelled, 0);
     assert.match(stdout, /Unknown class in the labels: defect:flaky-test/);
   });
+  it('names the lens each class may be raised by', async () => {
+    const table = await readVocabularyTable(SCRIPT);
+    assert.deepEqual(table.lenses, ['behaviour', 'quality', 'tests', 'security']);
+    assert.deepEqual(table.classLens, {
+      'test-unproven': 'tests',
+      'test-cannot-fail': 'tests',
+      'criteria-unmet': 'tests',
+      'scope-creep': 'tests',
+      'style-violation': 'quality',
+      'missing-proof': 'tests',
+      regression: 'behaviour',
+      'docs-drift': 'quality',
+      'unsafe-instruction': 'security',
+      'ambiguous-rule': 'quality',
+      'silent-degradation': 'behaviour',
+      unclassified: 'any',
+    });
+  });
+  it('refuses a class mapped to a lens the skill does not document', async () => {
+    const markdown = await readFile(VOCABULARY_SKILL_FILE, 'utf-8');
+    const broken = markdown.replace(
+      '| The criterion, quoted, and what is absent. | tests |',
+      '| The criterion, quoted, and what is absent. | testz |',
+    );
+    assert.notEqual(broken, markdown, 'the fixture did not change the criteria-unmet row');
+    assert.throws(() => parseLensVocabulary(broken), /maps criteria-unmet to lens "testz"/);
+  });
+  it('refuses a class whose Lens cell is empty, rather than dropping it from a count', async () => {
+    const markdown = await readFile(VOCABULARY_SKILL_FILE, 'utf-8');
+    const broken = markdown.replace(
+      '| The criterion, quoted, and what is absent. | tests |',
+      '| The criterion, quoted, and what is absent. |  |',
+    );
+    assert.notEqual(broken, markdown, 'the fixture did not change the criteria-unmet row');
+    assert.throws(() => parseLensVocabulary(broken), /names no lens for criteria-unmet/);
+  });
 });
 
 // ─── Degradation ──────────────────────────────────────────────────────────────
@@ -255,6 +293,58 @@ describe('defect counts', () => {
     assert.equal(model.fixRounds.unattributed, 1);
     assert.match(stdout, /1 in total across 1 change — unattributed 1/);
   });
+  it('groups the findings by the lens each class names', async () => {
+    const { stdout, model } = await report({
+      defects: [
+        createBead({ id: 'bd-20.1', labels: ['defect:criteria-unmet'], parent: 'bd-20' }),
+        createBead({ id: 'bd-20.2', labels: ['defect:style-violation'], parent: 'bd-20' }),
+        createBead({ id: 'bd-20.3', labels: ['defect:style-violation'], parent: 'bd-21' }),
+        createBead({ id: 'bd-20.4', labels: ['defect:unsafe-instruction'], parent: 'bd-21' }),
+        createBead({ id: 'bd-20.5', labels: ['defect:regression'], parent: 'bd-22' }),
+      ],
+    });
+    assert.deepEqual(model.defects.byLens, {
+      quality: { count: 2, changes: 2 },
+      tests: { count: 1, changes: 1 },
+      security: { count: 1, changes: 1 },
+      behaviour: { count: 1, changes: 1 },
+    });
+    assert.equal(model.defects.noLens, 0);
+    assert.match(stdout, /quality 2 · behaviour 1 · security 1 · tests 1/);
+    assert.match(stdout, /quality accounts for 2 of 5/);
+  });
+  it('counts a class that names no lens apart from every lens', async () => {
+    const { stdout, model } = await report({
+      defects: [
+        createBead({ id: 'bd-21.1', labels: ['defect:unclassified'], parent: 'bd-21' }),
+        createBead({ id: 'bd-21.2', labels: ['defect:regression'], parent: 'bd-21' }),
+      ],
+    });
+    assert.equal(model.defects.noLens, 1);
+    assert.match(stdout, /behaviour 1/);
+    assert.match(stdout, /No lens: 1 `defect:unclassified` finding\./);
+  });
+  it('says no lens is counted when the only class names none', async () => {
+    const { stdout } = await report({
+      defects: [createBead({ id: 'bd-22.1', labels: ['defect:unclassified'], parent: 'bd-22' })],
+    });
+    assert.match(stdout, /No class names a lens: every finding is `defect:unclassified`\./);
+  });
+  it('names the drift, not an absent label, when the only defect label is an unknown class', async () => {
+    const { stdout, model } = await report({
+      defects: [createBead({ id: 'bd-25.1', labels: ['defect:flaky-test'], parent: 'bd-25' })],
+    });
+
+    assert.deepEqual(model.defects.unknownClasses, ['flaky-test']);
+    assert.equal(model.defects.labelled, 0);
+    assert.match(stdout, /No class in the vocabulary is set on any bead, so no lens is counted\./);
+    assert.match(stdout, /are vocabulary drift, and a class outside the vocabulary names no lens\./);
+    assert.doesNotMatch(stdout, /No defect label is set on any bead/);
+  });
+  it('reports no lens count when no defect label is set', async () => {
+    const { stdout } = await report({ beads: [createBead({ id: 'bd-23.1', labels: ['stage:review'] })] });
+    assert.match(stdout, /so no lens is counted\. Absent is not zero\./);
+  });
 });
 
 // ─── Change since the previous report ─────────────────────────────────────────
@@ -349,6 +439,48 @@ describe('change since the previous report', () => {
 
   it('refuses --record without a baseline path', async () => {
     await assert.rejects(report({ argv: ['--record'] }), /--record needs --baseline <path>/);
+  });
+  it('compares the per-lens counts against the baseline', async () => {
+    const dir = await tempRoot.createWorkspace();
+    const baseline = join(dir, 'defect-report.json');
+    await writeFile(
+      baseline,
+      JSON.stringify({
+        schema: 1,
+        generatedAt: '2026-04-01T10:00:00Z',
+        defects: {
+          labelled: 1,
+          changes: 1,
+          byClass: { regression: { count: 1, changes: 1, beads: ['bd-24.1'] } },
+          byLens: { behaviour: { count: 1, changes: 1 } },
+          noLens: 0,
+          unknownClasses: [],
+        },
+        reviews: {},
+        fixRounds: {},
+      }),
+    );
+    const { stdout } = await report({
+      defects: [
+        createBead({ id: 'bd-24.2', labels: ['defect:regression'], parent: 'bd-24' }),
+        createBead({ id: 'bd-24.3', labels: ['defect:docs-drift'], parent: 'bd-24' }),
+      ],
+      argv: ['--baseline', baseline],
+    });
+    assert.match(stdout, /Rejections by lens quality 1 \(\+1\)/);
+  });
+  it('says a baseline without lens counts is not compared', async () => {
+    const dir = await tempRoot.createWorkspace();
+    const baseline = join(dir, 'defect-report.json');
+    await writeFile(
+      baseline,
+      JSON.stringify({ schema: 1, defects: { labelled: 0, byClass: {} }, reviews: {}, fixRounds: {} }),
+    );
+    const { stdout } = await report({
+      defects: [createBead({ id: 'bd-25.1', labels: ['defect:regression'], parent: 'bd-25' })],
+      argv: ['--baseline', baseline],
+    });
+    assert.match(stdout, /the baseline records no lens counts, so they are not compared/);
   });
 });
 
@@ -548,6 +680,15 @@ describe('staged install', () => {
     assert.match(run.stdout, /Filed: https:\/\/example\.test\/issues\/1/);
   });
 
+  it('reads the lens each class names out of a staged install', async () => {
+    const root = await tempRoot.createWorkspace();
+    const output = join(root, 'claude');
+    await installClaude({ root: REPO_ROOT, output, warn: () => {} });
+    const table = await readVocabularyTable(join(output, 'skills', 'review-report', 'scripts', 'report.mjs'));
+    assert.deepEqual(table.lenses, ['behaviour', 'quality', 'tests', 'security']);
+    assert.equal(table.classLens['unsafe-instruction'], 'security');
+    assert.equal(table.classLens.unclassified, 'any');
+  });
   it('never files against the manifest of the project the copy sits in', async () => {
     const root = await tempRoot.createWorkspace();
     await writeFile(

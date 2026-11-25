@@ -2,7 +2,8 @@
 
 One case per class. Each shows what was observed, the label, and the rejection text to write. Eleven
 were observed in real review rounds; `scope-creep` is described as a situation, because no recorded
-case exists, so you can match its shape without guessing at history.
+case exists, so you can match its shape without guessing at history. The last case names no class: it
+shows one bead rejected by two lenses, which is how two labels reach one bead.
 
 ## `test-unproven` — the name claims a settle-time cleanup
 
@@ -196,3 +197,24 @@ bead. Do not read this as a documentation defect."
 **Why this class.** It is the escape hatch, and the obligation is the point: it was applied with a
 gap bead proposing the missing class. Without that bead it is a miscount with a nicer name, and the
 class is not a pass on the review.
+
+## Two lenses rejecting one bead — two labels
+
+**Situation.** A change renames a config key and moves where its value is read. The `behaviour` lens
+finds the old key's fallback gone, so a config that sets only the old key now throws. The `tests`
+lens finds the test named "… falls back when the key is absent" asserting the new key's value, so the
+fallback path has no assertion. No recorded case exists yet, because the four reviewer chores are not
+shipped; the shape is what matters.
+
+**Label.** `defect:regression` and `defect:test-unproven` — one label per rejecting lens, as the
+class table's `Lens` column requires. The class names the lens that may raise it, so the two labels
+are the record that two questions failed.
+
+**Rejection text.** Two `BLOCKING_ISSUES` entries, one per lens. Behaviour: "The old key's fallback
+is gone, so a config that sets only the old key now throws; keep the fallback." Tests: "`… falls back
+when the key is absent` asserts the new key's value, so the fallback path has no assertion; assert
+the fallback."
+
+**Why two labels.** One label would lose the question that failed and the count it feeds. The two
+findings are repaired by different changes, and the report reads the lenses apart so a lens that
+keeps rejecting is visible as a gap in its brief.

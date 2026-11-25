@@ -31,7 +31,8 @@
 ## One defect class per rejection
 
 A rejection carries exactly one `defect:<class>` label, from the closed list in the
-`review-defects` skill, plus the specific reason in the rejection text. The label names the kind;
+`review-defects` skill, plus the specific reason in the rejection text. The label names the kind,
+and it names the lens that may raise it, so the label is also the record of which question failed.
 `BLOCKING_ISSUES` names this instance.
 
 ```bash
@@ -42,7 +43,8 @@ bd update <id> --add-label defect:test-unproven
   code stage already closed; the label attaches to it all the same, so the queries in
   `review-defects` pass `--all` and a query without the flag finds nothing. Two findings of
   different kinds are two `BLOCKING_ISSUES` entries and one label: the class of the finding that
-  must be fixed first.
+  must be fixed first. When two lenses both reject, each applies the class of its own finding, so
+  the bead carries one label per rejecting lens and nothing is merged across lenses.
 - When no class fits, apply `defect:unclassified`, say so under `BLOCKING_ISSUES`, and file a bead
   proposing the class with this finding as its case. The escape hatch is not a pass: without the
   gap bead it silently degrades the aggregate the feedback loop reads.

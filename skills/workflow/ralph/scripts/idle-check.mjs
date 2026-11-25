@@ -137,7 +137,7 @@ class UsageError extends Error {}
  * @param {string} key
  * @returns {string | null}
  */
-function textOf(row, key) {
+export function textOf(row, key) {
   const value = row[key];
   return typeof value === 'string' && value !== '' ? value : null;
 }

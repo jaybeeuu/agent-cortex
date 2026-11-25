@@ -14,7 +14,7 @@ Example:
 ```
 Calling tool 'task' with arguments: { "prompt": "...", "cwd": ".agent-cortex/worktrees/abc-123" }
 ```
-The response is a plain agent ID string (e.g. `agent-550e8400-e29b-41d4-a716-446655440000`). Store it in memory and in `state.json` — you need it later to wait for the result.
+The response is a plain agent ID string (e.g. `agent-550e8400-e29b-41d4-a716-446655440000`). Keep it in memory for the wait, and write it to the dispatched bead as one `dispatched:` trail entry — that record is how the in-flight set survives this session, so you need it later to wait for the result.
 
 **`wait_for_agents`** — Block until at least one background sub-agent completes. This is the primary way to get results back.
 - `agentIds` (string[], required): The agent IDs returned by `task` to wait on.
@@ -37,14 +37,14 @@ Rules:
 
 ### Completion arrival
 
-A completion arrives **in the wait response**: `wait_for_agents` returns as soon as one worker finishes, carrying that worker's result inline, so you never go looking for it. Apply the shared completion handling in the **Event loop** section of agent.md (the result is included in the wait response, or re-read with `read_agent`; re-read state.json and branch on the entry's `kind` — `stage` parses the REPORT and confirms the worker closed its chore, `expand` confirms the parent now has `stage:*` chores and dispatches the ready `stage:code` — then check for newly ready beads and the shutdown check). An expansion worker is in the wait set but is never treated as a chore: it emits no REPORT and needs no close confirmation.
+A completion arrives **in the wait response**: `wait_for_agents` returns as soon as one worker finishes, carrying that worker's result inline, so you never go looking for it. Apply the shared completion handling in the **Event loop** section of agent.md (the result is included in the wait response, or re-read with `read_agent`; find the bead whose newest dispatch record names that worker id — `node skills/workflow/ralph/scripts/inflight.mjs` — and branch on its `kind`: `stage` parses the REPORT and confirms the worker closed its chore, `expand` confirms the parent now has `stage:*` chores and dispatches the ready `stage:code` — then check for newly ready beads and the shutdown check). An expansion worker is in the dispatch set but is never treated as a chore: it emits no REPORT and needs no close confirmation.
 
 ### Id tracking
 
-Initialize `.agent-cortex/ralph/state.json` as `{ "timerShellId": null, "inflight": [] }`. Only one handle matters here:
+There is no state file to initialise: the worker id lives in the dispatched bead's trail, not in a file beside the tracker. Two things matter here:
 
-- **inflight[].agentId** — the ID `task` returned for that worker; it is the argument `wait_for_agents` takes, the identifier for a `read_agent` fallback, and the key the completion is correlated to its bead.
-- **timerShellId** — stays `null` on PI forever: the blocking wait replaces a poll timer, so nothing is ever recorded there.
+- **The dispatch record** — the ID `task` returned is written to the dispatched bead as one `dispatched:` trail entry (agent.md, _State: the dispatch set_). It is the argument `wait_for_agents` takes, the identifier for a `read_agent` fallback, and the key the completion is correlated to its bead.
+- **The wait set** — the ids still outstanding, held in memory for this session. The blocking wait replaces a poll timer, so there is no timer handle to store, and nothing about it belongs in the tracker.
 
 ### Reading the trail
 
@@ -57,18 +57,18 @@ bd provenance log <chore-id>    # refs: git-sha, branch, pr, work-id
 ```
 
 Read each completed worker's bead once, post a chat summary of what is new — the stage transition,
-the test and lint results, the close reason — and post nothing when nothing new arrived. Nothing in
-`state.json` needs a bookmark, because the trail is not a stream to follow.
+the test and lint results, the close reason — and post nothing when nothing new arrived. Nothing needs
+a bookmark, because the trail is not a stream to follow.
 
 ### Wait loop lifecycle
 
-- **Dispatch-and-wait** — during initialization, dispatch up to 5 AFK chore subagents with `task` (or an expansion worker for a chore-less AFK bead) and hold their agent IDs (recorded in `state.json`'s `inflight` list; expansion entries carry `kind: "expand"` and `choreId: null`).
+- **Dispatch-and-wait** — during initialization, dispatch up to 5 AFK chore subagents with `task` (or an expansion worker for a chore-less AFK bead) and hold their agent IDs (each dispatch record names its worker on its bead; an expansion worker's record sits on the parent task bead).
 - **Wait** — call `wait_for_agents` with the agent IDs of every in-flight agent, stage worker or expansion worker (`timeout` defaults to 120s). The tool blocks until at least one finishes. For each completed agent:
   1. Read its bead trail (see _Reading the trail_ above) to surface progress to chat.
   2. Apply the shared completion handling described under _Completion arrival_ above.
   3. Drop the completed agent ID from the wait set.
 - **Repeat** — dispatch replacements for completed work (up to 5 in flight), add their new IDs to the wait set, and call `wait_for_agents` again with the remaining + new IDs. A completed expansion leaves a slot to fill with its parent's newly ready `stage:code` chore.
-- **Empty wait set** — never call `wait_for_agents` with an empty `agentIds` list. When handling a completion leaves `inflight` empty, run the event loop's final check (agent.md, _If nothing remains in flight_): a ready `stage:*` chore, or a ready, claimable chore-less AFK task bead (expand it first), is dispatchable — dispatch it and wait again. With nothing dispatchable, pending HITL gate beads mean **HITL Pause** and none mean **Shutdown**; either way stop calling `wait_for_agents` and act again only when the user re-prompts.
+- **Empty wait set** — never call `wait_for_agents` with an empty `agentIds` list. When handling a completion leaves the dispatch set empty, run the event loop's final check (agent.md, _If nothing remains in flight_): a ready `stage:*` chore, or a ready, claimable chore-less AFK task bead (expand it first), is dispatchable — dispatch it and wait again. With nothing dispatchable, pending HITL gate beads mean **HITL Pause** and none mean **Shutdown**; either way stop calling `wait_for_agents` and act again only when the user re-prompts.
 - **Timeout / STILL RUNNING** — if the timeout elapses with agents still working, the tool returns those agents as STILL RUNNING (with `timed out` noted). Call `wait_for_agents` again with the same IDs — the still-running agents keep working; you never re-dispatch them. `read_agent` remains available to re-read a completed result at any time.
 - **Abort** — if the user aborts, `wait_for_agents` returns immediately with what is known so far (no hang); do not re-issue the wait.
 

@@ -401,11 +401,13 @@ Proceed here when no agent work is in flight (no stage, decomposition or expansi
 
 ## Idle Check
 
-Ralph's watch polls one command and nudges ralph only when the answer changes. That command is `skills/workflow/ralph/scripts/idle-check.mjs`, which is the watch's documented default and resolves package-relative like every other shipped script:
+The idle watch has two halves: a command that answers one question, and a waiting mechanism that decides when to ask and what to do with the answer. This section documents only the command. It holds no cadence, starts no session, and says nothing about what to do with its result — arming the watch, comparing digests and nudging ralph all belong to the waiting mechanism, which is a separate component.
+
+That command is `skills/workflow/ralph/scripts/idle-check.mjs`, the watch's documented default, and it resolves package-relative like every other shipped script:
 ```bash
 node skills/workflow/ralph/scripts/idle-check.mjs
 ```
-It prints one JSON object and nothing else on stdout. Both arrays are sorted by id, so a tracker that reorders its rows is not a change:
+It prints one JSON object and nothing else on stdout. A tick is one bounded, read-only pass with no model call, cheap enough to run on every tick of a watch. Both arrays are sorted by id, so a tracker that reorders its rows is not a change:
 ```json
 {
   "ready":   [ { "id": "agnt-ctx-abc.1", "priority": 1 } ],
@@ -418,7 +420,7 @@ It prints one JSON object and nothing else on stdout. Both arrays are sorted by 
 - **An expired lease is stalled immediately**, with the reason `lease-expired`. bd states in `lease_expires_at` that the holder is gone, so the report does not wait for the threshold; the quiet time is still reported beside the reason.
 - **Exit codes are the contract.** `0` printed a digest, `1` could not read the tracker — nothing is printed, so the watch stays silent instead of nudging ralph to look at nothing — and `2` was given unusable arguments. `BD_PATH` overrides the binary, and `--limit <rows>` bounds each query (default 500).
 - **Each read is bounded in wall clock and in bytes.** A `bd` that never answers ends the read after `AGENT_CORTEX_IDLE_BD_TIMEOUT_MS` (default 30000 ms) and a `bd` that answers past `AGENT_CORTEX_IDLE_BD_MAX_BUFFER_BYTES` (default 16777216 bytes, 16 MiB) is refused. Both end in exit `1`, because a tick whose command never returns has no exit code at all, and the watch would go silent forever rather than stay silent for one tick. The byte ceiling is raised rather than left at the child-process default because the in-progress query cannot ask for `--brief`: the stall rule needs each row's notes, and a busy tracker returns tens of kilobytes per row. An unusable value for either bound keeps its default, so a typo cannot blind the watch.
-- **Read-only and cheap.** The two queries are `bd ready` and `bd list -s in_progress`, run one after the other, and the script writes nothing: no bead field, no note, no lease. A tick makes no model call.
+- **Read-only.** The two queries are `bd ready` and `bd list -s in_progress`, run one after the other, and the script writes nothing: no bead field, no note, no lease.
 
 ---
 

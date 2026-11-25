@@ -635,6 +635,23 @@ describe('the theme balance', () => {
     assert.equal(round2(rowFor(report, 'tst-a').themeMultiplier), 0.7);
   });
 
+  it('counts the window from the latest close, so the newest theme is the one it spends', async () => {
+    // Two themes, one slot, and the older close listed first so tracker order cannot pass for
+    // the answer. Only `closed_at` can put the newest close in the window.
+    const report = await queue({
+      beads: [
+        { id: 'tst-recent', title: 'The theme that just closed', labels: ['execution:hitl'], rice: rice() },
+        { id: 'tst-older', title: 'The theme that closed earlier', labels: ['execution:hitl'], rice: rice() },
+        closed('tst-older.1', '2026-11-19T09:00:00Z', { parent: 'tst-older' }),
+        closed('tst-recent.1', '2026-11-21T09:00:00Z', { parent: 'tst-recent' }),
+      ],
+      balance: [['window', '1'], ['decay', '0.7']],
+    });
+
+    assert.equal(rowFor(report, 'tst-recent').served, 1, 'the later close must fill the window');
+    assert.equal(rowFor(report, 'tst-older').served, 0, 'the earlier close falls outside a window of 1');
+  });
+
   it('leaves the order exactly as it was at decay 1', async () => {
     const beads = [
       { id: 'tst-a', title: 'Served theme', labels: ['execution:hitl'], rice: rice({ score: 2 }) },

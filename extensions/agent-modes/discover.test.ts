@@ -47,6 +47,8 @@ function writeComposableAgent(
   opts: {
     body?: string;
     frontmatter?: Record<string, unknown>;
+    tools?: string[];
+    skills?: string[];
     sections?: Record<string, string>;
   } = {},
 ): void {
@@ -59,9 +61,14 @@ function writeComposableAgent(
       opts.frontmatter ?? {
         name: `agent-cortex:${name}`,
         description: `Description of ${name}`,
-        tools: ["bash", "view", "task"],
       },
     ),
+  );
+  // The tool set lives once per agent, beside agent.md (agents/README.md).
+  writeFixture(
+    fx,
+    `${base}/tools.json`,
+    JSON.stringify({ tools: opts.tools ?? ["bash", "view", "task"], skills: opts.skills ?? [] }),
   );
   for (const [section, body] of Object.entries(opts.sections ?? {})) {
     writeFixture(fx, `${base}/pi/${section}.md`, body);
@@ -96,15 +103,15 @@ const TOKEN_PROSE =
 // ─── Composable discovery ────────────────────────────────────────────────────
 
 describe("discoverAgents (composable source format)", () => {
-  it("discovers agents from <name>/agent.md + <name>/pi/frontmatter.json", () => {
+  it("discovers agents from <name>/agent.md + <name>/pi/frontmatter.json + <name>/tools.json", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "ralph", {
       body: "# ralph\nUse {{CAPABILITY:task}} to spawn subagents.\n\n{{SECTION:wake}}",
       frontmatter: {
         name: "agent-cortex:ralph",
         description: "Runs beads end-to-end",
-        tools: ["bash", "view", "rg", "glob", "task", "read_agent"],
       },
+      tools: ["bash", "view", "rg", "glob", "task", "read_agent"],
       sections: {
         wake: "## PI wake\nPoll with task + read_agent.",
       },
@@ -129,7 +136,8 @@ describe("discoverAgents (composable source format)", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "plan", {
       body: TOKEN_PROSE,
-      frontmatter: { name: "agent-cortex:plan", description: "Planner", tools: [] },
+      frontmatter: { name: "agent-cortex:plan", description: "Planner" },
+      tools: [],
     });
 
     const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
@@ -154,8 +162,8 @@ describe("discoverAgents (composable source format)", () => {
       frontmatter: {
         name: "agent-cortex:plan",
         description: "Planner",
-        tools: ["bash", "ask_user", "skill", "web_fetch"],
       },
+      tools: ["bash", "ask_user", "skill", "web_fetch"],
     });
 
     const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
@@ -164,7 +172,7 @@ describe("discoverAgents (composable source format)", () => {
     assert.deepEqual(agents[0].tools, ["ask_questions", "bash", "fetch_content", "read"]);
   });
 
-  it("warns and omits a capability whose pi binding is null", () => {
+  it("omits a capability whose pi binding is null, without warning", () => {
     const fx = track(makeFixture());
     const NULL_MAP = {
       capabilities: { ask_user: { claude: { name: "AskUserQuestion", type: "tool" }, pi: null } },
@@ -174,16 +182,26 @@ describe("discoverAgents (composable source format)", () => {
       frontmatter: {
         name: "agent-cortex:plan",
         description: "Planner",
-        tools: ["ask_user", "bash"],
       },
+      tools: ["ask_user", "bash"],
     });
 
-    const agents = discoverAgents(fx.agentsDir, NULL_MAP);
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (message: unknown) => warnings.push(String(message));
+    let agents;
+    try {
+      agents = discoverAgents(fx.agentsDir, NULL_MAP);
+    } finally {
+      console.warn = original;
+    }
     assert.equal(agents.length, 1);
-    // With a null pi column the entry is omitted (and warned about), per the contract.
+    // With a null pi column the entry is omitted silently: one authored set
+    // serves both harnesses, so a harness-only row is normal, not a defect.
     // (bash survives so the result is observable — an all-dropped list would be
     // normalised to DEFAULT_TOOLS, which is "no restriction", not the omit result.)
     assert.deepEqual(agents[0].tools, ["bash"]);
+    assert.deepEqual(warnings, [], "an expected omission is not warning noise");
   });
 
   it("refuses a capability bound to a command in a tool list, naming the canonical key", () => {
@@ -192,9 +210,9 @@ describe("discoverAgents (composable source format)", () => {
       frontmatter: {
         name: "agent-cortex:plan",
         description: "Planner",
-        // The post-merge-watch extension registers a CLI flag, not a pi tool.
-        tools: ["bash", "post_merge_watch"],
       },
+      // The post-merge-watch extension registers a CLI flag, not a pi tool.
+      tools: ["bash", "post_merge_watch"],
     });
 
     const warnings: string[] = [];
@@ -217,7 +235,8 @@ describe("discoverAgents (composable source format)", () => {
   it("keeps the all-tools sentinel as the resolved tool list", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "guppi", {
-      frontmatter: { name: "agent-cortex:guppi", description: "Collaborator", tools: ["*"] },
+      frontmatter: { name: "agent-cortex:guppi", description: "Collaborator" },
+      tools: ["*"],
     });
 
     const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
@@ -232,7 +251,8 @@ describe("discoverAgents (composable source format)", () => {
   it("normalises a whitespace-padded all-tools sentinel to the sentinel", () => {
     const fx = track(makeFixture());
     writeComposableAgent(fx, "guppi", {
-      frontmatter: { name: "agent-cortex:guppi", description: "Collaborator", tools: ["* "] },
+      frontmatter: { name: "agent-cortex:guppi", description: "Collaborator" },
+      tools: ["* "],
     });
 
     const agents = discoverAgents(fx.agentsDir, REAL_TOKEN_MAP);
@@ -250,8 +270,8 @@ describe("discoverAgents (composable source format)", () => {
       frontmatter: {
         name: "agent-cortex:legacy",
         description: "No token map",
-        tools: ["view", "glob", "ask_user"],
       },
+      tools: ["view", "glob", "ask_user"],
     });
 
     const agents = discoverAgents(fx.agentsDir);

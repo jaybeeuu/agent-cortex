@@ -1,6 +1,7 @@
 // The capability table: `capabilities` (renamed from `tools`) with a per-harness
 // `{ name, type }` on every row.
 //
+<<<<<<< HEAD
 // This suite exists to prove the rename and the added `type` changed **nothing a
 // harness receives**. The goldens below were captured from token-map.json and the
 // two staged installs (`--output <dir>`, both harnesses) at the commit before the
@@ -11,6 +12,18 @@
 // `idle_watch` (and the tool it adds to ralph's allowlist) is the one deliberate
 // addition since that capture: a capability row added later is recorded here so
 // the guard keeps covering every row rather than being loosened to accommodate it.
+=======
+// Put in place by the rename, which had to change **nothing a harness receives**.
+// The goldens below were captured from token-map.json and the two staged installs
+// (`--output <dir>`, both harnesses) at the commit before the rename (main
+// c63c65a). They are held literally on purpose: any change to a name here changes
+// what a harness receives.
+//
+// The agent tool-set goldens have since moved for two planned reasons, and for no
+// other: the four peer rows ralph's runbook names, and the three claude-only
+// worker rows that would otherwise have been dropped when the tool set became one
+// authored file (bead agnt-ctx-sowj.2). A further change here must say why.
+>>>>>>> 9fe1685 (feat(agents): one authored tool set per agent, rendered into both harnesses)
 
 import assert from "node:assert/strict";
 import { readdir, readFile, writeFile } from "node:fs/promises";
@@ -58,6 +71,11 @@ const PRE_RENAME_NAMES = {
   wait_for_agents: { claude: null, pi: "wait_for_agents" },
   peer_send: { claude: "SendMessage", pi: "peer_send" },
   peer_list: { claude: "ListAgents", pi: "peer_list" },
+  peer_get: { claude: null, pi: "peer_get" },
+  peer_await: { claude: null, pi: "peer_await" },
+  task_list: { claude: "TaskList", pi: null },
+  task_get: { claude: "TaskGet", pi: null },
+  task_stop: { claude: "TaskStop", pi: null },
   post_merge_watch: { claude: "ScheduleWakeup", pi: "post-merge-watch" },
   idle_watch: { claude: "ScheduleWakeup", pi: "idle_watch" },
   interrupt_rewind: { claude: "/rewind", pi: "interrupt_resume" },
@@ -76,16 +94,59 @@ const PRE_RENAME_NAMES = {
 const PRE_RENAME_AGENT_TOOLS = {
   guppi: { claude: null, pi: null },
   plan: {
-    claude: ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "AskUserQuestion", "Task", "Skill"],
-    pi: ["bash", "read", "edit", "write", "grep", "find", "ask_questions", "task", "read_agent", "read"],
+    claude: ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "AskUserQuestion", "Task", "Skill", "SendMessage", "ListAgents"],
+    pi: [
+      "bash",
+      "read",
+      "edit",
+      "write",
+      "grep",
+      "find",
+      "ask_questions",
+      "task",
+      "read_agent",
+      "read",
+      "peer_send",
+      "peer_list",
+    ],
   },
   "ralph-plan": {
-    claude: ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "AskUserQuestion"],
-    pi: ["bash", "read", "edit", "write", "grep", "find", "ask_questions"],
+    claude: ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "AskUserQuestion", "Task"],
+    pi: ["bash", "read", "edit", "write", "grep", "find", "ask_questions", "task"],
   },
   ralph: {
+<<<<<<< HEAD
     claude: ["Bash", "Read", "Grep", "Glob", "Skill", "Task", "TaskList", "TaskGet", "TaskStop", "ScheduleWakeup"],
     pi: ["bash", "read", "grep", "find", "task", "read_agent", "wait_for_agents", "idle_watch"],
+=======
+    claude: [
+      "Bash",
+      "Read",
+      "Grep",
+      "Glob",
+      "Skill",
+      "Task",
+      "SendMessage",
+      "ListAgents",
+      "TaskList",
+      "TaskGet",
+      "TaskStop",
+    ],
+    pi: [
+      "bash",
+      "read",
+      "grep",
+      "find",
+      "read",
+      "task",
+      "read_agent",
+      "wait_for_agents",
+      "peer_send",
+      "peer_list",
+      "peer_get",
+      "peer_await",
+    ],
+>>>>>>> 9fe1685 (feat(agents): one authored tool set per agent, rendered into both harnesses)
   },
   strategy: {
     claude: ["Bash", "Read", "Grep", "Glob", "AskUserQuestion", "WebFetch", "Skill", "Edit", "Write"],
@@ -145,7 +206,7 @@ describe("token-map.json capabilities table", () => {
   it("resolves every capability to the name it carried before the rename", async () => {
     const tokenMap = await loadTokenMap(ROOT);
     const keys = Object.keys(tokenMap.capabilities).sort();
-    assert.deepEqual(keys, Object.keys(PRE_RENAME_NAMES).sort(), "no row added, renamed or dropped");
+    assert.deepEqual(keys, Object.keys(PRE_RENAME_NAMES).sort(), "no row renamed or dropped, and no row beyond the planned ones added");
     for (const key of keys) {
       for (const harness of HARNESSES) {
         const binding = tokenMap.capabilities[key][harness];
@@ -278,13 +339,17 @@ describe("a command in a tool list", () => {
     );
   });
 
-  it("still omits a null binding rather than refusing it", async () => {
+  it("still omits a null binding rather than refusing it, and does not warn", async () => {
     const tokenMap = await loadTokenMap(ROOT);
     const warnings = /** @type {string[]} */ ([]);
+    // peer_get is a pi tool with no claude counterpart, and ralph's authored set
+    // carries it for both harnesses. One set serves two harnesses, so the
+    // omission is the normal case: a warning here would be noise on every
+    // claude install.
     assert.deepEqual(
-      translateToolList(["bash", "read_agent"], tokenMap, "claude", { warn: (m) => warnings.push(m) }),
+      translateToolList(["bash", "peer_get"], tokenMap, "claude", { warn: (m) => warnings.push(m) }),
       ["Bash"],
     );
-    assert.ok(warnings.some((w) => w.includes('capability "read_agent"')), "the omission is reported");
+    assert.deepEqual(warnings, []);
   });
 });

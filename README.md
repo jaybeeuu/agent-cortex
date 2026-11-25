@@ -70,7 +70,8 @@ temp-dir install plus structural checks:
 - **Agents** can't be shared files (the frontmatter formats differ), so the materialised
   plugin's `agents/*.md` are composed from the canonical `agents/<name>/` directories' `claude/`
   harness dirs
-  (frontmatter.json + section files). Claude only loads agents from a plugin's default `agents/`
+  (frontmatter.json + section files), with the tool set read from the agent's one authored
+  `tools.json`. Claude only loads agents from a plugin's default `agents/`
   dir, so the plugin ships them at its own root (default `~/.agent-cortex/claude/agents/`).
 - **Every agent composes, `ralph` included.** There is no Claude-only agent source: the shared
   body is harness-neutral and each harness supplies only its own wake mechanism

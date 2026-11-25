@@ -1,0 +1,4 @@
+{
+  "tools": ["bash","view","edit","create","grep","glob","ask_user","task","read_agent","skill","peer_send","peer_list"],
+  "skills": []
+}

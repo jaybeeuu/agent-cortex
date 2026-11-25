@@ -23,8 +23,9 @@ Agents are read from the **composable source format** in the package's
 ```
 agents/<name>/
 ├── agent.md             # Shared body (harness-agnostic)
+├── tools.json           # The agent's tool set, authored once for every harness
 └── pi/
-    ├── frontmatter.json # PI metadata: name, description, tools
+    ├── frontmatter.json # PI metadata: name, description, model, argumentHint
     └── <section>.md     # Optional sections referenced by {{SECTION:name}}
 ```
 
@@ -35,17 +36,20 @@ contract:
 2. `{{CAPABILITY:key}}` / `{{PATH:key}}` tokens are substituted against the pi column
    of `token-map.json`, with the plugin root resolved from the actual extension
    location. Capabilities map through that column (e.g. `ask_user` → `ask_questions`,
-   `skill` → `read`); a capability with a null mapping — any future one — is omitted
-   from the tool set with a warning, and one bound to a `command` is an error naming the
-   canonical key: a command is not model-callable, so the agent is skipped rather than
-   enabled with a name pi never offers.
+   `skill` → `read`); a capability with a null mapping is omitted from the tool set —
+   one authored set serves both harnesses, so a harness-only row is the normal case —
+   and one bound to a `command` is an error naming the canonical key: a command is not
+   model-callable, so the agent is skipped rather than enabled with a name pi never
+   offers.
+3. The tool set is read from `tools.json`, the same file the installers render from,
+   so a composable directory and a staged render grant the same tools.
 
 Flat `agents/*.agent.md` files are parsed as a fallback when an agent has no
 composable directory — a staged pi package carries flat renders, and a hand-written
 agent may be a single flat file. A composable directory always wins over its flat
 counterpart for the same agent id.
 
-An authored `tools` list of exactly `["*"]` means every tool the session has. The
+An authored tool set of exactly `["*"]` means every tool the session has. The
 installed renders carry no `tools:` line for it, so this extension reads an absent
 key on the flat path as every tool and resolves it at activation from
 `pi.getAllTools()` — a connector registered during the session is included. A flat

@@ -1,0 +1,10 @@
+{
+  "tools": [
+    "bash", "view", "rg", "glob", "skill", "task",
+    "read_agent", "wait_for_agents",
+    "peer_send", "peer_list", "peer_get", "peer_await",
+    "task_list", "task_get", "task_stop",
+    "idle_watch"
+  ],
+  "skills": ["workflow/ralph", "workflow/run-pipeline-stage"]
+}

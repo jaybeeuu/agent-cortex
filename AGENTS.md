@@ -140,9 +140,14 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
 
 ## Agent Conventions
 
-- Agents live in composable `<name>/` directories under `agents/`: a shared `agent.md` body plus
-  per-harness subdirectories `pi/` and `claude/` (frontmatter.json and optional section files) per
-  the spec in `agents/README.md`. `ralph`, `plan`, `ralph-plan`, `guppi`, and `strategy` all use the
+- Agents live in composable `<name>/` directories under `agents/`: a shared `agent.md` body, one
+  authored `tools.json` tool set (`{ "tools": [...], "skills": [...] }` — canonical capability
+  keys or the single `["*"]` sentinel, plus the skill directories the agent loads), and
+  per-harness subdirectories `pi/` and `claude/` (frontmatter.json — metadata only, never `tools` —
+  and optional section files) per the spec in `agents/README.md`. The tool set is behaviour, so it
+  is authored once and rendered into both harnesses; `test/agent-tool-coverage.test.mjs` stages both
+  installs and fails when an agent's text names a `tool` capability its set does not grant. `ralph`,
+  `plan`, `ralph-plan`, `guppi`, and `strategy` all use the
   composable layout, and no flat agent file is committed — each harness renders its own at install
   time. The Claude plugin is materialised by the install-time generator
   `bin/installers/claude.mjs`: a plain `agent-cortex install claude` copies it into

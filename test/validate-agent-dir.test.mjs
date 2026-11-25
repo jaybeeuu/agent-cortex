@@ -5,20 +5,19 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 
-import {
-  validateFrontmatter,
-  validateAgentDir,
-} from "../scripts/validate-agent-dir.mjs";
+import { validateFrontmatter, validateToolSet, validateAgentDir } from "../scripts/validate-agent-dir.mjs";
+import { createTempRoot } from "./helpers/temp-root.mjs";
+
+// One temp root for the file; its own after() hook removes every workspace.
+const tempRoot = createTempRoot("agent-dir-test-");
 
 /**
  * @typedef {object} Frontmatter
  * @property {string} name
  * @property {string} description
- * @property {string[]} tools
  * @property {string} [model]
  * @property {string} [argumentHint]
  */
@@ -33,36 +32,29 @@ function makeFrontmatter(overrides = {}) {
   return {
     name: "agent-cortex:ralph",
     description: "Parallel task orchestration agent",
-    tools: ["bash", "task", "read_agent"],
     ...overrides,
   };
-}
-
-/** Fresh temp dir per test, cleaned up by the caller. */
-function makeTmpDir() {
-  return mkdtemp(join(tmpdir(), "agent-dir-test-"));
 }
 
 /**
  * @param {string} tmpDir
  * @param {string} name
  * @param {Frontmatter} frontmatter
- * @param {string} [body]
- * @param {Record<string, string>} [sections]
- * @returns {Promise<void>}
+ * @param {{ body?: string, toolSet?: Record<string, unknown> | null, sections?: Record<string, string>,
+ *           skills?: string[] }} [options]
+ * @returns {Promise<string>} the agent directory
  */
-async function createAgentDir(
-  tmpDir,
-  name,
-  frontmatter,
-  body = "# Shared body\n\nYou are an agent.",
-  sections
-) {
+async function createAgentDir(tmpDir, name, frontmatter, options = {}) {
+  const { body = "# Shared body\n\nYou are an agent.", toolSet = { tools: ["bash"], skills: [] }, sections, skills } = options;
   const agentDir = join(tmpDir, "agents", name);
   await mkdir(agentDir, { recursive: true });
 
-  // Write agent.md
   await writeFile(join(agentDir, "agent.md"), body, "utf-8");
+
+  // The tool set is authored once per agent, beside agent.md.
+  if (toolSet !== null) {
+    await writeFile(join(agentDir, "tools.json"), JSON.stringify(toolSet), "utf-8");
+  }
 
   // Write frontmatter.json for PI harness
   const piDir = join(agentDir, "pi");
@@ -75,241 +67,203 @@ async function createAgentDir(
       await writeFile(join(piDir, filename), content, "utf-8");
     }
   }
+
+  // Seed real skill directories under the package root's skills/ tree.
+  for (const entry of skills ?? []) {
+    const dir = join(tmpDir, "skills", ...entry.split("/"));
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n---\nBody.\n", "utf-8");
+  }
+
+  return agentDir;
 }
 
 // ─── Behavior 1: validate frontmatter.json ────────────────────────────────────
 
 describe("validateFrontmatter", () => {
-  it("accepts valid frontmatter with required fields", () => {
-    const fm = makeFrontmatter();
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, true);
+  it("accepts frontmatter with the required fields", () => {
+    const result = validateFrontmatter(makeFrontmatter());
+    assert.deepEqual(result, { ok: true, errors: [] });
   });
 
-  it("accepts frontmatter with optional model field", () => {
-    const fm = makeFrontmatter({ model: "claude-sonnet-4-5" });
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, true);
-  });
-
-  it("accepts frontmatter with optional argumentHint field", () => {
-    const fm = makeFrontmatter({ argumentHint: "Run all pending beads" });
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, true);
+  it("accepts frontmatter with the optional model and argumentHint fields", () => {
+    const fm = makeFrontmatter({ model: "claude-sonnet-4-5", argumentHint: "Run all pending beads" });
+    assert.equal(validateFrontmatter(fm).ok, true);
   });
 
   it("rejects frontmatter missing name", () => {
-    const fm = /** @type {any} */ ({ description: "desc", tools: ["bash"] });
-    const result = validateFrontmatter(fm);
+    const result = validateFrontmatter(/** @type {any} */ ({ description: "desc" }));
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((e) => e.includes("name")));
   });
 
   it("rejects frontmatter missing description", () => {
-    const fm = /** @type {any} */ ({ name: "test", tools: ["bash"] });
-    const result = validateFrontmatter(fm);
+    const result = validateFrontmatter(/** @type {any} */ ({ name: "test" }));
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((e) => e.includes("description")));
   });
 
-  it("rejects frontmatter missing tools", () => {
-    const fm = /** @type {any} */ ({ name: "test", description: "desc" });
-    const result = validateFrontmatter(fm);
+  it("rejects a tools list, naming the file that authors it", () => {
+    // The tool set is behaviour, not harness metadata: one authored file, so a
+    // second copy in a harness frontmatter is refused rather than ignored.
+    const result = validateFrontmatter(
+      /** @type {any} */ ({ ...makeFrontmatter(), tools: ["bash", "task"] }),
+    );
     assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => e.includes("tools")));
+    assert.ok(result.errors.some((e) => e.includes("tools.json")));
   });
 
-  it("rejects frontmatter with non-array tools", () => {
-    const fm = /** @type {any} */ ({ name: "test", description: "desc", tools: "bash" });
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => e.includes("tools")));
+  it("rejects frontmatter with empty name or description", () => {
+    assert.ok(validateFrontmatter(makeFrontmatter({ name: "" })).errors.some((e) => e.includes("name")));
+    assert.ok(
+      validateFrontmatter(makeFrontmatter({ description: "" })).errors.some((e) => e.includes("description")),
+    );
   });
 
-  it("rejects frontmatter with empty name", () => {
-    const fm = makeFrontmatter({ name: "" });
-    const result = validateFrontmatter(fm);
+  it("rejects frontmatter with unknown fields", () => {
+    const result = validateFrontmatter(/** @type {any} */ ({ ...makeFrontmatter(), unknownField: "value" }));
     assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => e.includes("name")));
+    assert.ok(result.errors.some((e) => e.includes("unknown")));
   });
+});
 
-  it("rejects frontmatter with empty description", () => {
-    const fm = makeFrontmatter({ description: "" });
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => e.includes("description")));
-  });
+// ─── Behavior 2: validate tools.json ─────────────────────────────────────────
 
-  it("rejects frontmatter with empty tools array", () => {
-    const fm = makeFrontmatter({ tools: [] });
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => e.includes("tools")));
+describe("validateToolSet", () => {
+  it("accepts a tool set of capability keys plus its skills", () => {
+    const result = validateToolSet({ tools: ["bash", "task"], skills: ["workflow/ralph"] });
+    assert.deepEqual(result, { ok: true, errors: [] });
   });
 
   it("accepts the all-tools sentinel as the sole tools value", () => {
-    const fm = makeFrontmatter({ tools: ["*"] });
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, true);
+    assert.equal(validateToolSet({ tools: ["*"], skills: [] }).ok, true);
+  });
+
+  it("rejects a tool set missing tools or skills", () => {
+    assert.ok(validateToolSet({ skills: [] }).errors.some((e) => e.includes("tools")));
+    assert.ok(validateToolSet({ tools: ["bash"] }).errors.some((e) => e.includes("skills")));
+  });
+
+  it("rejects non-array, empty and non-string tools", () => {
+    for (const tools of ["bash", [], ["bash", 5]]) {
+      const result = validateToolSet({ tools, skills: [] });
+      assert.equal(result.ok, false, `${JSON.stringify(tools)} is refused`);
+    }
   });
 
   it("rejects the all-tools sentinel combined with a tool name", () => {
     // Both installers resolve ["*"] by omitting the rendered tools line, so a
     // mixed list would put a literal `*` where pi's --tools reads a glob and
     // Claude Code expects a name.
-    const fm = makeFrontmatter({ tools: ["*", "bash"] });
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => e.includes("cannot be combined")));
+    assert.ok(
+      validateToolSet({ tools: ["*", "bash"], skills: [] }).errors.some((e) => e.includes("cannot be combined")),
+    );
+    // Padding carries no meaning, and every layer trims before it compares.
+    assert.ok(
+      validateToolSet({ tools: [" *", "bash"], skills: [] }).errors.some((e) => e.includes("cannot be combined")),
+    );
   });
 
-  it("rejects a whitespace-padded all-tools sentinel combined with a tool name", () => {
-    // Padding carries no meaning in a YAML scalar, and every layer trims before
-    // it compares, so the padded form obeys the same rule as the bare form.
-    const fm = makeFrontmatter({ tools: [" *", "bash"] });
-    const result = validateFrontmatter(fm);
-    assert.ok(result.errors.some((e) => e.includes("cannot be combined")));
-  });
-
-  it("rejects frontmatter with a non-string tools element", () => {
-    const fm = makeFrontmatter(/** @type {any} */ ({ tools: ["bash", 5] }));
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => e.includes("tools")));
-  });
-
-  it("rejects frontmatter with unknown fields", () => {
-    const fm = makeFrontmatter(/** @type {any} */ ({ unknownField: "value" }));
-    const result = validateFrontmatter(fm);
-    assert.equal(result.ok, false);
+  it("rejects unknown fields", () => {
+    const result = validateToolSet({ tools: ["bash"], skills: [], model: "x" });
     assert.ok(result.errors.some((e) => e.includes("unknown")));
   });
 });
 
-// ─── Behavior 2: validate agent directory structure ───────────────────────────
+// ─── Behavior 3: validate agent directory structure ───────────────────────────
 
 describe("validateAgentDir", () => {
-  it("accepts valid agent directory with agent.md and pi/frontmatter.json", async () => {
-    const tmpDir = await makeTmpDir();
-    try {
-      await createAgentDir(tmpDir, "ralph", makeFrontmatter());
-      const result = await validateAgentDir(join(tmpDir, "agents", "ralph"));
-      assert.equal(result.ok, true);
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+  it("accepts an agent directory with agent.md, tools.json and pi/frontmatter.json", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = await createAgentDir(tmpDir, "ralph", makeFrontmatter());
+    assert.deepEqual(await validateAgentDir(agentDir), { ok: true, errors: [] });
   });
 
-  it("accepts agent directory with multiple harness subdirectories", async () => {
-    const tmpDir = await makeTmpDir();
-    try {
-      const agentDir = join(tmpDir, "agents", "ralph");
-      await mkdir(agentDir, { recursive: true });
-      await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
+  it("accepts an agent directory with multiple harness subdirectories", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = await createAgentDir(tmpDir, "ralph", makeFrontmatter());
 
-      // PI harness
-      const piDir = join(agentDir, "pi");
-      await mkdir(piDir, { recursive: true });
-      await writeFile(
-        join(piDir, "frontmatter.json"),
-        JSON.stringify(makeFrontmatter({ tools: ["bash", "task"] })),
-        "utf-8"
-      );
+    const claudeDir = join(agentDir, "claude");
+    await mkdir(claudeDir, { recursive: true });
+    await writeFile(join(claudeDir, "frontmatter.json"), JSON.stringify(makeFrontmatter()), "utf-8");
 
-      // Claude harness
-      const claudeDir = join(agentDir, "claude");
-      await mkdir(claudeDir, { recursive: true });
-      await writeFile(
-        join(claudeDir, "frontmatter.json"),
-        JSON.stringify(makeFrontmatter({ tools: ["bash", "task"] })),
-        "utf-8"
-      );
-
-      const result = await validateAgentDir(agentDir);
-      assert.equal(result.ok, true);
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+    assert.deepEqual(await validateAgentDir(agentDir), { ok: true, errors: [] });
   });
 
-  it("accepts agent directory with section files", async () => {
-    const tmpDir = await makeTmpDir();
-    try {
-      await createAgentDir(
-        tmpDir,
-        "ralph",
-        makeFrontmatter(),
-        "# Body\n\n{{SECTION:wake}}",
-        { "wake.md": "# Wake mechanism\n\nYou are woken when a worker completes." }
-      );
-      const result = await validateAgentDir(join(tmpDir, "agents", "ralph"));
-      assert.equal(result.ok, true);
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+  it("accepts an agent directory with section files", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = await createAgentDir(tmpDir, "ralph", makeFrontmatter(), {
+      body: "# Body\n\n{{SECTION:wake}}",
+      sections: { "wake.md": "# Wake mechanism\n\nYou are woken when a worker completes." },
+    });
+    assert.deepEqual(await validateAgentDir(agentDir), { ok: true, errors: [] });
   });
 
-  it("rejects agent directory missing agent.md", async () => {
-    const tmpDir = await makeTmpDir();
-    try {
-      const agentDir = join(tmpDir, "agents", "ralph");
-      await mkdir(agentDir, { recursive: true });
-      await mkdir(join(agentDir, "pi"), { recursive: true });
-      await writeFile(
-        join(agentDir, "pi", "frontmatter.json"),
-        JSON.stringify(makeFrontmatter()),
-        "utf-8"
-      );
-
-      const result = await validateAgentDir(agentDir);
-      assert.equal(result.ok, false);
-      assert.ok(result.errors.some((e) => e.includes("agent.md")));
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+  it("accepts a skills entry that names a real skill directory", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = await createAgentDir(tmpDir, "ralph", makeFrontmatter(), {
+      toolSet: { tools: ["bash"], skills: ["workflow/ralph"] },
+      skills: ["workflow/ralph"],
+    });
+    assert.deepEqual(await validateAgentDir(agentDir), { ok: true, errors: [] });
   });
 
-  it("rejects agent directory with no harness subdirectories", async () => {
-    const tmpDir = await makeTmpDir();
-    try {
-      const agentDir = join(tmpDir, "agents", "ralph");
-      await mkdir(agentDir, { recursive: true });
-      await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
-
-      const result = await validateAgentDir(agentDir);
-      assert.equal(result.ok, false);
-      assert.ok(result.errors.some((e) => e.includes("harness")));
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+  it("rejects a skills entry that names no skill directory", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = await createAgentDir(tmpDir, "ralph", makeFrontmatter(), {
+      toolSet: { tools: ["bash"], skills: ["workflow/gone"] },
+    });
+    const result = await validateAgentDir(agentDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((e) => e.includes("workflow/gone")));
   });
 
-  it("rejects agent directory with invalid frontmatter in harness", async () => {
-    const tmpDir = await makeTmpDir();
-    try {
-      const agentDir = join(tmpDir, "agents", "ralph");
-      await mkdir(agentDir, { recursive: true });
-      await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
+  it("rejects an agent directory missing tools.json", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = await createAgentDir(tmpDir, "ralph", makeFrontmatter(), { toolSet: null });
+    const result = await validateAgentDir(agentDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((e) => e.includes("tools.json")));
+  });
 
-      const piDir = join(agentDir, "pi");
-      await mkdir(piDir, { recursive: true });
-      // Invalid frontmatter: missing tools
-      await writeFile(
-        join(piDir, "frontmatter.json"),
-        JSON.stringify({ name: "test", description: "desc" }),
-        "utf-8"
-      );
+  it("rejects an agent directory missing agent.md", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = join(tmpDir, "agents", "ralph");
+    await mkdir(join(agentDir, "pi"), { recursive: true });
+    await writeFile(join(agentDir, "pi", "frontmatter.json"), JSON.stringify(makeFrontmatter()), "utf-8");
 
-      const result = await validateAgentDir(agentDir);
-      assert.equal(result.ok, false);
-      assert.ok(result.errors.some((e) => e.includes("tools")));
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+    const result = await validateAgentDir(agentDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((e) => e.includes("agent.md")));
+  });
+
+  it("rejects an agent directory with no harness subdirectories", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = join(tmpDir, "agents", "ralph");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(join(agentDir, "agent.md"), "# Body", "utf-8");
+    await writeFile(join(agentDir, "tools.json"), JSON.stringify({ tools: ["bash"], skills: [] }), "utf-8");
+
+    const result = await validateAgentDir(agentDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((e) => e.includes("harness")));
+  });
+
+  it("rejects a harness frontmatter that carries a tools list", async () => {
+    const tmpDir = await tempRoot.createWorkspace();
+    const agentDir = await createAgentDir(
+      tmpDir,
+      "ralph",
+      /** @type {any} */ ({ ...makeFrontmatter(), tools: ["bash"] }),
+    );
+
+    const result = await validateAgentDir(agentDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((e) => e.includes("pi/frontmatter.json") && e.includes("tools.json")));
   });
 });
 
-// ─── Behavior 3: token format validation ──────────────────────────────────────
+// ─── Behavior 4: token format validation ──────────────────────────────────────
 
 describe("token format in agent.md body", () => {
   it("accepts valid {{CAPABILITY:name}} tokens", () => {

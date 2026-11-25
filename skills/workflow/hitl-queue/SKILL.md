@@ -50,6 +50,8 @@ A `--due` date is the one deadline field, and `bd` already stores it. The queue 
 
 The multiplier that stops one theme taking every row. A bead's **theme** is its root ancestor — follow `parent` until it is absent, so a stage chore belongs to the task at the top, not to its own parent. `served(theme)` counts how many of the newest `window` closes belong to that theme, and the factor is `decay ^ served(theme)`: a theme nothing closed in keeps `×1`, and a theme served twice costs `decay × decay`.
 
+At the shipped `decay 0.7` a reader can recompute the factor from the served count: a theme served twice keeps `0.7 × 0.7 = 0.49`, not `0.70`; served once keeps `0.70`; untouched keeps `1.00`.
+
 The history is a query, never a stored counter. One `bd list --all` read per scope supplies the closed beads, and nothing is written back: the effect survives a session, a machine and a worktree because the tracker already holds it, and a bead's stored `rice` record never moves. Three filters apply: only `closed` beads with a readable `closed_at` count; beads labelled `stage:*` or `lifecycle:*` are pipeline steps rather than items, so one task's stage chores cannot penalise its theme; and a bead is grouped by its root ancestor, never by its immediate parent.
 
 Both numbers are the strategy's, in an optional `## Theme balance` section: `window` and `decay`, defaulting to `{ window: 5, decay: 0.7 }` when the section is absent. `decay: 1` makes every factor 1, which turns the balance off without deleting the section. The row prints the factor on every row, factor `×1.00` included, and names the theme when it is not the row's own id, so the total can always be checked against the bead's stored score.
@@ -63,16 +65,16 @@ A scope is one bd workspace. The queue reads every one and writes to none; the c
 One flat list, no sections, ranked first and unscored last:
 
 ```
-HITL decision queue · 3 ranked, 1 unscored · 3 scopes, 1 unavailable · strategy v2
+HITL decision queue · 2 ranked, 1 unscored · 3 scopes, 1 unavailable · strategy v2
 total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier × theme balance · ties break on rice, then scope, then id · unscored last
 excluded: 3 kind:idea beads (--include-ideas ranks them)
 today · personal, code — "daily: personal, code — Monday and Tuesday are the personal objectives" (strategy v3, "## Current themes", scope notes)
 unavailable: ops (/srv/ops) — workspace does not exist
 
-1  code    bd-7  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0  ×1.00 theme (untouched)
-    Ship the queue — unblocks bd-8, bd-9, bd-10
-2  notes   bd-2   8.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)  ×0.49 theme bd-20 (2 served)
+1  notes   bd-2  16.5  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  deadline ×8 OVERDUE by 1d (due 2026-11-14T08:59Z)  ×0.49 theme bd-20 (2 served)
     Decide the API shape — unblocks nothing
+2  code    bd-7  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0  ×1.00 theme (untouched)
+    Ship the queue — unblocks bd-8, bd-9, bd-10
 -  code    bd-4     —  unscored — no rice metadata (score it with score-bead)
     Decide the rollout — unblocks nothing
 ```

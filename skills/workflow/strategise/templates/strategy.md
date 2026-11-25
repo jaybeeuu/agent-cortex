@@ -197,7 +197,9 @@ closed beads the tracker already holds, takes the newest `window` closes that ar
 and counts how many of them belong to each bead's **theme** — its root ancestor, not its
 immediate parent. A theme served n times in that window keeps `decay ** n` of its weight, so
 a theme someone just worked in drops and a neglected theme keeps all of it. Nothing is stored
-and nothing is written to a bead: the effect is recomputed from the tracker on every run.
+and nothing is written to a bead: the effect is recomputed from the tracker on every run. At
+the shipped decay 0.7, a theme served twice keeps 0.7 × 0.7 = 0.49 of its weight, not 0.70,
+and a theme served once keeps 0.70.
 
 A close counts only when it is a real item. Beads labelled `stage:*` or `lifecycle:*` are
 pipeline steps, so they are skipped; otherwise one task's nine stage chores would penalise

@@ -857,7 +857,7 @@ describe("installPi — real repo integration", () => {
       assert.match(ralph, /name: "agent-cortex:ralph"/);
       assert.match(
         ralph,
-        /tools: "bash, read, grep, find, read, task, read_agent, wait_for_agents, peer_send, peer_list, peer_get, peer_await"/,
+        /tools: "bash, read, grep, find, read, task, read_agent, wait_for_agents, peer_send, peer_list, peer_get, peer_await, idle_watch"/,
       );
       assert.ok(ralph.includes("## Wake mechanism (PI — blocking wait)"), "{{SECTION:wake}} composed from pi/wake.md");
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");

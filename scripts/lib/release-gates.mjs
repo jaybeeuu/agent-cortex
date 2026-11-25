@@ -8,9 +8,9 @@
 // The changeset gate has two halves. The first decides whether the PR added a
 // changeset at all; the second resolves what the changesets the PR adds or
 // modifies declare, because `changeset version` reads the whole directory and
-// refuses a frontmatter it cannot parse, a package name the workspace does not
-// declare, or a release type it does not know — failing the Release job on
-// `main`, where nothing can fix it forward.
+// refuses a frontmatter it cannot parse, an empty or undeclared package name, or
+// a release type it does not know — failing the Release job on `main`, where
+// nothing can fix it forward.
 
 import { unquoteScalar } from "./yaml-scalar.mjs";
 
@@ -159,18 +159,21 @@ export function parseChangesetReleases(content) {
 }
 
 /**
- * Reject every release whose type is not one changesets parses. A frontmatter
- * pair with no value, a misspelled type, and a quoted empty string all reach
- * `changeset version` as a release it refuses with "invalid release type", so
- * the pull request has to fail instead.
+ * Reject every release changesets would refuse before it reads a bump. A release
+ * is a pair, so both halves are checked here: an empty package name reaches
+ * `changeset version` as "invalid package name in frontmatter", and a
+ * frontmatter pair with no value, a misspelled type or a quoted empty string
+ * reaches it as "invalid release type". Each fails the pull request instead.
  * @param {{ changesets: ChangesetDeclarations[] }} input
  * @returns {{ ok: boolean, invalid: InvalidChangesetRelease[] }}
  */
-export function evaluateChangesetReleaseTypes({ changesets }) {
+export function evaluateChangesetReleases({ changesets }) {
   const invalid = [];
   for (const { file, releases } of changesets) {
     for (const { packageName, releaseType } of releases) {
-      if (!RELEASE_TYPES.has(releaseType)) invalid.push({ file, packageName, releaseType });
+      if (packageName === "" || !RELEASE_TYPES.has(releaseType)) {
+        invalid.push({ file, packageName, releaseType });
+      }
     }
   }
   return { ok: invalid.length === 0, invalid };
@@ -188,6 +191,8 @@ export function evaluateChangesetPackages({ changesets, workspacePackages }) {
   const unknown = [];
   for (const { file, releases } of changesets) {
     for (const { packageName } of releases) {
+      // An empty name is already reported as an invalid release, so resolving it
+      // against the workspace would report the same release twice.
       if (packageName === "" || known.has(packageName)) continue;
       unknown.push({ file, packageName });
     }

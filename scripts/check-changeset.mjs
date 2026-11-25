@@ -1,10 +1,10 @@
 // PR gate: a pull request must add a changeset (.changeset/*.md) unless it is
 // the changesets bot's Version Packages PR or carries the `no-publish` label —
 // and every release a changeset the PR adds or modifies declares must name a
-// package the workspace declares, with a release type changesets parses — and a
-// changeset whose frontmatter cannot be read fails the PR instead. Reads
-// `git diff --name-status <base>...HEAD` on stdin and the PR metadata from the
-// environment (CI supplies all three).
+// non-empty package the workspace declares, with a release type changesets
+// parses — and a changeset whose frontmatter cannot be read fails the PR
+// instead. Reads `git diff --name-status <base>...HEAD` on stdin and the PR
+// metadata from the environment (CI supplies all three).
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -13,7 +13,7 @@ import {
   changedChangesetPaths,
   evaluateChangesetGate,
   evaluateChangesetPackages,
-  evaluateChangesetReleaseTypes,
+  evaluateChangesetReleases,
   parseChangesetReleases,
   parseNameStatus,
 } from "./lib/release-gates.mjs";
@@ -80,17 +80,22 @@ function reportChangesetProblems({ unknown, invalidReleases, unreadable, unparse
   }
   for (const { file, packageName, releaseType } of invalidReleases) {
     console.error(
-      `::error::${file} gives package ${packageName} the release type ` +
-        `${JSON.stringify(releaseType)}; a release type must be one of ` +
-        `${CHANGESET_RELEASE_TYPES.join(", ")}.`,
+      packageName === ""
+        ? `::error::${file} declares a release with an empty package name, so it ` +
+            "names no package that can be bumped."
+        : `::error::${file} gives package ${packageName} the release type ` +
+            `${JSON.stringify(releaseType)}; a release type must be one of ` +
+            `${CHANGESET_RELEASE_TYPES.join(", ")}.`,
     );
   }
   if (invalidReleases.length > 0) {
     console.error(
       [
-        "A changeset declares one release type per package: major, minor, patch or none.",
-        "`changeset version` refuses any other value, so an absent, empty or misspelled",
-        "type fails the Release job on main where nothing can fix it forward.",
+        'A changeset declares one release per line, as "<package name>": <release type>',
+        `with a type of ${CHANGESET_RELEASE_TYPES.join(", ")}.`,
+        "`changeset version` refuses an empty package name and any other type, so a",
+        "blank key, an absent, empty or misspelled type fails the Release job on main",
+        "where nothing can fix it forward.",
       ].join("\n"),
     );
   }
@@ -100,10 +105,9 @@ function reportChangesetProblems({ unknown, invalidReleases, unreadable, unparse
   console.error(
     [
       "Every changeset this PR adds or modifies needs a frontmatter block that reads",
-      "as `package: bump` pairs with a bump of " + CHANGESET_RELEASE_TYPES.join(", ") + ",",
-      "and every package it names must be a `name` in a workspace package.json.",
-      "`changeset version` refuses all of these, so the Release job fails on main",
-      "where nothing can fix it forward — use the exact name, scope included.",
+      "as `package: bump` pairs, and every package it names must be a `name` in a",
+      "workspace package.json. `changeset version` refuses all of these, so the Release",
+      "job fails on main where nothing can fix it forward — use the exact name, scope included.",
     ].join("\n"),
   );
 }
@@ -135,14 +139,14 @@ if (!result.ok) {
     changesets,
     workspacePackages: await readWorkspacePackageNames(ROOT),
   });
-  const releaseTypes = evaluateChangesetReleaseTypes({ changesets });
+  const declarations = evaluateChangesetReleases({ changesets });
 
-  if (packages.ok && releaseTypes.ok && unreadable.length === 0 && unparseable.length === 0) {
+  if (packages.ok && declarations.ok && unreadable.length === 0 && unparseable.length === 0) {
     console.log(`✓ Changeset gate passed (${result.reason}).`);
   } else {
     reportChangesetProblems({
       unknown: packages.unknown,
-      invalidReleases: releaseTypes.invalid,
+      invalidReleases: declarations.invalid,
       unreadable,
       unparseable,
     });

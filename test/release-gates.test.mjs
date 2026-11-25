@@ -17,7 +17,7 @@ import {
   changedChangesetPaths,
   evaluateChangesetGate,
   evaluateChangesetPackages,
-  evaluateChangesetReleaseTypes,
+  evaluateChangesetReleases,
   parseChangesetReleases,
   parseNameStatus,
   resolvePublishCommand,
@@ -301,9 +301,9 @@ describe("parseChangesetReleases", () => {
   });
 });
 
-describe("evaluateChangesetReleaseTypes", () => {
+describe("evaluateChangesetReleases", () => {
   it("reports each release whose release type is absent, empty or unknown", () => {
-    const result = evaluateChangesetReleaseTypes({
+    const result = evaluateChangesetReleases({
       changesets: [
         {
           file: ".changeset/no-type.md",
@@ -324,13 +324,29 @@ describe("evaluateChangesetReleaseTypes", () => {
     });
   });
 
+  it("reports a release whose package name is empty", () => {
+    const result = evaluateChangesetReleases({
+      changesets: [
+        {
+          file: ".changeset/no-name.md",
+          releases: [{ packageName: "", releaseType: "patch" }],
+        },
+      ],
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      invalid: [{ file: ".changeset/no-name.md", packageName: "", releaseType: "patch" }],
+    });
+  });
+
   it("accepts every release type changesets parses", () => {
     const releases = ["major", "minor", "patch", "none"].map((releaseType) => ({
       packageName: "@jaybeeuu/agent-cortex",
       releaseType,
     }));
 
-    const result = evaluateChangesetReleaseTypes({
+    const result = evaluateChangesetReleases({
       changesets: [{ file: ".changeset/all-types.md", releases }],
     });
 
@@ -492,6 +508,17 @@ describe("check-changeset CLI", () => {
     assert.match(stderr, /\.changeset\/no-type\.md/);
     assert.match(stderr, /@jaybeeuu\/agent-cortex/);
   });
+
+  it("exits 1 naming the changeset file and reporting the empty package name", async () => {
+    const workspace = await createChangesetWorkspace({
+      "no-name.md": '---\n"": patch\n---\n\nA bump for nobody.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/no-name.md\n");
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/no-name\.md/);
+    assert.match(stderr, /declares a release with an empty package name/);  });
 
   it("exits 1 naming the changeset file and the package when the release type is unknown", async () => {
     const workspace = await createChangesetWorkspace({

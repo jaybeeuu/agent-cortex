@@ -59,9 +59,7 @@ it printed. The verdicts, the escalation rule and the close rule do not change.
 ## Settled parent
 
 Nothing else closes the parent feature bead, so this stage does it once the merge is on record.
-Run the settlement check from the same main checkout, after closing the chore. The reasoning — why
-this stage owns the close, which labels count as a merge, and what each verdict means — is in
-[REFERENCE.md](../REFERENCE.md).
+Run the settlement check from the same main checkout, after closing the chore:
 
 ```bash
 node <run-pipeline-stage-scripts>/close-settled-parent.mjs --parent <parent-id>
@@ -74,8 +72,7 @@ hardcode one harness's install path.
 It closes the parent only when every child is closed **and** a closed child carries
 `lifecycle:feature-pr` (the merge gate a human closed) or `lifecycle:post-merge`
 (`stage:post-merge`). It prints one verdict: `closed`, `skipped: children open`,
-`skipped: no merge evidence`, or `skipped: already closed`. Each verdict exits `0`, so a quiet run
-is a success and not a failure to escalate.
+`skipped: no merge evidence`, or `skipped: already closed`.
 
 - Every `skipped` verdict is normal here. The housekeeping chore, or a later run, closes the parent
   once the last child closes; `already closed` means the parent is already done.

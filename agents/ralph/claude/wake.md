@@ -44,3 +44,24 @@ Stopping means simply **stop**: there is no poll timer to kill and no wait to ca
 - **Always** keep completion tracking active while worker results are outstanding — the harness delivers each completion precisely once; never re-request a result.
 - **Never** poll, **never** `sleep`, **never** start a background timer.
 - **Never** post empty status updates — only surface actual completions.
+
+## Background idle watch (Claude Code)
+
+The background watch monitors the bead queue and nudges the session when work needs attention. On Claude Code, this uses the `idle_watch` tool (provided by the agent-cortex Claude plugin).
+
+### Arming the watch
+
+Call `idle_watch` with:
+- `command`: The check script to run on each tick. Default: `skills/workflow/ralph/scripts/idle-check.mjs` (resolved relative to the package root, or use `AGENT_CORTEX_IDLE_WATCH_CHECK` env var).
+- `interval`: Milliseconds between ticks. Default: 300000 (5 minutes).
+- `stall`: Milliseconds of silence before the watch considers a bead stalled. Default: 900000 (15 minutes).
+
+The watch is session-scoped: it ticks for as long as the session is alive, with no fixed tick count or deadline.
+
+### Re-arming
+
+On each wake (whether from a subagent completion or an idle nudge), check if the watch is armed. If not, arm it again. This is self-healing.
+
+### Stopping
+
+During shutdown or HITL pause, stop the watch.

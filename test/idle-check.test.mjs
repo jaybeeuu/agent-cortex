@@ -147,6 +147,32 @@ describe("buildDigest", () => {
     assert.deepEqual(digest.stalled, []);
   });
 
+  it("reports a bead quiet one second past the threshold, with quiet minutes rounded down", () => {
+    const digest = buildDigest({
+      ready: [],
+      inProgress: [createQuietRow("bead-1", "2026-11-24T12:04:59Z")],
+      thresholdMinutes: 5,
+      now: NOW,
+    });
+
+    assert.deepEqual(digest.stalled, [
+      { id: "bead-1", status: "in_progress", quietMinutes: 5, reason: "quiet" },
+    ]);
+  });
+
+  it("reports a bead quiet one millisecond past the threshold", () => {
+    const digest = buildDigest({
+      ready: [],
+      inProgress: [createQuietRow("bead-1", "2026-11-24T12:04:59.999Z")],
+      thresholdMinutes: 5,
+      now: NOW,
+    });
+
+    assert.deepEqual(digest.stalled, [
+      { id: "bead-1", status: "in_progress", quietMinutes: 5, reason: "quiet" },
+    ]);
+  });
+
   it("reports a bead quiet past the threshold with its quiet minutes and reason", () => {
     const digest = buildDigest({
       ready: [],

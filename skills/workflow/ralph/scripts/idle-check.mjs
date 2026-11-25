@@ -206,15 +206,39 @@ export function lastSignOfLife(row) {
 }
 
 /**
+ * Whole minutes, rounded down, of a duration in milliseconds. Display data only: the
+ * stall decision never runs on a rounded value.
+ * @param {number} milliseconds
+ * @returns {number}
+ */
+function wholeMinutes(milliseconds) {
+  return Math.floor(milliseconds / 60_000);
+}
+
+/**
+ * Milliseconds since the last sign of life, clamped at zero, or null when there is none.
+ * The stall decision compares this against the threshold exactly: flooring to whole
+ * minutes first would make the threshold fire on the next whole-minute boundary, up to a
+ * minute late.
+ * @param {Record<string, unknown>} row
+ * @param {Date} now
+ * @returns {number | null}
+ */
+export function quietMillisecondsOf(row, now) {
+  const last = lastSignOfLife(row);
+  if (last === null) return null;
+  return Math.max(0, now.getTime() - last);
+}
+
+/**
  * Whole minutes since the last sign of life, rounded down, or null when there is none.
  * @param {Record<string, unknown>} row
  * @param {Date} now
  * @returns {number | null}
  */
 export function quietMinutesOf(row, now) {
-  const last = lastSignOfLife(row);
-  if (last === null) return null;
-  return Math.floor(Math.max(0, now.getTime() - last) / 60_000);
+  const quiet = quietMillisecondsOf(row, now);
+  return quiet === null ? null : wholeMinutes(quiet);
 }
 
 /**
@@ -235,13 +259,17 @@ export function stallOf(row, { thresholdMinutes, now }) {
   // that is not in progress cannot be a stalled worker, whatever asked for it.
   if (id === null || status !== 'in_progress') return null;
 
-  const quietMinutes = quietMinutesOf(row, now);
+  const quietMilliseconds = quietMillisecondsOf(row, now);
+  const quietMinutes = quietMilliseconds === null ? null : wholeMinutes(quietMilliseconds);
   const leaseExpiry = instantOf(row, 'lease_expires_at');
   if (leaseExpiry !== null && leaseExpiry <= now.getTime()) {
     return { id, status, quietMinutes, reason: STALL_REASONS.leaseExpired };
   }
-  if (quietMinutes === null) return { id, status, quietMinutes, reason: STALL_REASONS.noActivity };
-  if (quietMinutes > thresholdMinutes) return { id, status, quietMinutes, reason: STALL_REASONS.quiet };
+  if (quietMilliseconds === null) return { id, status, quietMinutes, reason: STALL_REASONS.noActivity };
+  // Exactly the threshold is still alive; one millisecond past it is stalled.
+  if (quietMilliseconds > thresholdMinutes * 60_000) {
+    return { id, status, quietMinutes, reason: STALL_REASONS.quiet };
+  }
   return null;
 }
 

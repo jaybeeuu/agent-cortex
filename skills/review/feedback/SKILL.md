@@ -63,11 +63,16 @@ The full item — every field and one worked example — is in `REFERENCE.md`.
 
 The destination resolves in this order, first match wins:
 
-1. `AGENT_CORTEX_FEEDBACK_DEST` in the environment.
-2. `~/.agent-cortex/feedback.json`, when it exists.
+1. `AGENT_CORTEX_FEEDBACK_DEST` in the environment, holding `dir:<path>`.
+2. `~/.agent-cortex/feedback.json`, when it exists, holding `{ "dest": "dir:<path>" }`.
 3. The default directory, `~/.agent-cortex/feedback/`.
 
-Each value names a directory, so the item always lands as a file you can read, move or delete.
+A value is `dir:` followed by a path, never a bare path, so the item always lands as a file you can
+read, move or delete. `issues:<owner>/<name>` is refused, because an issue is a published record. Any
+other scheme names the setting it came from and exits non-zero, so a typo cannot quietly choose the
+default.
+
+`--dir <path>` overrides all three for that one run.
 
 The command prints the path it wrote on every run. Report that path, and report which of the three
 sources chose it — a reader needs to know whether a finding sits in a personal directory or a shared
@@ -75,13 +80,22 @@ one before quoting it.
 
 ### When the destination cannot be used
 
-A configured destination that does not exist, is not a directory, or is not writable stops the
-command. It names the path, gives the reason and exits non-zero, and it never falls back on its own,
-so the failure cannot pass for a success.
+A configured path that is absent is created, and the item lands there. Report the path. A created
+directory is not a finding.
+
+A configured path that exists as a file, or cannot be written, stops the command. It names the path,
+gives the reason and exits non-zero, and it never falls back on its own, so the failure cannot pass
+for a success.
 
 Do not swallow that error. Say which path failed and why, then file the same item into the default
 directory with `--dir ~/.agent-cortex/feedback`, and report both paths: the one that failed and the
 one the item landed in. A finding that goes nowhere quietly is worse than a finding never filed.
+
+When a value carries a scheme other than `dir:`, fix the setting and file again. Do not work around
+it with `--dir`, because the bad setting stays for the next run.
+
+When no destination is configured at all, the command files into the default. Report the path and say
+the default was used.
 
 If this install carries no `feedback` command at all, say so in your reply and keep the finding with
 the work. Never hand-write the item yourself — a second renderer is the drift the command exists to

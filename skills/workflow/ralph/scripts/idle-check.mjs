@@ -1,7 +1,7 @@
 // @ts-check
 // Idle check: a digest of ready work and stalled beads, for the idle watch.
 //
-// Ralph's watch polls one command on a bounded cadence and nudges ralph only when the
+// Ralph's watch polls one command on a backing-off cadence and nudges ralph only when the
 // answer changes. This script is that command. It runs two read-only `bd` queries and
 // prints one JSON object:
 //

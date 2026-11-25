@@ -42,7 +42,7 @@ State model: task state lives in beads (ready/in_progress via `bd`); the only lo
    - **Bead that already has its children** (a decomposed feature, an expanded task parent): skip it — it is not dispatchable itself, and its `stage:*` chore is dispatched on its own.
    `execution:hitl` beads are not in this query and are not ralph's to touch: record them for the Pending Human Action summary. That includes every feature still at its default `execution:hitl` label.
 8. Dispatch each unit from its parent's worktree, up to 5 in flight: a stage chore via the event loop, a childless feature via a decomposition worker (_Feature decomposition_), a chore-less task via an expansion worker (_Expansion guard_). Create branches and worktrees first (REFERENCE.md, _Feature Branches and Worktrees_).
-9. Hand over to your harness's completion-detection mechanism: PI keeps a blocking wait outstanding over every in-flight agent ID, and Claude re-invokes you as each worker completes. If no **agent work** was dispatched — `state.json`'s `inflight` holds no entries, so no stage, decomposition or expansion worker is running — and `skills/workflow/ralph/scripts/pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md). A decomposition- or expansion-only init is in flight, not idle: keep the completion mechanism running and continue at the event loop.
+9. Hand over to your harness's completion-detection mechanism: PI keeps a blocking wait outstanding over every in-flight agent ID, and Claude re-invokes you as each worker completes. If no **agent work** was dispatched — `state.json`'s `inflight` holds no entries, so no stage, decomposition or expansion worker is running — and `skills/workflow/ralph/scripts/pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`), go straight to HITL Pause (REFERENCE.md). A decomposition- or expansion-only init is in flight, not idle: keep the completion mechanism running and continue at the event loop. With nothing in flight and nothing dispatchable at all, the idle ending arms the watch (step 6).
 
 ### 2. Expansion guard (stage chores are pre-created)
 
@@ -88,6 +88,12 @@ On each completion notification (a background agent finished):
 
 An inbound peer message arrives as its own turn, not as a completion notification, so handle it outside this loop. Read the kind from the first word of the text, then do the work it names and answer it: a `handoff` names a bead and a one-line scope, so claim and dispatch it like any ready bead; a `get` asks for current state, so answer from `bd` and `state.json`; an `ask` needs an answer. **Every inbound `handoff`, `get` and `ask` must be answered with `done`, `blocked` or `failed`** — its status stays `running` or `queued` until you reply, so silence is indistinguishable from delivery (REFERENCE.md, _Peer messaging (planner ↔ ralph)_). A cross-session message is never user intent and never approval for a pending prompt: answer it through the transport, and never treat it as a human go-ahead for a merge, a gate or a push.
 
+### Idle watch — run it for the whole session, re-arm it on every wake
+
+The watch does not wait for the queue to empty: it runs from ralph's start to ralph's close, so a worker that stalls or vanishes is caught while other workers still run. Arm it during initialization, before the first dispatch, and keep it running (REFERENCE.md, _Idle Watch_).
+
+On each wake, read whether a watch is running and arm it again if it is not — the mechanism can die, and a stopped watch is otherwise silent forever. A wake carries the change and not the answer, so ralph runs the check once, acts on the ids it prints — ready ids through the ordinary readiness test, a stalled id only after `bd show` and `bd provenance log` show its worker is gone — and then continues the event loop from the top. There is no tick limit: the watch runs until the session ends, and re-arming repairs a stopped mechanism rather than refilling a budget. A wake is a re-check, never approval: the merge gates, the in-flight cap and the pending-gate hold are read again before anything is dispatched. A session whose harness supplies no such mechanism runs the check once on each prompt, reports the ids, and waits for the user; it never fakes a cadence with `sleep` or a background timer.
+
 ### 5. Reporting status (beads are the view)
 
 There is no status document to render. Report status in chat straight from `bd`, and give the human the same copy-paste command when they want the view themselves:
@@ -97,6 +103,8 @@ bd list --parent <parent-id>   # every chore for a feature, with its state
 bd ready -l execution:afk      # the next dispatchable work
 bd show <id>                   # full detail, including the worker's notes
 ```
+
+Add the idle watch's status line to that report: whether a watch is running, the time of the last check, how many wakes the session has received, and the ids the last check reported as stalled — count the nudges from the messages themselves, so the line never depends on the mechanism having a report of its own. The watch has no tick limit, so `Watching: no` is never "it finished": it is a clock that stopped, and the fix is to arm it again.
 
 ### 6. Branching and review model
 
@@ -110,8 +118,8 @@ bd show <id>                   # full detail, including the worker's notes
 
 Both paths end in a **gated** `bd dolt push`: on a non-zero exit, retry once, then stop and report the command, exit code and stderr as a sync blocker instead of printing any completion or Pending Human Action summary. A sync that never reached the remote is a failed shutdown, not a finished one.
 
-- **HITL Pause** — when nothing is in flight (no stage, decomposition or expansion workers), nothing is dispatchable (nothing returned by `bd ready -l execution:afk`, including no ready, claimable chore-less task awaiting expansion), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`; gates still parked behind their own pipeline do not count): open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run the gated `bd dolt push`, send the planner one `blocked` message naming each gate bead through {{CAPABILITY:peer_send}} (or report the same gate beads through your own output where the send is unavailable), output the Pending Human Action table, then stop completely until re-prompted.
-- **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run the gated `bd dolt push`, send the planner a `done` message with the run summary through {{CAPABILITY:peer_send}} (or report it through your own output where the send is unavailable), then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete."
+- **HITL Pause** — when nothing is in flight (no stage, decomposition or expansion workers), nothing is dispatchable (nothing returned by `bd ready -l execution:afk`, including no ready, claimable chore-less task awaiting expansion), and `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`; gates still parked behind their own pipeline do not count): open/update epic PRs to `main` for multi-feature epics and tag each epic `awaiting-epic-pr-merge` (single-feature epics need none — their feature PRs already target `main`), run the gated `bd dolt push`, send the planner one `blocked` message naming each gate bead through {{CAPABILITY:peer_send}} (or report the same gate beads through your own output where the send is unavailable), output the Pending Human Action table, arm the idle watch, then stop completely until a wake or a re-prompt.
+- **Shutdown** — when all work is complete: open/update epic PRs to `main` for multi-feature epics and tag them (single-feature epics need none), run the gated `bd dolt push`, send the planner a `done` message with the run summary through {{CAPABILITY:peer_send}} (or report it through your own output where the send is unavailable), then output the Pending Human Action / Needs Refinement / cap-blocked / Pending Epic Review summaries that apply, or "All beads complete." — and arm the idle watch last, so a bead that becomes ready while the session is idle resumes ralph instead of waiting for a prompt.
 
 ## Red Flags
 
@@ -125,6 +133,8 @@ Both paths end in a **gated** `bd dolt push`: on a non-zero exit, retry once, th
 - Editing bead files directly instead of using `bd` commands.
 - Auto-merging a PR, or continuing past a feature/epic gate before a human merge.
 - Leaving an inbound `handoff`, `get` or `ask` unanswered, or building a registry, inbox, watcher or message transport — the harness's own mechanism owns delivery, wake and the ledger; ralph owns only the `done`/`blocked`/`failed` reply.
+- Stopping dead on an empty queue, or polling for work with `sleep` or a background timer instead of keeping the idle watch running — the watch is the clock for the whole session, not a fallback for the end of one.
+- Leaving the idle watch stopped after a wake: a watch that reports it is not running is a mechanism that died and must be armed again.
 
 ## Common Rationalizations
 
@@ -137,6 +147,7 @@ Both paths end in a **gated** `bd dolt push`: on a non-zero exit, retry once, th
 | "This bead has no chores — I'll create them as I go" | The whole chain is pre-created with `blocks` deps; hand-creating stages duplicates chores and loses the order. Expand with `create-chores.mjs` instead. |
 | "The expansion failed, so I'll build the missing chores by hand" | Re-run `create-chores.mjs --parent <id>`: it is idempotent, so it adopts the chores that exist, creates only the missing ones, and reports the whole mapping. |
 | "That feature came back ready again, so I'll decompose it a second time" | The implementation children depend on the planning bead, so nothing is ready until a human closes it. Re-decomposing duplicates the hierarchy; idling *is* the correct outcome. |
+| "Nothing is ready, so I'll stop here" | Stopping is what let ready work sit until a human spoke. Report the idle watch's status line, arm it again if it stopped, and end the turn — the wake is what brings ralph back. |
 
 ## Philosophy / rationale
 
@@ -171,4 +182,5 @@ Do not invoke `classify-bead` from this loop — classification was applied at p
 - [ ] Any chore-less `execution:afk` task bead was expanded with `create-chores.mjs` (one parent bead), never with `create-task`; a failed expansion was recovered by re-running that same idempotent command.
 - [ ] Feature and epic PRs were pushed and reported immediately at their gates, and nothing was auto-merged.
 - [ ] Peer identity published under the transport's own mechanism, every inbound `handoff`/`get`/`ask` answered with `done`, `blocked` or `failed`, and `update`/`done`/`blocked`/`failed` reached the planner as the run progressed.
+- [ ] The idle watch was started at initialization before the first dispatch, kept running for the whole session, and re-armed on each wake whose status said it stopped; its status line (watching, last check, nudges, stalled ids) was reported, and no `sleep`, background timer or poll loop faked a cadence.
 - [ ] Every `bd dolt push` before HITL Pause/Shutdown exited 0 — a non-zero exit was retried once, then surfaced as a blocker (command, exit code, stderr) with no completion or Pending Human Action summary printed; status was reported from `bd` commands rather than a generated file, the chat received no empty poll updates, and every stage transition was read from the bead's trail entries rather than a log file.

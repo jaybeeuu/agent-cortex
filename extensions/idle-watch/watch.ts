@@ -1,6 +1,6 @@
 /**
- * The idle watch: poll one configured check on a bounded, backing-off cadence,
- * and nudge the session only when the digest of the check's result changes.
+ * The idle watch: poll one configured check on a backing-off cadence, and nudge
+ * the session only when the digest of the check's result changes.
  *
  * The check owns the judgement — what is worth saying, and in what shape. This
  * module owns four things: when to run the check again, when to stop, whether
@@ -8,6 +8,11 @@
  * vocabulary: an id is any non-empty string `id` field the check's JSON
  * mentions, tagged with the property that carried it. Nothing here knows what a
  * bead, a tracker, or a queue query is, and nothing here runs `bd`.
+ *
+ * The watch is session-scoped and bounded by nothing else: it ticks for as long
+ * as it is started, and ends only when its caller stops it or the session shuts
+ * down. No tick count, no clock and no wall-clock deadline ends it, because work
+ * that becomes ready an hour into a quiet session is exactly what it is for.
  *
  * The watch never holds a turn open. It is started with `start()`, which
  * schedules the first tick and returns at once, so the caller's turn ends and
@@ -27,18 +32,6 @@ export const DEFAULT_INTERVAL_MS = 15_000;
 
 /** The longest the interval grows to while the result keeps repeating. */
 export const MAX_BACKOFF_MS = 120_000;
-
-/**
- * Ticks before the watch stops on its own.
- *
- * A tick counts whether it produced a digest or failed. With the base interval
- * and the backoff cap above, 40 ticks span roughly 70 minutes. The budget is
- * spent silently: a watch with nothing to report must not wake anyone to say
- * that its budget is gone. `status()` reports `watching: false` and
- * `budgetLeft: 0`, which is what the caller reads before it decides to do
- * anything else.
- */
-export const DEFAULT_MAX_TICKS = 40;
 
 /** One run of the check. */
 export interface TickRun {
@@ -95,7 +88,6 @@ export interface NudgeDetails {
   added: string[];
   removed: string[];
   checksRun: number;
-  maxTicks: number;
   at: string;
 }
 
@@ -116,8 +108,6 @@ export interface WatchStatus {
   lastCheck: string | null;
   checksRun: number;
   nudgesSent: number;
-  budgetLeft: number;
-  maxTicks: number;
 }
 
 /** Everything a watch needs, and the collaborators a test replaces. */
@@ -131,7 +121,6 @@ export interface IdleWatchOptions {
   scheduler?: Scheduler;
   intervalMs?: number;
   maxBackoffMs?: number;
-  maxTicks?: number;
   /** Report a problem that must not stop the watch, such as a check that threw. */
   warn?: (message: string) => void;
 }
@@ -234,7 +223,7 @@ export function buildNudge(details: NudgeDetails): NudgeMessage {
     `- Added: ${list(details.added)}`,
     `- Removed: ${list(details.removed)}`,
     `- Check: ${details.script} in ${details.project}`,
-    `- Tick: ${details.checksRun} of ${details.maxTicks}, at ${details.at}`,
+    `- Tick: ${details.checksRun}, at ${details.at}`,
     "",
     "This message carries the change only. Run the check for the full result before deciding what to do.",
   ].join("\n");
@@ -245,10 +234,12 @@ export function buildNudge(details: NudgeDetails): NudgeMessage {
 /**
  * One idle watch.
  *
- * A watch is active from `start()` until it spends its budget or `stop()` is
- * called. A stopped watch keeps its counts and its last check, so `status()`
- * still answers "what happened" — the zero-activation counter that is invisible
- * is the reason nobody notices a watch that never fires.
+ * A watch is active from `start()` until `stop()` is called. It has no tick
+ * budget and no deadline of its own: the caller's session is the bound, so a
+ * quiet watch backs off to the cap and keeps looking rather than stopping. A
+ * stopped watch keeps its counts and its last check, so `status()` still answers
+ * "what happened" — the zero-activation counter that is invisible is the reason
+ * nobody notices a watch that never fires.
  */
 export class IdleWatch {
   readonly #project: string;
@@ -258,7 +249,6 @@ export class IdleWatch {
   readonly #scheduler: Scheduler;
   readonly #intervalMs: number;
   readonly #maxBackoffMs: number;
-  readonly #maxTicks: number;
   readonly #warn: (message: string) => void;
 
   #checks = 0;
@@ -279,7 +269,6 @@ export class IdleWatch {
     this.#scheduler = options.scheduler ?? systemScheduler;
     this.#intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
     this.#maxBackoffMs = options.maxBackoffMs ?? MAX_BACKOFF_MS;
-    this.#maxTicks = options.maxTicks ?? DEFAULT_MAX_TICKS;
     this.#warn = options.warn ?? (() => {});
   }
 
@@ -297,8 +286,6 @@ export class IdleWatch {
       lastCheck: this.#lastCheck?.toISOString() ?? null,
       checksRun: this.#checks,
       nudgesSent: this.#nudges,
-      budgetLeft: Math.max(this.#maxTicks - this.#checks, 0),
-      maxTicks: this.#maxTicks,
     };
   }
 
@@ -306,10 +293,14 @@ export class IdleWatch {
    * Start the cadence and return: nothing is awaited and no child process runs
    * before this returns, so the caller's turn ends and the session stays usable.
    *
-   * A start is a fresh watch. The budget is full again, and the previous digest
-   * is dropped, so the first tick reports the whole result as an arrival. That
-   * is the reset rule: a caller that starts a watch after doing work is told what
-   * is there now, not what changed since a watch it has already finished with.
+   * A start is a fresh watch. The previous digest is dropped, so the first tick
+   * reports the whole result as an arrival. That is the reset rule: a caller that
+   * starts a watch after doing work is told what is there now, not what changed
+   * since a watch it has already finished with.
+   *
+   * Starting an active watch replaces it rather than adding a second cadence: the
+   * previous timer is cancelled first, so a re-arm after a stop leaves exactly
+   * one cadence running.
    */
   start(): void {
     this.#cancelTimer();
@@ -375,7 +366,7 @@ export class IdleWatch {
       // A failed, timed-out or unreadable check sends nothing. The previous
       // digest stands, so a later good tick is compared with the last good one.
       this.#quiet += 1;
-      this.#continue();
+      this.#scheduleNext();
       return;
     }
 
@@ -388,7 +379,7 @@ export class IdleWatch {
 
     if (!changed) {
       this.#quiet += 1;
-      this.#continue();
+      this.#scheduleNext();
       return;
     }
 
@@ -401,21 +392,9 @@ export class IdleWatch {
         added: change.added,
         removed: change.removed,
         checksRun: this.#checks,
-        maxTicks: this.#maxTicks,
         at: (this.#lastCheck ?? this.#scheduler.now()).toISOString(),
       }),
     );
-
-    this.#continue();
-  }
-
-  /** Schedule the next tick, or stop when the budget is spent. */
-  #continue(): void {
-    if (this.#checks >= this.#maxTicks) {
-      this.#watching = false;
-      this.#cancelTimer();
-      return;
-    }
 
     this.#scheduleNext();
   }

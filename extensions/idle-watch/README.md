@@ -2,12 +2,13 @@
 
 Nudges an idle PI session when the work it is watching changes.
 
-A session works only when something prompts it. When its queue empties it idles,
-and work that becomes ready sits there until a human speaks. This extension
-supplies the missing clock: a tool the caller arms when it has nothing to do. The
-tool starts a bounded cadence and **returns at once**, so the calling turn ends
-and the session stays interactive. Each tick runs one configured check, digests
-its JSON, and sends one message carrying only what changed.
+A session works only when something prompts it. While it runs, its workers can
+stall or vanish, and work that becomes ready sits there until a human speaks.
+This extension supplies the missing clock: a tool the caller starts when its
+session starts and leaves running until the session closes. The tool starts a
+cadence and **returns at once**, so the calling turn ends and the session stays
+interactive. Each tick runs one configured check, digests its JSON, and sends one
+message carrying only what changed.
 
 The extension owns the cadence, the digest and the nudge. The check owns the
 subject: what to poll, and what its result means. This extension has no bead
@@ -19,7 +20,7 @@ that reader runs the check again to learn what the change is.
 
 | Input | Meaning |
 | --- | --- |
-| `idle_watch` | Arm the watch: start the cadence and end the turn |
+| `idle_watch` | Start the watch: arm the cadence and end the turn |
 | `idle_watch` with `command` | Poll this check script instead of the configured one |
 | `idle_watch` with `action: "status"` | Report the watch without polling; sends nothing |
 | `idle_watch` with `action: "stop"` | End the cadence; sends nothing |
@@ -27,7 +28,9 @@ that reader runs the check again to learn what the change is.
 
 The tool is registered at load time, so it is available in every session that
 loads this package. Nothing starts on its own: a session that never calls the
-tool spawns no process, starts no timer, and sends no message.
+tool spawns no process, starts no timer, and sends no message. A caller that
+starts it once and reads its status on each wake, arming it again when the status
+says it stopped, keeps one cadence for the whole session.
 
 ### Where the check comes from
 
@@ -75,31 +78,36 @@ A tick that fails does not end the watch, and it does not clear the previous
 digest. A later good tick is therefore compared with the last good one, so a
 tracker that recovers does not report its whole queue as an arrival.
 
-## Bounds
+## Scope
 
 | Bound | Value |
 | --- | --- |
 | Poll interval | 15 s |
 | Backoff | Doubles per quiet tick, capped at 120 s, reset by a change |
-| Ticks | 40 |
+| Duration | The session. No tick count and no deadline stops it |
 | One check invocation | 60 s, then pi kills it and the tick counts as failed |
-| Cadence span | About 70 minutes at the values above |
+| Retry after a failed tick | The next interval. A failure never ends the watch |
 
-A failed tick also counts against the budget, so a check that never works spends
-the same 40 ticks as one that works and finds nothing.
+**The session is the only bound.** There is no tick budget to spend and no
+timeout to reach, because the work this watch exists for can become ready at any
+point in a long session. A watch left alone backs off to the 120 s cap and keeps
+looking: an idle hour costs about 30 silent checks and wakes nobody. The watch
+ends when the caller stops it (a session closing, or a caller that no longer
+needs it), and never on its own.
 
-**The budget is spent silently.** A watch with nothing to report must not wake
-anyone to say that its budget is gone, so it stops. `status` then reports
-`watching: false` and `budget left: 0`, and that number is the diagnostic.
+**A stopped watch is repaired by arming it again.** `status` reports
+`watching: false`, and the caller's rule is to arm it when it is not watching.
+Arming is cheap and idempotent in shape: it cancels any previous timer first, so
+one arming leaves exactly one cadence and a re-armed watch never delivers a
+change twice.
 
-**The budget resets when the caller starts a new watch.** A start is a fresh
-watch: the budget is full again and the previous digest is dropped. The first
-tick after a start is a **baseline**, not a change report. It records what the
-check reports now, and it sends nothing when the result names no ids. An empty
-queue therefore wakes nobody, and the first id to arrive after that is the
-change. A caller that arms the watch after doing work is told what is there now,
-not what changed since a watch it has already finished with. A start also
-replaces a running watch rather than adding a second one.
+**Arming drops the previous digest.** The first tick after a start is a
+**baseline**, not a change report: it records what the check reports now, and it
+sends nothing when the result names no ids. An empty queue therefore wakes
+nobody, and the first id to arrive after that is the change. A caller that arms
+the watch after doing work is told what is there now, not what changed since a
+watch it has already finished with. A start also replaces a running watch rather
+than adding a second one.
 
 The pending timer is unref'd, so a watch never holds the host process open. On
 `session_shutdown` the cadence is stopped and its timer cancelled: an abandoned
@@ -113,12 +121,12 @@ watch wakes nobody.
 | --- | --- |
 | watching | Whether the cadence is running |
 | last check | ISO time of the last tick, or none yet |
-| checks run | Ticks so far, out of the bound |
+| checks run | Ticks so far |
 | nudges sent | Messages this watch has produced |
-| budget left | Ticks remaining |
 
 A stopped watch keeps these numbers, so a watch that never fired is a
-measurement rather than an absence.
+measurement rather than an absence. `watching: false` is the one field a caller
+acts on: it means the clock is gone and must be armed again.
 
 ## What it never does
 
@@ -127,8 +135,8 @@ measurement rather than an absence.
   What the check reads and what its ids mean are the check's business.
 - **No model call.** No prompt, no summarisation. One turn happens only because
   the delivered nudge starts one.
-- **No message without a change.** Nothing announces a start, a stop, a spent
-  budget, a failed tick, or a timed-out tick.
+- **No message without a change.** Nothing announces a start, a stop, a failed
+  tick, or a timed-out tick.
 - **No held turn.** Arming schedules the first tick and returns; the first tick
   runs one interval later, so no child process ever runs inside the calling turn.
 - **No `@earendil-works/*` value import.** Types only, so the staged install
@@ -138,7 +146,7 @@ measurement rather than an absence.
 - **No change to `post-merge-watch`.** These are two extensions with two
   behaviours, and neither generalises the other. `post-merge-watch` polls one
   merge until it reaches a verdict, then wakes the session once. This extension
-  returns before the wait and nudges on every change, for as long as its budget
+  returns before the wait and nudges on every change, for as long as the session
   lasts. A caller that wants a verdict wants the former; a caller that wants to
   hear about new work wants this one.
 
@@ -148,7 +156,7 @@ measurement rather than an absence.
 | --- | --- |
 | `index.ts` | The tool, the check resolution, the executor, the status text |
 | `watch.ts` | The cadence, the digest, the nudge, and the status report |
-| `watch.test.ts` | The mechanism: digests, changes, ticks, backoff, the bound |
+| `watch.test.ts` | The mechanism: digests, changes, ticks, backoff, the session scope |
 | `index.test.ts` | The wiring: registration, resolution, and each tool action |
 
 ## Development

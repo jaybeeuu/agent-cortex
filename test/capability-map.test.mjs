@@ -7,6 +7,10 @@
 // rename (main c63c65a). They are held literally on
 // purpose: any change to a name here changes what a harness receives, which is
 // exactly what a mechanical rename may not do.
+//
+// `idle_watch` (and the tool it adds to ralph's allowlist) is the one deliberate
+// addition since that capture: a capability row added later is recorded here so
+// the guard keeps covering every row rather than being loosened to accommodate it.
 
 import assert from "node:assert/strict";
 import { readdir, readFile, writeFile } from "node:fs/promises";
@@ -55,6 +59,7 @@ const PRE_RENAME_NAMES = {
   peer_send: { claude: "SendMessage", pi: "peer_send" },
   peer_list: { claude: "ListAgents", pi: "peer_list" },
   post_merge_watch: { claude: "ScheduleWakeup", pi: "post-merge-watch" },
+  idle_watch: { claude: "ScheduleWakeup", pi: "idle_watch" },
   interrupt_rewind: { claude: "/rewind", pi: "interrupt_resume" },
   interrupt_checkpoint: { claude: null, pi: "interrupt_checkpoint" },
   interrupt_resume: { claude: null, pi: "interrupt_resume" },
@@ -79,8 +84,8 @@ const PRE_RENAME_AGENT_TOOLS = {
     pi: ["bash", "read", "edit", "write", "grep", "find", "ask_questions"],
   },
   ralph: {
-    claude: ["Bash", "Read", "Grep", "Glob", "Skill", "Task", "TaskList", "TaskGet", "TaskStop"],
-    pi: ["bash", "read", "grep", "find", "task", "read_agent", "wait_for_agents"],
+    claude: ["Bash", "Read", "Grep", "Glob", "Skill", "Task", "TaskList", "TaskGet", "TaskStop", "ScheduleWakeup"],
+    pi: ["bash", "read", "grep", "find", "task", "read_agent", "wait_for_agents", "idle_watch"],
   },
   strategy: {
     claude: ["Bash", "Read", "Grep", "Glob", "AskUserQuestion", "WebFetch", "Skill", "Edit", "Write"],

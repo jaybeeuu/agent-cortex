@@ -391,13 +391,13 @@ Proceed here when no agent work is in flight (no stage, decomposition or expansi
 
    When you've completed the above, prompt me to continue.
    ```
-5. **Stop completely.** Stop the wake mechanism as the wake section describes. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
+5. **Arm the idle watch**, then **stop completely.** Arming it is what tells ralph that a human closed a gate: the queue is empty and nothing is in flight, which is the arming condition (_Idle Watch_ below). Stopping means stopping the completion wake mechanism as the wake section describes, and not continuing the event loop; the idle watch is not that mechanism, so it stays armed. A wake re-runs the readiness test and the `pending-gates.mjs` hold before ralph dispatches anything, so arming weakens no gate. Wait for a wake or the user's re-prompt before doing any further work.
 
 ---
 
 ## Idle Check
 
-The idle watch has two halves: a command that answers one question, and a waiting mechanism that decides when to ask and what to do with the answer. This section documents only the command. It holds no cadence, starts no session, and says nothing about what to do with its result — arming the watch, comparing digests and nudging ralph all belong to the waiting mechanism, which is a separate component.
+The idle watch has two halves: a command that answers one question, and a waiting mechanism that decides when to ask and what to do with the answer. This section documents only the command. It holds no cadence, starts no session, and says nothing about what to do with its result — arming the watch, comparing digests and nudging ralph all belong to the waiting mechanism, and the policy that uses it is in _Idle Watch_ below.
 
 That command is `skills/workflow/ralph/scripts/idle-check.mjs`, the watch's documented default, and it resolves package-relative like every other shipped script:
 ```bash
@@ -417,6 +417,91 @@ It prints one JSON object and nothing else on stdout. A tick is one bounded, rea
 - **Exit codes are the contract.** `0` printed a digest, `1` could not read the tracker — nothing is printed, so the watch stays silent instead of nudging ralph to look at nothing — and `2` was given unusable arguments. `BD_PATH` overrides the binary, and `--limit <rows>` bounds each query (default 500).
 - **Each read is bounded in wall clock and in bytes.** A `bd` that never answers ends the read after `AGENT_CORTEX_IDLE_BD_TIMEOUT_MS` (default 30000 ms) and a `bd` that answers past `AGENT_CORTEX_IDLE_BD_MAX_BUFFER_BYTES` (default 16777216 bytes, 16 MiB) is refused. Both end in exit `1`, because a tick whose command never returns has no exit code at all, and the watch would go silent forever rather than stay silent for one tick. The byte ceiling is raised rather than left at the child-process default because the in-progress query cannot ask for `--brief`: the stall rule needs each row's notes, and a busy tracker returns tens of kilobytes per row. An unusable value for either bound keeps its default, so a typo cannot blind the watch.
 - **Read-only.** The two queries are `bd ready` and `bd list -s in_progress`, run one after the other, and the script writes nothing: no bead field, no note, no lease.
+
+---
+
+## Idle Watch
+
+_Idle Check_ above documents the command. This section documents the policy that uses it: when ralph
+runs a watch, what a wake means, and what ralph reports. The mechanism's name is forked per harness at
+install time, so everything here describes only what every mechanism does — the session resumes, the
+check runs again, and only a changed answer resumes it — and never a call shape.
+
+### When ralph arms it
+
+The watch is always active for the life of the session. Ralph arms it during initialization and
+leaves it running until it closes.
+
+- **Arm it at startup**, before the first dispatch, so the first wait is already watched. A worker
+  stalls in the middle of a session, while other workers are still running, so starting the clock at
+  the first idle moment is too late.
+- **Re-arm it on every wake.** Ralph reads whether a watch is running, and arms it again if it is not.
+  The mechanism can die, a session can be re-entered without it, and a user can stop it, so "still
+  running" is a fact to check on each wake rather than assume between them.
+- **Never arm a second one.** One session, one watch. Arming is repair, so it replaces a running watch
+  rather than multiplying the cadence.
+- **Never stop it while ralph runs.** A stop belongs to the session ending; any other stop leaves a
+  silent hole in the clock.
+- **No tick limit and no deadline.** A quiet tenth hour is still watched, because that is when the
+  stall, or the newly ready bead, appears. Re-arming is the repair of a mechanism that is gone, never
+  a refill of an allowance that ran out.
+
+The queue being empty and the in-flight count being zero are not arming conditions. Those are the two
+predicates HITL Pause and Shutdown read, and both endings keep the watch running rather than starting
+it.
+
+### What a wake means
+
+A wake carries the change, never the answer: the ids that arrived, the ids that left, the check's path
+and project, and the time of the check. So a wake always begins with one more run of the check, and
+the ready and stalled lists are read from that run.
+
+- **Read whether a watch is running first**, and arm it again if it is not. A wake with no watch
+  behind it is the last one the session would receive.
+- **A check that exits non-zero has no answer.** Exit `1` printed nothing and `2` means unusable
+  arguments. Report the failure, arm the watch, and dispatch nothing, because the ids a message names
+  are not the full result.
+- **Ready ids** take the readiness test the event loop already applies: a stage chore is dispatched, a
+  childless feature is decomposed, a chore-less task is expanded, and a bead an open
+  `lifecycle:feature-pr` gate blocks is left alone. The cap backstop and the pending-gate hold are read
+  again, because a wake is a re-check and not an allowance.
+- **Stalled ids are inspected before they are touched.** `bd show <id>` and `bd provenance log <id>`
+  separate a dead worker — an expired lease, or no fresh trail entry — from a quiet one, whose
+  heartbeat or newest note is inside the threshold. Only the dead one is re-dispatched, and never a
+  bead ralph has not read. A stalled bead under a worker that is still running is left alone; that
+  worker's completion clears it.
+- **A wake that arrives while a worker is in flight** changes nothing about that worker: the in-flight
+  cap and the ordinary completion handling decide, exactly as they do after a completion. The wake's
+  job is to notice a worker that has stopped making progress, not to supervise one that is progressing.
+
+### After acting, check it is still running
+
+Ralph acts on the wake, then reads the watch again and arms it when it is not running. A watch that
+reports it is not running is a mechanism that stopped, so the repair is an arming and never a longer
+wait. Then the event loop continues from the top: the queue is read, work is dispatched, and the wait
+begins again. A wake is never a reason to end the session.
+
+### The status line
+
+Four facts belong beside the bead view:
+
+| Field | Meaning |
+| --- | --- |
+| Watching | whether a watch is running now |
+| Last check | the time of the most recent tick |
+| Nudges | how many wakes this session has received |
+| Stalled | the ids the most recent check reported as stalled |
+
+The nudge count is counted from the messages ralph receives, so the line is reportable on a harness
+whose mechanism has no status report of its own. The watch is unbounded, so `Watching: no` never means
+it finished: it means the clock is gone, and the next action is to arm it again.
+
+### No mechanism in this session
+
+Ralph works the same, one prompt later: it runs the check once on each prompt, reports the ready and
+stalled ids it printed, and waits for the user. It never fakes a cadence with `sleep`, a background
+shell timer or a poll loop. A session whose clock is the prompt is a supported session, not a broken
+one, and the dispatch rules, the gates and the cap do not change.
 
 ---
 
@@ -450,6 +535,9 @@ When nothing is in flight AND nothing is dispatchable — `inflight` holds no en
    ```
    All beads complete.
    ```
+7. **Arm the idle watch** and report its status line (_Idle Watch_ above). "All beads complete." is
+   complete now, and the watch is what tells ralph that this changed: a bead that becomes ready while
+   the session is idle resumes ralph instead of waiting for a prompt.
 
 ---
 

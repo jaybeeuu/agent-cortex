@@ -181,8 +181,9 @@ harnesses; only the wake mechanism is pi's.
 ## `idle-watch/` → Reject (no hook surface)
 
 pi has no way to poll a check while the session stays interactive, so the
-extension arms a bounded cadence, digests the check's JSON, and sends one
-message per change — then ends the turn so the session is still usable. Claude
+extension runs a backing-off cadence for the life of the session, digests the
+check's JSON, and sends one message per change — then ends the turn so the
+session is still usable. Claude
 Code's hook model has no equivalent: a hook fires on a session event, not on a
 timer, and no hook can start a turn on an idle session. A claude session
 schedules its own resumption with its built-in wake mechanism instead, the same

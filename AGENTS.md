@@ -211,6 +211,19 @@ Generated automatically by changesets. Do not edit `CHANGELOG.md` manually.
   arbitrary machine cannot rely on a gated capability, so the row names the mechanism every
   session has. Re-check that flag before changing the row; do not promote `Monitor` on the
   strength of its presence in the binary.
+- ralph's idle watch forks through the same single-row shape, as `{{CAPABILITY:idle_watch}}`:
+  `idle_watch` (this package's own `idle-watch` extension, on pi) and Claude Code's built-in
+  `ScheduleWakeup` (on claude). Unlike `post_merge_watch`, both values are model-callable tools, so the
+  row is also named in ralph's per-harness `tools` lists — a mechanism left out of that list is one the
+  model cannot call, which would leave the policy as prose it cannot act on. The policy is authored
+  once in `agents/ralph/agent.md` (`## Idle watch`) with the detail in
+  `skills/workflow/ralph/REFERENCE.md` (`## Idle Watch`), and the shared text states only what both
+  mechanisms do — the session resumes, the check runs again, only a changed answer resumes it — never
+  a call shape. It also states no bound: pi's watch is session-scoped with no tick limit while
+  `ScheduleWakeup` spends a scheduled instant, so the shared rule is only that ralph arms the watch at
+  startup and arms it again whenever a wake finds it gone. The no-watcher fallback is plain prose in
+  its own subsection, so it survives both renders without naming a name that is absent there, and
+  `test/ralph-idle-watch-render.test.mjs` stages both installs to prove the fork.
 
 ## PI Extension Conventions
 

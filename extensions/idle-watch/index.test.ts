@@ -12,7 +12,7 @@ import idleWatchExtension, {
   resolveScript,
 } from "./index.ts";
 import type { CommandInvocation, TickRun } from "./watch.ts";
-import { DEFAULT_INTERVAL_MS } from "./watch.ts";
+import { DEFAULT_INTERVAL_MS, MAX_BACKOFF_MS } from "./watch.ts";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -264,6 +264,11 @@ describe("idle_watch tool", () => {
       assert.equal(outcome.terminate, true, "the turn ends, so the session stays interactive");
       assert.deepEqual(fake.execs, [], "the first tick is scheduled, not run");
       assert.match(textOf(outcome), /\/checks\/idle\.mjs/);
+      assert.match(
+        textOf(outcome),
+        /runs until you stop it or the session ends, with no tick limit/,
+        "the arming report states the session scope instead of a budget",
+      );
       assert.deepEqual(
         { watching: (outcome.details as { watching: boolean }).watching },
         { watching: true },
@@ -342,8 +347,8 @@ describe("idle_watch tool", () => {
       const outcome = await call(fake, { action: "status" });
 
       assert.match(textOf(outcome), /watching/);
-      assert.match(textOf(outcome), /Checks run: 0 of 40/);
-      assert.match(textOf(outcome), /Budget left: 40/);
+      assert.match(textOf(outcome), /Checks run: 0/);
+      assert.match(textOf(outcome), /Nudges sent: 0/);
       assert.deepEqual(fake.execs, [], "a status call runs no check");
     });
   });
@@ -377,6 +382,71 @@ describe("idle_watch tool", () => {
     });
   });
 
+  it("keeps its cadence past any fixed tick count, so a quiet session stays watched", async (t) => {
+    // The extension ships no tick budget: a session that stays quiet for hours is
+    // the case the watch exists for. 45 ticks is more than the cap it used to
+    // carry, and the check for a change afterwards proves the cadence is not just
+    // alive but still delivering.
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
+    /** @type {TickRun} */
+    const run = {
+      code: 0,
+      stdout: '{"ready":[{"id":"agnt-ctx-1"}]}',
+      stderr: "",
+      killed: false,
+    };
+
+    await withCheckEnv("/checks/idle.mjs", async () => {
+      const fake = createFakePi(run);
+      idleWatchExtension(fake.pi);
+      await call(fake, { action: "start" });
+
+      // Every advance is the backoff cap, which is at least the pending delay, so
+      // exactly one tick runs per advance and nothing depends on wall-clock time.
+      for (let fired = 0; fired < 45; fired += 1) {
+        t.mock.timers.tick(MAX_BACKOFF_MS);
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+
+      assert.equal(fake.execs.length, 45, "every interval ran a check; no tick count ended the watch");
+      assert.equal(fake.sent.length, 1, "the unchanged digest stayed silent throughout");
+
+      run.stdout = '{"ready":[{"id":"agnt-ctx-1"},{"id":"agnt-ctx-2"}]}';
+      t.mock.timers.tick(MAX_BACKOFF_MS);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.equal(fake.sent.length, 2, "the change after 45 quiet ticks still reaches the session");
+      assert.match(textOf(fake.sent[1]), /agnt-ctx-2/);
+    });
+  });
+
+  it("leaves exactly one cadence when a stopped watch is armed again", async (t) => {
+    // Ralph re-arms a watch it finds stopped. A re-arm must replace nothing and
+    // duplicate nothing: two live cadences would deliver every change twice.
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
+    await withCheckEnv("/checks/idle.mjs", async () => {
+      const fake = createFakePi({
+        code: 0,
+        stdout: '{"ready":[{"id":"agnt-ctx-1"}]}',
+        stderr: "",
+        killed: false,
+      });
+      idleWatchExtension(fake.pi);
+
+      await call(fake, { action: "start" });
+      await call(fake, { action: "stop" });
+      await call(fake, { action: "start" });
+
+      t.mock.timers.tick(DEFAULT_INTERVAL_MS);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.equal(fake.execs.length, 1, "the re-armed watch runs exactly one check per interval");
+      assert.equal(fake.sent.length, 1, "the re-armed watch delivers the change once");
+    });
+  });
+
   it("replaces a running watch rather than arming a second one", async (t) => {
     // Two live cadences are user-visible: the superseded watch keeps its own
     // timer and delivers a second nudge for the same change. So the test does
@@ -397,7 +467,7 @@ describe("idle_watch tool", () => {
 
       const status = await call(fake, { action: "status" });
       assert.match(textOf(status), /watching/);
-      assert.match(textOf(status), /Checks run: 0 of 40/, "the replacement starts with a fresh budget");
+      assert.match(textOf(status), /Checks run: 0/, "the replacement starts with a fresh watch");
 
       t.mock.timers.tick(DEFAULT_INTERVAL_MS);
       await new Promise((resolve) => setImmediate(resolve));

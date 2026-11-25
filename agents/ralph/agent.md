@@ -169,7 +169,7 @@ An `.agent-cortex/ralph/state.json` left by an older run is ignored: Ralph never
 
 ## Background Watch (always-active nudge)
 
-Ralph runs a background watch that monitors the bead queue and nudges the session when work needs attention. This is separate from the subagent wake mechanism — it's about being proactive when the queue is idle or work is stuck.
+Ralph runs a background watch that monitors the bead queue and nudges the session when work needs attention. This is separate from the subagent wake mechanism — it is about being proactive when the queue is idle or work is stuck.
 
 ### Watch behavior
 
@@ -182,7 +182,7 @@ Ralph runs a background watch that monitors the bead queue and nudges the sessio
   - The ready set has changed (new beads ready, or beads no longer ready)
   - Any bead has been `in_progress` > 15 minutes with no prior nudge
   - Any in-progress worker has exceeded its budget or vanished (no heartbeat)
-- **Deduplication**: Don't nudge about the same bead twice until its state changes
+- **Deduplication**: Do not nudge about the same bead twice until its state changes
 - **Status reporting**: Include watch status in the status summary (armed/disarmed, last wake time, next wake time)
 
 ### Watch lifecycle

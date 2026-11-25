@@ -17,7 +17,8 @@ import {
   changedChangesetPaths,
   evaluateChangesetGate,
   evaluateChangesetPackages,
-  parseChangesetPackages,
+  evaluateChangesetReleases,
+  parseChangesetReleases,
   parseNameStatus,
   resolvePublishCommand,
 } from "../scripts/lib/release-gates.mjs";
@@ -234,65 +235,134 @@ describe("resolvePublishCommand", () => {
   });
 });
 
-describe("parseChangesetPackages", () => {
+describe("parseChangesetReleases", () => {
   it("reads a quoted scoped name with its bump type", () => {
-    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex": minor\n---\n\nBody.\n'), {
-      packageNames: ["@jaybeeuu/agent-cortex"],
+    assert.deepEqual(parseChangesetReleases('---\n"@jaybeeuu/agent-cortex": minor\n---\n\nBody.\n'), {
+      releases: [{ packageName: "@jaybeeuu/agent-cortex", releaseType: "minor" }],
       error: null,
     });
   });
 
-  it("reads unquoted names and several packages from one changeset", () => {
+  it("reads unquoted names and several releases from one changeset", () => {
     const content = "---\n@jaybeeuu/agent-cortex: patch\n'@jaybeeuu/plugin': major\n---\n\nBody.\n";
 
-    assert.deepEqual(parseChangesetPackages(content), {
-      packageNames: ["@jaybeeuu/agent-cortex", "@jaybeeuu/plugin"],
+    assert.deepEqual(parseChangesetReleases(content), {
+      releases: [
+        { packageName: "@jaybeeuu/agent-cortex", releaseType: "patch" },
+        { packageName: "@jaybeeuu/plugin", releaseType: "major" },
+      ],
       error: null,
     });
   });
 
   it("ignores the body, including lines that contain a colon", () => {
-    const content = '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nRelease job: it fails on\nmain: see below.\n';
+    const content =
+      '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nRelease job: it fails on\nmain: see below.\n';
 
-    assert.deepEqual(parseChangesetPackages(content), {
-      packageNames: ["@jaybeeuu/agent-cortex"],
+    assert.deepEqual(parseChangesetReleases(content), {
+      releases: [{ packageName: "@jaybeeuu/agent-cortex", releaseType: "patch" }],
       error: null,
     });
   });
 
-  it("reports a changeset with no frontmatter block instead of reading no packages", () => {
-    assert.deepEqual(parseChangesetPackages("Fix the gate, which passes on this file.\n"), {
-      packageNames: [],
+  it("keeps an absent release type as an empty value rather than dropping the release", () => {
+    assert.deepEqual(parseChangesetReleases('---\n"@jaybeeuu/agent-cortex":\n---\n\nBody.\n'), {
+      releases: [{ packageName: "@jaybeeuu/agent-cortex", releaseType: "" }],
+      error: null,
+    });
+  });
+
+  it("reports a changeset with no frontmatter block instead of reading no releases", () => {
+    assert.deepEqual(parseChangesetReleases("Fix the gate, which passes on this file.\n"), {
+      releases: [],
       error: "missing or invalid frontmatter",
     });
   });
 
   it("reports a frontmatter block that is never closed", () => {
-    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex": patch\n\nBody.\n'), {
-      packageNames: [],
+    assert.deepEqual(parseChangesetReleases('---\n"@jaybeeuu/agent-cortex": patch\n\nBody.\n'), {
+      releases: [],
       error: "missing or invalid frontmatter",
     });
   });
 
   it("reports a frontmatter line with no colon separator", () => {
-    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex" patch\n---\n\nBody.\n'), {
-      packageNames: [],
+    assert.deepEqual(parseChangesetReleases('---\n"@jaybeeuu/agent-cortex" patch\n---\n\nBody.\n'), {
+      releases: [],
       error: `frontmatter must map package names to version types, but found: "@jaybeeuu/agent-cortex" patch`,
     });
   });
 
   it("reports an empty changeset file", () => {
-    assert.deepEqual(parseChangesetPackages("\n\n"), {
-      packageNames: [],
+    assert.deepEqual(parseChangesetReleases("\n\n"), {
+      releases: [],
       error: "the changeset file is empty",
     });
+  });
+});
+
+describe("evaluateChangesetReleases", () => {
+  it("reports each release whose release type is absent, empty or unknown", () => {
+    const result = evaluateChangesetReleases({
+      changesets: [
+        {
+          file: ".changeset/no-type.md",
+          releases: [
+            { packageName: "@jaybeeuu/agent-cortex", releaseType: "" },
+            { packageName: "@jaybeeuu/plugin", releaseType: "major2" },
+          ],
+        },
+      ],
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      invalid: [
+        { file: ".changeset/no-type.md", packageName: "@jaybeeuu/agent-cortex", releaseType: "" },
+        { file: ".changeset/no-type.md", packageName: "@jaybeeuu/plugin", releaseType: "major2" },
+      ],
+    });
+  });
+
+  it("reports a release whose package name is empty", () => {
+    const result = evaluateChangesetReleases({
+      changesets: [
+        {
+          file: ".changeset/no-name.md",
+          releases: [{ packageName: "", releaseType: "patch" }],
+        },
+      ],
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      invalid: [{ file: ".changeset/no-name.md", packageName: "", releaseType: "patch" }],
+    });
+  });
+
+  it("accepts every release type changesets parses", () => {
+    const releases = ["major", "minor", "patch", "none"].map((releaseType) => ({
+      packageName: "@jaybeeuu/agent-cortex",
+      releaseType,
+    }));
+
+    const result = evaluateChangesetReleases({
+      changesets: [{ file: ".changeset/all-types.md", releases }],
+    });
+
+    assert.deepEqual(result, { ok: true, invalid: [] });
   });
 });
 
 describe("evaluateChangesetPackages", () => {
   it("reports the file and the package when a name is not in the workspace", () => {
     const result = evaluateChangesetPackages({
-      changesets: [{ file: ".changeset/typo.md", packageNames: ["@other/pkg"] }],
+      changesets: [
+        {
+          file: ".changeset/typo.md",
+          releases: [{ packageName: "@other/pkg", releaseType: "patch" }],
+        },
+      ],
       workspacePackages: ["@jaybeeuu/agent-cortex"],
     });
 
@@ -304,7 +374,12 @@ describe("evaluateChangesetPackages", () => {
 
   it("rejects a name that only shares a prefix with a workspace package", () => {
     const result = evaluateChangesetPackages({
-      changesets: [{ file: ".changeset/path.md", packageNames: ["@jaybeeuu/agent-cortex-app"] }],
+      changesets: [
+        {
+          file: ".changeset/path.md",
+          releases: [{ packageName: "@jaybeeuu/agent-cortex-app", releaseType: "patch" }],
+        },
+      ],
       workspacePackages: ["@jaybeeuu/agent-cortex"],
     });
 
@@ -314,8 +389,11 @@ describe("evaluateChangesetPackages", () => {
   it("accepts every package a changeset names when all are in the workspace", () => {
     const result = evaluateChangesetPackages({
       changesets: [
-        { file: ".changeset/one.md", packageNames: ["@jaybeeuu/agent-cortex"] },
-        { file: ".changeset/two.md", packageNames: [] },
+        {
+          file: ".changeset/one.md",
+          releases: [{ packageName: "@jaybeeuu/agent-cortex", releaseType: "patch" }],
+        },
+        { file: ".changeset/two.md", releases: [] },
       ],
       workspacePackages: ["@jaybeeuu/agent-cortex"],
     });
@@ -419,11 +497,60 @@ describe("check-changeset CLI", () => {
     assert.equal(code, 0, stderr);
   });
 
-  it("exits 0 for a patch, a minor, a major and a multi-line body", async (t) => {
+  it("exits 1 naming the changeset file and the package when the release type is missing", async () => {
+    const workspace = await createChangesetWorkspace({
+      "no-type.md": '---\n"@jaybeeuu/agent-cortex":\n---\n\nNo bump.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/no-type.md\n");
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/no-type\.md/);
+    assert.match(stderr, /@jaybeeuu\/agent-cortex/);
+  });
+
+  it("exits 1 naming the changeset file and reporting the empty package name", async () => {
+    const workspace = await createChangesetWorkspace({
+      "no-name.md": '---\n"": patch\n---\n\nA bump for nobody.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/no-name.md\n");
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/no-name\.md/);
+    assert.match(stderr, /declares a release with an empty package name/);  });
+
+  it("exits 1 naming the changeset file and the package when the release type is unknown", async () => {
+    const workspace = await createChangesetWorkspace({
+      "typo-type.md": '---\n"@jaybeeuu/agent-cortex": major2\n---\n\nA misspelled bump.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/typo-type.md\n");
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/typo-type\.md/);
+    assert.match(stderr, /@jaybeeuu\/agent-cortex/);
+    assert.match(stderr, /major2/);
+  });
+
+  it("exits 1 naming the changeset file and the package when the release type is empty", async () => {
+    const workspace = await createChangesetWorkspace({
+      "empty-type.md": '---\n"@jaybeeuu/agent-cortex": ""\n---\n\nAn empty bump.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/empty-type.md\n");
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/empty-type\.md/);
+    assert.match(stderr, /@jaybeeuu\/agent-cortex/);
+  });
+
+  it("exits 0 for every release type changesets parses and a multi-line body", async (t) => {
     const shapes = {
       "patch-bump.md": '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nA patch.\n',
       "minor-bump.md": '---\n"@jaybeeuu/agent-cortex": minor\n---\n\nA minor.\n',
       "major-bump.md": '---\n"@jaybeeuu/agent-cortex": major\n---\n\nA major.\n',
+      "none-bump.md": '---\n"@jaybeeuu/agent-cortex": none\n---\n\nNo bump for this package.\n',
       "multi-line-body.md":
         '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nA body over\nseveral lines: with a colon, and "quotes".\n',
     };

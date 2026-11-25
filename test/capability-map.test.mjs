@@ -1,18 +1,6 @@
 // The capability table: `capabilities` (renamed from `tools`) with a per-harness
 // `{ name, type }` on every row.
 //
-<<<<<<< HEAD
-// This suite exists to prove the rename and the added `type` changed **nothing a
-// harness receives**. The goldens below were captured from token-map.json and the
-// two staged installs (`--output <dir>`, both harnesses) at the commit before the
-// rename (main c63c65a). They are held literally on
-// purpose: any change to a name here changes what a harness receives, which is
-// exactly what a mechanical rename may not do.
-//
-// `idle_watch` (and the tool it adds to ralph's allowlist) is the one deliberate
-// addition since that capture: a capability row added later is recorded here so
-// the guard keeps covering every row rather than being loosened to accommodate it.
-=======
 // Put in place by the rename, which had to change **nothing a harness receives**.
 // The goldens below were captured from token-map.json and the two staged installs
 // (`--output <dir>`, both harnesses) at the commit before the rename (main
@@ -23,7 +11,6 @@
 // other: the four peer rows ralph's runbook names, and the three claude-only
 // worker rows that would otherwise have been dropped when the tool set became one
 // authored file (bead agnt-ctx-sowj.2). A further change here must say why.
->>>>>>> 9fe1685 (feat(agents): one authored tool set per agent, rendered into both harnesses)
 
 import assert from "node:assert/strict";
 import { readdir, readFile, writeFile } from "node:fs/promises";
@@ -115,10 +102,6 @@ const PRE_RENAME_AGENT_TOOLS = {
     pi: ["bash", "read", "edit", "write", "grep", "find", "ask_questions", "task"],
   },
   ralph: {
-<<<<<<< HEAD
-    claude: ["Bash", "Read", "Grep", "Glob", "Skill", "Task", "TaskList", "TaskGet", "TaskStop", "ScheduleWakeup"],
-    pi: ["bash", "read", "grep", "find", "task", "read_agent", "wait_for_agents", "idle_watch"],
-=======
     claude: [
       "Bash",
       "Read",
@@ -146,7 +129,6 @@ const PRE_RENAME_AGENT_TOOLS = {
       "peer_get",
       "peer_await",
     ],
->>>>>>> 9fe1685 (feat(agents): one authored tool set per agent, rendered into both harnesses)
   },
   strategy: {
     claude: ["Bash", "Read", "Grep", "Glob", "AskUserQuestion", "WebFetch", "Skill", "Edit", "Write"],

@@ -849,12 +849,6 @@ describe("installPi — real repo integration", () => {
       const names = result.agents.map((a) => a.name).sort();
       assert.deepEqual(names, ["guppi", "plan", "ralph", "ralph-plan", "strategy"]);
 
-<<<<<<< HEAD
-      // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents", "idle_watch"]
-      const ralph = await readFile(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
-      assert.match(ralph, /name: "agent-cortex:ralph"/);
-      assert.match(ralph, /tools: "bash, read, grep, find, task, read_agent, wait_for_agents, idle_watch"/);
-=======
       // ralph's authored set: bash, view, rg, glob, skill, task, read_agent,
       // wait_for_agents, the four peer rows and the three claude-only worker rows.
       // pi renders every row it has a name for, in authoring order, and omits the
@@ -865,7 +859,6 @@ describe("installPi — real repo integration", () => {
         ralph,
         /tools: "bash, read, grep, find, read, task, read_agent, wait_for_agents, peer_send, peer_list, peer_get, peer_await"/,
       );
->>>>>>> 9fe1685 (feat(agents): one authored tool set per agent, rendered into both harnesses)
       assert.ok(ralph.includes("## Wake mechanism (PI — blocking wait)"), "{{SECTION:wake}} composed from pi/wake.md");
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");

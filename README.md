@@ -85,7 +85,7 @@ temp-dir install plus structural checks:
   extras — `.mcp.json` and `scripts/` — are copied into every install from the `claude-extras/`
   dir, which is their canonical store. See `docs/claude-hooks.md` for the
   extension→hook mapping and the rejections (auto-name, agent-guardrails, skill-stats, subagent, agent-modes,
-  session-clear, session-transition, post-merge-watch).
+  session-clear, session-transition, post-merge-watch, idle-watch).
 
 Edit the sources (`agents/<name>/` composable dirs, `skills/**`,
 `hooks/claude/`, `claude-extras/`, `package.json`), never anything under the materialised
@@ -536,7 +536,7 @@ extension→hook audit.
 
 - Only `session-start` and `notify` had Claude equivalents (both ported to hooks); the other
   pi `extensions/` (auto-name, agent-guardrails, skill-stats, subagent, agent-modes,
-  post-merge-watch) have none — `output-style`
+  post-merge-watch, idle-watch) have none — `output-style`
   reaches Claude through the managed `CLAUDE.md` section instead; the audit and
   rejection rationale live in `docs/claude-hooks.md`.
 - Ralph follow-ups: multi-feature epic branches, and a GitHub-trigger routine to auto-resume

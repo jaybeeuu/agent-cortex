@@ -1,5 +1,293 @@
 # Changelog
 
+## 4.0.0
+
+### Major Changes
+
+- bfddc60: `{{TOOL:x}}` becomes `{{CAPABILITY:x}}`, and `token-map.json`'s `tools` table becomes
+  `capabilities`. Rename every token in a skill or agent your own repository authors: an old
+  `{{TOOL:...}}` token is no longer substituted, so it reaches the harness as literal text and the
+  tool line it belonged to is lost.
+
+  Each capability row now binds `{ "name": …, "type": "tool" | "command" }` per harness, or `null`.
+  A string shorthand is refused at load with an error naming the row, because a name without a kind
+  cannot be checked. A `command` is user-invoked and may appear in prose only, so a tool list that
+  names one is refused with an error naming the canonical key. The kind is per harness, because the
+  same capability differs between them: `flush_window` is a tool on pi and a command on claude.
+
+  The agents this package ships render byte-identically on both harnesses; only the grammar a
+  consumer writes changed.
+
+### Minor Changes
+
+- 07b5abb: Each agent's tool set is now authored once, in `agents/<name>/tools.json`, and rendered into both
+  harnesses from `token-map.json`'s capability table. `tools` leaves `frontmatter.json`, which keeps
+  only harness metadata (`name`, `description`, `model`, `argumentHint`); the validator and the
+  composer reject a `tools` key there and name the file that holds it. `tools.json` also records the
+  skill directories the agent loads, which is the mapping nothing had before.
+
+  This fixes the bug the change started from: ralph's pi list named none of the peer tools its own
+  runbook instructs it to call, so the agent reported them as unavailable, and that reads like a
+  transport fault rather than a missing entry. Ralph now grants `peer_send`, `peer_list`, `peer_get`
+  and `peer_await` on pi and `SendMessage`/`ListAgents` on Claude Code; `plan` gains the two peer
+  capabilities its own skill names, and `ralph-plan` gains the subagent tool its text relies on.
+  `peer_get`, `peer_await`, `task_list`, `task_get` and `task_stop` join the capability table — the
+  last three keep the claude worker-tracking tools the one-for-two list would otherwise have dropped.
+
+  `test/agent-tool-coverage.test.mjs` stages both installs and fails when an agent's text names a
+  `tool` capability its authored set does not grant, naming the agent and the capability. A `command`
+  is never demanded and still fails a render, a `null` mapping is not demanded, and a mixed-kind row
+  (one harness's tool, the other's command) is prose-only because no shared list can grant it. A
+  `null` row in a tool set is now omitted silently on both sides: one set serves two harnesses, so
+  the omission is the normal case, not warning noise.
+
+- 3bd14bf: `boundary` accepts two outcomes and no third. `--decide` takes `stay` or `switch`, and `--decide
+move` is refused with a message naming both, because `move` was the one outcome with no protocol
+  behind it: no checkpoint, no rewind, no resume. Its two real jobs already live elsewhere — `switch`
+  with `--reason` when the queue disagrees, and the **interrupt** protocol when something arrives and
+  you must come back — so the boundary block now asks for `stay` or `switch`, and `BOUNDARY.md`'s
+  outcome table carries two rows plus a pointer to `## Interrupts` for the leave-and-return case.
+
+  The reason requirement is unchanged in force and restated in shape: a decision that contradicts the
+  recommendation needs `--reason`, which is the "skip a higher-scoring bead elsewhere" case, an
+  ordinary `stay` with a reason. The recommendation, both scores and the trail entry are untouched,
+  and a trail entry already written with `move` still reads as it was written.
+
+- e7d0395: Close a settled parent bead from the `post-merge` and `housekeeping` stages. The new
+  `close-settled-parent.mjs` closes a parent only when every child is closed and a closed child records
+  the merge (`lifecycle:feature-pr`, `lifecycle:post-merge` or `stage:post-merge`), reports one verdict
+  per run, and is a no-op on the second call. Nothing closed the parent before, so a bead that followed
+  the documented path ended `in_progress` with every child closed, waiting for a human.
+- a7fb9ad: Every RICE component can now be pinned to its own level table. `## Reach levels`,
+  `## Confidence levels` and `## Effort levels` join `## Impact levels`, and all four read through
+  one table reader, so a fix to the reader reaches every component. Reach levels must be whole
+  numbers of zero or more, confidence levels more than 0 and at most 1, effort levels greater than
+  zero; `## Impact levels` keeps the name, shape and rule it shipped with.
+
+  `validate` reports every defect in every table the strategy carries, in one run, and the digest
+  prints each table beside the impact levels. `rice.mjs score` refuses a value that is not on its
+  component's table before the first `bd` call, names every allowed level and writes nothing; a
+  component with no table stays unconstrained, and `score` says which components those are. A bead
+  already carrying a value a table no longer lists is left alone: the tables gate new scores, never
+  stored ones.
+
+- 832a62b: Ralph's dispatch set now lives on the bead instead of in a file beside the tracker. A dispatch writes
+  a claim and one `dispatched: kind=<stage|decompose|expand> worker=<agent-id>; cwd=…; session=…` trail
+  entry on the bead that owns the work — the chore for a stage, the feature or task bead for a
+  decomposition or expansion worker. Handling the result appends the matching `completed:` record,
+  which is what takes a bead back out of the set while its status stays `in_progress`.
+
+  The in-flight set is therefore a query. The new `skills/workflow/ralph/scripts/inflight.mjs` runs one
+  read-only `bd list -s in_progress` and prints `{ inflight, parents, stalled, unrecorded }`, sorted by
+  id: the workers in flight, their parent features, the ones that are no longer alive (an expired lease
+  or silence past `idle-check.mjs`'s threshold, imported rather than restated), and the in-progress
+  beads no record explains. A completed stage leaves the set by leaving `in_progress`; a worker that
+  dies leaves a bead a human can find.
+
+  Ralph keeps no state file. The wake handle belongs to the mechanism that created it — a blocking wait
+  on PI, the harness's own event on Claude — and an existing `.agent-cortex/ralph/state.json` is ignored
+  rather than migrated: nothing reads it, nothing rewrites it, and no install deletes it.
+
+- e77a77d: Add the `feedback` skill: one finding — a defect noticed while working, a design objection, a missing
+  capability — filed as a local item through the `feedback` command instead of hand-written markdown.
+  The item carries `title`, `date`, `source`, `area` and `severity` and the three sections `What
+happened`, `Evidence` and `Proposed change`; `REFERENCE.md` states that shape once, so the command
+  that renders it and the agent that reads it cannot drift. A finding is never published — no issue, no
+  push, no pull request, no release — and its text never enters a shared artefact. The destination
+  resolves from `AGENT_CORTEX_FEEDBACK_DEST`, then `~/.agent-cortex/feedback.json`, then
+  `~/.agent-cortex/feedback/`, and the skill reports which path was used; a configured path that cannot
+  be used is reported, then the item is filed into the default with both paths named. Counting defect
+  classes across beads stays in `review-report`.
+- a6ed744: `review-defects` now maps each review lens to the `defect:<class>` labels that lens may raise. The
+  class table gains a `Lens` column, so a rejection names the question that failed as well as the
+  class, and a new table states the question each lens owns. A lens with nothing to review closes with
+  its verdict and one line of evidence instead of skipping silently or inventing a finding, and the
+  coordinator merges duplicate findings, cites the lens behind each, and may not overrule a lens to let
+  a bead through. The vocabulary stays closed: a finding no class covers, or no lens's question
+  answers, is `defect:unclassified` plus a bead filed against this skill.
+
+  `review-report` prints a rejections-by-lens section, so a lens that keeps rejecting is visible as the
+  thing to change — the brief that lens applies, or the skill its classes name — rather than the beads
+  it rejected. The grouping is read from the skill's own lens table and class column, so the words a
+  reviewer applies and the counts the report prints cannot drift apart; a class mapped to a lens the
+  skill does not document fails the run rather than leaving every per-lens count silently. A baseline
+  written before these counts existed is reported as not comparable, not read as a row of zeros.
+
+- d414d22: guppi's `## Context lifecycle` now follows the boundary decision instead of ignoring it. A **stay**
+  compacts the window and keeps its recent tail, so the next item on the theme continues from what the
+  last one established without the raw turns that produced it. A **switch** flushes it, carrying
+  nothing into the replacement session, because a summary of the theme just left is the noise the flush
+  exists to remove. An **interrupt** still rewinds, and `## Interrupts` owns that protocol, so the
+  lifecycle cross-references it rather than restating it. A boundary now offers two outcomes — **stay**
+  or **switch** — and the decision is about the next **theme**, so taking a theme's second item because
+  its first is blocked is an ordinary stay.
+
+  Two mixed-kind token rows replace `clear_window`: `compact_window` (Claude Code's `/compact`, and the
+  new `request_compact` tool on pi) and `flush_window` (Claude Code's `/clear`, and the new
+  `request_flush` tool on pi). The new `session-transition` extension supplies both pi tools. Each
+  takes a one-line reason, arms a single-use request and ends the turn, and an `agent_settled` handler
+  performs the transition: `ctx.compact()` for a stay, and a command-dispatched `ctx.newSession()` for
+  a switch, because a session replacement is reachable from a command context only. No armed request
+  is persisted, and one arming is acted on once.
+
+  A flush carries no handoff: the replacement session is seeded with nothing, and its own session start
+  re-establishes the rubric and the queue. The flush's mandatory ask therefore loses its `bd remember`
+  theme memory, which was a handoff by another name; the trail write remains, and it is the whole
+  record.
+
+- 589b276: `skills/workflow/ralph/scripts/idle-check.mjs` is the command a watch polls to answer two questions
+  in one pass: which `execution:afk` beads are ready, and which in-progress beads have gone quiet. It
+  prints one JSON object with `ready` (id and priority) and `stalled` (id, status, quiet minutes and
+  reason) arrays, both sorted by id, so a reordering is not a change and a tick makes no model call.
+
+  A bead is stalled when it is `in_progress` and its last sign of life — heartbeat, claim, its own
+  row, its creation, or the newest trail entry in its notes — is older than the threshold, which
+  defaults to **5 minutes** and is set by `--stall-minutes` or `AGENT_CORTEX_IDLE_STALL_MINUTES`. Five
+  rather than thirty because a worker silent for longer than a few minutes is more likely dead than
+  busy. An expired lease is reported immediately with its own reason, whatever the bead's age.
+
+  Exit `0` printed a digest, `1` could not read the tracker and printed nothing — so a watch stays
+  silent rather than nudging ralph to look at nothing — and `2` was given unusable arguments. The
+  script is read-only, async only, and documented in ralph's `REFERENCE.md` under _Idle Check_.
+
+- c0ad591: Add the `idle-watch` extension. A caller starts `idle_watch` once per session;
+  the tool begins a backing-off cadence and returns at once, so the turn ends and
+  the session stays interactive. Each tick runs one configured check as a child
+  process with a timeout, reduces its JSON to a digest of ids, and sends one
+  message carrying only what changed. An unchanged digest sends nothing, a failed
+  or timed-out tick sends nothing, and nothing about a tick count ends the watch:
+  it is session-scoped, so it runs until the caller stops it or the session shuts
+  down. The extension holds no domain vocabulary: what to read and what to say are
+  the check's business.
+- a8731ef: Stage-chore expansion pours a shipped bd formula instead of driving ~16 `bd` calls. `pipeline.formula.json`
+  sits beside `pipeline.json` and declares the same stages, text, labels and stage-to-stage edges; both
+  installers copy it to the consumer's `<project>/.beads/formulas/pipeline.formula.json` (the filename is
+  the formula id) and say in their output that the copy is an untracked file. A project with no `.beads/`
+  is reported and the install continues.
+
+  `create-chores.mjs` now pours when that formula is present and the parent has no stage chore yet, then
+  reparents each step onto the parent and deletes the inert molecule root, recording the pour on the
+  feature bead. Convergence is rebuilt rather than inherited — a second pour duplicates the tree silently
+  — so an already-expanded parent stays on the per-stage path, and a missing or unusable formula falls
+  back to it. stderr states once which path ran.
+
+  The per-stage path no longer wraps a chore's title and description in `JSON.stringify`, which bd stored
+  verbatim; both paths now write the `pipeline.json` text as written.
+
+- 8c3560f: A pull request is ready only once its branch contains its base. The document playbook gains a
+  _PR readiness_ section: the branch contains `origin/<base>`, every check is green on that head, and
+  `gh pr view <n> --json mergeStateStatus` reads `CLEAN` — all three, or the branch is not ready.
+
+  A behind branch is rebased onto its base, force-pushed with `--force-with-lease`, and its suite is
+  re-run before the report. The ready report quotes the post-rebase `mergeStateStatus` and the head
+  SHA. Rebasing `main`, an `epic/<id>` branch or another worker's branch stays forbidden, and a
+  conflicted rebase is a stop rather than a conflict resolved by merging the base in.
+
+- 93f44f6: ralph runs an idle watch for its whole session. The mechanism already shipped —
+  the `idle-watch` extension on pi and `ScheduleWakeup` on claude — but nothing
+  told ralph to use it, so a stalled worker or ready work waited for a human to
+  speak. The policy now ships as text: ralph starts the watch at startup, before
+  the first dispatch, and it runs until ralph closes. On each wake ralph reads
+  whether the watch is running and arms it again if it is not, runs the idle check
+  once, acts on the ids it printed, inspects a stalled bead before re-dispatching
+  it, and reports watching, last check, nudges and stalled ids beside the bead
+  view. A wake is a re-check and never approval, and it never ends the session.
+
+  The watch has no tick limit: it is session-scoped, so a re-arm repairs a stopped
+  mechanism instead of refilling a spent allowance. Both idle endings — HITL Pause
+  and Shutdown — keep it running and report its status line.
+
+  The mechanism is forked at install time through the `idle_watch` token row and
+  appears in ralph's per-harness tool allowlist. Everything around it is one
+  authored copy that describes only what both mechanisms do, and a session with
+  neither runs the check once and waits for the prompt rather than faking a
+  cadence.
+
+- 7976c1e: The HITL queue gains a fourth multiplier: a per-theme balance read from the beads that already
+  exist. A bead's **theme** is its root ancestor, and `served(theme)` counts how many of the newest
+  `window` closes belong to it, skipping `stage:*` and `lifecycle:*` beads because a pipeline step is
+  not an item. The factor is `decay ^ served(theme)`, so a theme someone just worked in drops and a
+  neglected theme keeps its full weight.
+
+  Both numbers are configuration in an optional `## Theme balance` strategy section —
+  `parseThemeBalance`, `THEME_BALANCE_SECTION` and `DEFAULT_THEME_BALANCE` (`{ window: 5, decay: 0.7 }`)
+  in `strategise`, folded into `validate` and printed in the summary digest beside the deadline
+  factors. `decay: 1` disables the effect, an absent section applies the documented default, and the
+  row prints the theme factor and names the theme when it is not the row's own id. Nothing is stored
+  and nothing is written to a bead: the window is one `bd list --all` read per scope, ordered by
+  `closed_at`, so a stored RICE record never moves.
+
+### Patch Changes
+
+- d2d6ec6: `create-task` now asks for acceptance criteria that name a change's boundaries, not only its happy
+  path. The skill lists six kinds of boundary — a floor and a ceiling, empty versus absent,
+  single-fire versus double-fire, the ordering of two effects, the failure path, and a corrupt input
+  with its conservative default — and says to write the ones this contract has, so `tdd`'s
+  proportionality rule still holds. `REFERENCE.md` gains a criteria template with a function
+  criterion beside four boundary criteria, so an incomplete spec no longer leaves the reviewer to
+  invent the missing cases.
+- 5323164: Document the capability vocabulary: a **capability** is a tool or a command resolved per harness, a
+  **tool** is the only kind a tool list may contain, a **command** is invoked directly and never
+  listed, and a **tool set** is authored once for an agent and rendered into every harness.
+- 57cc592: The Changeset check now resolves every package name a changeset's frontmatter bumps against the
+  pnpm workspace — for the changesets a pull request adds and for the ones it modifies, since
+  `changeset version` reads the whole directory. A name the workspace does not declare fails the gate
+  at the pull request, naming both the changeset file and the package — the shape that let two
+  changesets name
+  `@cryptolibertus/agent-cortex`, pass the gate twice, and break `changeset version` in the Release
+  job on `main` twice. The workspace is read from `pnpm-workspace.yaml` and the packages it declares,
+  without an install, because the gate runs on a bare CI checkout where no package manager is
+  available. Patch, minor, major and multi-line bodies all keep passing.
+- 7d7552b: The Changeset check now fails, naming the changeset file and the reason, when it cannot read the
+  frontmatter of a changeset the pull request adds or modifies. A changeset with no frontmatter block,
+  an unclosed block, a frontmatter line with no `package: bump` separator, or an empty file used to
+  yield no package names, so the workspace check never ran and the gate reported success — while
+  `changeset version` threw on the same file and failed the Release job on `main`, where nothing can
+  fix it forward. Valid changesets keep passing, including one that names several packages.
+- 3850ae0: The Changeset check now reads a changeset's frontmatter as release pairs and rejects every release
+  changesets would refuse before it reads a bump, naming the changeset file and the release. A release
+  type with no value (`"@jaybeeuu/agent-cortex":`), a quoted empty string, and a misspelled type
+  (`major2`) all failed `changeset version` on `main` while the gate passed them, because the gate
+  only read the package name and never the release type it is joined to. The accepted types are
+  `major`, `minor`, `patch` and `none` — the list `@changesets/parse` accepts, held in one exported
+  constant and checked as a grammar rather than as another special case. A release whose package name
+  is empty (`"": patch`, or a bare `: patch` line) failed the same way with `invalid package name in
+frontmatter`, so the pair is checked as a pair: an empty name is rejected beside a bad type, and one
+  predicate covers both.
+- 4b8c6d2: Record the four-lens review decision in `docs/adr/0001-four-lens-review.md`, and start the decision
+  log with its conventions: one record per decision, context and consequences included, alternatives
+  kept, and a superseding decision written as a new record rather than an edit.
+- fc7a812: Document how a parent bead settles and why no other actor closes it. When a feature's PR is merged, the parent bead is closed by the merge path, not by any other actor.
+- 0ec76f7: Pin `AGENT_CORTEX_HOME` to the temp root in the `recommend` and `shortlist` test files. Both read
+  the scope list, which falls back to the user-level `~/.agent-cortex/scopes.json`, so a machine that
+  had registered a personal scope read every fixture workspace twice and failed the suite. The
+  `hitl-queue` and `hitl-queue-scopes` suites already pin it; these two did not.
+- cceddd1: Thread scopes parameter through readQueue, buildShortlist, and buildRecommendation so shortlist and recommend tests do not read the machine's scopes.json. Update both test files to pass a single controlled scope, closing the defect where tests failed on machines with multiple scopes configured.
+- 90e5f1f: Add background watch policy to ralph's agent definition. The always-active idle watch monitors the bead queue and nudges the session when work needs attention, separate from the subagent wake mechanism. Documents watch behavior (cadence, self-healing, notification rules), lifecycle (start, re-arm, stop), and harness-specific implementation for both PI and Claude.
+- c63c65a: The review playbook of `run-pipeline-stage` states where the reviewer's adversarial cases come
+  from: the changed contract — its public surface, its boundaries, and its failure paths — chosen by
+  the reviewer. A case list in the dispatch brief is a hint about where to look, never the set owed,
+  so the orchestrator supplies none. The requirement and test-proof rules are unchanged.
+- d21b2a8: `docs/research/skill-usage-audit.md` records the skill-usage findings that until now lived only in
+  a tracker bead: monthly sessions, skill reads, distinct skills and reads per session from June to
+  mid-November 2026, the weekly peaks, and the caveats on the method. The scan behind them covered
+  668 session transcripts and 231 MB, and it cannot be repeated on demand.
+
+  The note is the baseline for the period before the daily rollups shipped. Those rollups — one
+  record per skill per day, retained 365 days — now answer a trend question directly, but they hold
+  no history from before their install, by design. Nothing in the shipped package changes: the note
+  is repository documentation, not an install asset, and `docs/inspirations.md` lists it beside the
+  other internal research notes.
+
+  It also records the decision the audit asked for. Bounded daily rollups plus a `timeline` view were
+  chosen and landed under `agnt-ctx-rhzo`; a shipped transcript-scan script and a hot/cold pruning
+  split were not taken, and the note states why.
+
+- ff35123: Record the worktree preference: the primary checkout stays on `main`, every branch lives in its own
+  worktree under `.agent-cortex/worktrees/<slug>`, and the worktree is removed once the pull request
+  merges.
+- fdf41ab: Document that the changeset gate parses the frontmatter exactly as `changeset version` does, ensuring consistency between the check and the actual versioning command.
+
 ## 3.1.0
 
 ### Minor Changes

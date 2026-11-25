@@ -22,13 +22,13 @@ Rules:
 
 ### Completion arrival
 
-A completion is **delivered, not observed**: Claude Code re-invokes you automatically when a background worker finishes, with the worker's result inline on the wake-up. **Do not poll and do not `sleep`.** React to completions as they arrive. On each completion, apply the shared handling in the **Event loop** section of agent.md (steps 3–8: correlate the task ID to its entry via `state.json`'s `inflight`, branch on the entry's `kind` — a `stage` entry parses the REPORT and confirms the worker closed its chore, an `expand` entry has no REPORT and no bead to confirm, so confirm the parent now has `stage:*` chores and dispatch its ready `stage:code` — advance the parent, check for newly ready beads, run the shutdown check).
+A completion is **delivered, not observed**: Claude Code re-invokes you automatically when a background worker finishes, with the worker's result inline on the wake-up. **Do not poll and do not `sleep`.** React to completions as they arrive. On each completion, apply the shared handling in the **Event loop** section of agent.md (steps 3–8: find the bead whose newest dispatch record names that task ID — `node skills/workflow/ralph/scripts/inflight.mjs` — and branch on its `kind` — a `stage` worker parses the REPORT and confirms it closed its chore, an expansion worker has no REPORT and no bead to confirm, so confirm the parent now has `stage:*` chores and dispatch its ready `stage:code` — advance the parent, check for newly ready beads, run the shutdown check).
 
 ### Id tracking
 
-Initialize `.agent-cortex/ralph/state.json` as `{ "inflight": [] }` — there is no timer handle to track.
+Nothing to initialise: the wake is the harness's own event, so Claude Code holds the handle and ralph keeps no state file.
 
-- **inflight[].agentId** — the task ID `Task` returned for that worker; it is the key the delivered completion is correlated to its bead, and the equivalent of `TaskGet`'s identifier when you need to inspect one worker.
+- **The dispatch record** — the task ID `Task` returned is written to the dispatched bead as one `dispatched:` trail entry (agent.md, _State: the dispatch set_). It is the key a delivered completion is correlated to its bead, and the equivalent of `TaskGet`'s identifier when you need to inspect one worker.
 - **No trail bookmark** — nothing to track. Progress is read from the bead itself (`bd show <chore-id>`, `bd provenance log <chore-id>`): the worker writes it, so the harness delivers the completion with the result already in hand.
 
 ### Trail reading

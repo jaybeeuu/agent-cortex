@@ -59,10 +59,10 @@ why: "shorter review turnaround for human-gated work." · Current themes
 a row other than the top is a priority challenge — run strategise, never a reorder
 ```
 
-One line, one bead: rank, scope, id, total, title, the four components with both multipliers, the
-due moment where the bead has one, and what answering it unblocks. The rows, their order and every
-number are the queue's own — nothing is re-sorted and nothing is recomputed — so the order is the
-answer and the columns are the evidence for it.
+One line, one bead: rank, scope, id, total, title, the four components with all four multipliers,
+the due moment where the bead has one, and what answering it unblocks. The rows, their order and
+every number are the queue's own — nothing is re-sorted and nothing is recomputed — so the order is
+the answer and the columns are the evidence for it.
 
 **The count is `--top`, and its default is 10.** Fewer eligible rows than the count says `the list
 is complete`; more states how many were omitted and the command that shows them, so no row leaves

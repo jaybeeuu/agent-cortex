@@ -9,7 +9,7 @@
 //
 // The queue ranks; this script names one row of that ranking to a session that has to decide,
 // and shows the first ten rows to a session that has to challenge it.
-// It adds no arithmetic: the total, the four components, both multipliers and the dependent
+// It adds no arithmetic: the total, the four components, every multiplier and the dependent
 // list are the ones `buildQueue` already derived, so there is one definition of the score and
 // no second copy of it to drift. The one thing it adds is the justification — a quote from the
 // committed strategy, which must appear in that file. A quote the file does not contain is
@@ -421,7 +421,7 @@ function topNote(row) {
 
 /**
  * Render one answer. A recommendation is five lines: which bead and its total, its title, the
- * score components and both multipliers, what answering it unblocks, and the strategy line
+ * score components and every multiplier, what answering it unblocks, and the strategy line
  * that justifies it. Every other state leads with `No recommendation` and names the condition
  * and the one step that clears it.
  * @param {Recommendation} recommendation @returns {string}
@@ -605,7 +605,7 @@ const USAGE = `Usage: node recommend.mjs recommend [--why "<strategy line>"] [--
 
   shortlist   Print the queue's first ${SHORTLIST_DEFAULT_TOP} eligible beads as one ranked list, one line per
               bead, with the top row marked as the recommendation. Each line carries the rank,
-              scope, id, total, title, the four score components, both multipliers, the due
+              scope, id, total, title, the four score components, every multiplier, the due
               moment where one exists, and what answering it unblocks. Fewer eligible beads
               than asked for says the list is complete; more states how many were omitted and
               the command that shows them. The rows, their order and every number are the

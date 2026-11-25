@@ -23,16 +23,18 @@
  * @property {string} [parent]       The bead that owns this one, as `bd children` reads it.
  * @property {string} [dueAt]        The `--due` moment, as bd writes it: a UTC ISO string.
  * @property {string} [deferUntil]   The `--defer` wake moment, in the same form.
+ * @property {string} [closedAt]     The moment it closed, as bd writes it; meaningful when closed.
  */
 
 /**
  * A `bd` runner over an in-memory graph, plus the record of what it was asked to write. It
  * reproduces the shapes the queue and the boundary read: `list -l execution:hitl --json` with
  * closed beads already excluded (bd's default filter) and the `due_at` / `defer_until` fields bd
- * writes, `dep list <id> --direction up --json` naming the beads that depend on it,
- * `dep list <id> --direction down --json` naming the beads it waits on (its own `dependsOn`,
- * `relatesTo` and `parent` edges, each tagged with its type, as bd reports them), and
- * `children <id> --json`. A `note` call appends to `state.notes` instead of writing a tracker.
+ * writes, `list --all --json` with every bead and its `closed_at`, `dep list <id> --direction up
+ * --json` naming the beads that depend on it, `dep list <id> --direction down --json` naming the
+ * beads it waits on (its own `dependsOn`, `relatesTo` and `parent` edges, each tagged with its
+ * type, as bd reports them), and `children <id> --json`. A `note` call appends to `state.notes`
+ * instead of writing a tracker.
  * @param {GraphBead[]} beads
  * @returns {{ bd: (args: string[]) => Promise<string>, state: { notes: { id: string, text: string }[], calls: string[][] } }}
  */
@@ -68,6 +70,20 @@ export function fakeQueueBd(beads) {
       );
     }
     if (args[0] === 'list') {
+      // `--all` is the history read: every bead, closed ones included, with the moment it
+      // closed. The plain read is the HITL backlog, which bd already reports unclosed.
+      if (args.includes('--all')) {
+        return JSON.stringify(
+          beads.map((bead) => ({
+            id: bead.id,
+            title: bead.title,
+            status: bead.status ?? 'open',
+            labels: bead.labels ?? [],
+            ...(bead.parent === undefined ? {} : { parent: bead.parent }),
+            ...(bead.closedAt === undefined ? {} : { closed_at: bead.closedAt }),
+          })),
+        );
+      }
       return JSON.stringify(
         beads
           .filter((bead) => (bead.labels ?? []).includes('execution:hitl'))
@@ -77,6 +93,7 @@ export function fakeQueueBd(beads) {
             title: bead.title,
             status: bead.status ?? 'open',
             labels: bead.labels ?? [],
+            ...(bead.parent === undefined ? {} : { parent: bead.parent }),
             ...(bead.dueAt === undefined ? {} : { due_at: bead.dueAt }),
             ...(bead.deferUntil === undefined ? {} : { defer_until: bead.deferUntil }),
             ...(bead.rice === undefined ? {} : { metadata: { rice: bead.rice } }),

@@ -189,6 +189,34 @@ uses it.
 | more than 7d | 1 |
 | overdue | 8 |
 
+## Theme balance
+
+<!--
+What a theme's own recent closes do to its beads' rank in the HITL queue. The queue reads the
+closed beads the tracker already holds, takes the newest `window` closes that are real items,
+and counts how many of them belong to each bead's **theme** — its root ancestor, not its
+immediate parent. A theme served n times in that window keeps `decay ** n` of its weight, so
+a theme someone just worked in drops and a neglected theme keeps all of it. Nothing is stored
+and nothing is written to a bead: the effect is recomputed from the tracker on every run.
+
+A close counts only when it is a real item. Beads labelled `stage:*` or `lifecycle:*` are
+pipeline steps, so they are skipped; otherwise one task's nine stage chores would penalise
+its theme for being finished. A close is ordered by its close moment, never by its last
+update, so a note appended afterwards does not reorder the window.
+
+Write `window` as a whole number of 1 or more, and `decay` as more than 0 and at most 1. A
+table that is present needs both rows, and `validate` names a missing row, an unknown setting
+and a value outside its range; it reports every defect in one run. `decay: 1` makes the
+factor 1 for every theme, which turns balancing off without deleting the section. A strategy
+with no section falls back to the queue's documented default, so the rows below are the
+shipped values: edit a number, then `bump`, and the next queue run uses it.
+-->
+
+| Setting | Value |
+|---|---|
+| window | 5 |
+| decay | 0.7 |
+
 ## Change log
 
 <!--

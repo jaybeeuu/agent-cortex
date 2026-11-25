@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
-import { fakeBd } from './helpers/fake-bd-queue.mjs';
+import { fakeBd, fakeQueueBd } from './helpers/fake-bd-queue.mjs';
 import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import {
   buildQueue,
@@ -26,6 +26,9 @@ import {
   formatExcluded,
   queueTotal,
   renderQueue,
+  rootTheme,
+  servedThemes,
+  themeMultiplier,
 } from '../skills/workflow/hitl-queue/scripts/queue.mjs';
 
 const tempRoot = createTempRoot('hitl-queue-');
@@ -65,17 +68,23 @@ function rice(overrides = {}) {
  * @param {string} workspace
  * @param {number} [version]
  * @param {[string, string][]} [tiers]  Deadline-tier rows; omitted for no table at all.
+ * @param {[string, string][]} [balance]  Theme-balance rows; omitted for no section at all.
  * @returns {Promise<string>} the strategy path
  */
-async function writeStrategy(workspace, version = 2, tiers) {
+async function writeStrategy(workspace, version = 2, tiers, balance) {
   const sections = REQUIRED_SECTIONS.map((title) => `## ${title}\n\n- the answer for ${title}.\n`);
   const table = tiers === undefined
     ? ''
     : `\n## Deadline tiers\n\n| Remaining | Factor |\n|---|---|\n${tiers.map(([when, factor]) => `| ${when} | ${factor} |`).join('\n')}\n`;
+  const balanceTable = balance === undefined
+    ? ''
+    : `\n## Theme balance\n\n| Setting | Value |\n|---|---|\n${balance
+        .map(([setting, value]) => `| ${setting} | ${value} |`)
+        .join('\n')}\n`;
   const file = join(workspace, 'strategy.md');
   await writeFile(
     file,
-    `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** 2026-11-14\n\n${sections.join('\n')}${table}`,
+    `# Prioritisation strategy\n\n- **Version:** ${version}\n- **Updated:** 2026-11-14\n\n${sections.join('\n')}${table}${balanceTable}`,
     'utf8',
   );
   return file;
@@ -98,11 +107,12 @@ async function markWorkspace(workspace) {
  * @param {boolean} [options.includeIdeas]
  * @param {number} [options.now]        The moment the deadlines are measured from.
  * @param {[string, string][]} [options.tiers]  A deadline-tier table for the strategy.
+ * @param {[string, string][]} [options.balance]  A theme-balance table for the strategy.
  */
-async function queue({ beads, strategyVersion, includeIdeas, now, tiers }) {
+async function queue({ beads, strategyVersion, includeIdeas, now, tiers, balance }) {
   const workspace = await tempRoot.createWorkspace();
   await markWorkspace(workspace);
-  const file = await writeStrategy(workspace, strategyVersion, tiers);
+  const file = await writeStrategy(workspace, strategyVersion, tiers, balance);
   return await buildQueue({
     bd: fakeBd(beads),
     cwd: workspace,
@@ -491,6 +501,203 @@ describe('a queue with no scores', () => {
   });
 });
 
+describe('the theme balance', () => {
+  /**
+   * A bead that has already closed, as the tracker reports it in a history read.
+   * @param {string} id @param {string} closedAt @param {Partial<GraphBead>} [extra]
+   * @returns {GraphBead}
+   */
+  const closed = (id, closedAt, extra = {}) => ({
+    id,
+    title: id,
+    status: 'closed',
+    closedAt,
+    labels: ['execution:afk'],
+    ...extra,
+  });
+
+  /** One decimal place, as the row prints it. @param {number} value */
+  const round2 = (value) => Math.round(value * 100) / 100;
+
+  it('resolves a bead’s theme as its root ancestor, not its parent', () => {
+    const parents = new Map([
+      ['tst-chore', 'tst-task'],
+      ['tst-task', 'tst-epic'],
+    ]);
+
+    assert.equal(rootTheme('tst-chore', parents), 'tst-epic');
+    assert.equal(rootTheme('tst-task', parents), 'tst-epic');
+    assert.equal(rootTheme('tst-epic', parents), 'tst-epic');
+    assert.equal(rootTheme('tst-loose', parents), 'tst-loose', 'a bead with no parent is its own theme');
+  });
+
+  it('stops a parent cycle instead of looping, and names a bead inside it', () => {
+    const parents = new Map([
+      ['tst-x', 'tst-y'],
+      ['tst-y', 'tst-x'],
+    ]);
+
+    assert.equal(rootTheme('tst-x', parents), 'tst-y');
+  });
+
+  it('counts the newest window closes per theme, and nothing older', () => {
+    const history = [
+      { id: 'tst-a3', theme: 'tst-a' },
+      { id: 'tst-b1', theme: 'tst-b' },
+      { id: 'tst-a2', theme: 'tst-a' },
+      { id: 'tst-a1', theme: 'tst-a' },
+    ];
+
+    assert.deepEqual([...servedThemes(history, 3).entries()], [['tst-a', 2], ['tst-b', 1]]);
+    assert.deepEqual([...servedThemes(history, 1).entries()], [['tst-a', 1]]);
+    assert.equal(servedThemes(history, 5).get('tst-a'), 3);
+    assert.equal(servedThemes([], 5).size, 0);
+  });
+
+  it('compounds the decay, and decay 1 makes every factor 1', () => {
+    assert.equal(themeMultiplier(0, 0.7), 1);
+    assert.equal(round2(themeMultiplier(1, 0.7)), 0.7);
+    assert.equal(round2(themeMultiplier(2, 0.7)), 0.49);
+    assert.equal(themeMultiplier(3, 1), 1);
+    assert.equal(themeMultiplier(9, 1), 1);
+  });
+
+  it('scales the total by the theme factor, so a served theme drops', () => {
+    assert.equal(queueTotal({ score: 4.2, dependents: 0, inProgress: false, theme: 0.7 }), 2.9);
+    assert.equal(queueTotal({ score: 4.2, dependents: 0, inProgress: false, theme: 1 }), 4.2);
+  });
+
+  it('discounts a theme that closed inside the window and leaves a neglected theme alone', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-busy', title: 'Busy theme item', labels: ['execution:hitl'], rice: rice() },
+        { id: 'tst-quiet', title: 'Neglected theme item', labels: ['execution:hitl'], rice: rice() },
+        closed('tst-busy.1', '2026-11-20T09:00:00Z', { parent: 'tst-busy' }),
+      ],
+    });
+
+    const busy = rowFor(report, 'tst-busy');
+    const quiet = rowFor(report, 'tst-quiet');
+    assert.equal(busy.theme, 'tst-busy');
+    assert.equal(busy.served, 1);
+    assert.equal(round2(busy.themeMultiplier), 0.7);
+    assert.equal(quiet.served, 0);
+    assert.equal(quiet.themeMultiplier, 1);
+    assert.ok(
+      /** @type {number} */ (busy.total) < /** @type {number} */ (quiet.total),
+      'the served theme must rank below the untouched one',
+    );
+    assert.deepEqual(report.rows.map((row) => row.id), ['tst-quiet', 'tst-busy']);
+  });
+
+  it('counts a close against its root ancestor, so a grandchild serves the epic', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-epic', title: 'The epic', labels: ['execution:hitl'], rice: rice() },
+        { id: 'tst-task', title: 'The task', labels: ['execution:afk'], parent: 'tst-epic' },
+        closed('tst-deep', '2026-11-20T09:00:00Z', { parent: 'tst-task' }),
+      ],
+      balance: [['window', '5'], ['decay', '0.5']],
+    });
+
+    const epic = rowFor(report, 'tst-epic');
+    assert.equal(epic.theme, 'tst-epic');
+    assert.equal(epic.served, 1);
+    assert.equal(epic.themeMultiplier, 0.5);
+  });
+
+  it('does not count a stage or lifecycle close as a service of the theme', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-a', title: 'The item', labels: ['execution:hitl'], rice: rice() },
+        closed('tst-a.1', '2026-11-20T09:00:00Z', { parent: 'tst-a', labels: ['execution:afk', 'stage:code'] }),
+        closed('tst-a.2', '2026-11-20T09:01:00Z', { parent: 'tst-a', labels: ['execution:afk', 'stage:review'] }),
+        closed('tst-a.3', '2026-11-20T09:02:00Z', { parent: 'tst-a', labels: ['execution:afk', 'lifecycle:housekeeping'] }),
+      ],
+    });
+
+    const row = rowFor(report, 'tst-a');
+    assert.equal(row.served, 0);
+    assert.equal(row.themeMultiplier, 1);
+  });
+
+  it('counts only the newest window closes, so one serve costs one decay', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-a', title: 'The item', labels: ['execution:hitl'], rice: rice() },
+        closed('tst-a.9', '2026-11-20T09:00:00Z', { parent: 'tst-a' }),
+        closed('tst-a.8', '2026-11-19T09:00:00Z', { parent: 'tst-a' }),
+      ],
+      balance: [['window', '1'], ['decay', '0.7']],
+    });
+
+    assert.equal(rowFor(report, 'tst-a').served, 1);
+    assert.equal(round2(rowFor(report, 'tst-a').themeMultiplier), 0.7);
+  });
+
+  it('leaves the order exactly as it was at decay 1', async () => {
+    const beads = [
+      { id: 'tst-a', title: 'Served theme', labels: ['execution:hitl'], rice: rice({ score: 2 }) },
+      { id: 'tst-b', title: 'Untouched theme', labels: ['execution:hitl'], rice: rice({ score: 3 }) },
+      closed('tst-a.9', '2026-11-20T09:00:00Z', { parent: 'tst-a' }),
+    ];
+
+    const off = await queue({ beads, balance: [['window', '5'], ['decay', '1']] });
+    assert.equal(rowFor(off, 'tst-a').themeMultiplier, 1);
+    assert.deepEqual(off.rows.map((row) => row.id), ['tst-b', 'tst-a']);
+    assert.deepEqual(off.rows.map((row) => row.total), [3, 2]);
+
+    // The same graph under the shipped balance drops the served theme, so the factor is what
+    // moved the number rather than anything else on the row.
+    const on = await queue({ beads });
+    assert.equal(rowFor(on, 'tst-a').served, 1);
+    assert.ok(/** @type {number} */ (rowFor(on, 'tst-a').total) < 2);
+    assert.equal(rowFor(on, 'tst-b').total, 3);
+  });
+
+  it('prints the theme factor on every row and names the theme only when it is another bead', async () => {
+    const report = await queue({
+      beads: [
+        { id: 'tst-task', title: 'The task item', labels: ['execution:hitl'], rice: rice(), parent: 'tst-epic' },
+        { id: 'tst-epic', title: 'The epic', labels: ['execution:hitl'], rice: rice({ score: 1 }) },
+        closed('tst-sibling', '2026-11-20T09:00:00Z', { parent: 'tst-epic' }),
+      ],
+      balance: [['window', '5'], ['decay', '0.5']],
+    });
+
+    const text = renderQueue(report);
+    assert.match(text, /×0\.50 theme tst-epic \(1 served\)/);
+    assert.match(text, /×0\.50 theme \(1 served\)/, 'a row whose root is itself does not repeat its own id');
+  });
+
+  it('prints factor 1 for an untouched theme, so the total stays explicable', async () => {
+    const report = await queue({
+      beads: [{ id: 'tst-a', title: 'The item', labels: ['execution:hitl'], rice: rice() }],
+    });
+
+    assert.match(renderQueue(report), /×1\.00 theme \(untouched\)/);
+  });
+
+  it('reads the history with one --all call per scope and writes nothing to a bead', async () => {
+    const { bd, state } = fakeQueueBd([
+      { id: 'tst-a', title: 'The item', labels: ['execution:hitl'], rice: rice() },
+      closed('tst-a.1', '2026-11-20T09:00:00Z', { parent: 'tst-a' }),
+    ]);
+    const workspace = await tempRoot.createWorkspace();
+    await markWorkspace(workspace);
+    const file = await writeStrategy(workspace);
+
+    const report = await buildQueue({ bd, cwd: workspace, file });
+
+    assert.ok(
+      state.calls.some((args) => args.join(' ') === 'list --all --json --limit 0'),
+      `no history read among: ${state.calls.map((args) => args.join(' ')).join(' | ')}`,
+    );
+    assert.deepEqual(state.calls.filter((args) => !['list', 'dep', 'children'].includes(args[0])), []);
+    assert.deepEqual(rowFor(report, 'tst-a').rice, rice(), 'the stored RICE record is unchanged by a run');
+  });
+});
+
 describe('what the queue leaves out', () => {
   it('leaves ideas out by default, counts them, and ranks them when asked', async () => {
     const beads = [
@@ -609,12 +816,12 @@ describe('what the queue leaves out', () => {
       renderQueue(released),
       [
         'HITL decision queue · 2 ranked, 0 unscored · 1 scope · strategy v2',
-        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last',
+        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier × theme balance · ties break on rice, then scope, then id · unscored last',
         'today · no daily note — no personal scope is configured, so there is no personal strategy to read a "daily:" line from',
         '',
-        '1  code  tst-a  7.1  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.69 dependents(1)  ×1.0',
+        '1  code  tst-a  7.1  rice 4.2 = R4 · I3 · C0.7 · E2  ×1.69 dependents(1)  ×1.0  ×1.00 theme (untouched)',
         '    Decide the storage shape — unblocks tst-1',
-        '2  code  tst-b  3.0  rice 2.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.5 in-progress',
+        '2  code  tst-b  3.0  rice 2.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.5 in-progress  ×1.00 theme (untouched)',
         '    Decide the vendor — unblocks nothing',
         '',
       ].join('\n'),
@@ -651,12 +858,12 @@ describe('the emitted format', () => {
       renderQueue(report),
       [
         'HITL decision queue · 2 ranked, 1 unscored · 1 scope · strategy v2',
-        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier · ties break on rice, then scope, then id · unscored last',
+        'total = rice × (1 + ln(1 + dependents)) × 1.5 in-progress × deadline tier × theme balance · ties break on rice, then scope, then id · unscored last',
         'today · no daily note — no personal scope is configured, so there is no personal strategy to read a "daily:" line from',
         '',
-        '1  code  tst-a  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0',
+        '1  code  tst-a  10.0  rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0  ×1.00 theme (untouched)',
         '    Ship the queue — unblocks tst-1, tst-2, tst-3',
-        '2  code  tst-b   2.0  rice 2.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0',
+        '2  code  tst-b   2.0  rice 2.0 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.0  ×1.00 theme (untouched)',
         '    Decide the API shape — unblocks nothing',
         '-  code  tst-c     —  unscored — no rice metadata (score it with score-bead)',
         '    Decide the vendor — unblocks nothing',

@@ -138,7 +138,7 @@ describe('one recommendation, from the queue and the strategy', () => {
       [
         'Recommendation · tst-a · total 10.0 · strategy v2',
         'Ship the decision queue',
-        'rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0',
+        'rice 4.2 = R4 · I3 · C0.7 · E2  ×2.39 dependents(3)  ×1.0  ×1.00 theme (untouched)',
         'unblocks tst-c, tst-d, tst-e',
         `why: "${THEME}" · Current themes`,
         '',
@@ -163,7 +163,7 @@ describe('one recommendation, from the queue and the strategy', () => {
     const rendered = await recommend({ beads });
 
     assert.match(rendered, /^Recommendation · tst-a · total 9\.9 · strategy v2$/m);
-    assert.match(rendered, /^rice 9\.9 = R4 · I3 · C0\.7 · E2 {2}×1\.00 dependents\(0\) {2}×1\.0$/m);
+    assert.match(rendered, /^rice 9\.9 = R4 · I3 · C0\.7 · E2 {2}×1\.00 dependents\(0\) {2}×1\.0 {2}×1\.00 theme \(untouched\)$/m);
     assert.doesNotMatch(rendered, /4\.2/);
   });
 
@@ -175,7 +175,7 @@ describe('one recommendation, from the queue and the strategy', () => {
       [
         'Recommendation · tst-b · total 6.3 · strategy v2',
         'Decide the API shape',
-        'rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.5 in-progress',
+        'rice 4.2 = R4 · I3 · C0.7 · E2  ×1.00 dependents(0)  ×1.5 in-progress  ×1.00 theme (untouched)',
         'unblocks nothing',
         `why: "${THEME}" · Current themes`,
         'queue top: tst-a · total 10.0 · Ship the decision queue',

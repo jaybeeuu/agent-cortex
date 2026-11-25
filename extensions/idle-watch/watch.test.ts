@@ -244,6 +244,28 @@ describe("IdleWatch cadence", () => {
     assert.equal(watch.active, true);
   });
 
+  it("sends nothing when a run is killed, even though its exit code is zero", async () => {
+    // pi's ExecResult covers abort and output over maxBuffer as well as timeout,
+    // so a killed run need not carry a non-zero code: `killed` is the only signal.
+    const { watch, step, deliveries } = createWatch({
+      runs: [
+        tick(0, result(["agnt-ctx-1"])),
+        { code: 0, stdout: result(["agnt-ctx-2"]), stderr: "", killed: true },
+        tick(0, result(["agnt-ctx-1"])),
+      ],
+    });
+
+    watch.start();
+    await step.fire();
+    await step.fire();
+
+    assert.equal(deliveries.length, 1, "a killed run sends nothing, whatever its output says");
+    assert.equal(watch.active, true, "a killed run does not end the watch");
+
+    await step.fire();
+    assert.equal(deliveries.length, 1, "the killed run left the previous digest in place");
+  });
+
   it("sends nothing when the check runner throws, and reports it once", async () => {
     const step = createStepScheduler();
     const deliveries: NudgeMessage[] = [];

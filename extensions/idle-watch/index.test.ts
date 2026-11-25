@@ -12,6 +12,7 @@ import idleWatchExtension, {
   resolveScript,
 } from "./index.ts";
 import type { CommandInvocation, TickRun } from "./watch.ts";
+import { DEFAULT_INTERVAL_MS } from "./watch.ts";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -55,13 +56,20 @@ interface ToolOutcome {
   terminate?: boolean;
 }
 
+/** One message the extension handed to `pi.sendMessage`. */
+interface SentMessage {
+  customType: string;
+  content: string | Array<{ type?: string; text?: string }>;
+  options: unknown;
+}
+
 /** An event handler as `pi.on` recorded it, called through `Reflect.apply`. */
 type RecordedHandler = (...args: never[]) => unknown;
 
 interface FakePi {
   pi: ExtensionAPI;
   tools: RegisteredTool[];
-  sent: Array<{ customType: string; options: unknown }>;
+  sent: SentMessage[];
   execs: ExecCall[];
   notifications: Array<{ message: string; level: string | undefined }>;
   /** Fire every handler pi registered for `event`. */
@@ -74,7 +82,7 @@ interface FakePi {
  */
 function createFakePi(run: TickRun = { code: 0, stdout: "{}", stderr: "", killed: false }): FakePi {
   const tools: RegisteredTool[] = [];
-  const sent: Array<{ customType: string; options: unknown }> = [];
+  const sent: SentMessage[] = [];
   const execs: ExecCall[] = [];
   const notifications: Array<{ message: string; level: string | undefined }> = [];
   const handlers = new Map<string, RecordedHandler[]>();
@@ -105,7 +113,7 @@ function createFakePi(run: TickRun = { code: 0, stdout: "{}", stderr: "", killed
     registerVirtualModel: () => {},
     getMcpServers: () => [],
     sendMessage: (message, options) => {
-      sent.push({ customType: message.customType, options });
+      sent.push({ customType: message.customType, content: message.content, options });
     },
     sendUserMessage: () => {},
     appendEntry: () => {},
@@ -146,9 +154,11 @@ function createContext(): WatchContext {
   return { cwd: "/projects/one", ui: { notify: () => {} } };
 }
 
-/** The words one tool result carries. */
-function textOf(outcome: ToolOutcome): string {
-  return outcome.content.map((block) => block.text ?? "").join("");
+/** The words one tool result or sent message carries. */
+function textOf(carrier: { content: string | Array<{ type?: string; text?: string }> }): string {
+  return typeof carrier.content === "string"
+    ? carrier.content
+    : carrier.content.map((block) => block.text ?? "").join("");
 }
 
 /** The one tool this extension registers. */
@@ -258,6 +268,32 @@ describe("idle_watch tool", () => {
         { watching: (outcome.details as { watching: boolean }).watching },
         { watching: true },
       );
+    });
+  });
+
+  it("delivers one follow-up that starts a turn, naming the changed ids, when a tick finds a change", async (t) => {
+    // The watch schedules on the real timer at its documented base interval, so
+    // the test owns the clock: advancing it runs one tick, and one setImmediate
+    // settles the tick's promise chain. Nothing sleeps and nothing polls.
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
+    await withCheckEnv("/checks/idle.mjs", async () => {
+      const fake = createFakePi({
+        code: 0,
+        stdout: '{"ready":[{"id":"agnt-ctx-1"}]}',
+        stderr: "",
+        killed: false,
+      });
+      idleWatchExtension(fake.pi);
+
+      await call(fake, { action: "start" });
+      t.mock.timers.tick(DEFAULT_INTERVAL_MS);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.equal(fake.execs.length, 1, "the tick ran the configured check");
+      assert.equal(fake.sent.length, 1, "the change reaches the session once, through pi");
+      assert.deepEqual(fake.sent[0].options, { deliverAs: "followUp", triggerTurn: true });
+      assert.match(textOf(fake.sent[0]), /ready:agnt-ctx-1/);
     });
   });
 

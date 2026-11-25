@@ -7,17 +7,22 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PUBLISH_COMMAND,
   NO_PUBLISH_COMMAND,
+  changedChangesetPaths,
   evaluateChangesetGate,
+  evaluateChangesetPackages,
+  parseChangesetPackages,
   parseNameStatus,
   resolvePublishCommand,
 } from "../scripts/lib/release-gates.mjs";
+import { readWorkspacePackageNames } from "../scripts/lib/workspace-packages.mjs";
+import { createTempRoot } from "./helpers/temp-root.mjs";
 
 const CHECK_CHANGESET = fileURLToPath(new URL("../scripts/check-changeset.mjs", import.meta.url));
 const RESOLVE_PUBLISH = fileURLToPath(
@@ -27,12 +32,14 @@ const MANIFEST = fileURLToPath(new URL("../package.json", import.meta.url));
 
 /** Run a script with the given argv/env, resolving with its exit code and streams.
  * @param {string} script
- * @param {{ args?: string[], env?: Record<string, string | undefined>, stdin?: string }} [options]
+ * @param {{ args?: string[], env?: Record<string, string | undefined>, stdin?: string,
+ *   cwd?: string }} [options]
  * @returns {Promise<{ code: number | null, stdout: string, stderr: string }>} */
-function runScript(script, { args = [], env = {}, stdin = "" } = {}) {
+function runScript(script, { args = [], env = {}, stdin = "", cwd } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, ...args], {
       env: { ...process.env, ...env },
+      cwd,
     });
     let stdout = "";
     let stderr = "";
@@ -66,6 +73,26 @@ describe("parseNameStatus", () => {
 
   it("returns no changes for empty output", () => {
     assert.deepEqual(parseNameStatus(""), []);
+  });
+});
+
+describe("changedChangesetPaths", () => {
+  it("counts a changeset the PR adds, modifies or renames, and skips a deleted one", () => {
+    const changes = parseNameStatus(
+      [
+        "A\t.changeset/added.md",
+        "M\t.changeset/edited.md",
+        "R087\t.changeset/old.md\t.changeset/renamed.md",
+        "D\t.changeset/gone.md",
+        "M\tpackage.json",
+      ].join("\n"),
+    );
+
+    assert.deepEqual(changedChangesetPaths(changes), [
+      ".changeset/added.md",
+      ".changeset/edited.md",
+      ".changeset/renamed.md",
+    ]);
   });
 });
 
@@ -149,6 +176,46 @@ describe("evaluateChangesetGate", () => {
   });
 });
 
+/** One temp root per file, removed by the helper's `after()` hook however the run ends. */
+const tempRoot = createTempRoot("release-gates-");
+
+/** Materialise a checkout the gate can run against: a pnpm workspace with a root
+ * package, one member package, and the given changesets under `.changeset/`.
+ * @param {Record<string, string>} changesets  file name (inside `.changeset/`) -> contents
+ * @returns {Promise<string>} the workspace root, usable as the CLI's working directory
+ */
+async function createChangesetWorkspace(changesets) {
+  const root = await tempRoot.createWorkspace();
+  await mkdir(join(root, ".changeset"), { recursive: true });
+  await mkdir(join(root, "packages", "app"), { recursive: true });
+  await writeFile(join(root, "pnpm-workspace.yaml"), 'packages:\n  - "."\n  - "packages/*"\n');
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({ name: "@jaybeeuu/agent-cortex" }),
+  );
+  await writeFile(
+    join(root, "packages", "app", "package.json"),
+    JSON.stringify({ name: "@jaybeeuu/agent-cortex-app" }),
+  );
+  for (const [file, content] of Object.entries(changesets)) {
+    await writeFile(join(root, ".changeset", file), content);
+  }
+  return root;
+}
+
+/** Run the gate against a workspace, the way CI does: the diff for one pull request on stdin.
+ * @param {string} workspace
+ * @param {string} stdin
+ * @returns {Promise<{ code: number | null, stdout: string, stderr: string }>}
+ */
+async function runChangesetCheck(workspace, stdin) {
+  return await runScript(CHECK_CHANGESET, {
+    cwd: workspace,
+    stdin,
+    env: { PR_LABELS: "[]", PR_HEAD_REF: "fix/changeset-gate", PR_ACTOR: "jaybeeuu" },
+  });
+}
+
 describe("resolvePublishCommand", () => {
   it("publishes by default when the merged PR has no labels", () => {
     assert.equal(resolvePublishCommand([]), PUBLISH_COMMAND);
@@ -167,7 +234,145 @@ describe("resolvePublishCommand", () => {
   });
 });
 
+describe("parseChangesetPackages", () => {
+  it("reads a quoted scoped name with its bump type", () => {
+    assert.deepEqual(parseChangesetPackages('---\n"@jaybeeuu/agent-cortex": minor\n---\n\nBody.\n'), [
+      "@jaybeeuu/agent-cortex",
+    ]);
+  });
+
+  it("reads unquoted names and several packages from one changeset", () => {
+    const content = "---\n@jaybeeuu/agent-cortex: patch\n'@jaybeeuu/plugin': major\n---\n\nBody.\n";
+
+    assert.deepEqual(parseChangesetPackages(content), [
+      "@jaybeeuu/agent-cortex",
+      "@jaybeeuu/plugin",
+    ]);
+  });
+
+  it("ignores the body, including lines that contain a colon", () => {
+    const content = '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nRelease job: it fails on\nmain: see below.\n';
+
+    assert.deepEqual(parseChangesetPackages(content), ["@jaybeeuu/agent-cortex"]);
+  });
+});
+
+describe("evaluateChangesetPackages", () => {
+  it("reports the file and the package when a name is not in the workspace", () => {
+    const result = evaluateChangesetPackages({
+      changesets: [{ file: ".changeset/typo.md", packageNames: ["@other/pkg"] }],
+      workspacePackages: ["@jaybeeuu/agent-cortex"],
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      unknown: [{ file: ".changeset/typo.md", packageName: "@other/pkg" }],
+    });
+  });
+
+  it("rejects a name that only shares a prefix with a workspace package", () => {
+    const result = evaluateChangesetPackages({
+      changesets: [{ file: ".changeset/path.md", packageNames: ["@jaybeeuu/agent-cortex-app"] }],
+      workspacePackages: ["@jaybeeuu/agent-cortex"],
+    });
+
+    assert.equal(result.ok, false);
+  });
+
+  it("accepts every package a changeset names when all are in the workspace", () => {
+    const result = evaluateChangesetPackages({
+      changesets: [
+        { file: ".changeset/one.md", packageNames: ["@jaybeeuu/agent-cortex"] },
+        { file: ".changeset/two.md", packageNames: [] },
+      ],
+      workspacePackages: ["@jaybeeuu/agent-cortex"],
+    });
+
+    assert.deepEqual(result, { ok: true, unknown: [] });
+  });
+});
+
+describe("readWorkspacePackageNames", () => {
+  it("reads the root package plus every package a `dir/*` workspace entry covers", async () => {
+    const workspace = await createChangesetWorkspace({});
+
+    const names = await readWorkspacePackageNames(workspace);
+
+    assert.deepEqual(names.slice().sort(), ["@jaybeeuu/agent-cortex", "@jaybeeuu/agent-cortex-app"]);
+  });
+});
+
 describe("check-changeset CLI", () => {
+  it("exits 1 naming the changeset file and the package it names when the package is not in the workspace", async () => {
+    const workspace = await createChangesetWorkspace({
+      "typo-scope.md": '---\n"@cryptolibertus/agent-cortex": patch\n---\n\nFix the gate.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/typo-scope.md\n");
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/typo-scope\.md/);
+    assert.match(stderr, /@cryptolibertus\/agent-cortex/);
+  });
+
+  it("exits 0 for a changeset naming a package declared in a workspace member", async () => {
+    const workspace = await createChangesetWorkspace({
+      "member-bump.md": '---\n"@jaybeeuu/agent-cortex-app": minor\n---\n\nMember change.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(workspace, "A\t.changeset/member-bump.md\n");
+
+    assert.equal(code, 0, stderr);
+  });
+
+  it("exits 1 when the PR modifies a changeset that names a package outside the workspace", async () => {
+    const workspace = await createChangesetWorkspace({
+      "added.md": '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nNew change.\n',
+      "edited.md": '---\n"@other/pkg": patch\n---\n\nRepaired change.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(
+      workspace,
+      "A\t.changeset/added.md\nM\t.changeset/edited.md\n",
+    );
+
+    assert.equal(code, 1);
+    assert.match(stderr, /\.changeset\/edited\.md/);
+    assert.match(stderr, /@other\/pkg/);
+  });
+
+  it("exits 0 when the PR adds a changeset and deletes another", async () => {
+    const workspace = await createChangesetWorkspace({
+      "added.md": '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nNew change.\n',
+    });
+
+    const { code, stderr } = await runChangesetCheck(
+      workspace,
+      "A\t.changeset/added.md\nD\t.changeset/gone.md\n",
+    );
+
+    assert.equal(code, 0, stderr);
+  });
+
+  it("exits 0 for a patch, a minor, a major and a multi-line body", async (t) => {
+    const shapes = {
+      "patch-bump.md": '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nA patch.\n',
+      "minor-bump.md": '---\n"@jaybeeuu/agent-cortex": minor\n---\n\nA minor.\n',
+      "major-bump.md": '---\n"@jaybeeuu/agent-cortex": major\n---\n\nA major.\n',
+      "multi-line-body.md":
+        '---\n"@jaybeeuu/agent-cortex": patch\n---\n\nA body over\nseveral lines: with a colon, and "quotes".\n',
+    };
+    const workspace = await createChangesetWorkspace(shapes);
+
+    for (const file of Object.keys(shapes)) {
+      await t.test(file, async () => {
+        const { code, stderr } = await runChangesetCheck(workspace, `A\t.changeset/${file}\n`);
+
+        assert.equal(code, 0, stderr);
+      });
+    }
+  });
+
   it("exits 0 for a no-publish PR with no diff", async () => {
     const { code } = await runScript(CHECK_CHANGESET, {
       env: { PR_LABELS: '["no-publish"]', PR_HEAD_REF: "chore/bump-pnpm", PR_ACTOR: "jaybeeuu" },

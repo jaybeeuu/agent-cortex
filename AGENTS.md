@@ -69,7 +69,9 @@ agent-cortex/
 
 Use `pnpm changeset` for all version bumps. Never edit versions manually.
 `package.json` and `CHANGELOG.md` stay in lockstep automatically.
-See the `style-versioning` skill for the full workflow.
+Every package a changeset names must match a workspace `name` exactly, scope included:
+the Changeset check resolves those names and fails the PR naming the file and the
+package. See the `style-versioning` skill for the full workflow.
 
 ## Changelog
 

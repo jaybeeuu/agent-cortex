@@ -190,6 +190,9 @@ After initialization, Ralph waits for background agents to complete. Completions
    - If `pending-gates.mjs` reports a non-empty `pendingHumanAction` (an unblocked `lifecycle:feature-pr` gate, or an epic tagged `awaiting-epic-pr-merge`; gates still parked behind their own pipeline do not count — REFERENCE.md, _Gate predicate_), proceed to **HITL Pause** (see below).
    - Otherwise, proceed to **Shutdown** (see below).
 
+   Both endings arm the idle watch before they stop (see _Idle watch_): the queue is empty and nothing
+   is in flight, which is exactly the arming condition.
+
 ### Cap backstop (read-only)
 
 Ralph never builds remediation and never closes a leaf bead — the worker that failed a stage did both (see _Remediation Children_ in the `run-pipeline-stage` skill). Ralph only guards retry blow-up, and only reads:
@@ -199,6 +202,68 @@ fix_rounds=$(bd children <parent-id> --json | grep -c '"stage:fix"')
 ```
 
 Read `maxFixRounds` from the `create-task` skill's `pipeline.json`. If `fix_rounds >= maxFixRounds`, create nothing and block the parent: `bd update <parent-id> --status blocked --append-notes "[<ISO-timestamp>] max fix rounds reached (<fix_rounds>/<maxFixRounds>)"`. Record it for the shutdown summary.
+
+---
+
+## Idle watch
+
+An empty queue is not the end of ralph's work. It is the moment work can become ready while nobody is
+watching, and one mechanism closes that gap: **{{CAPABILITY:idle_watch}}** resumes this session when
+the idle check's answer changes, so ralph runs the check again and acts on what it says.
+
+### When to arm it
+
+Arm it only when both conditions hold: `bd ready -l execution:afk` returns nothing dispatchable, and
+`.agent-cortex/ralph/state.json`'s `inflight` holds no stage, decomposition or expansion worker. That
+is the same pair the event loop already reads for **HITL Pause** and **Shutdown**, so the arming rule
+needs no third condition.
+
+- **Never at startup.** At startup the query decides what ralph works on.
+- **Never while a bead is dispatchable.** Dispatch is the clock whenever there is work.
+- **Never while a worker is in flight.** The wake mechanism already reports that worker.
+- **Both idle endings arm it**, because both satisfy the condition.
+
+### What a wake means
+
+A wake carries the change only: the ids that arrived, the ids that left, and the tick's number and
+time. It never carries the answer, so ralph acts in this order:
+
+1. Run the check once for the full result (REFERENCE.md, _Idle Check_). A check that exits non-zero
+   has no answer: report the failure, arm again, and dispatch nothing — never dispatch from the ids a
+   message names.
+2. Take each ready id through the readiness test the event loop already runs (REFERENCE.md, _The
+   in-flight invariant_): dispatch a stage chore, decompose a childless feature, expand a chore-less
+   task, and hold a bead an open `lifecycle:feature-pr` gate blocks. Run the cap backstop and the
+   pending-gate hold again — a wake is a re-check, never an allowance.
+3. Inspect each stalled id before touching it. `bd show <id>` and `bd provenance log <id>` separate a
+   dead worker from a quiet one, and only a bead whose worker is gone is re-dispatched.
+4. When the acting is done, arm again: the queue is empty once more, or it is not and dispatch
+   continues.
+
+A resume is a cue and never approval. Nothing about a merge gate, the in-flight cap or a bead's own
+dependencies changes because ralph woke up, and a wake that arrives while a worker runs changes
+nothing about that worker.
+
+### The status line
+
+Report three facts beside the bead view, and count the nudges from the messages themselves, so the
+line never depends on the mechanism having a report of its own:
+
+| Field | Meaning |
+| --- | --- |
+| Watching | whether a watch is armed now |
+| Last check | the time of the most recent tick |
+| Nudges | how many wakes this session has received |
+
+A watch is bounded, and its budget refills when ralph arms it again, so a spent watch stops silently
+and re-arming after work is what restores it. The status line is how a spent watch is noticed.
+
+### A session with no such mechanism
+
+Ralph still works, one prompt later. When the queue empties it runs the check once, reports the ready
+and stalled ids it printed, and waits for the user. It never fakes a cadence with `sleep`, a
+background shell timer or a poll loop: a session whose clock is the prompt is a supported session,
+not a broken one.
 
 ---
 
@@ -223,7 +288,8 @@ Proceed here when no agent work is in flight (no stage, decomposition or expansi
 
    When you've completed the above actions, prompt me to continue.
    ```
-5. **Stop completely.** Stop the wake mechanism exactly as the wake section describes — whatever killing it takes, and nothing more. Do **not** restart or schedule anything. Do **not** start any background processes. Do **not** check bead status again. Do **not** continue the event loop. Output **nothing further** after the summary above. Ralph is now fully idle — it must not act again until the user explicitly re-prompts.
+5. **Arm the idle watch** and include its status line (see _Idle watch_): the queue is empty and nothing is in flight, which is the arming condition. Arming does not weaken the pause — a nudge only tells ralph that the queue or a bead changed, and the next wake re-runs the readiness test and the pending-gate hold before it dispatches anything.
+6. **Stop completely.** Stop the completion wake mechanism exactly as the wake section describes — whatever stopping that takes, and nothing more. The idle watch is not that mechanism, so it stays armed. Do **not** start any background process. Do **not** check bead status again. Do **not** continue the event loop. Output **nothing further** after the summary above. A nudge, or the user, brings ralph back.
 
 ---
 
@@ -276,6 +342,9 @@ Run `bd show <id>` for full details on each.
 ```
 All beads complete.
 ```
+8. **Arm the idle watch** and report its status line (see _Idle watch_), whatever the summary said. The
+   queue is empty and nothing is in flight now, and the watch is what tells ralph that this changed —
+   a bead that becomes ready while the session is idle resumes it instead of waiting for a prompt.
 
 ---
 

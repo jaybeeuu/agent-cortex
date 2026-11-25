@@ -148,6 +148,15 @@ async function listFiles(dir) {
   return out;
 }
 
+/** Set the idle watch's forked name aside, so a comparison of the harness-neutral
+ * agent body is not tied to which mechanism each harness supplies. The fork
+ * itself is proved in `ralph-idle-watch-render.test.mjs`.
+ * @param {string} text
+ * @returns {string} */
+function normaliseIdleWatch(text) {
+  return text.replace(/\bidle_watch\b|\bScheduleWakeup\b/g, "<IDLE_WATCH>");
+}
+
 /** A minimal install root whose token-map.json holds `capabilities` and whose
  * single agent authors `tools` in its claude frontmatter — the fixture seam for
  * the installer's translation of an authored tool list through the claude
@@ -254,7 +263,7 @@ describe("install claude", () => {
     // provenance header + composed Claude frontmatter
     assert.match(ralph, /^---\n# GENERATED from agents\/ralph\/ /);
     assert.match(ralph, /\nname: ralph\n/);
-    assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, TaskList, TaskGet, TaskStop\n/);
+    assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, TaskList, TaskGet, TaskStop, ScheduleWakeup\n/);
     // the harness-neutral body arrives with its wake section resolved
     assert.match(ralph, /^## Wake mechanism \(Claude Code — event-driven\)$/m);
     assert.doesNotMatch(ralph, /\{\{(CAPABILITY|PATH|SECTION):/);
@@ -270,7 +279,7 @@ describe("install claude", () => {
       stripped[harness] = body.replace(wake, "").trim();
     }
 
-    assert.equal(stripped.claude, stripped.pi, "claude shares the same body, not a divergent native copy");
+    assert.equal(normaliseIdleWatch(stripped.claude), normaliseIdleWatch(stripped.pi), "claude shares the same body, not a divergent native copy");
     // Guard the strip itself: the wake sections are harness-specific, so they
     // must genuinely differ — otherwise the equality above proves less.
     const wakes = await Promise.all(

@@ -391,13 +391,13 @@ Proceed here when no agent work is in flight (no stage, decomposition or expansi
 
    When you've completed the above, prompt me to continue.
    ```
-5. **Stop completely.** Stop the wake mechanism as the wake section describes. Do not continue the event loop. Wait for the user to re-prompt before doing any further work.
+5. **Arm the idle watch**, then **stop completely.** Arming it is what tells ralph that a human closed a gate: the queue is empty and nothing is in flight, which is the arming condition (_Idle Watch_ below). Stopping means stopping the completion wake mechanism as the wake section describes, and not continuing the event loop; the idle watch is not that mechanism, so it stays armed. A wake re-runs the readiness test and the `pending-gates.mjs` hold before ralph dispatches anything, so arming weakens no gate. Wait for a wake or the user's re-prompt before doing any further work.
 
 ---
 
 ## Idle Check
 
-The idle watch has two halves: a command that answers one question, and a waiting mechanism that decides when to ask and what to do with the answer. This section documents only the command. It holds no cadence, starts no session, and says nothing about what to do with its result — arming the watch, comparing digests and nudging ralph all belong to the waiting mechanism, which is a separate component.
+The idle watch has two halves: a command that answers one question, and a waiting mechanism that decides when to ask and what to do with the answer. This section documents only the command. It holds no cadence, starts no session, and says nothing about what to do with its result — arming the watch, comparing digests and nudging ralph all belong to the waiting mechanism, and the policy that uses it is in _Idle Watch_ below.
 
 That command is `skills/workflow/ralph/scripts/idle-check.mjs`, the watch's documented default, and it resolves package-relative like every other shipped script:
 ```bash
@@ -417,6 +417,75 @@ It prints one JSON object and nothing else on stdout. A tick is one bounded, rea
 - **Exit codes are the contract.** `0` printed a digest, `1` could not read the tracker — nothing is printed, so the watch stays silent instead of nudging ralph to look at nothing — and `2` was given unusable arguments. `BD_PATH` overrides the binary, and `--limit <rows>` bounds each query (default 500).
 - **Each read is bounded in wall clock and in bytes.** A `bd` that never answers ends the read after `AGENT_CORTEX_IDLE_BD_TIMEOUT_MS` (default 30000 ms) and a `bd` that answers past `AGENT_CORTEX_IDLE_BD_MAX_BUFFER_BYTES` (default 16777216 bytes, 16 MiB) is refused. Both end in exit `1`, because a tick whose command never returns has no exit code at all, and the watch would go silent forever rather than stay silent for one tick. The byte ceiling is raised rather than left at the child-process default because the in-progress query cannot ask for `--brief`: the stall rule needs each row's notes, and a busy tracker returns tens of kilobytes per row. An unusable value for either bound keeps its default, so a typo cannot blind the watch.
 - **Read-only.** The two queries are `bd ready` and `bd list -s in_progress`, run one after the other, and the script writes nothing: no bead field, no note, no lease.
+
+---
+
+## Idle Watch
+
+_Idle Check_ above documents the command. This section documents the policy that uses it: when ralph
+arms a wait, what a wake means, and what ralph reports. The mechanism's name is forked per harness at
+install time, so everything here describes only what every mechanism does — the session resumes, the
+check runs again, and only a changed answer resumes it — and never a call shape.
+
+### When ralph arms it
+
+Arm it only when both conditions hold: `bd ready -l execution:afk` returns nothing dispatchable, and
+`state.json`'s `inflight` holds no stage, decomposition or expansion worker. Those are the same two
+predicates the event loop already reads for HITL Pause and Shutdown, so the rule needs no third
+condition and no new query.
+
+- **Never at startup.** Startup's query decides what ralph works on; only an empty answer leads
+  anywhere near a watch.
+- **Never while a bead is dispatchable.** Dispatch is the clock whenever there is work, and a watch
+  armed over a non-empty queue would hide work that is waiting now.
+- **Never while a worker is in flight.** The completion wake mechanism already reports that worker.
+
+### What a wake means
+
+A wake carries the change, never the answer: the ids that arrived, the ids that left, the check's path
+and project, and the tick's number and time. So a wake always begins with one more run of the check,
+and the ready and stalled lists are read from that run.
+
+- **A check that exits non-zero has no answer.** Exit `1` printed nothing and `2` means unusable
+  arguments. Report the failure and arm again; dispatch nothing, because the ids a message names are
+  not the full result.
+- **Ready ids** take the readiness test the event loop already applies: a stage chore is dispatched, a
+  childless feature is decomposed, a chore-less task is expanded, and a bead an open
+  `lifecycle:feature-pr` gate blocks is left alone. The cap backstop and the pending-gate hold are read
+  again, because a wake is a re-check and not an allowance.
+- **Stalled ids are inspected before they are touched.** `bd show <id>` and `bd provenance log <id>`
+  separate a dead worker — an expired lease, or no fresh trail entry — from a quiet one, whose
+  heartbeat or newest note is inside the threshold. Only the dead one is re-dispatched, and never a
+  bead ralph has not read.
+- **A wake that arrives while a worker is in flight** changes nothing about that worker: the in-flight
+  cap and the ordinary completion handling decide, exactly as they do after a completion.
+
+### After acting, arm again
+
+A watch is bounded in ticks rather than in patience, so a long quiet stretch spends it and it stops
+silently. Arming again is what refills it. Ralph therefore arms again after it acts on a wake, and
+again at every idle ending whose queue is still empty. The status line is how a watch that has spent
+itself is noticed instead of leaving ralph silently idle.
+
+### The status line
+
+Three facts belong beside the bead view:
+
+| Field | Meaning |
+| --- | --- |
+| Watching | whether a watch is armed now |
+| Last check | the time of the most recent tick |
+| Nudges | how many wakes this session has received |
+
+The nudge count is counted from the messages ralph receives, so the line is reportable on a harness
+whose mechanism has no status report of its own.
+
+### No mechanism in this session
+
+Ralph works the same, one prompt later: when the queue empties it runs the check once, reports the
+ready and stalled ids it printed, and waits for the user. It never fakes a cadence with `sleep`, a
+background shell timer or a poll loop. A session whose clock is the prompt is a supported session, not
+a broken one, and the dispatch rules, the gates and the cap do not change.
 
 ---
 
@@ -450,6 +519,9 @@ When nothing is in flight AND nothing is dispatchable — `inflight` holds no en
    ```
    All beads complete.
    ```
+7. **Arm the idle watch** and report its status line (_Idle Watch_ above). "All beads complete." is
+   complete now, and the watch is what tells ralph that this changed: a bead that becomes ready while
+   the session is idle resumes ralph instead of waiting for a prompt.
 
 ---
 

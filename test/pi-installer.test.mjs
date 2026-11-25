@@ -840,10 +840,10 @@ describe("installPi — real repo integration", () => {
       const names = result.agents.map((a) => a.name).sort();
       assert.deepEqual(names, ["guppi", "plan", "ralph", "ralph-plan", "strategy"]);
 
-      // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents"]
+      // ralph pi frontmatter: ["bash", "view", "rg", "glob", "task", "read_agent", "wait_for_agents", "idle_watch"]
       const ralph = await readFile(join(fx.output, "agents", "ralph.agent.md"), "utf-8");
       assert.match(ralph, /name: "agent-cortex:ralph"/);
-      assert.match(ralph, /tools: "bash, read, grep, find, task, read_agent, wait_for_agents"/);
+      assert.match(ralph, /tools: "bash, read, grep, find, task, read_agent, wait_for_agents, idle_watch"/);
       assert.ok(ralph.includes("## Wake mechanism (PI — blocking wait)"), "{{SECTION:wake}} composed from pi/wake.md");
       const bodyTokens = ralph.split("---\n").slice(2).join("---\n");
       assert.ok(!/{{/.test(bodyTokens), "no literal tokens in ralph body");

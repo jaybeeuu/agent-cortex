@@ -19,7 +19,7 @@ import { promisify } from 'node:util';
 
 import { createTempRoot } from './helpers/temp-root.mjs';
 import { fakeBd, fakeQueueBd } from './helpers/fake-bd-queue.mjs';
-import { REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
+import { DEFAULT_THEME_BALANCE, REQUIRED_SECTIONS } from '../skills/workflow/strategise/scripts/strategy.mjs';
 import {
   buildQueue,
   dependentMultiplier,
@@ -39,7 +39,8 @@ const execFileAsync = promisify(execFile);
 process.env.AGENT_CORTEX_HOME = await tempRoot.createWorkspace();
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SCRIPT = join(REPO_ROOT, 'skills', 'workflow', 'hitl-queue', 'scripts', 'queue.mjs');
+const SKILL_DIR = join(REPO_ROOT, 'skills', 'workflow', 'hitl-queue');
+const SCRIPT = join(SKILL_DIR, 'scripts', 'queue.mjs');
 const HELPER = join(REPO_ROOT, 'test', 'helpers', 'fake-bd-queue.mjs');
 
 /**
@@ -693,6 +694,38 @@ describe('the theme balance', () => {
     });
 
     assert.match(renderQueue(report), /×1\.00 theme \(untouched\)/);
+  });
+
+  it('states each worked example of the factor as the value the formula computes', async () => {
+    // The docs show a computed number — `×0.49 theme bd-20 (2 served)` — so a reader checks the
+    // formula against a figure they can re-derive. Comparing each example with
+    // `themeMultiplier` instead of a literal is the point: the literal is what drifted, because a
+    // hand-written sample is not arithmetic. Both examples are computed at the shipped default
+    // decay that SKILL.md documents, so a doc that changes decay must say so here too.
+    const docs = ['SKILL.md', 'RECOMMEND.md', 'BOUNDARY.md', 'DEADLINES.md'];
+    const served = /×(\d\.\d{2}) theme (?:[\w.-]+ )?\((\d+) served\)/g;
+    const examples = [];
+    for (const doc of docs) {
+      const text = await readFile(join(SKILL_DIR, doc), 'utf8');
+      for (const [, factor, count] of text.matchAll(served)) {
+        if (factor === undefined || count === undefined) continue;
+        examples.push({ doc, factor, served: Number(count) });
+      }
+    }
+
+    assert.deepEqual(
+      examples.map((example) => example.doc),
+      ['SKILL.md', 'RECOMMEND.md'],
+      'this test pins the two docs that carry a served example; a new one belongs in the list',
+    );
+    for (const { doc, factor, served: count } of examples) {
+      const computed = themeMultiplier(count, DEFAULT_THEME_BALANCE.decay).toFixed(2);
+      assert.equal(
+        factor,
+        computed,
+        `${doc} prints ×${factor} for ${count} served, but decay ${DEFAULT_THEME_BALANCE.decay} computes ×${computed}`,
+      );
+    }
   });
 
   it('reads the history with one --all call per scope and writes nothing to a bead', async () => {

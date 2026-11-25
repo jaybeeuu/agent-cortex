@@ -82,3 +82,24 @@ Nothing to kill: stopping means simply **stop calling `wait_for_agents`**. There
 - **Never** re-dispatch an agent that is merely STILL RUNNING — wait again on the same ID.
 - **Never** start `sleep` / background timer loops for completion detection on PI — `wait_for_agents` replaces them, and there is nothing to kill on HITL Pause.
 - **Never** post empty poll updates to chat — only surface what a bead actually reports.
+
+## Background idle watch (PI)
+
+The background watch monitors the bead queue and nudges the session when work needs attention. On PI, this uses the `idle_watch` tool from the `@cryptolibertus/pi-peer` package.
+
+### Arming the watch
+
+Call `idle_watch` with:
+- `command`: The check script to run on each tick. Default: `skills/workflow/ralph/scripts/idle-check.mjs` (resolved relative to the package root, or use `AGENT_CORTEX_IDLE_WATCH_CHECK` env var).
+- `interval`: Milliseconds between ticks. Default: 300000 (5 minutes).
+- `stall`: Milliseconds of silence before the watch considers a bead stalled. Default: 900000 (15 minutes).
+
+The watch is session-scoped: it ticks for as long as the session is alive, with no fixed tick count or deadline. Work that becomes ready an hour into a quiet session is exactly what the watch is for.
+
+### Re-arming
+
+On each wake (whether from a subagent completion or an idle nudge), check if the watch is armed. If not, arm it again. This is self-healing: if the watch is lost, it comes back.
+
+### Stopping
+
+During shutdown or HITL pause, stop the watch. The watch dies with the session — there is no persistent daemon.

@@ -158,6 +158,36 @@ Update `.agent-cortex/ralph/state.json` after **every** agent completion or disp
 
 ---
 
+## Background Watch (always-active nudge)
+
+Ralph runs a background watch that monitors the bead queue and nudges the session when work needs attention. This is separate from the subagent wake mechanism — it's about being proactive when the queue is idle or work is stuck.
+
+### Watch behavior
+
+- **Wake cadence**: every 3-5 minutes (default 5 min)
+- **Self-healing**: Ralph re-arms the watch on each wake if it finds it is not armed
+- **On each wake**, check:
+  - `bd ready -l execution:afk` — the ready set
+  - All in-progress stage chores (`bd list --status in_progress -l stage:*`)
+- **Notify Ralph** when:
+  - The ready set has changed (new beads ready, or beads no longer ready)
+  - Any bead has been `in_progress` > 15 minutes with no prior nudge
+  - Any in-progress worker has exceeded its budget or vanished (no heartbeat)
+- **Deduplication**: Don't nudge about the same bead twice until its state changes
+- **Status reporting**: Include watch status in the status summary (armed/disarmed, last wake time, next wake time)
+
+### Watch lifecycle
+
+- **Start**: Arm the watch during initialization (after initial dispatch)
+- **Re-arm**: On each wake, if the watch is not armed, arm it again (self-healing)
+- **Stop**: During shutdown or HITL pause, stop the watch
+
+### Harness-specific implementation
+
+The exact spawn/arm/stop calls are harness-specific. See the wake section below for the harness-specific details.
+
+The policy above is harness-agnostic; the wake files describe the harness-specific mechanisms.
+
 {{SECTION:wake}}
 
 ---

@@ -263,7 +263,7 @@ describe("install claude", () => {
     // provenance header + composed Claude frontmatter
     assert.match(ralph, /^---\n# GENERATED from agents\/ralph\/ /);
     assert.match(ralph, /\nname: ralph\n/);
-    assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, SendMessage, ListAgents, TaskList, TaskGet, TaskStop\n/);
+    assert.match(ralph, /\ntools: Bash, Read, Grep, Glob, Skill, Task, SendMessage, ListAgents, TaskList, TaskGet, TaskStop, ScheduleWakeup\n/);
     // the harness-neutral body arrives with its wake section resolved
     assert.match(ralph, /^## Wake mechanism \(Claude Code — event-driven\)$/m);
     assert.doesNotMatch(ralph, /\{\{(CAPABILITY|PATH|SECTION):/);

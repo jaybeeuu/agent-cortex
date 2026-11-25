@@ -4,8 +4,15 @@
 // override. The fake reproduces the real behaviours the tests depend on —
 // `bd create --parent` label inheritance (unless `--no-inherit-labels` is
 // passed), `bd create --validate` section enforcement, `bd children --json`
-// listing, and `bd dep add` state — and records every created bead, dependency
-// and dep-add call to a JSON state file the test can read back.
+// listing, `bd dep add` state, `bd mol pour` of a formula file under
+// `<cwd>/.beads/formulas/`, `bd update --parent/--priority/--add-label`,
+// `bd delete --force` and `bd note` — and records every created bead,
+// dependency, dep-add, update, delete, note and raw call to a JSON state file
+// the test can read back.
+//
+// The pour models the real command's two hard edges: `{{var}}` substitution
+// happens in titles and descriptions but NOT in a step's `labels`, and the whole
+// molecule is created in one call without a `dep add` per edge.
 //
 // State lives in `state.json` next to the binary; the test seeds it with the
 // parent bead and reads the children back after the script runs. Written async
@@ -16,12 +23,15 @@ import { join } from "node:path";
 
 const FAKE_BD_SCRIPT = [
   "#!/usr/bin/env node",
-  "// Stateful fake for `bd` (test/helpers/fake-bd.mjs): create, children, dep add.",
+  "// Stateful fake for `bd` (test/helpers/fake-bd.mjs): create, children, dep add, on top of",
+  "// show, mol pour, update, delete and note.",
   "const fs = require('node:fs/promises');",
+  "const path = require('node:path');",
   "",
   "const stateFile = process.env.FAKE_BD_STATE;",
-  "const VALUE_FLAGS = new Set(['--type', '--description', '--priority', '--labels', '--parent']);",
-  "const BOOL_FLAGS = new Set(['--silent', '--no-inherit-labels', '--validate']);",
+  "const VALUE_FLAGS = new Set(['--type', '--description', '--priority', '--parent', '-p']);",
+  "const LIST_FLAGS = new Set(['--labels', '--add-label']);",
+  "const BOOL_FLAGS = new Set(['--silent', '--no-inherit-labels', '--validate', '--force', '--json']);",
   "",
   "(async () => {",
   "  const argv = process.argv.slice(2);",
@@ -29,7 +39,22 @@ const FAKE_BD_SCRIPT = [
   "  state.deps ??= [];",
   "  state.depAdds ??= [];",
   "  state.calls ??= [];",
+  "  state.updates ??= [];",
+  "  state.deleted ??= [];",
+  "  state.notes ??= [];",
+  "  state.pours ??= [];",
   "  state.calls.push(argv.join(' '));",
+  "  const save = () => fs.writeFile(stateFile, JSON.stringify(state));",
+  "",
+  "  state.failuresSeen ??= {};",
+  "  const occurrence = (state.failuresSeen[argv[0]] = (state.failuresSeen[argv[0]] ?? 0) + 1);",
+  "  if ((state.failures ?? []).some((rule) => rule.command === argv[0] && (rule.occurrence === undefined || rule.occurrence === occurrence))) {",
+  "    // A failure rule the test asked for: the command refuses the way a real bd refuses",
+  "    // — a non-zero exit with its reason on stderr, and no state written by this call.",
+  "    await save();",
+  "    console.error('bd ' + argv[0] + ' failed: the fake is configured to fail call ' + occurrence);",
+  "    process.exit(1);",
+  "  }",
   "",
   "  if (argv[0] === 'list') {",
   "    // `bd list -l <label> --json`: every bead carrying all the given labels.",
@@ -38,7 +63,7 @@ const FAKE_BD_SCRIPT = [
   "      if (argv[i] === '-l' || argv[i] === '--label') labels.push(argv[++i]);",
   "    }",
   "    const beads = state.beads.filter((bead) => labels.every((label) => bead.labels.includes(label)));",
-  "    await fs.writeFile(stateFile, JSON.stringify(state));",
+  "    await save();",
   "    process.stdout.write(JSON.stringify(beads, null, 2) + '\\n');",
   "    return;",
   "  }",
@@ -54,6 +79,26 @@ const FAKE_BD_SCRIPT = [
   "    return;",
   "  }",
   "",
+  "  if (argv[0] === 'show') {",
+  "    const bead = state.beads.find((candidate) => candidate.id === argv[1]);",
+  "    if (!bead) {",
+  "      console.error('Issue ' + argv[1] + ' not found');",
+  "      process.exit(1);",
+  "    }",
+  "    await save();",
+  "    process.stdout.write(JSON.stringify([bead], null, 2) + '\\n');",
+  "    return;",
+  "  }",
+  "",
+  "  if (argv[0] === 'note') {",
+  "    // note <id> <text...> — append-only, like the real command.",
+  "    const id = argv[1];",
+  "    const text = argv.slice(2).join(' ');",
+  "    state.notes.push({ id, text });",
+  "    await save();",
+  "    return;",
+  "  }",
+  "",
   "  if (argv[0] === 'dep') {",
   "    // dep add <issue-id> <depends-on-id> [--type <type>]",
   "    const issueId = argv[2];",
@@ -64,21 +109,105 @@ const FAKE_BD_SCRIPT = [
   "    // Real bd treats a repeated dep as a no-op, so a converged re-run must still succeed.",
   "    const known = state.deps.some((dep) => dep.issue_id === issueId && dep.depends_on_id === dependsOnId);",
   "    if (!known) state.deps.push({ issue_id: issueId, depends_on_id: dependsOnId, type });",
-  "    await fs.writeFile(stateFile, JSON.stringify(state));",
+  "    await save();",
+  "    return;",
+  "  }",
+  "",
+  "  if (argv[0] === 'delete') {",
+  "    // delete <id> [<id>...] --force: the bead and every dependency naming it.",
+  "    const ids = argv.slice(1).filter((arg) => !arg.startsWith('-'));",
+  "    for (const id of ids) {",
+  "      if (!state.beads.some((bead) => bead.id === id)) {",
+  "        console.error('Issue ' + id + ' not found');",
+  "        process.exit(1);",
+  "      }",
+  "      state.beads = state.beads.filter((bead) => bead.id !== id);",
+  "      state.deps = state.deps.filter((dep) => dep.issue_id !== id && dep.depends_on_id !== id);",
+  "      state.deleted.push(id);",
+  "    }",
+  "    await save();",
+  "    return;",
+  "  }",
+  "",
+  "  if (argv[0] === 'update') {",
+  "    // update <id> [--parent <p>] [--priority <n>] [--add-label <l>...]",
+  "    const id = argv[1];",
+  "    const bead = state.beads.find((candidate) => candidate.id === id);",
+  "    if (!bead) {",
+  "      console.error('Issue ' + id + ' not found');",
+  "      process.exit(1);",
+  "    }",
+  "    state.updates.push(argv.join(' '));",
+  "    for (let i = 2; i < argv.length; i++) {",
+  "      const arg = argv[i];",
+  "      if (arg === '--parent') bead.parent = argv[++i];",
+  "      else if (arg === '--priority' || arg === '-p') bead.priority = Number(argv[++i]);",
+  "      else if (arg === '--add-label') {",
+  "        const label = argv[++i];",
+  "        if (!bead.labels.includes(label)) bead.labels = [...bead.labels, label];",
+  "      }",
+  "    }",
+  "    await save();",
+  "    process.stdout.write('Updated issue: ' + id + '\\n');",
+  "    return;",
+  "  }",
+  "",
+  "  if (argv[0] === 'mol' && argv[1] === 'pour') {",
+  "    // pour <formula-id> --var k=v ... --json: one call, root plus every step.",
+  "    const formulaId = argv[2];",
+  "    const vars = {};",
+  "    for (let i = 3; i < argv.length; i++) {",
+  "      if (argv[i] === '--var') {",
+  "        const pair = argv[++i] ?? '';",
+  "        const at = pair.indexOf('=');",
+  "        if (at > 0) vars[pair.slice(0, at)] = pair.slice(at + 1);",
+  "      }",
+  "    }",
+  "    const formulaPath = path.join(process.cwd(), '.beads', 'formulas', formulaId + '.formula.json');",
+  "    let formula;",
+  "    try {",
+  "      formula = JSON.parse(await fs.readFile(formulaPath, 'utf8'));",
+  "    } catch {",
+  "      console.error('formula not found: ' + formulaId);",
+  "      process.exit(1);",
+  "    }",
+  "    const substitute = (text) => String(text ?? '').replace(/\\{\\{(\\w+)\\}\\}/g, (whole, key) => (key in vars ? vars[key] : whole));",
+  "    const id = () => 'bd-' + state.nextId++;",
+  "    const rootId = id();",
+  "    state.beads.push({ id: rootId, title: formula.formula, labels: [], parent: null, type: 'molecule', status: 'open', priority: 2, description: substitute(formula.description), validated: false });",
+  "    const mapping = { [formula.formula]: rootId };",
+  "    for (const step of formula.steps ?? []) {",
+  "      const stepId = id();",
+  "      mapping[formula.formula + '.' + step.id] = stepId;",
+  "      // Labels are copied verbatim: real bd does not substitute {{var}} in them.",
+  "      state.beads.push({ id: stepId, title: substitute(step.title), labels: [...(step.labels ?? [])], parent: rootId, type: step.type || 'chore', status: 'open', priority: step.priority ?? 2, description: substitute(step.description), validated: false });",
+  "    }",
+  "    for (const step of formula.steps ?? []) {",
+  "      for (const dep of step.depends_on ?? []) {",
+  "        const issueId = mapping[formula.formula + '.' + step.id];",
+  "        const dependsOnId = mapping[formula.formula + '.' + dep];",
+  "        if (dependsOnId) state.deps.push({ issue_id: issueId, depends_on_id: dependsOnId, type: 'blocks' });",
+  "      }",
+  "    }",
+  "    state.pours.push({ formula: formulaId, vars, rootId, idMapping: mapping });",
+  "    await save();",
+  "    process.stdout.write(JSON.stringify({ created: (formula.steps ?? []).length + 1, id_mapping: mapping, new_epic_id: rootId, phase: 'liquid', schema_version: 1 }, null, 2) + '\\n');",
   "    return;",
   "  }",
   "",
   "  if (argv[0] !== 'create') {",
-  "    await fs.writeFile(stateFile, JSON.stringify(state));",
+  "    await save();",
   "    process.exit(1);",
   "  }",
   "",
   "  const title = argv[1];",
   "  const flags = {};",
+  "  const labels = [];",
   "  const bools = new Set();",
   "  for (let i = 2; i < argv.length; i++) {",
   "    const arg = argv[i];",
   "    if (BOOL_FLAGS.has(arg)) { bools.add(arg); continue; }",
+  "    if (LIST_FLAGS.has(arg)) { labels.push(...(argv[++i] ?? '').split(',').filter(Boolean)); continue; }",
   "    if (VALUE_FLAGS.has(arg)) { flags[arg] = argv[++i]; continue; }",
   "  }",
   "",
@@ -101,20 +230,27 @@ const FAKE_BD_SCRIPT = [
   "    }",
   "  }",
   "",
-  "  const explicit = (flags['--labels'] || '').split(',').filter(Boolean);",
   "  const parent = state.beads.find((b) => b.id === flags['--parent']);",
   "  const inherited = parent && !bools.has('--no-inherit-labels') ? parent.labels : [];",
-  "  const labels = [...new Set([...inherited, ...explicit])];",
+  "  const allLabels = [...new Set([...inherited, ...labels])];",
   "",
   "  const id = 'bd-' + state.nextId++;",
-  "  state.beads.push({ id, title, labels, parent: flags['--parent'] ?? null, type: flags['--type'] || 'task', status: 'open', priority: Number(flags['--priority'] ?? 2), description: flags['--description'] || '', validated: bools.has('--validate') });",
-  "  await fs.writeFile(stateFile, JSON.stringify(state));",
+  "  state.beads.push({ id, title, labels: allLabels, parent: flags['--parent'] ?? null, type: flags['--type'] || 'task', status: 'open', priority: Number(flags['--priority'] ?? flags['-p'] ?? 2), description: flags['--description'] || '', validated: bools.has('--validate') });",
+  "  await save();",
   "  process.stdout.write(id + '\\n');",
   "})().catch((err) => {",
   "  console.error(err);",
   "  process.exit(1);",
   "});",
 ].join("\n");
+
+/**
+ * A `bd` subcommand the fake refuses, so a test can drive a failure at a chosen
+ * point in a run.
+ * @typedef {object} FakeFailure
+ * @property {string} command  `argv[0]`: `delete`, `note`, `update`, …
+ * @property {number} [occurrence]  1-based call number of that command; every call when omitted
+ */
 
 /**
  * A bead seeded into the fake's state before the script runs.
@@ -128,10 +264,11 @@ const FAKE_BD_SCRIPT = [
 
 /** Create a stateful fake `bd` binary in `dir`.
  * @param {string} dir  Directory to hold the binary and its state.json
- * @param {{ beads: SeedBead[] }} seed  Pre-existing beads (the parent, plus any
- *        partial chore tree the test wants the script to repair)
+ * @param {{ beads: SeedBead[], failures?: FakeFailure[] }} seed  Pre-existing beads
+ *        (the parent, plus any partial chore tree the test wants the script to
+ *        repair), and the calls the fake must refuse
  * @returns {Promise<{ bin: string, state: string }>} */
-export async function makeFakeBd(dir, { beads }) {
+export async function makeFakeBd(dir, { beads, failures = [] }) {
   const bin = join(dir, "bd");
   const state = join(dir, "state.json");
 
@@ -147,7 +284,7 @@ export async function makeFakeBd(dir, { beads }) {
   await chmod(bin, 0o755);
   await writeFile(
     state,
-    JSON.stringify({ beads: beads.map(({ dependsOn, ...bead }) => bead), deps, nextId: nextIdAfter(beads) }),
+    JSON.stringify({ beads: beads.map(({ dependsOn, ...bead }) => bead), deps, failures, nextId: nextIdAfter(beads) }),
   );
   return { bin, state };
 }

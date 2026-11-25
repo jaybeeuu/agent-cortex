@@ -492,6 +492,9 @@ function printPiInstall(result) {
     process.stdout.write(`  ✓ Copied ${result.docs.files.length} doc(s) → ${result.docs.dir}\n`);
   }
   process.stdout.write(`  ✓ Copied ${result.extensions.files} extension file(s) → ${result.extensions.dir}\n`);
+  if (result.formula.path !== null) {
+    process.stdout.write(`  ✓ ${result.formula.message}\n`);
+  }
   for (const name of result.packages.bundled) {
     process.stdout.write(`  ✓ Bundled pi package ${name} → ${join(result.packages.dir, name)}\n`);
   }

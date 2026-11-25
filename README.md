@@ -181,6 +181,13 @@ same command, and the help and error text names the one you invoked. That naming
 only: the npm and pnpm shims on Windows call `bin/agent-cortex.mjs` directly, so the text
 falls back to `agent-cortex` there.
 
+Both installers also copy the shipped `pipeline` formula into the `.beads/formulas/` directory of
+the project they are run from, where `bd mol pour` finds it. The copy is an **untracked file in
+your repository** — `.beads/formulas/` is not gitignored — so commit it or ignore it deliberately.
+A project with no `.beads/` is reported and the install continues, and stage expansion falls back
+to one `bd create` per stage until the formula is there. An `--output <dir>` run writes nothing
+outside its own tree.
+
 ### Pi package staging (`agent-cortex install pi`)
 
 `agent-cortex install pi` materialises agent-cortex as a self-contained pi

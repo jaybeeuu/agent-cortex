@@ -1121,3 +1121,53 @@ describe("installClaude — managed CLAUDE.md section", () => {
     }
   });
 });
+
+// ─── Pipeline formula ────────────────────────────────────────────────────────
+
+describe("installClaude — pipeline formula", () => {
+  /** A package root that ships the formula, plus a bd-initialised project. */
+  async function formulaFixture() {
+    const root = await makePackageRoot();
+    const formula = await readFile(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "skills", "planning", "create-task", "pipeline.formula.json"),
+      "utf-8",
+    );
+    await mkdir(join(root, "skills", "planning", "create-task"), { recursive: true });
+    await writeFile(join(root, "skills", "planning", "create-task", "pipeline.formula.json"), formula);
+    const project = await makeTmp();
+    await mkdir(join(project, ".beads"), { recursive: true });
+    return { root, project, formula };
+  }
+
+  it("copies the formula into the project's .beads/formulas/ and states it is untracked", async () => {
+    const { root, project, formula } = await formulaFixture();
+
+    const result = await installClaude({ root, output: join(root, "out"), projectDir: project });
+
+    const target = join(project, ".beads", "formulas", "pipeline.formula.json");
+    assert.equal(result.formula.action, "written");
+    assert.equal(result.formula.path, target);
+    assert.equal(await readFile(target, "utf-8"), formula);
+    assert.match(result.formula.message, /untracked file/);
+  });
+
+  it("reports a project with no .beads/ and completes the install", async () => {
+    const { root } = await formulaFixture();
+    const project = await makeTmp();
+
+    const result = await installClaude({ root, output: join(root, "out"), projectDir: project });
+
+    assert.equal(result.formula.action, "no-beads-dir");
+    assert.ok(result.warnings.some((warning) => /No \.beads\/ directory/.test(warning)));
+    assert.ok(await pathExists(join(root, "out", ".claude-plugin", "plugin.json")), "the plugin is written regardless");
+  });
+
+  it("does not touch the project for a generate-only --output run", async () => {
+    const { root, project } = await formulaFixture();
+
+    const result = await installClaude({ root, output: join(root, "out") });
+
+    assert.equal(result.formula.path, null);
+    assert.equal(await pathExists(join(project, ".beads", "formulas")), false);
+  });
+});

@@ -50,6 +50,7 @@ function createClaudeResult(overrides = {}) {
     agents: ["plan", "ralph"],
     skills: { names: ["tdd", "grill-me"], md: 5, files: 7, dir: "/home/.agent-cortex/claude/skills" },
     docs: { files: ["docs/skills/skill-anatomy.md"], dir: "/home/.agent-cortex/claude/docs" },
+    formula: { action: "unchanged", path: "/project/.beads/formulas/pipeline.formula.json", message: "current" },
     hooks: true,
     hookFiles: ["notify.mjs"],
     handAuthored: [".mcp.json"],
@@ -73,6 +74,7 @@ function createPiResult(overrides = {}) {
     agents: [{ name: "ralph", filePath: "/home/.agent-cortex/pi/agents/ralph.agent.md" }],
     skills: { skills: 34, md: 72, files: 90, dir: "/home/.agent-cortex/pi/skills" },
     docs: { files: ["docs/skills/skill-anatomy.md"], dir: "/home/.agent-cortex/pi/docs" },
+    formula: { action: "unchanged", path: "/project/.beads/formulas/pipeline.formula.json", message: "current" },
     extensions: { files: 60, dir: "/home/.agent-cortex/pi/extensions" },
     packages: {
       dir: "/home/.agent-cortex/pi/node_modules",

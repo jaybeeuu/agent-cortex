@@ -198,6 +198,26 @@ describe("IdleWatch cadence", () => {
     assert.equal(deliveries.length, 1, "an unchanged digest sends nothing");
   });
 
+  it("establishes the first digest silently when it names no ids, so an empty queue wakes nobody", async () => {
+    // A watch armed on an empty queue is the designed case. Its first digest is a
+    // baseline, not an arrival, so an empty first result reports "0 added, 0
+    // removed" to nobody; the first id to arrive is the change.
+    const { watch, step, deliveries } = createWatch({
+      runs: [tick(0, result([])), tick(0, result(["agnt-ctx-1"]))],
+    });
+
+    watch.start();
+    await step.fire();
+
+    assert.equal(deliveries.length, 0, "an empty first result is a baseline, not a change");
+
+    await step.fire();
+
+    assert.equal(deliveries.length, 1, "the first id to arrive is the change");
+    assert.deepEqual(deliveries[0].details.added, ["ready:agnt-ctx-1"]);
+    assert.deepEqual(deliveries[0].details.removed, []);
+  });
+
   it("sends exactly one message carrying the changed ids when the digest changes", async () => {
     const { watch, step, deliveries } = createWatch({
       runs: [tick(0, result(["a"])), tick(0, result(["a", "b"]))],
@@ -412,6 +432,41 @@ describe("IdleWatch cadence", () => {
     assert.equal(step.pending(), 0, "the pending timer is cancelled");
     assert.equal(deliveries.length, 1);
     assert.equal(watch.status.checksRun, 1);
+  });
+  it("sends nothing when a check is in flight as the watch stops", async () => {
+    // `stop()` cancels the next timer, but a tick already awaiting its check
+    // cannot be cancelled. It must deliver nothing when it resumes, or a stopped
+    // watch — and a session that has shut down — can still push a follow-up.
+    const step = createStepScheduler();
+    const deliveries: NudgeMessage[] = [];
+    const invocations: CommandInvocation[] = [];
+    let finish: ((run: TickRun) => void) | undefined;
+
+    const watch = new IdleWatch({
+      project: "/projects/one",
+      script: "/agent-cortex/skills/idle-check.mjs",
+      scheduler: step.scheduler,
+      runCommand: (invocation) => {
+        invocations.push(invocation);
+        return new Promise<TickRun>((resolve) => {
+          finish = resolve;
+        });
+      },
+      deliver: (message) => deliveries.push(message),
+    });
+
+    watch.start();
+    const ticking = step.fire();
+    assert.equal(invocations.length, 1, "the check is in flight");
+    assert.equal(watch.active, true);
+
+    watch.stop();
+    finish?.(tick(0, result(["agnt-ctx-1"])));
+    await ticking;
+
+    assert.deepEqual(deliveries, [], "a stopped watch sends nothing for a check it no longer owns");
+    assert.equal(watch.status.nudgesSent, 0);
+    assert.equal(step.pending(), 0, "a stopped watch schedules no next tick");
   });
 });
 

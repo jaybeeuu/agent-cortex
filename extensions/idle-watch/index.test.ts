@@ -377,9 +377,20 @@ describe("idle_watch tool", () => {
     });
   });
 
-  it("replaces a running watch rather than arming a second one", async () => {
+  it("replaces a running watch rather than arming a second one", async (t) => {
+    // Two live cadences are user-visible: the superseded watch keeps its own
+    // timer and delivers a second nudge for the same change. So the test does
+    // not read the new watch's status alone — it counts what actually ran and
+    // what actually arrived.
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+
     await withCheckEnv("/checks/idle.mjs", async () => {
-      const fake = createFakePi();
+      const fake = createFakePi({
+        code: 0,
+        stdout: '{"ready":[{"id":"agnt-ctx-1"}]}',
+        stderr: "",
+        killed: false,
+      });
       idleWatchExtension(fake.pi);
       await call(fake, { action: "start" });
       await call(fake, { action: "start" });
@@ -387,6 +398,16 @@ describe("idle_watch tool", () => {
       const status = await call(fake, { action: "status" });
       assert.match(textOf(status), /watching/);
       assert.match(textOf(status), /Checks run: 0 of 40/, "the replacement starts with a fresh budget");
+
+      t.mock.timers.tick(DEFAULT_INTERVAL_MS);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.equal(
+        fake.execs.length,
+        1,
+        "only the replacement watches: the superseded watch's timer is cancelled, so one interval runs one check",
+      );
+      assert.equal(fake.sent.length, 1, "the superseded watch delivers nothing");
     });
   });
 });

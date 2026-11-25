@@ -10,9 +10,9 @@ or closes a bead.
 | Command | Behaviour | Exit |
 |---|---|---|
 | `init` | Writes the template, stamped with today's date; refuses an existing file | 0 written, 1 refused |
-| `validate` | Checks the version integer, the date, the change log, the deadline tiers, the four level tables and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
+| `validate` | Checks the version integer, the date, the change log, the deadline tiers, the theme balance, the four level tables and every required section; prints the file to stdout when valid | 0 valid, 1 invalid |
 | `bump` | Refuses an invalid file or an empty `--reason`, raises the version by one, records today, appends the change-log line | 0 bumped, 1 invalid file, 2 no or empty `--reason` |
-| `summary` | Validates first, then prints the digest a run opens with: the path it read, the version, the newest change-log entry, the themes and the two admissibility lists as up to two bullets each, and the deadline factors and each level table when the file states them | 0 summarised, 1 invalid, 3 no file |
+| `summary` | Validates first, then prints the digest a run opens with: the path it read, the version, the newest change-log entry, the themes and the two admissibility lists as up to two bullets each, and the deadline factors, the theme balance and each level table when the file states them | 0 summarised, 1 invalid, 3 no file |
 | `record` (`challenge.mjs`) | Refuses an order or a resolution the strategy does not support; prints one bead-trail entry | 0 recorded, 1 refused |
 
 `summary` is the one command that separates "absent" from "wrong". It exits `3` only when the file

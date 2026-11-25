@@ -706,10 +706,12 @@ describe('the theme balance', () => {
 
     const report = await buildQueue({ bd, cwd: workspace, file });
 
-    assert.ok(
-      state.calls.some((args) => args.join(' ') === 'list --all --json --limit 0'),
-      `no history read among: ${state.calls.map((args) => args.join(' ')).join(' | ')}`,
-    );
+    // The name states a count, so the count is what this asserts: one `--all` history read for
+    // every scope the run could read. A second read per scope would double it and fail here.
+    const readable = report.scopes.filter((scope) => scope.status === 'available');
+    assert.equal(readable.length, 1, 'this run reads one scope, so the count below is exact');
+    const historyReads = state.calls.filter((args) => args.join(' ') === 'list --all --json --limit 0');
+    assert.equal(historyReads.length, readable.length, 'one history read per readable scope');
     assert.deepEqual(state.calls.filter((args) => !['list', 'dep', 'children'].includes(args[0])), []);
     assert.deepEqual(rowFor(report, 'tst-a').rice, rice(), 'the stored RICE record is unchanged by a run');
   });

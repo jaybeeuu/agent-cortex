@@ -42,8 +42,13 @@ Reference agent tools by token, never by a hardcoded harness-specific name such 
 prefixed with `CAPABILITY:` and wrapped in doubled curly braces — two `{` before it and two
 `}` after it. The wrapper is literal syntax: installers match it and substitute the per-harness
 name from `token-map.json` at install time. Add any new capability to the map's `capabilities`
-section in the same change; unknown tokens are hard errors. See `token-map.README.md` for the
-full authoring rules.
+section in the same change. A `CAPABILITY` key that the map does not carry is a hard error.
+
+Installers substitute three token types only: `CAPABILITY`, `PATH` and `SECTION`. A token of any
+other type stays in the text, so it reaches the harness as literal prose. `TOOL` was the earlier
+name of the `CAPABILITY` type, so a skill that still writes it installs with the token intact and
+names no tool: rename the type to `CAPABILITY`. See `token-map.README.md` for the full authoring
+rules.
 
 ## Required sections
 

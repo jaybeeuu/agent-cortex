@@ -168,6 +168,7 @@ stage: the commit is the evidence, the report is the claim.
 
 ## See Also
 
+- [REFERENCE.md](REFERENCE.md) — parent settlement: who closes a parent feature bead, which labels count as a merge, and the four verdicts of `close-settled-parent.mjs`.
 - [create-task](../../planning/create-task/SKILL.md) — owns `pipeline.json`: stages, `maxFixRounds`, and the stage templates.
 - [bd-tool](../../productivity/bd-tool/SKILL.md) — bead mechanics beyond the commands used here.
 - [ralph](../ralph/SKILL.md) — runs many stage beads concurrently and consumes this skill's trail and REPORT contracts.

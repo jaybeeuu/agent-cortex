@@ -285,11 +285,7 @@ When the `document` chore for a parent task completes:
 4. Find the child HITL task bead for this parent with label `lifecycle:feature-pr` and `execution:hitl` (created by `create-task`).
 5. Update that HITL bead with the PR URL/status (comment or note) so the reviewer has the link.
 6. Do not schedule new parent features while this gate is **unblocked** — an unblocked gate is a feature genuinely awaiting a human merge (see _Gate predicate_ below).
-7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake **and** the pre-created `stage:post-merge` and `stage:housekeeping` chores. After that, close the parent feature bead:
-   ```bash
-   bd close <parent-id>
-   ```
-   The housekeeping run that follows removes the parent's worktree, because its bead now reads `closed`. Only then continue with next parent features.
+7. Once the PR is merged, a human closes the HITL PR gate bead, which unblocks the scheduling brake **and** the pre-created `stage:post-merge` and `stage:housekeeping` chores. The parent then closes itself: each of those chores runs `close-settled-parent.mjs`, which closes the parent once no child is open and a closed child records the merge. Close nothing by hand — `bd close <parent-id>` refuses while those chores are open, and the script is the writer that assembles the closures. The parent's worktree is removed by the next housekeeping run, because the parent reads `open` at the pruner's first pass. Only then continue with next parent features.
 
 ### Gate predicate — parked vs pending
 

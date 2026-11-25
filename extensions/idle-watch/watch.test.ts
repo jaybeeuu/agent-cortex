@@ -232,6 +232,28 @@ describe("IdleWatch cadence", () => {
     assert.deepEqual(deliveries[1].details.added, ["ready:b"]);
   });
 
+  it("sends nothing when a failed run prints a digestable result, and keeps the previous digest", async () => {
+    // A check can print a full-looking report and then fail to exit zero, so the
+    // exit code decides whether the run counts, not the shape of its output.
+    const { watch, step, deliveries } = createWatch({
+      runs: [
+        tick(0, result(["agnt-ctx-1"])),
+        tick(1, result(["agnt-ctx-2"])),
+        tick(0, result(["agnt-ctx-1"])),
+      ],
+    });
+
+    watch.start();
+    await step.fire();
+    await step.fire();
+
+    assert.equal(deliveries.length, 1, "a non-zero exit sends nothing, whatever its output says");
+    assert.equal(watch.active, true, "a failed run does not end the watch");
+
+    await step.fire();
+    assert.equal(deliveries.length, 1, "the failed run left the previous digest in place");
+  });
+
   it("sends nothing when the check times out", async () => {
     const { watch, step, deliveries } = createWatch({ runs: [tick(0, result(["a"])), timeOut()] });
 

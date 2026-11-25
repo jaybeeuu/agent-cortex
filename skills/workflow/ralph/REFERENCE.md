@@ -399,6 +399,28 @@ Proceed here when no agent work is in flight (no stage, decomposition or expansi
 
 ---
 
+## Idle Check
+
+Ralph's watch polls one command and nudges ralph only when the answer changes. That command is `skills/workflow/ralph/scripts/idle-check.mjs`, which is the watch's documented default and resolves package-relative like every other shipped script:
+```bash
+node skills/workflow/ralph/scripts/idle-check.mjs
+```
+It prints one JSON object and nothing else on stdout. Both arrays are sorted by id, so a tracker that reorders its rows is not a change:
+```json
+{
+  "ready":   [ { "id": "agnt-ctx-abc.1", "priority": 1 } ],
+  "stalled": [ { "id": "agnt-ctx-abc.2", "status": "in_progress", "quietMinutes": 12, "reason": "quiet" } ]
+}
+```
+- **Ready work is the documented queue query**, `bd ready -l execution:afk`. A bead that is not ready for an `execution:afk` agent never enters the digest.
+- **Stalled work is an `in_progress` bead whose last sign of life is older than the threshold.** A sign of life is its heartbeat, its claim, its own row, its creation, or the newest trail entry in its notes — the latest of them wins, so a worker that appends a note without beating is alive.
+- **The threshold is 5 minutes.** A worker silent for longer than that is more likely dead than busy, and shortening exactly that silence is what the check is for. `--stall-minutes <minutes>` and `AGENT_CORTEX_IDLE_STALL_MINUTES` both set it, and the flag wins over the environment.
+- **An expired lease is stalled immediately**, with the reason `lease-expired`. bd states in `lease_expires_at` that the holder is gone, so the report does not wait for the threshold; the quiet time is still reported beside the reason.
+- **Exit codes are the contract.** `0` printed a digest, `1` could not read the tracker — nothing is printed, so the watch stays silent instead of nudging ralph to look at nothing — and `2` was given unusable arguments. `BD_PATH` overrides the binary, and `--limit <rows>` bounds each query (default 500).
+- **Read-only and cheap.** The two queries are `bd ready` and `bd list -s in_progress`, run one after the other, and the script writes nothing: no bead field, no note, no lease. A tick makes no model call.
+
+---
+
 ## Shutdown
 
 When nothing is in flight AND nothing is dispatchable — `inflight` holds no entries, `bd ready -l execution:afk` returns nothing (no `stage:*` chore, no childless feature to decompose, no ready, claimable chore-less task bead awaiting expansion) (_The in-flight invariant_ above):
